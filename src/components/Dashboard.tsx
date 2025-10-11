@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, BarChart3, DollarSign } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats, Transaction, TokenMint, MonitoredWallet } from '../types';
+import { config, apiUrl } from '../config';
 import { TransactionList } from './TransactionList';
 import { WalletList } from './WalletList';
 import { TokenList } from './TokenList';
@@ -18,7 +19,7 @@ export function Dashboard() {
   const [tokens, setTokens] = useState<TokenMint[]>([]);
   const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'stats' | 'sourceWallets' | 'settings'>('sourceWallets');
   
-  const { isConnected, subscribe } = useWebSocket('ws://localhost:3001/ws');
+  const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
   useEffect(() => {
     fetchData();
@@ -89,7 +90,7 @@ export function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/stats');
+      const response = await fetch(apiUrl('/api/stats'));
       const data = await response.json();
       setStats(data);
     } catch (error) {
@@ -99,7 +100,7 @@ export function Dashboard() {
 
   const fetchTransactions = async () => {
     try {
-      const response = await fetch('/api/transactions');
+      const response = await fetch(apiUrl('/api/transactions'));
       const data = await response.json();
       setTransactions(data);
     } catch (error) {
@@ -109,7 +110,7 @@ export function Dashboard() {
 
   const fetchWallets = async () => {
     try {
-      const response = await fetch('/api/wallets');
+      const response = await fetch(apiUrl('/api/wallets'));
       const data = await response.json();
       setWallets(data);
     } catch (error) {
@@ -119,7 +120,7 @@ export function Dashboard() {
 
   const fetchDevWallets = async () => {
     try {
-      const response = await fetch('/api/wallets/devs');
+      const response = await fetch(apiUrl('/api/wallets/devs'));
       const data = await response.json();
       setDevWallets(data);
     } catch (error) {
@@ -129,7 +130,7 @@ export function Dashboard() {
 
   const fetchTokens = async () => {
     try {
-      const response = await fetch('/api/tokens');
+      const response = await fetch(apiUrl('/api/tokens'));
       const data = await response.json();
       setTokens(data);
     } catch (error) {
