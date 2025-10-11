@@ -151,9 +151,15 @@ export class DefiActivityAnalyzer {
       
       console.log(`📊 [DefiAnalyzer] Analyzing ${signatures.length} transactions for ${walletAddress.slice(0, 8)}...`);
       
-      // Fetch and parse each transaction
-      for (let i = 0; i < signatures.length; i += 10) {
-        const batch = signatures.slice(i, Math.min(i + 10, signatures.length));
+      // Fetch and parse each transaction (with delay to avoid method-specific rate limits)
+      for (let i = 0; i < signatures.length; i += 5) {
+        const batch = signatures.slice(i, Math.min(i + 5, signatures.length));
+        
+        // Add delay between batches to avoid method-specific rate limits
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
+        }
+        
         const txs = await connection.getParsedTransactions(
           batch.map(s => s.signature),
           { maxSupportedTransactionVersion: 0 }
@@ -197,8 +203,8 @@ export class DefiActivityAnalyzer {
         }
         
         // Progress logging
-        if ((i + 10) % 100 === 0) {
-          console.log(`   Progress: ${Math.min(i + 10, signatures.length)}/${signatures.length} checked`);
+        if ((i + 5) % 25 === 0 || i + 5 >= signatures.length) {
+          console.log(`   Progress: ${Math.min(i + 5, signatures.length)}/${signatures.length} checked`);
         }
       }
       
