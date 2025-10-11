@@ -151,13 +151,17 @@ export class DefiActivityAnalyzer {
       
       console.log(`📊 [DefiAnalyzer] Analyzing ${signatures.length} transactions for ${walletAddress.slice(0, 8)}...`);
       
-      // Fetch and parse each transaction (with delay to avoid method-specific rate limits)
+      // Fetch and parse each transaction
+      // getParsedTransactions has strict limits: ~10-20 req/min per server
+      // With 20 servers rotating: 200-400 req/min total capacity
+      // Safe rate: 3 req/sec = 180 req/min (leaves headroom)
       for (let i = 0; i < signatures.length; i += 5) {
         const batch = signatures.slice(i, Math.min(i + 5, signatures.length));
         
-        // Add delay between batches to avoid method-specific rate limits
+        // Method-specific rate limit: 500ms delay = 2 req/sec (very conservative)
+        // This ensures we stay under 10 req/min even if server rotation fails
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
         
         const txs = await connection.getParsedTransactions(
