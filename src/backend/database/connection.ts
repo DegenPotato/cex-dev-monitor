@@ -146,6 +146,14 @@ export async function initDatabase() {
     );
   `);
 
+  // Migration: Add signature column to token_mints
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN signature TEXT;`);
+    console.log('✅ Added signature column to token_mints');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
   // Migration: Add market cap columns to token_mints if they don't exist
   try {
     db.run(`ALTER TABLE token_mints ADD COLUMN starting_mcap REAL;`);

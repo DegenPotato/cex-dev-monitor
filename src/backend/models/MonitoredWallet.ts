@@ -33,6 +33,7 @@ export interface TokenMint {
   symbol?: string;
   timestamp: number;
   platform: string;
+  signature?: string;
   starting_mcap?: number;
   current_mcap?: number;
   ath_mcap?: number;

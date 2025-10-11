@@ -271,6 +271,80 @@ app.get('/api/wallets/devs', async (_req, res) => {
   res.json(wallets);
 });
 
+// Add test dev wallet for manual analysis
+app.post('/api/wallets/test-dev', async (req, res) => {
+  const { address, name } = req.body;
+  
+  if (!address) {
+    return res.status(400).json({ error: 'Wallet address is required' });
+  }
+
+  try {
+    console.log(`🧪 [Test] Adding test dev wallet: ${address}`);
+    
+    // Check if wallet already exists
+    let wallet = await MonitoredWalletProvider.findByAddress(address);
+    
+    if (!wallet) {
+      // Create new wallet entry
+      await MonitoredWalletProvider.create({
+        address,
+        source: name || 'manual_test',
+        first_seen: Date.now(),
+        is_active: 1,
+        is_fresh: 0,
+        previous_tx_count: 0,
+        is_dev_wallet: 0,
+        tokens_deployed: 0,
+        dev_checked: 0
+      });
+      
+      wallet = await MonitoredWalletProvider.findByAddress(address);
+    }
+    
+    // Trigger dev wallet analysis
+    console.log(`🔬 [Test] Starting dev analysis for ${address}...`);
+    const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
+    const devAnalysis = await devAnalyzer.analyzeDevHistory(address);
+    
+    // Update wallet with results
+    await MonitoredWalletProvider.update(address, {
+      is_dev_wallet: devAnalysis.isDevWallet ? 1 : 0,
+      tokens_deployed: devAnalysis.tokensDeployed,
+      dev_checked: 1
+    });
+    
+    // Save tokens if dev wallet
+    if (devAnalysis.isDevWallet && devAnalysis.deployments.length > 0) {
+      for (const deployment of devAnalysis.deployments) {
+        const existing = await TokenMintProvider.findByMintAddress(deployment.mintAddress);
+        if (!existing) {
+          await TokenMintProvider.create({
+            mint_address: deployment.mintAddress,
+            creator_address: address,
+            timestamp: deployment.timestamp,
+            platform: 'pumpfun',
+            signature: deployment.signature
+          });
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      wallet: await MonitoredWalletProvider.findByAddress(address),
+      analysis: {
+        isDevWallet: devAnalysis.isDevWallet,
+        tokensDeployed: devAnalysis.tokensDeployed,
+        deployments: devAnalysis.deployments
+      }
+    });
+  } catch (error: any) {
+    console.error('Error analyzing test dev wallet:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Toggle wallet monitoring
 app.post('/api/wallets/:address/toggle', async (req, res) => {
   const { address } = req.params;

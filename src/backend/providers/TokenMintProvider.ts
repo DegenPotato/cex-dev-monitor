@@ -5,8 +5,8 @@ import { TokenMint } from '../models/MonitoredWallet.js';
 export class TokenMintProvider {
   static async create(mint: TokenMint): Promise<number> {
     await execute(
-      `INSERT INTO token_mints (mint_address, creator_address, name, symbol, timestamp, platform, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO token_mints (mint_address, creator_address, name, symbol, timestamp, platform, signature, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         mint.mint_address,
         mint.creator_address,
@@ -14,6 +14,7 @@ export class TokenMintProvider {
         mint.symbol,
         mint.timestamp,
         mint.platform,
+        mint.signature,
         mint.metadata
       ]
     );

@@ -162,8 +162,8 @@ export class PumpFunMonitor extends EventEmitter {
         symbol: tokenInfo.symbol,
         timestamp: launchTimestamp, // Actual blockchain launch time
         platform: 'pumpfun',
+        signature: signature, // Store transaction signature
         metadata: JSON.stringify({
-          signature,
           launchTime: new Date(launchTimestamp).toISOString(),
           ...tokenInfo
         })

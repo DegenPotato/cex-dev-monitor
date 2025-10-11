@@ -148,6 +148,19 @@ export function TokenList({ tokens }: TokenListProps) {
                     <span className="text-gray-400">Contract: </span>
                     <span className="font-mono text-gray-300">{formatAddress(token.mint_address)}</span>
                   </div>
+                  {token.signature && (
+                    <div>
+                      <span className="text-gray-400">TX: </span>
+                      <a
+                        href={`https://solscan.io/tx/${token.signature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-blue-400 hover:text-blue-300 underline"
+                      >
+                        {formatAddress(token.signature)}
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}

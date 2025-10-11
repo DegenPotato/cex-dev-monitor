@@ -343,6 +343,7 @@ export class SolanaMonitor extends EventEmitter {
               creator_address: walletAddress,
               timestamp: deployment.timestamp,
               platform: 'pumpfun',
+              signature: deployment.signature, // Store transaction signature
               starting_mcap: marketData?.currentMcap,
               current_mcap: marketData?.currentMcap,
               ath_mcap: marketData?.athMcap,
