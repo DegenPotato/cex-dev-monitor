@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Activity, TrendingUp, Clock, CheckCircle, XCircle, Shield, BarChart3 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Clock, TrendingUp, Zap, Activity, CheckCircle, XCircle, Shield } from 'lucide-react';
+import { apiUrl } from '../config';
 
 export function RequestStatsPanel() {
   const [stats, setStats] = useState<any>(null);
@@ -15,8 +16,8 @@ export function RequestStatsPanel() {
   const fetchStats = async () => {
     try {
       const [statsRes, rateLimiterRes] = await Promise.all([
-        fetch('/api/stats/requests'),
-        fetch('/api/ratelimiter/stats')
+        fetch(apiUrl('/api/stats/requests')),
+        fetch(apiUrl('/api/ratelimiter/stats'))
       ]);
       
       const statsData = await statsRes.json();

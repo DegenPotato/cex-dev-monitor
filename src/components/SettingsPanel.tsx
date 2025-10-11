@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { Save, RefreshCw } from 'lucide-react';
+import { apiUrl } from '../config';
 import { MonitoringControls } from './MonitoringControls';
 
 interface SettingsPanelProps {
@@ -22,7 +23,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch('/api/config');
+      const response = await fetch(apiUrl('/api/config'));
       const config = await response.json();
       
       const cexWalletConfig = config.find((c: any) => c.key === 'cex_wallet');
@@ -34,7 +35,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       if (maxThresholdConfig) setMaxThreshold(maxThresholdConfig.value);
       
       // Fetch request pacing config
-      const pacingResponse = await fetch('/api/request-pacing/config');
+      const pacingResponse = await fetch(apiUrl('/api/request-pacing/config'));
       const pacingConfig = await pacingResponse.json();
       if (pacingConfig.requestDelayMs) {
         setRequestPacingDelay(pacingConfig.requestDelayMs.toString());
@@ -47,26 +48,26 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
   const saveConfig = async () => {
     setLoading(true);
     try {
-      await fetch('/api/config', {
+      await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'cex_wallet', value: cexWallet })
       });
       
-      await fetch('/api/config', {
+      await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'threshold_sol', value: threshold })
       });
       
-      await fetch('/api/config', {
+      await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'max_threshold_sol', value: maxThreshold })
       });
       
       // Save rate limiter config
-      await fetch('/api/ratelimiter/config', {
+      await fetch(apiUrl('/api/ratelimiter/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -77,7 +78,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       });
       
       // Save request pacing config
-      await fetch('/api/request-pacing/config', {
+      await fetch(apiUrl('/api/request-pacing/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

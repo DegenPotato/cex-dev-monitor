@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Activity, TrendingUp, Users, Coins, Plus, Edit2, Trash2, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { apiUrl } from '../config';
 
 interface SourceWallet {
   address: string;
@@ -40,7 +41,7 @@ export function SourceWalletsPanel() {
 
   const fetchWallets = async () => {
     try {
-      const response = await fetch('/api/source-wallets');
+      const response = await fetch(apiUrl('/api/source-wallets'));
       const data = await response.json();
       setWallets(data);
     } catch (error) {
@@ -58,7 +59,7 @@ export function SourceWalletsPanel() {
 
   const handleToggleMonitoring = async (address: string) => {
     try {
-      await fetch(`/api/source-wallets/${address}/toggle`, {
+      await fetch(apiUrl(`/api/source-wallets/${address}/toggle`), {
         method: 'POST'
       });
       fetchWallets();
@@ -75,7 +76,7 @@ export function SourceWalletsPanel() {
     }
 
     try {
-      const response = await fetch('/api/source-wallets', {
+      const response = await fetch(apiUrl('/api/source-wallets'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

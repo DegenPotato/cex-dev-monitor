@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Play, Square, Activity, Shield, ShieldOff, RefreshCw } from 'lucide-react';
+import { Play, Square, RotateCw, Wifi, WifiOff, Activity, Shield, ShieldOff, RefreshCw } from 'lucide-react';
+import { apiUrl } from '../config';
 
 export function MonitoringControls() {
   const [status, setStatus] = useState<any>(null);
@@ -9,7 +10,7 @@ export function MonitoringControls() {
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch('/api/monitoring/status');
+      const response = await fetch(apiUrl('/api/monitoring/status'));
       const data = await response.json();
       setStatus(data);
     } catch (error) {
@@ -19,7 +20,7 @@ export function MonitoringControls() {
 
   const fetchProxyStatus = async () => {
     try {
-      const response = await fetch('/api/proxy/status');
+      const response = await fetch(apiUrl('/api/proxy/status'));
       const data = await response.json();
       setProxyStatus(data);
     } catch (error) {
@@ -29,7 +30,7 @@ export function MonitoringControls() {
 
   const fetchRpcRotationStatus = async () => {
     try {
-      const response = await fetch('/api/rpc-rotation/stats');
+      const response = await fetch(apiUrl('/api/rpc-rotation/stats'));
       const data = await response.json();
       setRpcRotationStatus(data);
     } catch (error) {
@@ -52,7 +53,7 @@ export function MonitoringControls() {
   const handleStart = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/monitoring/start', { method: 'POST' });
+      const response = await fetch(apiUrl('/api/monitoring/start'), { method: 'POST' });
       const data = await response.json();
       
       if (data.success) {
@@ -71,7 +72,7 @@ export function MonitoringControls() {
   const handleStop = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/monitoring/stop', { method: 'POST' });
+      const response = await fetch(apiUrl('/api/monitoring/stop'), { method: 'POST' });
       const data = await response.json();
       
       if (data.success) {
@@ -90,7 +91,7 @@ export function MonitoringControls() {
   const handleToggleProxy = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/proxy/toggle', { method: 'POST' });
+      const response = await fetch(apiUrl('/api/proxy/toggle'), { method: 'POST' });
       const data = await response.json();
       
       if (data.success) {
@@ -110,7 +111,7 @@ export function MonitoringControls() {
   const handleToggleRpcRotation = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/rpc-rotation/toggle', { method: 'POST' });
+      const response = await fetch(apiUrl('/api/rpc-rotation/toggle'), { method: 'POST' });
       const data = await response.json();
       
       if (data.success) {
