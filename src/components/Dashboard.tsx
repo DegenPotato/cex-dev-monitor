@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, DollarSign } from 'lucide-react';
+import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, DollarSign, FlaskConical } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats, Transaction, TokenMint, MonitoredWallet } from '../types';
 import { config, apiUrl } from '../config';
@@ -9,6 +9,7 @@ import { TokenList } from './TokenList';
 import { SettingsPanel } from './SettingsPanel';
 import { DevWalletList } from './DevWalletList';
 import { SourceWalletsPanel } from './SourceWalletsPanel';
+import { TestDevWalletPanel } from './TestDevWalletPanel';
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -16,7 +17,7 @@ export function Dashboard() {
   const [wallets, setWallets] = useState<MonitoredWallet[]>([]);
   const [devWallets, setDevWallets] = useState<MonitoredWallet[]>([]);
   const [tokens, setTokens] = useState<TokenMint[]>([]);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'sourceWallets' | 'settings'>('sourceWallets');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'sourceWallets' | 'testDev' | 'settings'>('testDev');
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
@@ -231,6 +232,12 @@ export function Dashboard() {
               label="Tokens"
             />
             <TabButton
+              active={activeTab === 'testDev'}
+              onClick={() => setActiveTab('testDev')}
+              icon={<FlaskConical className="w-4 h-4" />}
+              label="Test Dev Wallet"
+            />
+            <TabButton
               active={activeTab === 'settings'}
               onClick={() => setActiveTab('settings')}
               icon={<Settings className="w-4 h-4" />}
@@ -246,6 +253,7 @@ export function Dashboard() {
           {activeTab === 'wallets' && <WalletList wallets={wallets} onUpdate={fetchWallets} />}
           {activeTab === 'devWallets' && <DevWalletList devWallets={devWallets} onUpdate={fetchDevWallets} />}
           {activeTab === 'tokens' && <TokenList tokens={tokens} />}
+          {activeTab === 'testDev' && <TestDevWalletPanel />}
           {activeTab === 'settings' && <SettingsPanel onUpdate={fetchData} />}
         </div>
       </div>
