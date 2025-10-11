@@ -38,11 +38,22 @@ export function TestDevWalletPanel() {
     setDefiProfile(null);
 
     try {
+      // Increase timeout for large wallets (up to 10 minutes)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 min timeout
+
       const response = await fetch(apiUrl('/api/wallets/test-dev'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, name: name || 'Test Wallet' })
+        body: JSON.stringify({ address, name: name || 'Test Wallet' }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data = await response.json();
       setResult(data);
@@ -55,7 +66,9 @@ export function TestDevWalletPanel() {
     } catch (error: any) {
       setResult({
         success: false,
-        error: error.message
+        error: error.name === 'AbortError' 
+          ? 'Analysis timeout (10+ min). Try reducing transaction limit or check server logs.'
+          : error.message || 'Failed to fetch'
       });
     } finally {
       setLoading(false);
@@ -67,14 +80,30 @@ export function TestDevWalletPanel() {
 
     setDefiLoading(true);
     try {
-      const response = await fetch(apiUrl(`/api/wallets/${address}/defi-activities?limit=100`));
+      // 5 minute timeout for DeFi analysis (100 txs × 500ms = ~1 min, leaving buffer)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min
+
+      const response = await fetch(
+        apiUrl(`/api/wallets/${address}/defi-activities?limit=100`),
+        { signal: controller.signal }
+      );
+      
+      clearTimeout(timeoutId);
+
       const data = await response.json();
       
       if (data.success) {
         setDefiProfile(data.profile);
+      } else {
+        console.error('DeFi analysis failed:', data.error);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching DeFi profile:', error);
+      alert(error.name === 'AbortError' 
+        ? 'DeFi analysis timeout. The analysis is taking too long - check server logs.'
+        : 'Failed to load DeFi profile'
+      );
     } finally {
       setDefiLoading(false);
     }

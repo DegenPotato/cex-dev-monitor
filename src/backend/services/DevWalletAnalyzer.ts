@@ -127,10 +127,13 @@ export class DevWalletAnalyzer {
 
                 if (parsed.type === 'initializeMint' || parsed.type === 'initializeMint2') {
                   const mintAddress = parsed.info?.mint;
-                  const mintAuthority = parsed.info?.mintAuthority;
 
-                  // Verify the wallet is the mint authority (final confirmation)
-                  if (mintAddress && mintAuthority === walletAddress) {
+                  // For Pump.fun tokens:
+                  // - The wallet is the CREATOR (signer of the transaction)
+                  // - Mint authority is often transferred to program or set to null immediately
+                  // - We already verified wallet is signer AND this is a Create instruction
+                  // - So if we see initializeMint, this wallet IS the creator!
+                  if (mintAddress) {
                     deployments.push({
                       mintAddress,
                       signature: sigInfo.signature,
@@ -138,7 +141,7 @@ export class DevWalletAnalyzer {
                       decimals: parsed.info?.decimals
                     });
 
-                    console.log(`   🚀 Found VERIFIED mint: ${mintAddress.slice(0, 16)}... (authority: ${mintAuthority.slice(0, 8)}...)`);
+                    console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
                   }
                 }
               }
