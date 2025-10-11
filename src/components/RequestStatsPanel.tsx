@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Clock, TrendingUp, Zap, Activity, CheckCircle, XCircle, Shield } from 'lucide-react';
+import { BarChart3, Clock, TrendingUp, Activity, CheckCircle, XCircle, Shield } from 'lucide-react';
 import { apiUrl } from '../config';
 
 export function RequestStatsPanel() {

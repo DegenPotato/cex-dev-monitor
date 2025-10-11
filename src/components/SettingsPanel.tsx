@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, RefreshCw } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { apiUrl } from '../config';
 import { MonitoringControls } from './MonitoringControls';
 

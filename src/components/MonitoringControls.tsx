@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Square, RotateCw, Wifi, WifiOff, Activity, Shield, ShieldOff, RefreshCw } from 'lucide-react';
+import { Play, Square, Activity, Shield, ShieldOff, RefreshCw } from 'lucide-react';
 import { apiUrl } from '../config';
 
 export function MonitoringControls() {
