@@ -89,6 +89,20 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN history_checked INTEGER DEFAULT 0;`);
+    console.log('✅ Added history_checked column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN last_history_check INTEGER;`);
+    console.log('✅ Added last_history_check column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS source_wallets (

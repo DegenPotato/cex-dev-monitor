@@ -70,4 +70,18 @@ export class MonitoredWalletProvider {
     await execute('UPDATE monitored_wallets SET is_active = ? WHERE address = ?', [isActive ? 1 : 0, address]);
     saveDatabase();
   }
+
+  static async markHistoryChecked(address: string): Promise<void> {
+    await execute(
+      'UPDATE monitored_wallets SET history_checked = 1, last_history_check = ? WHERE address = ?',
+      [Date.now(), address]
+    );
+    saveDatabase();
+  }
+
+  static async findUncheckedWallets(): Promise<MonitoredWallet[]> {
+    return await queryAll<MonitoredWallet>(
+      'SELECT * FROM monitored_wallets WHERE history_checked = 0 OR history_checked IS NULL ORDER BY first_seen ASC'
+    );
+  }
 }

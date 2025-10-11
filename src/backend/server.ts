@@ -505,6 +505,10 @@ app.post('/api/monitoring/start', async (_req, res) => {
       return res.status(400).json({ error: 'CEX wallet not configured' });
     }
     
+    // Resume queue to allow processing
+    globalAnalysisQueue.resume();
+    console.log('▶️  Analysis queue resumed');
+    
     await solanaMonitor.startMonitoring(cexWallet);
     
     // Start monitoring ONLY fresh wallets and dev wallets
@@ -536,12 +540,18 @@ app.post('/api/monitoring/start', async (_req, res) => {
 
 app.post('/api/monitoring/stop', async (_req, res) => {
   try {
+    // Stop queue FIRST to prevent new analyses
+    globalAnalysisQueue.stop();
+    console.log('🛑 Analysis queue stopped');
+    
+    // Then stop monitors
     solanaMonitor.stopAll();
     pumpFunMonitor.stopAll();
+    console.log('🛑 All monitoring stopped');
     
     res.json({ 
       success: true, 
-      message: 'Monitoring stopped' 
+      message: 'Monitoring and analysis queue stopped' 
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
