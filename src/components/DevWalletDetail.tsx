@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Flame, DollarSign, Coins, Calendar, ExternalLink, Target } from 'lucide-react';
+import { ExternalLink, Coins, Calendar, Flame, ArrowLeft, DollarSign, Target } from 'lucide-react';
+import { apiUrl } from '../config';
 import { TokenMint } from '../types';
 
 interface DevWalletData {
@@ -26,7 +27,7 @@ export function DevWalletDetail() {
       if (!address) return;
       
       try {
-        const response = await fetch(`/api/wallets/dev/${address}`);
+        const response = await fetch(apiUrl(`/api/wallets/dev/${address}`));
         if (response.ok) {
           const result = await response.json();
           setData(result);

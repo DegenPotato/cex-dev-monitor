@@ -101,7 +101,7 @@ export function SourceWalletsPanel() {
 
   const handleUpdateWallet = async (address: string) => {
     try {
-      await fetch(`/api/source-wallets/${address}`, {
+      await fetch(apiUrl(`/api/source-wallets/${address}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,7 +125,7 @@ export function SourceWalletsPanel() {
     }
 
     try {
-      await fetch(`/api/source-wallets/${address}`, {
+      await fetch(apiUrl(`/api/source-wallets/${address}`), {
         method: 'DELETE'
       });
       fetchWallets();
