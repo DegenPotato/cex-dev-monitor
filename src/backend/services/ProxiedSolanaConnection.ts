@@ -85,7 +85,7 @@ export class ProxiedSolanaConnection {
         return this.getDirectConnection();
       }
       
-      const proxyAgent = this.proxyManager.createProxyAgent(proxyInfo.proxy);
+      const proxyAgent = this.proxyManager.createProxyAgent(proxyInfo.proxy, proxyInfo.index, this.endpoint);
       
       const customFetch = (url: string, options?: any) => {
         return fetch(url, {

@@ -150,10 +150,9 @@ export class ProxyManager {
   }
 
   /**
-   * Create proxy agent for HTTP requests
+   * Create proxy agent for HTTP requests from an existing proxy string
    */
-  createProxyAgent(url: string): HttpsProxyAgent<string> | HttpProxyAgent<string> {
-    const { proxy: rawProxy, index: proxyIndex } = this.getNextProxy();
+  createProxyAgent(rawProxy: string, proxyIndex: number, url: string): HttpsProxyAgent<string> | HttpProxyAgent<string> {
     const proxyUrl = this.parseIproyalProxy(rawProxy);
     
     if (!proxyUrl) {
