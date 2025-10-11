@@ -117,36 +117,34 @@ export class DevWalletAnalyzer {
           continue;
         }
 
-        // Now check for initializeMint in inner instructions
-        // This confirms a NEW token was minted (not just buying existing)
-        if (tx.meta.innerInstructions) {
-          for (const innerSet of tx.meta.innerInstructions) {
-            for (const instruction of innerSet.instructions) {
-              if ('parsed' in instruction && instruction.parsed) {
-                const parsed = instruction.parsed;
+        // Pump.fun CREATE transactions don't use standard initializeMint
+        // Instead, look for new token accounts in postTokenBalances
+        // The mint address is the new token that was created
+        const postBalances = tx.meta.postTokenBalances || [];
+        const preBalances = tx.meta.preTokenBalances || [];
+        
+        // Find token accounts that exist in post but not in pre (newly created)
+        const newTokens = postBalances.filter(post => {
+          // Check if this token balance existed before
+          const existedBefore = preBalances.some(pre => 
+            pre.mint === post.mint && pre.accountIndex === post.accountIndex
+          );
+          return !existedBefore;
+        });
 
-                if (parsed.type === 'initializeMint' || parsed.type === 'initializeMint2') {
-                  const mintAddress = parsed.info?.mint;
+        // If we found new token accounts in a CREATE transaction, this wallet created tokens
+        if (newTokens.length > 0) {
+          // The mint address is typically the first new token
+          const mintAddress = newTokens[0].mint;
+          
+          deployments.push({
+            mintAddress,
+            signature: sigInfo.signature,
+            timestamp: (sigInfo.blockTime || 0) * 1000,
+            decimals: newTokens[0].uiTokenAmount?.decimals
+          });
 
-                  // For Pump.fun tokens:
-                  // - The wallet is the CREATOR (signer of the transaction)
-                  // - Mint authority is often transferred to program or set to null immediately
-                  // - We already verified wallet is signer AND this is a Create instruction
-                  // - So if we see initializeMint, this wallet IS the creator!
-                  if (mintAddress) {
-                    deployments.push({
-                      mintAddress,
-                      signature: sigInfo.signature,
-                      timestamp: (sigInfo.blockTime || 0) * 1000,
-                      decimals: parsed.info?.decimals
-                    });
-
-                    console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
-                  }
-                }
-              }
-            }
-          }
+          console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
         }
 
         // Rate limit: small delay every 5 transactions
