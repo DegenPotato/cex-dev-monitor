@@ -15,6 +15,7 @@ import { globalRateLimiter } from './services/RateLimiter.js';
 import { globalRPCServerRotator } from './services/RPCServerRotator.js';
 import { globalAnalysisQueue } from './services/AnalysisQueue.js';
 import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
+import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 
 const app = express();
 const server = createServer(app);
@@ -341,6 +342,30 @@ app.post('/api/wallets/test-dev', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error analyzing test dev wallet:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Analyze wallet's DeFi activities
+app.get('/api/wallets/:address/defi-activities', async (req, res) => {
+  const { address } = req.params;
+  const limit = parseInt(req.query.limit as string) || 1000;
+  
+  try {
+    console.log(`📊 [API] Analyzing DeFi activities for ${address}...`);
+    const proxiedConnection = solanaMonitor.getWalletAnalyzer().getProxiedConnection();
+    
+    // Execute the analysis through the proxied connection
+    const profile = await proxiedConnection.withProxy(async (connection) => {
+      return await defiActivityAnalyzer.analyzeWallet(connection, address, limit);
+    });
+    
+    res.json({
+      success: true,
+      profile
+    });
+  } catch (error: any) {
+    console.error('Error analyzing DeFi activities:', error);
     res.status(500).json({ error: error.message });
   }
 });
