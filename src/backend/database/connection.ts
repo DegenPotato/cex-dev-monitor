@@ -198,6 +198,9 @@ export async function initDatabase() {
     db.run('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)', ['ratelimit_max_requests_10s', '90']);
     db.run('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)', ['ratelimit_max_concurrent', '35']);
     db.run('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)', ['ratelimit_min_delay_ms', '105']);
+    
+    // Global concurrency limiter (prevents request bursts across all services)
+    db.run('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)', ['global_max_concurrent', '20']);
 
   // Migrate existing CEX wallet to source_wallets table
   db.run(`

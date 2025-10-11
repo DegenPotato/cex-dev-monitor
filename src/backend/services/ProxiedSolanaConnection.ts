@@ -3,6 +3,7 @@ import { ProxyManager } from './ProxyManager.js';
 import { RequestStatsTracker } from './RequestStatsTracker.js';
 import { globalRateLimiter } from './RateLimiter.js';
 import { globalRPCServerRotator } from './RPCServerRotator.js';
+import { globalConcurrencyLimiter } from './GlobalConcurrencyLimiter.js';
 import fetch from 'cross-fetch';
 
 /**
@@ -168,12 +169,14 @@ export class ProxiedSolanaConnection {
       throw new Error(`All ${maxRetries} ${modeMsg} attempts failed. Last error: ${lastError?.message}`);
     };
     
-    // Execute with or without rate limiting
-    if (shouldRateLimit) {
-      return await globalRateLimiter.execute(executeRequest, this.endpoint);
-    } else {
-      return await executeRequest();
-    }
+    // Execute with global concurrency limit AND optional rate limiting
+    return await globalConcurrencyLimiter.execute(async () => {
+      if (shouldRateLimit) {
+        return await globalRateLimiter.execute(executeRequest, this.endpoint);
+      } else {
+        return await executeRequest();
+      }
+    });
   }
 
   /**

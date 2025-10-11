@@ -14,6 +14,7 @@ import { RequestStatsTracker } from './services/RequestStatsTracker.js';
 import { globalRateLimiter } from './services/RateLimiter.js';
 import { globalRPCServerRotator } from './services/RPCServerRotator.js';
 import { globalAnalysisQueue } from './services/AnalysisQueue.js';
+import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
 
 const app = express();
 const server = createServer(app);
@@ -60,6 +61,10 @@ globalRateLimiter.updateConfig({
   maxConcurrentConnections: rateLimitMaxConcurrent ? parseInt(rateLimitMaxConcurrent) : 35,
   minDelayMs: rateLimitMinDelay ? parseInt(rateLimitMinDelay) : 105
 });
+
+// Load global concurrency limiter configuration
+const globalMaxConcurrent = await ConfigProvider.get('global_max_concurrent');
+globalConcurrencyLimiter.setMaxConcurrent(globalMaxConcurrent ? parseInt(globalMaxConcurrent) : 20);
 
 // IMPORTANT: Enable RPC server rotation BEFORE initializing monitors
 // This allows the connections to detect it's enabled from the start
@@ -732,6 +737,35 @@ app.post('/api/ratelimiter/config', async (req, res) => {
 // Analysis Queue status endpoint
 app.get('/api/analysis-queue/status', (_req, res) => {
   res.json(globalAnalysisQueue.getStatus());
+});
+
+// Global Concurrency Limiter endpoints
+app.get('/api/concurrency/config', (_req, res) => {
+  res.json(globalConcurrencyLimiter.getConfig());
+});
+
+app.post('/api/concurrency/config', async (req, res) => {
+  try {
+    const { maxConcurrent } = req.body;
+    
+    // Update in memory
+    globalConcurrencyLimiter.setMaxConcurrent(maxConcurrent);
+    
+    // Save to database
+    await ConfigProvider.set('global_max_concurrent', maxConcurrent.toString());
+    
+    res.json({ 
+      success: true, 
+      config: globalConcurrencyLimiter.getConfig(),
+      message: 'Global concurrency limit updated'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/concurrency/stats', (_req, res) => {
+  res.json(globalConcurrencyLimiter.getStats());
 });
 
 // Request Pacing configuration endpoints

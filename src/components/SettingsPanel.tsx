@@ -15,6 +15,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
   const [rateLimitMaxConcurrent, setRateLimitMaxConcurrent] = useState('35');
   const [rateLimitMinDelay, setRateLimitMinDelay] = useState('105');
   const [requestPacingDelay, setRequestPacingDelay] = useState('15');
+  const [globalMaxConcurrent, setGlobalMaxConcurrent] = useState('20');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -39,6 +40,13 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       const pacingConfig = await pacingResponse.json();
       if (pacingConfig.requestDelayMs) {
         setRequestPacingDelay(pacingConfig.requestDelayMs.toString());
+      }
+      
+      // Fetch global concurrency config
+      const concurrencyResponse = await fetch(apiUrl('/api/concurrency/config'));
+      const concurrencyConfig = await concurrencyResponse.json();
+      if (concurrencyConfig.maxConcurrent) {
+        setGlobalMaxConcurrent(concurrencyConfig.maxConcurrent.toString());
       }
     } catch (error) {
       console.error('Error fetching config:', error);
@@ -83,6 +91,15 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestDelayMs: parseInt(requestPacingDelay)
+        })
+      });
+      
+      // Save global concurrency config
+      await fetch(apiUrl('/api/concurrency/config'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maxConcurrent: parseInt(globalMaxConcurrent)
         })
       });
       
@@ -197,6 +214,39 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
                   className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
                 />
                 <p className="text-xs text-gray-400 mt-1">Lower = faster, higher = safer</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Global Concurrency Limiter */}
+          <div className="border-t border-gray-700 pt-6 mt-6">
+            <h3 className="text-lg font-semibold text-white mb-4">🚦 Global Concurrency Limit</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Limits total concurrent requests across ALL services. Prevents request bursts that overwhelm RPC servers.
+              <span className="text-purple-400 font-medium"> This is the PRIMARY solution for rate limit issues!</span>
+            </p>
+            
+            <div className="max-w-sm">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Max Concurrent Requests
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="5"
+                max="50"
+                value={globalMaxConcurrent}
+                onChange={(e) => setGlobalMaxConcurrent(e.target.value)}
+                className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                20 = Perfect for 20 RPC servers (1 req/server) • Higher = faster but may cause bursts
+              </p>
+              <div className="mt-2 space-y-1 text-xs text-gray-500">
+                <div>• 10 = Very safe, slower throughput</div>
+                <div>• 20 = Optimal for RPC rotation (recommended ✓)</div>
+                <div>• 30 = Faster, may hit limits during bursts</div>
+                <div>• 40+ = Fast but risky with many concurrent analyses</div>
               </div>
             </div>
           </div>
