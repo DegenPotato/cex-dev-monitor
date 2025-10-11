@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, BarChart3, DollarSign } from 'lucide-react';
+import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, DollarSign } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats, Transaction, TokenMint, MonitoredWallet } from '../types';
 import { config, apiUrl } from '../config';
@@ -8,7 +8,6 @@ import { WalletList } from './WalletList';
 import { TokenList } from './TokenList';
 import { SettingsPanel } from './SettingsPanel';
 import { DevWalletList } from './DevWalletList';
-import { RequestStatsPanel } from './RequestStatsPanel';
 import { SourceWalletsPanel } from './SourceWalletsPanel';
 
 export function Dashboard() {
@@ -17,7 +16,7 @@ export function Dashboard() {
   const [wallets, setWallets] = useState<MonitoredWallet[]>([]);
   const [devWallets, setDevWallets] = useState<MonitoredWallet[]>([]);
   const [tokens, setTokens] = useState<TokenMint[]>([]);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'stats' | 'sourceWallets' | 'settings'>('sourceWallets');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'sourceWallets' | 'settings'>('sourceWallets');
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
@@ -232,16 +231,10 @@ export function Dashboard() {
               label="Tokens"
             />
             <TabButton
-              active={activeTab === 'stats'}
-              onClick={() => setActiveTab('stats')}
-              icon={<BarChart3 className="w-4 h-4" />}
-              label="Live Stats"
-            />
-            <TabButton
               active={activeTab === 'settings'}
               onClick={() => setActiveTab('settings')}
               icon={<Settings className="w-4 h-4" />}
-              label="Settings"
+              label="Stats & Settings"
             />
           </div>
         </div>
@@ -253,7 +246,6 @@ export function Dashboard() {
           {activeTab === 'wallets' && <WalletList wallets={wallets} onUpdate={fetchWallets} />}
           {activeTab === 'devWallets' && <DevWalletList devWallets={devWallets} onUpdate={fetchDevWallets} />}
           {activeTab === 'tokens' && <TokenList tokens={tokens} />}
-          {activeTab === 'stats' && <RequestStatsPanel />}
           {activeTab === 'settings' && <SettingsPanel onUpdate={fetchData} />}
         </div>
       </div>

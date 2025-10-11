@@ -62,4 +62,9 @@ export class TransactionProvider {
     await execute('DELETE FROM transactions WHERE signature = ?', [signature]);
     saveDatabase();
   }
+
+  static async deleteAll(): Promise<void> {
+    await execute('DELETE FROM transactions', []);
+    saveDatabase();
+  }
 }

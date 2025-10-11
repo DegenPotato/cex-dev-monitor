@@ -55,4 +55,9 @@ export class TokenMintProvider {
     await execute('DELETE FROM token_mints WHERE mint_address = ?', [mintAddress]);
     saveDatabase();
   }
+
+  static async deleteAll(): Promise<void> {
+    await execute('DELETE FROM token_mints', []);
+    saveDatabase();
+  }
 }

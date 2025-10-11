@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { Save, Trash2 } from 'lucide-react';
 import { apiUrl } from '../config';
 import { MonitoringControls } from './MonitoringControls';
+import { RequestStatsPanel } from './RequestStatsPanel';
 
 interface SettingsPanelProps {
   onUpdate: () => void;
@@ -17,6 +18,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
   const [requestPacingDelay, setRequestPacingDelay] = useState('15');
   const [globalMaxConcurrent, setGlobalMaxConcurrent] = useState('20');
   const [loading, setLoading] = useState(false);
+  const [wipeConfirmation, setWipeConfirmation] = useState('');
 
   useEffect(() => {
     fetchConfig();
@@ -113,10 +115,49 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
     }
   };
 
+  const wipeDatabase = async () => {
+    if (wipeConfirmation !== 'WIPE DATABASE') {
+      alert('Please type "WIPE DATABASE" to confirm');
+      return;
+    }
+
+    if (!window.confirm('⚠️ WARNING: This will delete ALL wallets, transactions, and tokens. This action cannot be undone. Are you absolutely sure?')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(apiUrl('/api/database/wipe'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'WIPE_DATABASE' })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('✅ ' + data.message);
+        setWipeConfirmation('');
+        onUpdate();
+      } else {
+        alert('❌ Error: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error wiping database:', error);
+      alert('Error wiping database');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-6">Settings</h2>
+    <div className="space-y-6">
+      {/* Live Stats & Metrics */}
+      <RequestStatsPanel />
+
+      {/* Settings Section */}
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-bold text-white mb-6">Settings & Configuration</h2>
         
         <div className="space-y-6">
           <div>
@@ -279,6 +320,44 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
                 <div>• 15ms = ~66 req/sec (balanced ✓)</div>
                 <div>• 20ms = ~50 req/sec (safe)</div>
                 <div>• 25ms = ~40 req/sec (very safe)</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Database Wipe Section */}
+          <div className="border-t border-red-700 pt-6 mt-6">
+            <h3 className="text-lg font-semibold text-red-400 mb-4 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              ⚠️ Danger Zone: Database Wipe
+            </h3>
+            <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+              <p className="text-sm text-gray-300 mb-4">
+                This will permanently delete <strong>ALL</strong> wallets, transactions, and tokens from the database. 
+                Configuration settings will be preserved. <strong className="text-red-400">This action cannot be undone!</strong>
+              </p>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Type <code className="bg-black/30 px-2 py-1 rounded text-red-400">WIPE DATABASE</code> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={wipeConfirmation}
+                    onChange={(e) => setWipeConfirmation(e.target.value)}
+                    placeholder="Type here to enable wipe button..."
+                    className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-red-500/20 focus:border-red-500/50 focus:outline-none"
+                  />
+                </div>
+                
+                <button
+                  onClick={wipeDatabase}
+                  disabled={loading || wipeConfirmation !== 'WIPE DATABASE'}
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Wipe Database
+                </button>
               </div>
             </div>
           </div>

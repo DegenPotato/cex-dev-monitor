@@ -876,6 +876,37 @@ app.post('/api/rpc-rotation/toggle', (_req, res) => {
   }
 });
 
+// Database wipe endpoint
+app.post('/api/database/wipe', async (req, res) => {
+  try {
+    const { confirmation } = req.body;
+    
+    if (confirmation !== 'WIPE_DATABASE') {
+      return res.status(400).json({ error: 'Invalid confirmation code' });
+    }
+    
+    // Stop all monitoring first
+    globalAnalysisQueue.stop();
+    solanaMonitor.stopAll();
+    pumpFunMonitor.stopAll();
+    
+    // Wipe all data tables (keep config)
+    await TransactionProvider.deleteAll();
+    await MonitoredWalletProvider.deleteAll();
+    await TokenMintProvider.deleteAll();
+    
+    console.log('🗑️  Database wiped successfully');
+    
+    res.json({ 
+      success: true, 
+      message: 'Database wiped successfully. All wallets, transactions, and tokens have been deleted.' 
+    });
+  } catch (error: any) {
+    console.error('Error wiping database:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get individual dev wallet details with full history
 app.get('/api/wallets/dev/:address', async (req, res) => {
   const { address } = req.params;

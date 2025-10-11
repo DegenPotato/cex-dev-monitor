@@ -84,4 +84,9 @@ export class MonitoredWalletProvider {
       'SELECT * FROM monitored_wallets WHERE history_checked = 0 OR history_checked IS NULL ORDER BY first_seen ASC'
     );
   }
+
+  static async deleteAll(): Promise<void> {
+    await execute('DELETE FROM monitored_wallets', []);
+    saveDatabase();
+  }
 }
