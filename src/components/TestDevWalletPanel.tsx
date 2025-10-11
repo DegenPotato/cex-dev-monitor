@@ -272,6 +272,84 @@ export function TestDevWalletPanel() {
                               </div>
                             </div>
                           )}
+
+                          {/* Activity Timeline */}
+                          {defiProfile.activities && defiProfile.activities.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-white mb-3">📜 Activity Timeline ({defiProfile.activities.length} transactions)</h4>
+                              <div className="bg-slate-800 rounded-lg overflow-hidden">
+                                <div className="max-h-96 overflow-y-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-slate-700 sticky top-0">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left text-gray-300 font-semibold">Type</th>
+                                        <th className="px-3 py-2 text-left text-gray-300 font-semibold">Program</th>
+                                        <th className="px-3 py-2 text-left text-gray-300 font-semibold">Status</th>
+                                        <th className="px-3 py-2 text-left text-gray-300 font-semibold">Time</th>
+                                        <th className="px-3 py-2 text-left text-gray-300 font-semibold">Transaction</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {defiProfile.activities.map((activity: any, idx: number) => {
+                                        const typeColors: Record<string, string> = {
+                                          SWAP: 'text-blue-400',
+                                          MINT: 'text-green-400',
+                                          BURN: 'text-red-400',
+                                          ADD_LIQUIDITY: 'text-purple-400',
+                                          REMOVE_LIQUIDITY: 'text-orange-400',
+                                          TRANSFER: 'text-gray-400',
+                                          UNKNOWN: 'text-gray-500'
+                                        };
+                                        
+                                        const typeEmojis: Record<string, string> = {
+                                          SWAP: '💱',
+                                          MINT: '🚀',
+                                          BURN: '🔥',
+                                          ADD_LIQUIDITY: '💧',
+                                          REMOVE_LIQUIDITY: '💸',
+                                          TRANSFER: '📤',
+                                          UNKNOWN: '❓'
+                                        };
+
+                                        return (
+                                          <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/50">
+                                            <td className="px-3 py-2">
+                                              <span className={`font-semibold ${typeColors[activity.type]}`}>
+                                                {typeEmojis[activity.type]} {activity.type}
+                                              </span>
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-300">
+                                              {activity.programName}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              {activity.status === 'success' ? (
+                                                <span className="text-green-400">✓</span>
+                                              ) : (
+                                                <span className="text-red-400">✗</span>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-400 text-xs">
+                                              {new Date(activity.timestamp).toLocaleString()}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              <a
+                                                href={`https://solscan.io/tx/${activity.signature}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-400 hover:text-blue-300 font-mono text-xs underline"
+                                              >
+                                                {activity.signature.slice(0, 8)}...
+                                              </a>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <p className="text-gray-400 text-center py-4">Click "View" to analyze DeFi activities</p>
