@@ -36,8 +36,8 @@ export class TradingActivityMonitor extends EventEmitter {
 
     console.log(`📊 [Trading] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
 
-    // Get wallet configuration
-    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+    // Get wallet configuration for Trading monitoring type
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'trading');
     
     if (!wallet) {
       console.error(`❌ Wallet not found: ${walletAddress}`);

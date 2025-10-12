@@ -34,14 +34,14 @@ export class PumpFunMonitor extends EventEmitter {
 
   async startMonitoringWallet(walletAddress: string): Promise<void> {
     if (this.activeSubscriptions.has(walletAddress)) {
-      console.log(`⚠️  Already monitoring pump.fun for ${walletAddress.slice(0, 8)}...`);
+      console.log(`⚠️  Already monitoring ${walletAddress.slice(0, 8)}...`);
       return;
     }
 
-    console.log(`🎯 [PumpFun] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
+    console.log(`🚀 [PumpFun] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
 
-    // Check if wallet needs historical backfill
-    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+    // Get wallet configuration for PumpFun monitoring type
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
     
     if (!wallet) {
       console.error(`❌ Wallet not found: ${walletAddress}`);
@@ -222,7 +222,7 @@ export class PumpFunMonitor extends EventEmitter {
         last_processed_slot: newestSig.slot,
         last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now(),
         last_history_check: Date.now()
-      });
+      }, 'pumpfun');
 
       console.log(`✅ [Catch-up] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   New transactions processed: ${newSignatures.length}`);
@@ -292,7 +292,7 @@ export class PumpFunMonitor extends EventEmitter {
         await MonitoredWalletProvider.update(walletAddress, {
           dev_checked: 1,
           last_history_check: Date.now()
-        });
+        }, 'pumpfun');
         return;
       }
 
@@ -347,7 +347,7 @@ export class PumpFunMonitor extends EventEmitter {
         last_processed_signature: newestSig.signature,
         last_processed_slot: newestSig.slot,
         last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now()
-      });
+      }, 'pumpfun');
 
       console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   Total Transactions: ${totalProcessed}`);
@@ -401,7 +401,7 @@ export class PumpFunMonitor extends EventEmitter {
                   last_processed_signature: logs.signature,
                   last_processed_slot: tx.slot,
                   last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
-                });
+                }, 'pumpfun');
               }
             }
           },
@@ -512,7 +512,7 @@ export class PumpFunMonitor extends EventEmitter {
           is_dev_wallet: 1,
           tokens_deployed: currentTokens + 1,
           dev_checked: 1
-        });
+        }, 'pumpfun');
         console.log(`🔥 Wallet marked as DEV: ${walletAddress.slice(0, 8)}... (${currentTokens + 1} tokens)`);
         
         // Emit dev wallet event

@@ -513,11 +513,17 @@ app.post('/api/wallets/:address/toggle', async (req, res) => {
   if (newState === 1) {
     if (wallet.monitoring_type === 'trading') {
       await tradingActivityMonitor.startMonitoringWallet(address);
+    } else if (wallet.monitoring_type === 'both') {
+      await pumpFunMonitor.startMonitoringWallet(address);
+      await tradingActivityMonitor.startMonitoringWallet(address);
     } else {
       await pumpFunMonitor.startMonitoringWallet(address);
     }
   } else {
     if (wallet.monitoring_type === 'trading') {
+      await tradingActivityMonitor.stopMonitoringWallet(address);
+    } else if (wallet.monitoring_type === 'both') {
+      await pumpFunMonitor.stopMonitoringWallet(address);
       await tradingActivityMonitor.stopMonitoringWallet(address);
     } else {
       await pumpFunMonitor.stopMonitoringWallet(address);

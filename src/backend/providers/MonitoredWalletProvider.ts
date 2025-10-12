@@ -42,8 +42,19 @@ export class MonitoredWalletProvider {
     return await getLastInsertId();
   }
 
-  static async findByAddress(address: string): Promise<MonitoredWallet | undefined> {
-    return await queryOne<MonitoredWallet>('SELECT * FROM monitored_wallets WHERE address = ?', [address]);
+  static async findByAddress(address: string, monitoringType?: string): Promise<MonitoredWallet | undefined> {
+    if (monitoringType) {
+      return await queryOne<MonitoredWallet>(
+        'SELECT * FROM monitored_wallets WHERE address = ? AND monitoring_type = ?', 
+        [address, monitoringType]
+      );
+    }
+    // If no monitoring_type specified, return first match (backward compatibility)
+    return await queryOne<MonitoredWallet>('SELECT * FROM monitored_wallets WHERE address = ? LIMIT 1', [address]);
+  }
+
+  static async findAllByAddress(address: string): Promise<MonitoredWallet[]> {
+    return await queryAll<MonitoredWallet>('SELECT * FROM monitored_wallets WHERE address = ? ORDER BY monitoring_type', [address]);
   }
 
   static async findAll(): Promise<MonitoredWallet[]> {
@@ -54,24 +65,39 @@ export class MonitoredWalletProvider {
     return await queryAll<MonitoredWallet>('SELECT * FROM monitored_wallets WHERE is_active = 1 ORDER BY first_seen DESC');
   }
 
-  static async update(address: string, updates: Partial<MonitoredWallet>): Promise<void> {
-    const fields = Object.keys(updates).filter(k => k !== 'address');
+  static async update(address: string, updates: Partial<MonitoredWallet>, monitoringType?: string): Promise<void> {
+    const fields = Object.keys(updates).filter(k => k !== 'address' && k !== 'monitoring_type');
     if (fields.length === 0) return;
 
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     const values = fields.map(f => updates[f as keyof MonitoredWallet]);
     
-    await execute(`UPDATE monitored_wallets SET ${setClause} WHERE address = ?`, [...values, address]);
+    if (monitoringType) {
+      await execute(`UPDATE monitored_wallets SET ${setClause} WHERE address = ? AND monitoring_type = ?`, [...values, address, monitoringType]);
+    } else {
+      // Update all monitors for this address
+      await execute(`UPDATE monitored_wallets SET ${setClause} WHERE address = ?`, [...values, address]);
+    }
     saveDatabase();
   }
 
-  static async delete(address: string): Promise<void> {
-    await execute('DELETE FROM monitored_wallets WHERE address = ?', [address]);
+  static async delete(address: string, monitoringType?: string): Promise<void> {
+    if (monitoringType) {
+      await execute('DELETE FROM monitored_wallets WHERE address = ? AND monitoring_type = ?', [address, monitoringType]);
+    } else {
+      // Delete all monitors for this address
+      await execute('DELETE FROM monitored_wallets WHERE address = ?', [address]);
+    }
     saveDatabase();
   }
 
-  static async setActive(address: string, isActive: boolean): Promise<void> {
-    await execute('UPDATE monitored_wallets SET is_active = ? WHERE address = ?', [isActive ? 1 : 0, address]);
+  static async setActive(address: string, isActive: boolean, monitoringType?: string): Promise<void> {
+    if (monitoringType) {
+      await execute('UPDATE monitored_wallets SET is_active = ? WHERE address = ? AND monitoring_type = ?', [isActive ? 1 : 0, address, monitoringType]);
+    } else {
+      // Update all monitors for this address
+      await execute('UPDATE monitored_wallets SET is_active = ? WHERE address = ?', [isActive ? 1 : 0, address]);
+    }
     saveDatabase();
   }
 

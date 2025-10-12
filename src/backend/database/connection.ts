@@ -50,23 +50,86 @@ export async function getDb(): Promise<SqlJsDatabase> {
 export async function initDatabase() {
   db = await getDb();
   
-  db.run(`
-    CREATE TABLE IF NOT EXISTS monitored_wallets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      address TEXT UNIQUE NOT NULL,
-      source TEXT,
-      first_seen INTEGER NOT NULL,
-      last_activity INTEGER,
-      is_active INTEGER DEFAULT 1,
-      is_fresh INTEGER DEFAULT 0,
-      wallet_age_days REAL,
-      previous_tx_count INTEGER DEFAULT 0,
-      is_dev_wallet INTEGER DEFAULT 0,
-      tokens_deployed INTEGER DEFAULT 0,
-      dev_checked INTEGER DEFAULT 0,
-      metadata TEXT
-    );
-  `);
+  // Check if table exists with old schema
+  const tableInfo = db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='monitored_wallets'");
+  const needsMigration = tableInfo.length > 0 && 
+    tableInfo[0].values.length > 0 &&
+    typeof tableInfo[0].values[0][0] === 'string' &&
+    tableInfo[0].values[0][0].includes('address TEXT UNIQUE');
+  
+  if (needsMigration) {
+    console.log('🔄 Migrating monitored_wallets table to support multiple monitoring types per wallet...');
+    
+    // Create new table with composite unique constraint
+    db.run(`
+      CREATE TABLE monitored_wallets_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        source TEXT,
+        first_seen INTEGER NOT NULL,
+        last_activity INTEGER,
+        is_active INTEGER DEFAULT 1,
+        is_fresh INTEGER DEFAULT 0,
+        wallet_age_days REAL,
+        previous_tx_count INTEGER DEFAULT 0,
+        is_dev_wallet INTEGER DEFAULT 0,
+        tokens_deployed INTEGER DEFAULT 0,
+        dev_checked INTEGER DEFAULT 0,
+        metadata TEXT,
+        label TEXT,
+        monitoring_type TEXT DEFAULT 'pumpfun',
+        rate_limit_rps REAL DEFAULT 1,
+        rate_limit_enabled INTEGER DEFAULT 1,
+        history_checked INTEGER DEFAULT 0,
+        last_history_check INTEGER,
+        last_processed_signature TEXT,
+        last_processed_slot INTEGER,
+        last_processed_time INTEGER,
+        UNIQUE(address, monitoring_type)
+      );
+    `);
+    
+    // Copy data from old table
+    db.run(`
+      INSERT INTO monitored_wallets_new 
+      SELECT * FROM monitored_wallets;
+    `);
+    
+    // Drop old table and rename new one
+    db.run(`DROP TABLE monitored_wallets;`);
+    db.run(`ALTER TABLE monitored_wallets_new RENAME TO monitored_wallets;`);
+    
+    console.log('✅ Migration complete: (address, monitoring_type) is now composite unique key');
+  } else {
+    // Create table with new schema
+    db.run(`
+      CREATE TABLE IF NOT EXISTS monitored_wallets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        source TEXT,
+        first_seen INTEGER NOT NULL,
+        last_activity INTEGER,
+        is_active INTEGER DEFAULT 1,
+        is_fresh INTEGER DEFAULT 0,
+        wallet_age_days REAL,
+        previous_tx_count INTEGER DEFAULT 0,
+        is_dev_wallet INTEGER DEFAULT 0,
+        tokens_deployed INTEGER DEFAULT 0,
+        dev_checked INTEGER DEFAULT 0,
+        metadata TEXT,
+        label TEXT,
+        monitoring_type TEXT DEFAULT 'pumpfun',
+        rate_limit_rps REAL DEFAULT 1,
+        rate_limit_enabled INTEGER DEFAULT 1,
+        history_checked INTEGER DEFAULT 0,
+        last_history_check INTEGER,
+        last_processed_signature TEXT,
+        last_processed_slot INTEGER,
+        last_processed_time INTEGER,
+        UNIQUE(address, monitoring_type)
+      );
+    `);
+  }
 
   // Migration: Add new columns if they don't exist
   try {
