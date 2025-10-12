@@ -26,8 +26,8 @@ export class PumpFunMonitor extends EventEmitter {
       'PumpFunMonitor'
     );
     
-    // Initialize metadata fetcher with direct connection (metadata fetching doesn't need proxies)
-    this.metadataFetcher = new TokenMetadataFetcher(this.proxiedConnection.getDirectConnection());
+    // Initialize metadata fetcher (uses GeckoTerminal API, no blockchain connection needed)
+    this.metadataFetcher = new TokenMetadataFetcher();
     
     console.log(`🎯 [PumpFunMonitor] Proxy mode: ${this.proxiedConnection.isProxyEnabled() ? 'ENABLED ✅' : 'DISABLED'}`);
     console.log(`🎛️  [PumpFunMonitor] Using Global Concurrency Limiter for request pacing`);

@@ -1,190 +1,138 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import fetch from 'cross-fetch';
 
 /**
  * Token Metadata Fetcher
- * Fetches token metadata directly from Solana blockchain using Metaplex Token Metadata Program
+ * Fetches token metadata and market data from GeckoTerminal API
  */
 export class TokenMetadataFetcher {
-  private connection: Connection;
-  private readonly METADATA_PROGRAM_ID = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s';
+  private readonly GECKOTERMINAL_BASE = 'https://api.geckoterminal.com/api/v2';
 
-  constructor(connection: Connection) {
-    this.connection = connection;
-  }
+  constructor() {}
 
   /**
-   * Get Metadata PDA (Program Derived Address) for a token mint
-   */
-  private async getMetadataPDA(mintAddress: string): Promise<PublicKey> {
-    const mint = new PublicKey(mintAddress);
-    const metadataProgramId = new PublicKey(this.METADATA_PROGRAM_ID);
-    
-    const [metadataPDA] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('metadata'),
-        metadataProgramId.toBuffer(),
-        mint.toBuffer(),
-      ],
-      metadataProgramId
-    );
-
-    return metadataPDA;
-  }
-
-  /**
-   * Fetch token metadata from blockchain
+   * Fetch token metadata and market data from GeckoTerminal
    */
   async fetchMetadata(mintAddress: string): Promise<{
     name?: string;
     symbol?: string;
-    uri?: string;
+    decimals?: number;
     image?: string;
-    description?: string;
-    twitter?: string;
-    telegram?: string;
-    website?: string;
+    priceUsd?: number;
+    fdvUsd?: number;
+    totalReserveUsd?: number;
+    volumeUsd24h?: number;
+    launchpadGraduationPercentage?: number;
+    launchpadCompleted?: boolean;
+    launchpadCompletedAt?: string | null;
   } | null> {
     try {
-      const metadataPDA = await this.getMetadataPDA(mintAddress);
+      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}?include_composition=true`;
       
-      // Fetch account data
-      const accountInfo = await this.connection.getAccountInfo(metadataPDA);
-      
-      if (!accountInfo) {
-        console.log(`🔍 [Metadata] No metadata account found for ${mintAddress.slice(0, 8)}...`);
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        console.log(`⚠️ [GeckoTerminal] HTTP ${response.status} for ${mintAddress.slice(0, 8)}...`);
         return null;
       }
 
-      // Parse metadata from account data
-      const metadata = this.parseMetadata(accountInfo.data);
+      const data = await response.json();
+      const attributes = data?.data?.attributes;
       
-      // If there's a URI, fetch off-chain metadata
-      if (metadata.uri) {
-        try {
-          const offChainData = await this.fetchOffChainMetadata(metadata.uri);
-          return {
-            ...metadata,
-            ...offChainData
-          };
-        } catch (error) {
-          console.warn(`⚠️ [Metadata] Failed to fetch off-chain metadata from ${metadata.uri}`);
-          return metadata;
-        }
+      if (!attributes) {
+        console.log(`⚠️ [GeckoTerminal] No data for ${mintAddress.slice(0, 8)}...`);
+        return null;
       }
 
+      const metadata = {
+        name: attributes.name || undefined,
+        symbol: attributes.symbol || undefined,
+        decimals: attributes.decimals || undefined,
+        image: attributes.image_url || undefined,
+        priceUsd: attributes.price_usd ? parseFloat(attributes.price_usd) : undefined,
+        fdvUsd: attributes.fdv_usd ? parseFloat(attributes.fdv_usd) : undefined,
+        totalReserveUsd: attributes.total_reserve_in_usd ? parseFloat(attributes.total_reserve_in_usd) : undefined,
+        volumeUsd24h: attributes.volume_usd?.h24 ? parseFloat(attributes.volume_usd.h24) : undefined,
+        launchpadGraduationPercentage: attributes.launchpad_details?.graduation_percentage || undefined,
+        launchpadCompleted: attributes.launchpad_details?.completed || false,
+        launchpadCompletedAt: attributes.launchpad_details?.completed_at || null
+      };
+
+      console.log(`✅ [GeckoTerminal] ${attributes.name} (${attributes.symbol}) - FDV: $${metadata.fdvUsd?.toFixed(2) || 'N/A'}, Progress: ${metadata.launchpadGraduationPercentage}%`);
+      
       return metadata;
     } catch (error: any) {
-      console.error(`❌ [Metadata] Error fetching metadata for ${mintAddress.slice(0, 8)}...:`, error.message);
+      console.error(`❌ [GeckoTerminal] Error fetching data for ${mintAddress.slice(0, 8)}...:`, error.message);
       return null;
     }
   }
 
   /**
-   * Parse on-chain metadata from account data
-   */
-  private parseMetadata(data: Buffer): {
-    name?: string;
-    symbol?: string;
-    uri?: string;
-  } {
-    try {
-      // Metadata layout (simplified):
-      // 1 byte - key
-      // 32 bytes - update authority
-      // 32 bytes - mint
-      // 4 + name length - name (string)
-      // 4 + symbol length - symbol (string)  
-      // 4 + uri length - uri (string)
-      
-      let offset = 1 + 32 + 32; // Skip key, update authority, mint
-      
-      // Read name
-      const nameLength = data.readUInt32LE(offset);
-      offset += 4;
-      const name = data.slice(offset, offset + nameLength).toString('utf8').replace(/\0/g, '').trim();
-      offset += nameLength;
-      
-      // Read symbol
-      const symbolLength = data.readUInt32LE(offset);
-      offset += 4;
-      const symbol = data.slice(offset, offset + symbolLength).toString('utf8').replace(/\0/g, '').trim();
-      offset += symbolLength;
-      
-      // Read URI
-      const uriLength = data.readUInt32LE(offset);
-      offset += 4;
-      const uri = data.slice(offset, offset + uriLength).toString('utf8').replace(/\0/g, '').trim();
-      
-      return {
-        name: name || undefined,
-        symbol: symbol || undefined,
-        uri: uri || undefined
-      };
-    } catch (error) {
-      console.error('❌ [Metadata] Error parsing metadata:', error);
-      return {};
-    }
-  }
-
-  /**
-   * Fetch off-chain metadata from URI (IPFS, Arweave, HTTP)
-   */
-  private async fetchOffChainMetadata(uri: string): Promise<{
-    image?: string;
-    description?: string;
-    twitter?: string;
-    telegram?: string;
-    website?: string;
-  }> {
-    try {
-      // Handle IPFS URIs
-      let fetchUrl = uri;
-      if (uri.startsWith('ipfs://')) {
-        fetchUrl = uri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-      }
-      
-      const response = await fetch(fetchUrl, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000) // 5 second timeout
-      });
-
-      if (!response.ok) {
-        return {};
-      }
-
-      const json = await response.json();
-      
-      return {
-        image: json.image || json.icon || undefined,
-        description: json.description || undefined,
-        twitter: json.twitter || json.external_url?.includes('twitter') ? json.external_url : undefined,
-        telegram: json.telegram || undefined,
-        website: json.website || json.external_url || undefined
-      };
-    } catch (error) {
-      // Silently fail for off-chain metadata
-      return {};
-    }
-  }
-
-  /**
-   * Batch fetch metadata for multiple tokens
+   * Batch fetch metadata for multiple tokens (up to 30 at a time)
    */
   async fetchMetadataBatch(mintAddresses: string[]): Promise<Map<string, any>> {
     const results = new Map();
+    const BATCH_SIZE = 30;
     
-    // Fetch in parallel with a small delay to avoid rate limits
-    const promises = mintAddresses.map(async (address, index) => {
-      // Stagger requests by 100ms each
-      await new Promise(resolve => setTimeout(resolve, index * 100));
+    // Process in batches of 30
+    for (let i = 0; i < mintAddresses.length; i += BATCH_SIZE) {
+      const batch = mintAddresses.slice(i, i + BATCH_SIZE);
+      const addresses = batch.join(',');
       
-      const metadata = await this.fetchMetadata(address);
-      if (metadata) {
-        results.set(address, metadata);
-      }
-    });
+      try {
+        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/multi/${addresses}?include_composition=true`;
+        
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
 
-    await Promise.all(promises);
+        if (!response.ok) {
+          console.log(`⚠️ [GeckoTerminal] HTTP ${response.status} for batch of ${batch.length} tokens`);
+          continue;
+        }
+
+        const data = await response.json();
+        const tokensData = data?.data;
+        
+        if (!tokensData || !Array.isArray(tokensData)) {
+          console.log(`⚠️ [GeckoTerminal] No data for batch of ${batch.length} tokens`);
+          continue;
+        }
+
+        // Process each token in the batch
+        for (const tokenData of tokensData) {
+          const attributes = tokenData.attributes;
+          if (!attributes) continue;
+          
+          const metadata = {
+            name: attributes.name || undefined,
+            symbol: attributes.symbol || undefined,
+            decimals: attributes.decimals || undefined,
+            image: attributes.image_url || undefined,
+            priceUsd: attributes.price_usd ? parseFloat(attributes.price_usd) : undefined,
+            fdvUsd: attributes.fdv_usd ? parseFloat(attributes.fdv_usd) : undefined,
+            totalReserveUsd: attributes.total_reserve_in_usd ? parseFloat(attributes.total_reserve_in_usd) : undefined,
+            volumeUsd24h: attributes.volume_usd?.h24 ? parseFloat(attributes.volume_usd.h24) : undefined,
+            launchpadGraduationPercentage: attributes.launchpad_details?.graduation_percentage || undefined,
+            launchpadCompleted: attributes.launchpad_details?.completed || false,
+            launchpadCompletedAt: attributes.launchpad_details?.completed_at || null
+          };
+          
+          results.set(attributes.address, metadata);
+        }
+        
+        console.log(`✅ [GeckoTerminal] Fetched ${tokensData.length}/${batch.length} tokens in batch`);
+        
+        // Small delay between batches to avoid rate limits
+        if (i + BATCH_SIZE < mintAddresses.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error: any) {
+        console.error(`❌ [GeckoTerminal] Error fetching batch:`, error.message);
+      }
+    }
+
     return results;
   }
 }

@@ -1277,8 +1277,7 @@ app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
     
     // Import and use TokenMetadataFetcher directly
     const { TokenMetadataFetcher } = await import('./services/TokenMetadataFetcher.js');
-    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-    const metadataFetcher = new TokenMetadataFetcher(connection);
+    const metadataFetcher = new TokenMetadataFetcher();
     
     const metadata = await metadataFetcher.fetchMetadata(mintAddress);
     
@@ -1334,8 +1333,7 @@ app.post('/api/tokens/refetch-all-metadata', async (_req, res) => {
     // Process in background
     (async () => {
       const { TokenMetadataFetcher } = await import('./services/TokenMetadataFetcher.js');
-      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-      const metadataFetcher = new TokenMetadataFetcher(connection);
+      const metadataFetcher = new TokenMetadataFetcher();
       
       let updated = 0;
       let failed = 0;
