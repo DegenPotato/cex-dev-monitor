@@ -33,6 +33,8 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletLabel, setNewWalletLabel] = useState('');
   const [newWalletMonitoringType, setNewWalletMonitoringType] = useState<'pumpfun' | 'trading'>('pumpfun');
+  const [newWalletRateLimitRPS, setNewWalletRateLimitRPS] = useState(1);
+  const [newWalletRateLimitEnabled, setNewWalletRateLimitEnabled] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [filterBy, setFilterBy] = useState<FilterBy>('all');
 
@@ -151,12 +153,16 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           address: newWalletAddress.trim(),
           label: newWalletLabel.trim() || null,
           source: 'manual',
-          monitoring_type: newWalletMonitoringType
+          monitoring_type: newWalletMonitoringType,
+          rate_limit_rps: newWalletRateLimitRPS,
+          rate_limit_enabled: newWalletRateLimitEnabled ? 1 : 0
         })
       });
       setNewWalletAddress('');
       setNewWalletLabel('');
-      setNewWalletMonitoringType('pumpfun'); // Reset to default
+      setNewWalletMonitoringType('pumpfun');
+      setNewWalletRateLimitRPS(1);
+      setNewWalletRateLimitEnabled(true);
       setShowAddWallet(false);
       fetchWallets();
       onUpdate();
@@ -424,6 +430,69 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                   🧪 Testing Phase
                 </div>
               </button>
+            </div>
+          </div>
+
+          {/* Rate Limit Configuration */}
+          <div className="mb-6 bg-slate-800/50 border border-slate-600 rounded-lg p-4">
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Rate Limit Configuration
+            </label>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* RPS Slider */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">
+                  Requests Per Second: {newWalletRateLimitRPS} RPS
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
+                    value={newWalletRateLimitRPS}
+                    onChange={(e) => setNewWalletRateLimitRPS(parseFloat(e.target.value))}
+                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="100"
+                    step="0.1"
+                    value={newWalletRateLimitRPS}
+                    onChange={(e) => setNewWalletRateLimitRPS(parseFloat(e.target.value) || 1)}
+                    className="w-20 bg-slate-700 text-white rounded px-2 py-1 text-sm border border-purple-500/20"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Delay: {Math.floor(1000 / newWalletRateLimitRPS)}ms between requests
+                </p>
+              </div>
+
+              {/* Enable/Disable Toggle */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">
+                  Status
+                </label>
+                <button
+                  onClick={() => setNewWalletRateLimitEnabled(!newWalletRateLimitEnabled)}
+                  className={`w-full px-4 py-2 rounded-lg font-medium transition-all ${
+                    newWalletRateLimitEnabled
+                      ? 'bg-green-600/20 border-2 border-green-500 text-green-400'
+                      : 'bg-slate-700 border-2 border-slate-600 text-gray-400'
+                  }`}
+                >
+                  {newWalletRateLimitEnabled ? '✅ Rate Limiting Enabled' : '⏸️ Rate Limiting Disabled'}
+                </button>
+                <p className="text-xs text-gray-500 mt-1">
+                  {newWalletRateLimitEnabled ? 'Requests will be throttled' : 'No throttling applied'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 text-xs text-gray-400 bg-slate-700/50 rounded p-2">
+              💡 <strong>Tip:</strong> Start with 1 RPS (default) for safe testing. Increase for faster backfills if needed. This prevents rate limiting from RPC nodes.
             </div>
           </div>
 

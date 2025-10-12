@@ -117,6 +117,20 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN rate_limit_rps INTEGER DEFAULT 1;`);
+    console.log('✅ Added rate_limit_rps column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN rate_limit_enabled INTEGER DEFAULT 1;`);
+    console.log('✅ Added rate_limit_enabled column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS source_wallets (

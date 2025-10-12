@@ -414,7 +414,7 @@ app.get('/api/wallets/:address/defi-activities', async (req, res) => {
 // Add wallet for monitoring
 app.post('/api/wallets', async (req, res) => {
   try {
-    const { address, label, source, monitoring_type } = req.body;
+    const { address, label, source, monitoring_type, rate_limit_rps, rate_limit_enabled } = req.body;
     
     if (!address) {
       return res.status(400).json({ error: 'Address is required' });
@@ -433,13 +433,15 @@ app.post('/api/wallets', async (req, res) => {
       first_seen: Date.now(),
       is_active: 1,
       label: label || null,
-      monitoring_type: monitoring_type || 'pumpfun'
+      monitoring_type: monitoring_type || 'pumpfun',
+      rate_limit_rps: rate_limit_rps || 1,
+      rate_limit_enabled: rate_limit_enabled ?? 1
     });
 
     // Start monitoring based on type
     if (monitoring_type === 'pumpfun') {
       pumpFunMonitor.startMonitoringWallet(address);
-      console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}...`);
+      console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
     } else if (monitoring_type === 'trading') {
       // TODO: Start trading activity monitoring
       console.log(`📊 [API] Trading monitoring queued for ${address.slice(0, 8)}... (not yet implemented)`);
@@ -448,7 +450,45 @@ app.post('/api/wallets', async (req, res) => {
     res.json({ 
       success: true, 
       message: `Wallet added with ${monitoring_type} monitoring`,
-      wallet: { address, label, monitoring_type }
+      wallet: { address, label, monitoring_type, rate_limit_rps: rate_limit_rps || 1 }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update wallet rate limit settings
+app.post('/api/wallets/:address/rate-limit', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { rate_limit_rps, rate_limit_enabled } = req.body;
+    
+    const wallet = await MonitoredWalletProvider.findByAddress(address);
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Update database
+    await MonitoredWalletProvider.update(address, {
+      rate_limit_rps: rate_limit_rps ?? wallet.rate_limit_rps,
+      rate_limit_enabled: rate_limit_enabled ?? wallet.rate_limit_enabled
+    });
+
+    // Update the active rate limiter if monitoring is active
+    const rateLimiter = pumpFunMonitor['rateLimiters']?.get(address);
+    if (rateLimiter) {
+      if (rate_limit_rps !== undefined) {
+        rateLimiter.setRateLimit(rate_limit_rps);
+      }
+      if (rate_limit_enabled !== undefined) {
+        rate_limit_enabled ? rateLimiter.enable() : rateLimiter.disable();
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      rate_limit_rps: rate_limit_rps ?? wallet.rate_limit_rps,
+      rate_limit_enabled: rate_limit_enabled ?? wallet.rate_limit_enabled
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -470,7 +510,7 @@ app.post('/api/wallets/:address/toggle', async (req, res) => {
   if (newState === 1) {
     pumpFunMonitor.startMonitoringWallet(address);
   } else {
-    pumpFunMonitor.stopMonitoringWallet(address);
+    await pumpFunMonitor.stopMonitoringWallet(address);
   }
 
   res.json({ success: true, is_active: newState });

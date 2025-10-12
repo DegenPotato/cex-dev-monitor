@@ -15,6 +15,8 @@ export interface MonitoredWallet {
   last_history_check?: number;
   label?: string;
   monitoring_type?: string;
+  rate_limit_rps?: number; // Requests per second (default: 1)
+  rate_limit_enabled?: number; // Rate limiting on/off (default: 1)
   metadata?: string;
 }
 

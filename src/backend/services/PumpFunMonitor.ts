@@ -2,6 +2,7 @@ import { PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
+import { WalletRateLimiter } from './WalletRateLimiter.js';
 import { EventEmitter } from 'events';
 
 // Pump.fun program ID
@@ -11,6 +12,7 @@ export class PumpFunMonitor extends EventEmitter {
   private proxiedConnection: ProxiedSolanaConnection;
   private activeSubscriptions: Map<string, number> = new Map();
   private isBackfilling: Map<string, boolean> = new Map();
+  private rateLimiters: Map<string, WalletRateLimiter> = new Map();
 
   constructor() {
     super();
@@ -41,7 +43,20 @@ export class PumpFunMonitor extends EventEmitter {
     // Check if wallet needs historical backfill
     const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
     
-    if (!wallet?.dev_checked) {
+    if (!wallet) {
+      console.error(`❌ Wallet not found: ${walletAddress}`);
+      return;
+    }
+
+    // Initialize rate limiter for this wallet
+    const rps = wallet.rate_limit_rps || 1; // Default: 1 request per second
+    const enabled = wallet.rate_limit_enabled !== 0; // Default: enabled
+    const rateLimiter = new WalletRateLimiter(walletAddress, rps, enabled);
+    this.rateLimiters.set(walletAddress, rateLimiter);
+
+    console.log(`🎚️  [RateLimit] Initialized for ${walletAddress.slice(0, 8)}... at ${rps} RPS (${enabled ? 'enabled' : 'disabled'})`);
+    
+    if (!wallet.dev_checked) {
       // Step 1: Historical backfill (fetch ALL past transactions)
       console.log(`📚 [Backfill] Fetching historical data for ${walletAddress.slice(0, 8)}...`);
       await this.backfillWalletHistory(walletAddress);
@@ -70,6 +85,7 @@ export class PumpFunMonitor extends EventEmitter {
    */
   private async backfillWalletHistory(walletAddress: string): Promise<void> {
     this.isBackfilling.set(walletAddress, true);
+    const rateLimiter = this.rateLimiters.get(walletAddress);
     
     try {
       const publicKey = new PublicKey(walletAddress);
@@ -81,13 +97,22 @@ export class PumpFunMonitor extends EventEmitter {
       console.log(`📚 [Backfill] Starting full historical scan for ${walletAddress.slice(0, 8)}...`);
 
       while (hasMore) {
-        // Fetch signatures in batches of 1000 (Solana max)
-        const signatures = await this.proxiedConnection.withProxy(conn =>
-          conn.getSignaturesForAddress(publicKey, {
-            limit: 1000,
-            before: lastSignature
-          })
-        );
+        // Fetch signatures in batches of 1000 (Solana max) - rate limited
+        const signatures = rateLimiter 
+          ? await rateLimiter.execute(() => 
+              this.proxiedConnection.withProxy(conn =>
+                conn.getSignaturesForAddress(publicKey, {
+                  limit: 1000,
+                  before: lastSignature
+                })
+              )
+            )
+          : await this.proxiedConnection.withProxy(conn =>
+              conn.getSignaturesForAddress(publicKey, {
+                limit: 1000,
+                before: lastSignature
+              })
+            );
 
         if (signatures.length === 0) {
           hasMore = false;
@@ -96,13 +121,21 @@ export class PumpFunMonitor extends EventEmitter {
 
         console.log(`📚 [Backfill] Processing batch of ${signatures.length} transactions...`);
 
-        // Process each transaction
+        // Process each transaction - rate limited
         for (const sigInfo of signatures) {
-          const tx = await this.proxiedConnection.withProxy(conn =>
-            conn.getParsedTransaction(sigInfo.signature, {
-              maxSupportedTransactionVersion: 0
-            })
-          );
+          const tx = rateLimiter
+            ? await rateLimiter.execute(() =>
+                this.proxiedConnection.withProxy(conn =>
+                  conn.getParsedTransaction(sigInfo.signature, {
+                    maxSupportedTransactionVersion: 0
+                  })
+                )
+              )
+            : await this.proxiedConnection.withProxy(conn =>
+                conn.getParsedTransaction(sigInfo.signature, {
+                  maxSupportedTransactionVersion: 0
+                })
+              );
 
           if (tx) {
             const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);

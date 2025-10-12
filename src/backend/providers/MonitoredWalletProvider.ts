@@ -17,8 +17,8 @@ export class MonitoredWalletProvider {
 
   static async create(wallet: Partial<MonitoredWallet> & { address: string; first_seen: number }): Promise<number> {
     await execute(
-      `INSERT INTO monitored_wallets (address, source, first_seen, last_activity, is_active, is_fresh, wallet_age_days, previous_tx_count, is_dev_wallet, tokens_deployed, dev_checked, label, monitoring_type, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO monitored_wallets (address, source, first_seen, last_activity, is_active, is_fresh, wallet_age_days, previous_tx_count, is_dev_wallet, tokens_deployed, dev_checked, label, monitoring_type, rate_limit_rps, rate_limit_enabled, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         wallet.address,
         wallet.source || null,
@@ -33,6 +33,8 @@ export class MonitoredWalletProvider {
         wallet.dev_checked ?? 0,
         wallet.label || null,
         wallet.monitoring_type || 'pumpfun',
+        wallet.rate_limit_rps ?? 1,
+        wallet.rate_limit_enabled ?? 1,
         wallet.metadata || null
       ]
     );
