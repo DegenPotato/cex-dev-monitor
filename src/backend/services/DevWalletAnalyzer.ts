@@ -70,9 +70,38 @@ export class DevWalletAnalyzer {
     try {
       console.log(`⏳ [DevAnalyzer] Fetching signatures (limit: ${limit})...`);
       
-      const signatures = await this.proxiedConnection.withProxy(conn =>
-        conn.getSignaturesForAddress(walletPubkey, { limit })
-      );
+      // Solana RPC has a hard limit of 1000 signatures per call - paginate if needed
+      const signatures: any[] = [];
+      let before: string | undefined = undefined;
+      const batchSize = 1000;
+      
+      while (signatures.length < limit) {
+        const remainingToFetch = limit - signatures.length;
+        const fetchLimit = Math.min(remainingToFetch, batchSize);
+        
+        const batch = await this.proxiedConnection.withProxy(conn =>
+          conn.getSignaturesForAddress(walletPubkey, { 
+            limit: fetchLimit,
+            before 
+          })
+        );
+        
+        if (batch.length === 0) {
+          console.log(`   📌 Reached end of transaction history (${signatures.length} total)`);
+          break;
+        }
+        
+        signatures.push(...batch);
+        before = batch[batch.length - 1].signature;
+        
+        console.log(`   📥 Fetched ${signatures.length}/${limit} signatures...`);
+        
+        // Stop if we got fewer than requested (end of history)
+        if (batch.length < fetchLimit) {
+          console.log(`   📌 Reached end of transaction history (${signatures.length} total)`);
+          break;
+        }
+      }
       
       console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions for ALL activities...`);
       console.log(`   Global Concurrency Limiter will control throughput speed`);

@@ -51,14 +51,18 @@ export function TestDevWalletPanel() {
     ws.current.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        console.log('📡 WebSocket message received:', message.type);
         
         if (message.type === 'test-dev-complete') {
-          console.log('📡 Received test results via WebSocket');
+          console.log('📡 Test complete:', message.data);
           setResult(message.data);
           setLoading(false);
         } else if (message.type === 'test-dev-error') {
-          console.error('📡 Received test error via WebSocket');
-          setResult(message.data);
+          console.error('📡 Test error:', message.data);
+          setResult({
+            success: false,
+            error: message.data.error || 'Analysis failed'
+          });
           setLoading(false);
         }
       } catch (err) {
