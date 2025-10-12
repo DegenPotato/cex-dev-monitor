@@ -14,6 +14,15 @@ interface AnalysisResult {
       timestamp: number;
       decimals?: number;
     }>;
+    activities: Array<{
+      signature: string;
+      timestamp: number;
+      type: 'deployment' | 'buy' | 'sell' | 'transfer_in' | 'transfer_out' | 'burn' | 'swap' | 'other';
+      program: string;
+      details: any;
+      amount?: number;
+      token?: string;
+    }>;
   };
   error?: string;
 }
@@ -333,6 +342,88 @@ export function TestDevWalletPanel() {
                                   Pump.fun
                                 </a>
                               </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* All Activities Section */}
+              {result.analysis?.activities && result.analysis.activities.length > 0 && (
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                    📊 Complete On-Chain Activity ({result.analysis.activities.length} transactions)
+                  </h4>
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-slate-800">
+                        <tr className="border-b border-gray-600">
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Time</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Type</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Amount</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Token</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Program</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">TX</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.analysis.activities.sort((a, b) => b.timestamp - a.timestamp).map((activity) => (
+                          <tr key={activity.signature} className="border-b border-gray-700/50 hover:bg-slate-600/30">
+                            <td className="py-2 px-2">
+                              <span className="text-gray-400 text-xs">
+                                {new Date(activity.timestamp).toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                activity.type === 'deployment' ? 'bg-purple-900/50 text-purple-300' :
+                                activity.type === 'buy' ? 'bg-green-900/50 text-green-300' :
+                                activity.type === 'sell' ? 'bg-red-900/50 text-red-300' :
+                                activity.type === 'swap' ? 'bg-blue-900/50 text-blue-300' :
+                                activity.type === 'transfer_in' ? 'bg-cyan-900/50 text-cyan-300' :
+                                activity.type === 'transfer_out' ? 'bg-orange-900/50 text-orange-300' :
+                                activity.type === 'burn' ? 'bg-red-950/50 text-red-400' :
+                                'bg-gray-700 text-gray-400'
+                              }`}>
+                                {activity.type.replace('_', ' ').toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className="text-white text-xs">
+                                {activity.amount ? activity.amount.toFixed(4) : '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2">
+                              {activity.token ? (
+                                <a
+                                  href={`https://solscan.io/token/${activity.token}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-400 hover:text-purple-300 font-mono text-xs"
+                                >
+                                  {activity.token.slice(0, 6)}...
+                                </a>
+                              ) : (
+                                <span className="text-gray-500 text-xs">-</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className="text-gray-400 text-xs font-mono">
+                                {activity.program.slice(0, 8)}...
+                              </span>
+                            </td>
+                            <td className="py-2 px-2">
+                              <a
+                                href={`https://solscan.io/tx/${activity.signature}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-400 hover:text-blue-300 text-xs underline"
+                              >
+                                View
+                              </a>
                             </td>
                           </tr>
                         ))}
