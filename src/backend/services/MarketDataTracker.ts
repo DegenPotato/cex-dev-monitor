@@ -1,5 +1,6 @@
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import fetch from 'cross-fetch';
+import { Connection, PublicKey } from '@solana/web3.js';
 
 /**
  * Market Data Tracker using DexScreener API
@@ -16,8 +17,13 @@ export class MarketDataTracker {
   private readonly BATCH_SIZE = 30; // DexScreener allows up to 30 tokens per request
   private readonly MAX_CALLS_PER_MINUTE = 280; // Stay under 300/min limit
   private readonly DELAY_BETWEEN_CALLS = Math.ceil((60 * 1000) / this.MAX_CALLS_PER_MINUTE);
+  private readonly PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+  private readonly TOTAL_SUPPLY = 1_000_000_000; // Pump.fun tokens have 1B supply
+  private connection: Connection;
 
-  constructor() {}
+  constructor() {
+    this.connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+  }
 
   /**
    * Start polling for market data
@@ -71,7 +77,23 @@ export class MarketDataTracker {
           
           // Update each token in the batch
           for (const token of batch) {
-            const marketData = marketDataMap.get(token.mint_address);
+            let marketData = marketDataMap.get(token.mint_address);
+            
+            // PRIORITY: Try Pump.fun on-chain data FIRST for pumpfun tokens
+            if (token.platform === 'pumpfun') {
+              const pumpFunData = await this.fetchPumpFunData(token.mint_address);
+              if (pumpFunData && pumpFunData.marketCap) {
+                marketData = {
+                  fdv: pumpFunData.marketCap,
+                  marketCap: pumpFunData.marketCap
+                };
+              }
+            }
+            
+            // Fallback to DexScreener if Pump.fun data not available (token graduated to Raydium)
+            if (!marketData) {
+              marketData = marketDataMap.get(token.mint_address);
+            }
             
             if (marketData) {
               const updates: any = {
@@ -115,6 +137,81 @@ export class MarketDataTracker {
       console.log(`📊 [MarketData] Update complete: ${updated} updated, ${failed} failed/not found`);
     } catch (error) {
       console.error('📊 [MarketData] Error in updateAllTokens:', error);
+    }
+  }
+
+  /**
+   * Get bonding curve PDA for a Pump.fun token
+   */
+  private async getBondingCurvePDA(mintAddress: string): Promise<PublicKey> {
+    const mint = new PublicKey(mintAddress);
+    const programId = new PublicKey(this.PUMPFUN_PROGRAM_ID);
+    
+    const [bondingCurve] = PublicKey.findProgramAddressSync(
+      [Buffer.from('bonding-curve'), mint.toBuffer()],
+      programId
+    );
+    
+    return bondingCurve;
+  }
+
+  /**
+   * Fetch bonding curve data from Pump.fun on-chain
+   * Reads bonding curve account and calculates market cap
+   */
+  private async fetchPumpFunData(mintAddress: string): Promise<{
+    marketCap?: number;
+    virtualSolReserves?: number;
+    virtualTokenReserves?: number;
+    bondingCurveProgress?: number;
+  } | null> {
+    try {
+      const bondingCurvePDA = await this.getBondingCurvePDA(mintAddress);
+      
+      // Fetch bonding curve account
+      const accountInfo = await this.connection.getAccountInfo(bondingCurvePDA);
+      
+      if (!accountInfo || !accountInfo.data) {
+        return null;
+      }
+
+      // Parse bonding curve data
+      // Layout (simplified, adjust based on actual Pump.fun program):
+      // - 8 bytes: virtual_sol_reserves (u64)
+      // - 8 bytes: virtual_token_reserves (u64)
+      // - 8 bytes: real_sol_reserves (u64)
+      // - 8 bytes: real_token_reserves (u64)
+      
+      const data = accountInfo.data;
+      const virtualSolReserves = data.readBigUInt64LE(0);
+      const virtualTokenReserves = data.readBigUInt64LE(8);
+      // Note: real reserves at offset 16 & 24 if needed later
+      
+      // Calculate price: SOL per token
+      const priceInSol = Number(virtualSolReserves) / Number(virtualTokenReserves);
+      
+      // TODO: Fetch SOL/USD price from an oracle or API
+      const solPriceUSD = 150; // Hardcoded for now, should fetch real-time
+      
+      // Market cap = price * total supply
+      const marketCapUSD = priceInSol * this.TOTAL_SUPPLY * solPriceUSD;
+      
+      // Calculate bonding curve progress
+      const initialTokenReserves = 800_000_000; // Pump.fun starts with 800M tokens
+      const tokensLeft = Number(virtualTokenReserves);
+      const bondingCurveProgress = ((initialTokenReserves - tokensLeft) / initialTokenReserves) * 100;
+      
+      console.log(`💎 [PumpFun] ${mintAddress.slice(0, 8)}... - MCap: $${marketCapUSD.toFixed(0)}, Progress: ${bondingCurveProgress.toFixed(1)}%`);
+      
+      return {
+        marketCap: marketCapUSD,
+        virtualSolReserves: Number(virtualSolReserves),
+        virtualTokenReserves: Number(virtualTokenReserves),
+        bondingCurveProgress
+      };
+    } catch (error: any) {
+      console.error(`❌ [PumpFun] Error reading bonding curve for ${mintAddress.slice(0, 8)}...:`, error.message);
+      return null;
     }
   }
 
