@@ -1,23 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Activity, Wallet, Coins, TrendingUp, Settings, Circle, Sparkles, Flame, DollarSign, FlaskConical } from 'lucide-react';
+import { Settings, Circle } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { Stats, Transaction, TokenMint, MonitoredWallet } from '../types';
+import { Stats } from '../types';
 import { config, apiUrl } from '../config';
-import { TransactionList } from './TransactionList';
-import { WalletList } from './WalletList';
-import { TokenList } from './TokenList';
 import { SettingsPanel } from './SettingsPanel';
-import { DevWalletList } from './DevWalletList';
-import { SourceWalletsPanel } from './SourceWalletsPanel';
-import { TestDevWalletPanel } from './TestDevWalletPanel';
+import { WalletMonitoringHub } from './WalletMonitoringHub';
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [wallets, setWallets] = useState<MonitoredWallet[]>([]);
-  const [devWallets, setDevWallets] = useState<MonitoredWallet[]>([]);
-  const [tokens, setTokens] = useState<TokenMint[]>([]);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'wallets' | 'devWallets' | 'tokens' | 'sourceWallets' | 'testDev' | 'settings'>('testDev');
+  const [showSettings, setShowSettings] = useState(false);
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
@@ -28,64 +19,18 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const unsubTransaction = subscribe('transaction', (data: any) => {
-      setTransactions(prev => [{
-        signature: data.signature,
-        from_address: data.from,
-        to_address: data.to,
-        amount: data.amount,
-        timestamp: data.timestamp,
-        status: 'confirmed'
-      }, ...prev].slice(0, 100));
-      fetchStats();
-    });
-
-    const unsubWallet = subscribe('new_wallet', (data: any) => {
-      setWallets(prev => [{
-        address: data.address,
-        source: data.source,
-        first_seen: Date.now(),
-        is_active: 1,
-        is_fresh: 1,
-        previous_tx_count: 0
-      }, ...prev]);
-      fetchStats();
-    });
-
-    const unsubToken = subscribe('token_mint', (data: any) => {
-      setTokens(prev => [{
-        mint_address: data.mintAddress,
-        creator_address: data.creator,
-        name: data.name,
-        symbol: data.symbol,
-        timestamp: data.timestamp,
-        platform: 'pumpfun'
-      }, ...prev].slice(0, 100));
-      fetchStats();
-    });
-
-    const unsubDevWallet = subscribe('dev_wallet_found', (data: any) => {
-      console.log('🔥 Dev wallet found:', data);
-      fetchDevWallets();
+    // Listen for monitoring status updates
+    const unsubStats = subscribe('stats_update', () => {
       fetchStats();
     });
 
     return () => {
-      unsubTransaction();
-      unsubWallet();
-      unsubToken();
-      unsubDevWallet();
+      unsubStats();
     };
   }, [subscribe]);
 
   const fetchData = async () => {
-    await Promise.all([
-      fetchStats(),
-      fetchTransactions(),
-      fetchWallets(),
-      fetchDevWallets(),
-      fetchTokens()
-    ]);
+    await fetchStats();
   };
 
   const fetchStats = async () => {
@@ -98,210 +43,68 @@ export function Dashboard() {
     }
   };
 
-  const fetchTransactions = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/transactions'));
-      const data = await response.json();
-      setTransactions(data);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    }
-  };
-
-  const fetchWallets = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/wallets'));
-      const data = await response.json();
-      setWallets(data);
-    } catch (error) {
-      console.error('Error fetching wallets:', error);
-    }
-  };
-
-  const fetchDevWallets = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/wallets/devs'));
-      const data = await response.json();
-      setDevWallets(data);
-    } catch (error) {
-      console.error('Error fetching dev wallets:', error);
-    }
-  };
-
-  const fetchTokens = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/tokens'));
-      const data = await response.json();
-      setTokens(data);
-    } catch (error) {
-      console.error('Error fetching tokens:', error);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Settings Overlay */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="w-full max-w-6xl bg-slate-800 rounded-xl border border-purple-500/30 shadow-2xl my-8">
+            <div className="flex items-center justify-between p-6 border-b border-purple-500/20">
+              <h2 className="text-2xl font-bold text-white">Settings & Configuration</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <SettingsPanel onUpdate={fetchData} />
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">CEX Monitor</h1>
-            <p className="text-purple-300">Real-time wallet tracking & pump.fun detection</p>
+            <h1 className="text-5xl font-bold mb-2">
+              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 bg-clip-text text-transparent">
+                Sniff Agency
+              </span>
+            </h1>
+            <p className="text-lg text-purple-300/80">Wallet Tracking Manager</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Circle 
-              className={`w-3 h-3 ${isConnected ? 'fill-green-400 text-green-400' : 'fill-red-400 text-red-400'}`}
-            />
-            <span className="text-white text-sm">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
+          
+          <div className="flex items-center gap-4">
+            {/* Connection Status */}
+            <div className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-500/20">
+              <Circle 
+                className={`w-2.5 h-2.5 ${isConnected ? 'fill-green-400 text-green-400 animate-pulse' : 'fill-red-400 text-red-400'}`}
+              />
+              <span className={`text-sm font-medium ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                {isConnected ? 'Live' : 'Offline'}
+              </span>
+            </div>
+
+            {/* Settings Button */}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm hover:bg-slate-700/50 px-4 py-2 rounded-full border border-purple-500/20 transition-all text-gray-300 hover:text-white"
+              title="Open Settings"
+            >
+              <Settings className="w-5 h-5" />
+              <span className="font-medium">Settings</span>
+            </button>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            <StatCard
-              icon={<Wallet className="w-6 h-6" />}
-              title="Active Wallets"
-              value={stats.active_wallets}
-              subtitle={`${stats.total_wallets} total`}
-              color="blue"
-            />
-            <StatCard
-              icon={<Sparkles className="w-6 h-6" />}
-              title="Fresh Wallets"
-              value={stats.fresh_wallets}
-              subtitle="New detected"
-              color="amber"
-            />
-            <StatCard
-              icon={<Activity className="w-6 h-6" />}
-              title="Transactions (24h)"
-              value={stats.transactions_24h}
-              subtitle={`${stats.total_transactions} total`}
-              color="green"
-            />
-            <StatCard
-              icon={<Coins className="w-6 h-6" />}
-              title="Tokens (24h)"
-              value={stats.tokens_24h}
-              subtitle={`${stats.total_tokens} total`}
-              color="purple"
-            />
-            <StatCard
-              icon={<TrendingUp className="w-6 h-6" />}
-              title="Monitor Status"
-              value={stats.monitoring_status}
-              subtitle="Real-time tracking"
-              color="orange"
-            />
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-2 mb-6">
-          <div className="flex gap-2">
-            <TabButton
-              active={activeTab === 'transactions'}
-              onClick={() => setActiveTab('transactions')}
-              icon={<Activity className="w-4 h-4" />}
-              label="Transactions"
-            />
-            <TabButton
-              active={activeTab === 'sourceWallets'}
-              onClick={() => setActiveTab('sourceWallets')}
-              icon={<DollarSign className="w-4 h-4" />}
-              label="Source Wallets"
-            />
-            <TabButton
-              active={activeTab === 'wallets'}
-              onClick={() => setActiveTab('wallets')}
-              icon={<Wallet className="w-4 h-4" />}
-              label="Recipient Wallets"
-            />
-            <TabButton
-              active={activeTab === 'devWallets'}
-              onClick={() => setActiveTab('devWallets')}
-              icon={<Flame className="w-4 h-4" />}
-              label="Dev Wallets"
-            />
-            <TabButton
-              active={activeTab === 'tokens'}
-              onClick={() => setActiveTab('tokens')}
-              icon={<Coins className="w-4 h-4" />}
-              label="Tokens"
-            />
-            <TabButton
-              active={activeTab === 'testDev'}
-              onClick={() => setActiveTab('testDev')}
-              icon={<FlaskConical className="w-4 h-4" />}
-              label="Test Dev Wallet"
-            />
-            <TabButton
-              active={activeTab === 'settings'}
-              onClick={() => setActiveTab('settings')}
-              icon={<Settings className="w-4 h-4" />}
-              label="Stats & Settings"
-            />
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6">
-          {activeTab === 'transactions' && <TransactionList transactions={transactions} />}
-          {activeTab === 'sourceWallets' && <SourceWalletsPanel />}
-          {activeTab === 'wallets' && <WalletList wallets={wallets} onUpdate={fetchWallets} />}
-          {activeTab === 'devWallets' && <DevWalletList devWallets={devWallets} onUpdate={fetchDevWallets} />}
-          {activeTab === 'tokens' && <TokenList tokens={tokens} />}
-          {activeTab === 'testDev' && <TestDevWalletPanel />}
-          {activeTab === 'settings' && <SettingsPanel onUpdate={fetchData} />}
+        {/* Main Content - Wallet Monitoring Hub */}
+        <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+          <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
         </div>
       </div>
     </div>
-  );
-}
-
-interface StatCardProps {
-  icon: React.ReactNode;
-  title: string;
-  value: any;
-  subtitle: string;
-  color: 'blue' | 'amber' | 'green' | 'purple' | 'orange';
-}
-
-function StatCard({ icon, title, value, subtitle, color }: StatCardProps) {
-  const colors: Record<StatCardProps['color'], string> = {
-    blue: 'from-blue-500/20 to-blue-600/20 border-blue-500/30',
-    amber: 'from-amber-500/20 to-amber-600/20 border-amber-500/30',
-    green: 'from-green-500/20 to-green-600/20 border-green-500/30',
-    purple: 'from-purple-500/20 to-purple-600/20 border-purple-500/30',
-    orange: 'from-orange-500/20 to-orange-600/20 border-orange-500/30'
-  };
-
-  return (
-    <div className={`bg-gradient-to-br ${colors[color]} backdrop-blur-sm rounded-lg border p-6`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-white">{icon}</div>
-      </div>
-      <h3 className="text-white text-2xl font-bold mb-1">{value}</h3>
-      <p className="text-gray-300 text-sm mb-1">{title}</p>
-      <p className="text-gray-400 text-xs">{subtitle}</p>
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, icon, label }: any) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-        active
-          ? 'bg-purple-600 text-white'
-          : 'text-gray-400 hover:text-white hover:bg-slate-700/50'
-      }`}
-    >
-      {icon}
-      <span className="font-medium">{label}</span>
-    </button>
   );
 }
