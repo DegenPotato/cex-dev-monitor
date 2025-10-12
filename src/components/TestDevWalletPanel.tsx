@@ -268,6 +268,79 @@ export function TestDevWalletPanel() {
                 )}
               </div>
 
+              {/* Token Deployments Section */}
+              {result.analysis?.deployments && result.analysis.deployments.length > 0 && (
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                    🚀 Token Deployments ({result.analysis.deployments.length})
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-600">
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">#</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Token Address</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Created</th>
+                          <th className="text-left text-gray-400 font-medium pb-2 px-2">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.analysis.deployments.map((deployment, idx) => (
+                          <tr key={deployment.signature} className="border-b border-gray-700/50 hover:bg-slate-600/30">
+                            <td className="py-3 px-2 text-gray-400">{idx + 1}</td>
+                            <td className="py-3 px-2">
+                              <div className="flex flex-col gap-1">
+                                <a
+                                  href={`https://solscan.io/token/${deployment.mintAddress}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-400 hover:text-purple-300 font-mono text-xs"
+                                >
+                                  {deployment.mintAddress}
+                                </a>
+                                <span className="text-gray-500 text-xs">
+                                  Decimals: {deployment.decimals ?? 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-gray-300 text-xs">
+                                  {new Date(deployment.timestamp).toLocaleString()}
+                                </span>
+                                <span className="text-gray-500 text-xs">
+                                  {Math.floor((Date.now() - deployment.timestamp) / (1000 * 60 * 60 * 24))} days ago
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2">
+                              <div className="flex gap-2">
+                                <a
+                                  href={`https://solscan.io/tx/${deployment.signature}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-400 hover:text-blue-300 text-xs underline"
+                                >
+                                  View TX
+                                </a>
+                                <a
+                                  href={`https://pump.fun/${deployment.mintAddress}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-green-400 hover:text-green-300 text-xs underline"
+                                >
+                                  Pump.fun
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* DeFi Analysis Section */}
               {result.analysis?.isDevWallet && (
                 <div className="space-y-3">
