@@ -18,7 +18,9 @@ export class GlobalConcurrencyLimiter {
    * Update max concurrent requests
    */
   setMaxConcurrent(max: number): void {
-    this.maxConcurrent = Math.max(1, Math.min(max, 100)); // 1-100 range
+    // Clamp between 1-500 (500 is safe with proxy rotation)
+    // Higher values = faster but more RAM/CPU usage
+    this.maxConcurrent = Math.max(1, Math.min(max, 500));
     console.log(`🔧 [GlobalLimiter] Max concurrent updated to ${this.maxConcurrent}`);
   }
 
