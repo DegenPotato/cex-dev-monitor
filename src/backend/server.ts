@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import { PublicKey } from '@solana/web3.js';
 import { initDatabase } from './database/connection.js';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
 import { PumpFunMonitor } from './services/PumpFunMonitor.js';
@@ -274,27 +275,43 @@ app.get('/api/wallets/devs', async (_req, res) => {
 
 // Add test dev wallet for manual analysis
 app.post('/api/wallets/test-dev', async (req, res) => {
-  const { address, name } = req.body;
+  const { address, name, limit } = req.body;
   
   if (!address) {
     return res.status(400).json({ error: 'Wallet address is required' });
   }
 
   try {
-    console.log(`🧪 [Test] Adding test dev wallet: ${address}`);
+    console.log(`🧪 [Test] Adding test dev wallet: ${address} (limit: ${limit || 1000})`);
+    
+    // Fetch wallet info from blockchain first
+    const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
+    const proxiedConnection = walletAnalyzer.getProxiedConnection();
+    
+    // Fetch transaction count and age
+    const pubkey = new PublicKey(address);
+    const signatures = await proxiedConnection.withProxy(conn => 
+      conn.getSignaturesForAddress(pubkey, { limit: 10 })
+    );
+    
+    const txCount = signatures.length;
+    const firstTxTime = signatures.length > 0 ? (signatures[signatures.length - 1].blockTime || 0) * 1000 : Date.now();
+    const walletAgeDays = (Date.now() - firstTxTime) / (1000 * 60 * 60 * 24);
+    const isFresh = txCount < 10 && walletAgeDays < 7;
     
     // Check if wallet already exists
     let wallet = await MonitoredWalletProvider.findByAddress(address);
     
     if (!wallet) {
-      // Create new wallet entry
+      // Create new wallet entry with fetched data
       await MonitoredWalletProvider.create({
         address,
         source: name || 'manual_test',
         first_seen: Date.now(),
         is_active: 1,
-        is_fresh: 0,
-        previous_tx_count: 0,
+        is_fresh: isFresh ? 1 : 0,
+        previous_tx_count: txCount,
+        wallet_age_days: walletAgeDays,
         is_dev_wallet: 0,
         tokens_deployed: 0,
         dev_checked: 0
@@ -303,10 +320,10 @@ app.post('/api/wallets/test-dev', async (req, res) => {
       wallet = await MonitoredWalletProvider.findByAddress(address);
     }
     
-    // Trigger dev wallet analysis
+    // Trigger dev wallet analysis with custom limit
     console.log(`🔬 [Test] Starting dev analysis for ${address}...`);
     const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
-    const devAnalysis = await devAnalyzer.analyzeDevHistory(address);
+    const devAnalysis = await devAnalyzer.analyzeDevHistory(address, limit || 1000);
     
     // Update wallet with results
     await MonitoredWalletProvider.update(address, {

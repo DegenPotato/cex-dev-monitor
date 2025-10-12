@@ -44,17 +44,17 @@ export class DevWalletAnalyzer {
     return this.proxiedConnection;
   }
 
-  async analyzeDevHistory(walletAddress: string): Promise<DevWalletAnalysis> {
-    console.log(`🔎 [DevAnalyzer] Checking dev history for ${walletAddress.slice(0, 8)}...`);
+  async analyzeDevHistory(walletAddress: string, limit: number = 1000): Promise<DevWalletAnalysis> {
+    console.log(`🔎 [DevAnalyzer] Checking dev history for ${walletAddress.slice(0, 8)}... (limit: ${limit})`);
 
     try {
       const publicKey = new PublicKey(walletAddress);
       const deployments: TokenDeployment[] = [];
 
-      // Fetch transaction history with proxy (up to 1000 transactions to check for mints)
+      // Fetch transaction history with proxy
       console.log(`📡 [DevAnalyzer] Fetching transaction history with proxy rotation...`);
       const signatures = await this.proxiedConnection.withProxy(conn =>
-        conn.getSignaturesForAddress(publicKey, { limit: 1000 })
+        conn.getSignaturesForAddress(publicKey, { limit })
       );
 
       console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions...`);

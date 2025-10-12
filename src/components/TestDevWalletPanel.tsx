@@ -20,6 +20,7 @@ interface AnalysisResult {
 export function TestDevWalletPanel() {
   const [address, setAddress] = useState('');
   const [name, setName] = useState('');
+  const [limit, setLimit] = useState('1000');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showDefiAnalysis, setShowDefiAnalysis] = useState(false);
@@ -41,7 +42,11 @@ export function TestDevWalletPanel() {
       const response = await fetch(apiUrl('/api/wallets/test-dev'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, name: name || 'Test Wallet' })
+        body: JSON.stringify({ 
+          address, 
+          name: name || 'Test Wallet',
+          limit: parseInt(limit) || 1000
+        })
       });
 
       if (!response.ok) {
@@ -135,6 +140,26 @@ export function TestDevWalletPanel() {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Transaction Limit
+            </label>
+            <input
+              type="number"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              placeholder="1000"
+              min="10"
+              max="10000"
+              step="100"
+              className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
+              disabled={loading}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Max transactions to analyze (10-10000). Higher = slower but more complete.
+            </p>
+          </div>
+
           <button
             onClick={handleAnalyze}
             disabled={loading || !address}
@@ -193,6 +218,22 @@ export function TestDevWalletPanel() {
                   <span className="text-gray-400">Address:</span>
                   <span className="text-white font-mono text-sm">{address.slice(0, 8)}...{address.slice(-8)}</span>
                 </div>
+                {result.wallet && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Wallet Age:</span>
+                      <span className="text-white">
+                        {result.wallet.wallet_age_days 
+                          ? `${result.wallet.wallet_age_days.toFixed(1)} days` 
+                          : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Total TXs:</span>
+                      <span className="text-white font-bold">{result.wallet.previous_tx_count || 0}</span>
+                    </div>
+                  </>
+                )}
                 {result.analysis && (
                   <>
                     <div className="flex justify-between">
