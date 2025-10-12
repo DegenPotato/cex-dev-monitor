@@ -726,14 +726,24 @@ app.get('/api/transactions/:address', async (req, res) => {
 app.get('/api/tokens', async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   const tokens = await TokenMintProvider.findRecent(limit);
-  res.json(tokens);
+  // Map timestamp to launch_time for frontend compatibility
+  const mappedTokens = tokens.map(token => ({
+    ...token,
+    launch_time: token.timestamp
+  }));
+  res.json(mappedTokens);
 });
 
 // Get token mints by creator
 app.get('/api/tokens/creator/:address', async (req, res) => {
   const { address } = req.params;
   const tokens = await TokenMintProvider.findByCreator(address);
-  res.json(tokens);
+  // Map timestamp to launch_time for frontend compatibility
+  const mappedTokens = tokens.map(token => ({
+    ...token,
+    launch_time: token.timestamp
+  }));
+  res.json(mappedTokens);
 });
 
 // Get statistics
@@ -747,6 +757,7 @@ app.get('/api/stats', async (_req, res) => {
 
   const now = Date.now();
   const last24h = now - (24 * 60 * 60 * 1000);
+  const last24hSeconds = Math.floor(last24h / 1000); // Convert to Unix timestamp (seconds)
 
   const stats = {
     total_wallets: wallets.length,
@@ -754,9 +765,9 @@ app.get('/api/stats', async (_req, res) => {
     fresh_wallets: freshWallets.length,
     dev_wallets: devWallets.length,
     total_transactions: recentTransactions.length,
-    transactions_24h: recentTransactions.filter(tx => tx.timestamp >= last24h).length,
+    transactions_24h: recentTransactions.filter(tx => (tx.timestamp || 0) >= last24hSeconds).length,
     total_tokens: recentTokens.length,
-    tokens_24h: recentTokens.filter(token => token.timestamp >= last24h).length,
+    tokens_24h: recentTokens.filter(token => (token.timestamp || 0) >= last24hSeconds).length,
     monitoring_status: solanaMonitor.getActiveSubscriptions().length > 0 ? 'active' : 'stopped',
     cex_wallet: await ConfigProvider.get('cex_wallet'),
     pump_fun_monitored: pumpFunMonitor.getActiveMonitors().length

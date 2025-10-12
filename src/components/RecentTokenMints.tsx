@@ -42,7 +42,9 @@ export function RecentTokenMints() {
   };
 
   const getTimeAgo = (timestamp: number) => {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    // Convert Unix timestamp (seconds) to milliseconds
+    const timestampMs = timestamp * 1000;
+    const seconds = Math.floor((Date.now() - timestampMs) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -50,6 +52,10 @@ export function RecentTokenMints() {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
+  };
+
+  const formatTimestamp = (timestamp: number) => {
+    return new Date(timestamp * 1000).toLocaleString();
   };
 
   if (loading) {
@@ -111,10 +117,13 @@ export function RecentTokenMints() {
                     <User className="w-3.5 h-3.5" />
                     <span className="font-mono">{formatAddress(token.creator_address)}</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5" title={formatTimestamp(token.launch_time)}>
                     <Clock className="w-3.5 h-3.5" />
                     <span>{getTimeAgo(token.launch_time)}</span>
                   </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {formatTimestamp(token.launch_time)}
                 </div>
               </div>
 

@@ -621,7 +621,15 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-400">
-                      {new Date(wallet.first_seen).toLocaleDateString()}
+                      <div>
+                        {new Date(wallet.first_seen * 1000).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {(() => {
+                          const days = Math.floor((Date.now() - wallet.first_seen * 1000) / (1000 * 60 * 60 * 24));
+                          return days === 0 ? 'Today' : `${days} day${days !== 1 ? 's' : ''} ago`;
+                        })()}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-400">
                       {wallet.transaction_count || 0} txns
