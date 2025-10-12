@@ -27,6 +27,7 @@ export interface DevWalletAnalysis {
 
 export class DevWalletAnalyzer {
   private proxiedConnection: ProxiedSolanaConnection;
+  private requestDelayMs: number = 0; // 0 = unrestricted
 
   constructor() {
     // Proxied connection for unlimited dev history scanning (10,000 proxies!)
@@ -41,11 +42,11 @@ export class DevWalletAnalyzer {
   }
 
   /**
-   * Update request pacing delay (DEPRECATED - no longer used, Global Concurrency Limiter handles throttling)
+   * Update request pacing delay (0 = unrestricted, works alongside Global Concurrency Limiter)
    */
-  setRequestDelay(_delayMs: number): void {
-    // No-op: Global Concurrency Limiter handles all throttling now
-    console.log(`🎛️  [DevAnalyzer] Request pacing disabled (using Global Concurrency Limiter)`);
+  setRequestDelay(delayMs: number): void {
+    this.requestDelayMs = delayMs;
+    console.log(`🎛️  [DevAnalyzer] Request pacing: ${delayMs === 0 ? 'UNRESTRICTED ⚡' : `${delayMs}ms delay`}`);
   }
 
   getProxiedConnection(): ProxiedSolanaConnection {
@@ -79,13 +80,19 @@ export class DevWalletAnalyzer {
       let pumpfunTxCount = 0;
       let processedCount = 0;
       
-      // Fire ALL requests at once - Global Concurrency Limiter handles throttling
-      // This allows full utilization of the configured concurrent limit (e.g., 500)
+      // Fire ALL requests with optional pacing
+      // Global Concurrency Limiter controls parallel execution
+      // Request pacing adds delay between request STARTS
       const txResults = await Promise.all(
-        signatures.map((sigInfo, index) => {
+        signatures.map(async (sigInfo, index) => {
           // Progress logging every 100 txs
           if (index > 0 && index % 100 === 0) {
             console.log(`   Progress: ${index}/${signatures.length} transactions queued`);
+          }
+          
+          // Optional request pacing (0 = unrestricted)
+          if (this.requestDelayMs > 0 && index > 0) {
+            await new Promise(resolve => setTimeout(resolve, this.requestDelayMs));
           }
           
           return this.proxiedConnection.withProxy(conn =>

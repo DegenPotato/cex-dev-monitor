@@ -84,8 +84,14 @@ const pumpFunMonitor = new PumpFunMonitor();
 // Load request pacing configuration from database
 (async () => {
   try {
-    // Request pacing now handled by Global Concurrency Limiter
-    console.log(`🎛️  [Init] Request pacing controlled by Global Concurrency Limiter`);
+    const savedDelay = await ConfigProvider.get('request_pacing_delay_ms');
+    if (savedDelay) {
+      const delayMs = parseInt(savedDelay);
+      solanaMonitor.getDevWalletAnalyzer().setRequestDelay(delayMs);
+      console.log(`🎛️  [Init] Request pacing loaded: ${delayMs === 0 ? 'UNRESTRICTED ⚡' : `${delayMs}ms delay`}`);
+    } else {
+      console.log(`🎛️  [Init] Request pacing: UNRESTRICTED (0ms default)`);
+    }
   } catch (error) {
     console.error('⚠️  [Init] Error loading request pacing config:', error);
   }
@@ -897,17 +903,18 @@ app.post('/api/request-pacing/config', async (req, res) => {
       // Update in database
       await ConfigProvider.set('request_pacing_delay_ms', requestDelayMs.toString());
       
-      // Note: Request pacing now controlled by Global Concurrency Limiter
-      // This endpoint is deprecated but kept for backwards compatibility
+      // Update DevWalletAnalyzer
       const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
-      devAnalyzer.setRequestDelay(requestDelayMs); // No-op
+      devAnalyzer.setRequestDelay(requestDelayMs);
       
-      console.log(`🎛️  [RequestPacing] Delay updated to ${requestDelayMs}ms (DEPRECATED - use Global Concurrency Limiter)`);
+      console.log(`🎛️  [RequestPacing] Delay updated to ${requestDelayMs === 0 ? 'UNRESTRICTED ⚡' : `${requestDelayMs}ms`}`);
       
       res.json({
         success: true,
         requestDelayMs,
-        message: `Note: Request pacing now controlled by Global Concurrency Limiter. This setting is deprecated.`
+        message: requestDelayMs === 0 
+          ? `Request pacing: UNRESTRICTED. Max speed limited only by device & Global Concurrency Limiter.`
+          : `Request pacing: ${requestDelayMs}ms delay between request starts. Works with Global Concurrency Limiter.`
       });
     } else {
       res.status(400).json({ error: 'requestDelayMs is required' });
