@@ -18,7 +18,6 @@ export class MarketDataTracker {
   private readonly MAX_CALLS_PER_MINUTE = 280; // Stay under 300/min limit
   private readonly DELAY_BETWEEN_CALLS = Math.ceil((60 * 1000) / this.MAX_CALLS_PER_MINUTE);
   private readonly PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-  private readonly TOTAL_SUPPLY = 1_000_000_000; // Pump.fun tokens have 1B supply
   private connection: Connection;
 
   constructor() {
@@ -178,25 +177,52 @@ export class MarketDataTracker {
 
       const data = accountInfo.data;
       
-      // DEBUG: Log raw account data
-      console.log(`\n🔍 [DEBUG] Bonding Curve Account for ${mintAddress.slice(0, 8)}...`);
-      console.log(`   Account size: ${data.length} bytes`);
-      console.log(`   Owner: ${accountInfo.owner.toBase58()}`);
-      console.log(`   First 128 bytes (hex):`, data.slice(0, 128).toString('hex'));
+      // Parse bonding curve data (confirmed structure from blockchain analysis)
+      // Offset 0-7: Discriminator
+      // Offset 8-15: virtual_token_reserves (u64 lamports)
+      // Offset 16-23: virtual_sol_reserves (u64 lamports)
+      // Offset 24-31: real_token_reserves (u64 lamports)
+      // Offset 32-39: real_sol_reserves (u64 lamports)
+      // Offset 40-47: token_total_supply (u64 lamports)
       
-      // Try to parse - we need to find the correct offsets
-      // Let's read several positions to see what makes sense
-      for (let i = 0; i < Math.min(data.length - 8, 200); i += 8) {
-        const value = data.readBigUInt64LE(i);
-        if (Number(value) > 0 && Number(value) < Number.MAX_SAFE_INTEGER) {
-          console.log(`   Offset ${i}: ${value.toString()} (${Number(value)})`);
-        }
+      const virtualTokenReserves = data.readBigUInt64LE(8);
+      const virtualSolReserves = data.readBigUInt64LE(16);
+      // Note: real reserves at offsets 24 & 32 if needed
+      const tokenTotalSupply = data.readBigUInt64LE(40);
+      
+      // Check if bonding curve is complete (all zeros)
+      if (virtualTokenReserves === 0n && virtualSolReserves === 0n) {
+        console.log(`✅ [PumpFun] ${mintAddress.slice(0, 8)}... - Graduated to Raydium!`);
+        return null; // Use DexScreener for graduated tokens
       }
       
-      console.log(`\n`);
+      // Convert from lamports to readable units
+      const virtualTokens = Number(virtualTokenReserves) / 1e6; // 6 decimals for tokens
+      const virtualSol = Number(virtualSolReserves) / 1e9; // 9 decimals for SOL
+      const totalSupply = Number(tokenTotalSupply) / 1e6;
       
-      // Don't try to calculate yet, just return null for debugging
-      return null;
+      // Calculate price: SOL per token
+      const priceInSol = virtualSol / virtualTokens;
+      
+      // Fetch SOL price (hardcoded for now, should use an oracle)
+      const solPriceUSD = 150;
+      
+      // Calculate market cap
+      const marketCapUSD = priceInSol * totalSupply * solPriceUSD;
+      
+      // Calculate bonding curve progress
+      const initialTokenReserves = 800_000_000; // Pump.fun starts with 800M tokens
+      const tokensLeft = virtualTokens;
+      const bondingCurveProgress = ((initialTokenReserves - tokensLeft) / initialTokenReserves) * 100;
+      
+      console.log(`💎 [PumpFun] ${mintAddress.slice(0, 8)}... - MCap: $${marketCapUSD.toFixed(0)}, Progress: ${bondingCurveProgress.toFixed(2)}%, Price: ${priceInSol.toFixed(9)} SOL`);
+      
+      return {
+        marketCap: marketCapUSD,
+        virtualSolReserves: virtualSol,
+        virtualTokenReserves: virtualTokens,
+        bondingCurveProgress
+      };
     } catch (error: any) {
       console.error(`❌ [PumpFun] Error reading bonding curve for ${mintAddress.slice(0, 8)}...:`, error.message);
       return null;

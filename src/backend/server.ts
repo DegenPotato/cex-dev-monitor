@@ -1249,6 +1249,28 @@ app.get('/api/market-data/test/:addresses', async (req, res) => {
   }
 });
 
+// Test token metadata fetching
+app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    
+    // Import and use TokenMetadataFetcher directly
+    const { TokenMetadataFetcher } = await import('./services/TokenMetadataFetcher.js');
+    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    const metadataFetcher = new TokenMetadataFetcher(connection);
+    
+    const metadata = await metadataFetcher.fetchMetadata(mintAddress);
+    
+    res.json({
+      mintAddress,
+      metadata: metadata || 'No metadata found',
+      success: !!metadata
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Analyze Pump.fun mint transaction to understand bonding curve structure
 app.get('/api/market-data/analyze-mint/:mintAddress', async (req, res) => {
   try {
