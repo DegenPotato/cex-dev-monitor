@@ -1,6 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
@@ -19,7 +18,6 @@ export interface DevWalletAnalysis {
 
 export class DevWalletAnalyzer {
   private proxiedConnection: ProxiedSolanaConnection;
-  private requestDelayMs: number = 15; // Default 15ms, configurable
 
   constructor() {
     // Proxied connection for unlimited dev history scanning (10,000 proxies!)
@@ -34,11 +32,11 @@ export class DevWalletAnalyzer {
   }
 
   /**
-   * Update request pacing delay
+   * Update request pacing delay (DEPRECATED - no longer used, Global Concurrency Limiter handles throttling)
    */
   setRequestDelay(delayMs: number): void {
-    this.requestDelayMs = delayMs;
-    console.log(`🎛️  [DevAnalyzer] Request delay updated to ${delayMs}ms`);
+    // No-op: Global Concurrency Limiter handles all throttling now
+    console.log(`🎛️  [DevAnalyzer] Request pacing disabled (using Global Concurrency Limiter)`);
   }
 
   getProxiedConnection(): ProxiedSolanaConnection {
@@ -59,43 +57,41 @@ export class DevWalletAnalyzer {
       );
 
       console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions...`);
+      console.log(`   Global Concurrency Limiter will control throughput speed`);
 
       let pumpfunTxCount = 0;
+      let processedCount = 0;
       
-      // Process transactions in parallel batches for maximum speed
-      // Batch size matches global concurrency limit for optimal throughput
-      const batchSize = 50; // Process 50 at a time
-      
-      for (let i = 0; i < signatures.length; i += batchSize) {
-        const batch = signatures.slice(i, Math.min(i + batchSize, signatures.length));
-        
-        // Progress update
-        if (i % 100 === 0 && i > 0) {
-          console.log(`   Progress: ${i}/${signatures.length} checked, ${deployments.length} mints found`);
-        }
-
-        // Request pacing: Only needed for RPC rotation mode
-        if (globalRPCServerRotator.isEnabled()) {
-          await this.delay(this.requestDelayMs);
-        }
-
-        // Process batch in parallel
-        const txResults = await Promise.all(
-          batch.map(sigInfo =>
-            this.proxiedConnection.withProxy(conn =>
-              conn.getParsedTransaction(sigInfo.signature, {
-                maxSupportedTransactionVersion: 0
-              })
-            ).catch(() => null) // Handle errors gracefully
-          )
-        );
-
-        // Process each transaction result
-        for (let j = 0; j < txResults.length; j++) {
-          const tx = txResults[j];
-          const sigInfo = batch[j];
+      // Fire ALL requests at once - Global Concurrency Limiter handles throttling
+      // This allows full utilization of the configured concurrent limit (e.g., 500)
+      const txResults = await Promise.all(
+        signatures.map((sigInfo, index) => {
+          // Progress logging every 100 txs
+          if (index > 0 && index % 100 === 0) {
+            console.log(`   Progress: ${index}/${signatures.length} transactions queued`);
+          }
           
-          if (!tx || !tx.meta || tx.meta.err) continue;
+          return this.proxiedConnection.withProxy(conn =>
+            conn.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0
+            })
+          ).catch(() => null); // Handle errors gracefully
+        })
+      );
+
+      console.log(`   All ${signatures.length} transactions fetched, processing results...`);
+
+      // Process all transaction results
+      for (let i = 0; i < txResults.length; i++) {
+        const tx = txResults[i];
+        const sigInfo = signatures[i];
+        processedCount++;
+        
+        if (processedCount % 100 === 0) {
+          console.log(`   Processed: ${processedCount}/${signatures.length}, ${deployments.length} mints found`);
+        }
+        
+        if (!tx || !tx.meta || tx.meta.err) continue;
 
         const accountKeys = tx.transaction.message.accountKeys;
 
@@ -161,7 +157,6 @@ export class DevWalletAnalyzer {
 
           console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
         }
-        }
       }
 
       const isDevWallet = deployments.length > 0;
@@ -184,9 +179,5 @@ export class DevWalletAnalyzer {
         deployments: []
       };
     }
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
