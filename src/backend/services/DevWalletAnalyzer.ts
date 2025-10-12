@@ -34,7 +34,7 @@ export class DevWalletAnalyzer {
   /**
    * Update request pacing delay (DEPRECATED - no longer used, Global Concurrency Limiter handles throttling)
    */
-  setRequestDelay(delayMs: number): void {
+  setRequestDelay(_delayMs: number): void {
     // No-op: Global Concurrency Limiter handles all throttling now
     console.log(`🎛️  [DevAnalyzer] Request pacing disabled (using Global Concurrency Limiter)`);
   }

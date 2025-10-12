@@ -39,6 +39,10 @@ export function TestDevWalletPanel() {
     setDefiProfile(null);
 
     try {
+      // Create abort controller with 5 minute timeout for large analyses
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 minutes
+      
       const response = await fetch(apiUrl('/api/wallets/test-dev'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,8 +50,11 @@ export function TestDevWalletPanel() {
           address, 
           name: name || 'Test Wallet',
           limit: parseInt(limit) || 1000
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -70,9 +77,19 @@ export function TestDevWalletPanel() {
       }
     } catch (error: any) {
       console.error('Dev wallet analysis error:', error);
+      
+      let errorMessage = error.message || 'Failed to fetch';
+      
+      // Handle specific error types
+      if (error.name === 'AbortError') {
+        errorMessage = 'Analysis timed out after 5 minutes. Try with a lower transaction limit.';
+      } else if (error.message.includes('fetch')) {
+        errorMessage = 'Network error. Check if backend is running and accessible.';
+      }
+      
       setResult({
         success: false,
-        error: error.message || 'Failed to fetch'
+        error: errorMessage
       });
     } finally {
       setLoading(false);
@@ -176,7 +193,7 @@ export function TestDevWalletPanel() {
             {loading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Analyzing...
+                Analyzing {limit} transactions...
               </>
             ) : (
               <>
@@ -185,6 +202,15 @@ export function TestDevWalletPanel() {
               </>
             )}
           </button>
+          
+          {loading && (
+            <div className="mt-3 p-3 bg-blue-900/30 border border-blue-500/30 rounded-lg">
+              <p className="text-sm text-blue-300">
+                ⏳ Processing {limit} transactions with {parseInt(limit) < 500 ? '~30s' : parseInt(limit) < 1000 ? '~60s' : '~2-3 min'} expected completion time.
+                Backend is fetching data via proxy rotation...
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
