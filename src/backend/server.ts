@@ -20,12 +20,6 @@ import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 
 const app = express();
 const server = createServer(app);
-
-// CRITICAL: Remove default 2-minute timeout for long-running requests
-server.timeout = 0; // Disable timeout completely
-server.keepAliveTimeout = 0; // Disable keep-alive timeout
-server.headersTimeout = 0; // Disable headers timeout
-
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 // CORS configuration - allow all origins (we're behind Cloudflare)
