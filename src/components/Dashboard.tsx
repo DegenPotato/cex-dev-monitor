@@ -4,7 +4,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
 import { SettingsPanel } from './SettingsPanel';
-import { WalletMonitoringHub } from './WalletMonitoringHub';
+import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 
 export function Dashboard() {

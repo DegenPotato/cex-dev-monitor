@@ -422,30 +422,38 @@ app.post('/api/wallets', async (req, res) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    // Check if wallet already exists
-    const existingWallet = await MonitoredWalletProvider.findByAddress(address);
+    const finalMonitoringType = monitoring_type || 'pumpfun';
+    
+    // Check if wallet already exists with THIS monitoring type
+    const existingWallet = await MonitoredWalletProvider.findByAddress(address, finalMonitoringType);
     if (existingWallet) {
-      return res.status(400).json({ error: 'Wallet already being monitored' });
+      return res.status(400).json({ error: `Wallet already being monitored with ${finalMonitoringType} type` });
     }
 
     // Create wallet entry
+    console.log(`📝 [API] Creating wallet: ${address.slice(0, 8)}... with type: ${finalMonitoringType}`);
+    
     await MonitoredWalletProvider.create({
       address,
       source: source || 'manual',
       first_seen: Date.now(),
       is_active: 1,
       label: label || null,
-      monitoring_type: monitoring_type || 'pumpfun',
+      monitoring_type: finalMonitoringType,
       rate_limit_rps: rate_limit_rps || 1,
       rate_limit_enabled: rate_limit_enabled ?? 1
     });
 
+    console.log(`✅ [API] Wallet created, verifying...`);
+    const verifyWallet = await MonitoredWalletProvider.findByAddress(address, finalMonitoringType);
+    console.log(`🔍 [API] Verification result:`, verifyWallet ? 'FOUND ✅' : 'NOT FOUND ❌');
+
     // Start monitoring based on type
-    if (monitoring_type === 'pumpfun') {
-      pumpFunMonitor.startMonitoringWallet(address);
+    if (finalMonitoringType === 'pumpfun') {
+      await pumpFunMonitor.startMonitoringWallet(address);
       console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
-    } else if (monitoring_type === 'trading') {
-      tradingActivityMonitor.startMonitoringWallet(address);
+    } else if (finalMonitoringType === 'trading') {
+      await tradingActivityMonitor.startMonitoringWallet(address);
       console.log(`📊 [API] Started Trading Activity monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
     }
 
