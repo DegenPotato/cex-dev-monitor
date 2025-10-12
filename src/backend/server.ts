@@ -232,7 +232,14 @@ app.post('/api/monitor/stop', async (_req, res) => {
 // Get monitored wallets
 app.get('/api/wallets', async (_req, res) => {
   const wallets = await MonitoredWalletProvider.findAll();
-  res.json(wallets);
+  // Map backend fields to frontend expectations
+  const mappedWallets = wallets.map(w => ({
+    ...w,
+    is_dev: w.is_dev_wallet,
+    dev_tokens_count: w.tokens_deployed,
+    transaction_count: w.previous_tx_count || 0
+  }));
+  res.json(mappedWallets);
 });
 
 // Get active wallets
@@ -757,7 +764,7 @@ app.get('/api/stats', async (_req, res) => {
 
   const now = Date.now();
   const last24h = now - (24 * 60 * 60 * 1000);
-  const last24hSeconds = Math.floor(last24h / 1000); // Convert to Unix timestamp (seconds)
+  // Database stores timestamps in milliseconds, not seconds
 
   const stats = {
     total_wallets: wallets.length,
@@ -765,9 +772,9 @@ app.get('/api/stats', async (_req, res) => {
     fresh_wallets: freshWallets.length,
     dev_wallets: devWallets.length,
     total_transactions: recentTransactions.length,
-    transactions_24h: recentTransactions.filter(tx => (tx.timestamp || 0) >= last24hSeconds).length,
+    transactions_24h: recentTransactions.filter(tx => (tx.timestamp || 0) >= last24h).length,
     total_tokens: recentTokens.length,
-    tokens_24h: recentTokens.filter(token => (token.timestamp || 0) >= last24hSeconds).length,
+    tokens_24h: recentTokens.filter(token => (token.timestamp || 0) >= last24h).length,
     monitoring_status: solanaMonitor.getActiveSubscriptions().length > 0 ? 'active' : 'stopped',
     cex_wallet: await ConfigProvider.get('cex_wallet'),
     pump_fun_monitored: pumpFunMonitor.getActiveMonitors().length

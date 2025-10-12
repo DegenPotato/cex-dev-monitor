@@ -42,9 +42,8 @@ export function RecentTokenMints() {
   };
 
   const getTimeAgo = (timestamp: number) => {
-    // Convert Unix timestamp (seconds) to milliseconds
-    const timestampMs = timestamp * 1000;
-    const seconds = Math.floor((Date.now() - timestampMs) / 1000);
+    // Database already stores timestamps in milliseconds
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -55,7 +54,8 @@ export function RecentTokenMints() {
   };
 
   const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString();
+    // Database already stores timestamps in milliseconds
+    return new Date(timestamp).toLocaleString();
   };
 
   if (loading) {
