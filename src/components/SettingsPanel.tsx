@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Trash2 } from 'lucide-react';
+import { Save, Trash2, Zap } from 'lucide-react';
 import { apiUrl } from '../config';
 import { MonitoringControls } from './MonitoringControls';
 import { RequestStatsPanel } from './RequestStatsPanel';
@@ -260,11 +260,14 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
           </div>
 
           {/* Global Concurrency Limiter */}
-          <div className="border-t border-gray-700 pt-6 mt-6">
-            <h3 className="text-lg font-semibold text-white mb-4">🚦 Global Concurrency Limit</h3>
+          <div className="bg-slate-700/50 rounded-lg p-6 border border-purple-500/20">
+            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-purple-400" />
+              Global Concurrency Limiter
+            </h3>
             <p className="text-sm text-gray-400 mb-4">
-              Limits total concurrent requests across ALL services. Prevents request bursts that overwhelm RPC servers.
-              <span className="text-purple-400 font-medium"> This is the PRIMARY solution for rate limit issues!</span>
+              Limits total concurrent requests across ALL services. Independent of rotation method.
+              <span className="text-purple-400 font-medium"> Controls throughput speed and server load!</span>
             </p>
             
             <div className="max-w-sm">
@@ -273,21 +276,25 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
               </label>
               <input
                 type="number"
-                step="1"
+                step="10"
                 min="5"
-                max="50"
+                max="500"
                 value={globalMaxConcurrent}
                 onChange={(e) => setGlobalMaxConcurrent(e.target.value)}
                 className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
               />
               <p className="text-xs text-gray-400 mt-1">
-                20 = Perfect for 20 RPC servers (1 req/server) • Higher = faster but may cause bursts
+                Current: {globalMaxConcurrent} concurrent requests • Higher = faster processing
               </p>
               <div className="mt-2 space-y-1 text-xs text-gray-500">
-                <div>• 10 = Very safe, slower throughput</div>
-                <div>• 20 = Optimal for RPC rotation (recommended ✓)</div>
-                <div>• 30 = Faster, may hit limits during bursts</div>
-                <div>• 40+ = Fast but risky with many concurrent analyses</div>
+                <div className="font-semibold text-purple-400 mt-2">With RPC Rotation (20 servers):</div>
+                <div>• 10-20 = Safe, matches server count ✓</div>
+                <div>• 30-50 = Faster, may cause bursts</div>
+                <div className="font-semibold text-purple-400 mt-2">With Proxy Rotation (10k proxies):</div>
+                <div>• 50-100 = Good balance</div>
+                <div>• 200-300 = Fast, recommended ✓</div>
+                <div>• 400-500 = Maximum speed</div>
+                <div className="text-yellow-500 mt-2">⚠️ High values use more RAM/CPU</div>
               </div>
             </div>
           </div>
