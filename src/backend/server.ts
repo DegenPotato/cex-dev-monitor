@@ -18,6 +18,7 @@ import { globalRPCServerRotator } from './services/RPCServerRotator.js';
 import { globalAnalysisQueue } from './services/AnalysisQueue.js';
 import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
+import { MarketDataTracker } from './services/MarketDataTracker.js';
 
 const app = express();
 const server = createServer(app);
@@ -70,6 +71,7 @@ if (hasProxies) {
 const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
 const tradingActivityMonitor = new TradingActivityMonitor();
+const marketDataTracker = new MarketDataTracker();
 
 // Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
@@ -1175,6 +1177,37 @@ app.post('/api/rpc-rotation/toggle', (_req, res) => {
   }
 });
 
+// Market Data Tracker endpoints
+app.get('/api/market-data/status', (_req, res) => {
+  res.json(marketDataTracker.getStatus());
+});
+
+app.post('/api/market-data/start', (_req, res) => {
+  try {
+    marketDataTracker.start();
+    res.json({ 
+      success: true, 
+      message: 'Market data tracker started - polling every 1 minute',
+      status: marketDataTracker.getStatus()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/market-data/stop', (_req, res) => {
+  try {
+    marketDataTracker.stop();
+    res.json({ 
+      success: true, 
+      message: 'Market data tracker stopped',
+      status: marketDataTracker.getStatus()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Database wipe endpoint
 app.post('/api/database/wipe', async (req, res) => {
   try {
@@ -1188,6 +1221,7 @@ app.post('/api/database/wipe', async (req, res) => {
     globalAnalysisQueue.stop();
     solanaMonitor.stopAll();
     pumpFunMonitor.stopAll();
+    marketDataTracker.stop();
     
     // Wipe all data tables (keep config)
     await TransactionProvider.deleteAll();
