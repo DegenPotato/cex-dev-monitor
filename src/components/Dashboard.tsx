@@ -5,6 +5,7 @@ import { Stats } from '../types';
 import { config, apiUrl } from '../config';
 import { SettingsPanel } from './SettingsPanel';
 import { WalletMonitoringHub } from './WalletMonitoringHub';
+import { RecentTokenMints } from './RecentTokenMints';
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -100,9 +101,15 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Main Content - Wallet Monitoring Hub */}
-        <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
-          <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
+        {/* Main Content */}
+        <div className="space-y-6">
+          {/* Recent Token Mints */}
+          <RecentTokenMints />
+          
+          {/* Wallet Monitoring Hub */}
+          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+            <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
+          </div>
         </div>
       </div>
     </div>
