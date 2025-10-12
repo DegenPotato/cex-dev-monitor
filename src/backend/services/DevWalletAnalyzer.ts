@@ -1,5 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
+import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
@@ -147,9 +148,10 @@ export class DevWalletAnalyzer {
           console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
         }
 
-        // Rate limit: small delay every 5 transactions
-        if (checkedCount % 5 === 0) {
-          await this.delay(200);
+        // Add small delay only for RPC rotation mode (not needed with proxies)
+        // RPC servers have stricter rate limits, so we pace requests conservatively
+        if (globalRPCServerRotator.isEnabled() && checkedCount % 10 === 0) {
+          await this.delay(100); // 100ms every 10 txs for RPC mode
         }
       }
 
