@@ -9,6 +9,8 @@ export class GlobalConcurrencyLimiter {
   private currentRequests: number = 0;
   private queue: Array<() => void> = [];
   private enabled: boolean = true;
+  private lastLoggedCount: number = 0;
+  private lastLogTime: number = 0;
 
   constructor(maxConcurrent: number = 20) {
     this.maxConcurrent = maxConcurrent;
@@ -18,9 +20,10 @@ export class GlobalConcurrencyLimiter {
    * Update max concurrent requests
    */
   setMaxConcurrent(max: number): void {
-    // Clamp between 1-500 (500 is safe with proxy rotation)
+    // Clamp between 1-2000 (with 10k proxies, we can go higher)
     // Higher values = faster but more RAM/CPU usage
-    this.maxConcurrent = Math.max(1, Math.min(max, 500));
+    // Recommended: 200-500 for most use cases
+    this.maxConcurrent = Math.max(1, Math.min(max, 2000));
     console.log(`🔧 [GlobalLimiter] Max concurrent updated to ${this.maxConcurrent}`);
   }
 
@@ -71,9 +74,15 @@ export class GlobalConcurrencyLimiter {
     // Acquire slot
     this.currentRequests++;
     
-    // Log every 10th request for monitoring
-    if (this.currentRequests % 10 === 0) {
+    // Log when concurrent count changes significantly OR every 2 seconds
+    const now = Date.now();
+    const countChanged = Math.abs(this.currentRequests - this.lastLoggedCount) >= 10;
+    const timeElapsed = now - this.lastLogTime > 2000;
+    
+    if (countChanged || timeElapsed) {
       console.log(`⚡ [GlobalLimiter] ${this.currentRequests}/${this.maxConcurrent} concurrent, ${this.queue.length} queued`);
+      this.lastLoggedCount = this.currentRequests;
+      this.lastLogTime = now;
     }
 
     try {

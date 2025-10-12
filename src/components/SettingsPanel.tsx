@@ -276,9 +276,9 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
               </label>
               <input
                 type="number"
-                step="10"
+                step="50"
                 min="5"
-                max="500"
+                max="2000"
                 value={globalMaxConcurrent}
                 onChange={(e) => setGlobalMaxConcurrent(e.target.value)}
                 className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
@@ -291,10 +291,11 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
                 <div>• 10-20 = Safe, matches server count ✓</div>
                 <div>• 30-50 = Faster, may cause bursts</div>
                 <div className="font-semibold text-purple-400 mt-2">With Proxy Rotation (10k proxies):</div>
-                <div>• 50-100 = Good balance</div>
-                <div>• 200-300 = Fast, recommended ✓</div>
-                <div>• 400-500 = Maximum speed</div>
-                <div className="text-yellow-500 mt-2">⚠️ High values use more RAM/CPU</div>
+                <div>• 100-200 = Good balance</div>
+                <div>• 300-500 = Fast, recommended ✓</div>
+                <div>• 500-1000 = Very fast</div>
+                <div>• 1000-2000 = Maximum speed 🚀</div>
+                <div className="text-yellow-500 mt-2">⚠️ Very high values (&gt;1000) use significant RAM/CPU</div>
               </div>
             </div>
           </div>
