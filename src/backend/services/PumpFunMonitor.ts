@@ -3,6 +3,7 @@ import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { WalletRateLimiter } from './WalletRateLimiter.js';
+import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
 import { EventEmitter } from 'events';
 
 // Pump.fun program ID
@@ -13,6 +14,7 @@ export class PumpFunMonitor extends EventEmitter {
   private activeSubscriptions: Map<string, number> = new Map();
   private isBackfilling: Map<string, boolean> = new Map();
   private rateLimiters: Map<string, WalletRateLimiter> = new Map();
+  private metadataFetcher: TokenMetadataFetcher;
 
   constructor() {
     super();
@@ -23,6 +25,9 @@ export class PumpFunMonitor extends EventEmitter {
       './proxies.txt',
       'PumpFunMonitor'
     );
+    
+    // Initialize metadata fetcher with direct connection (metadata fetching doesn't need proxies)
+    this.metadataFetcher = new TokenMetadataFetcher(this.proxiedConnection.getDirectConnection());
     
     console.log(`🎯 [PumpFunMonitor] Proxy mode: ${this.proxiedConnection.isProxyEnabled() ? 'ENABLED ✅' : 'DISABLED'}`);
     console.log(`🎛️  [PumpFunMonitor] Using Global Concurrency Limiter for request pacing`);
@@ -539,15 +544,23 @@ export class PumpFunMonitor extends EventEmitter {
     }
   }
 
-  private async fetchTokenMetadata(_mintAddress: string): Promise<{ name?: string; symbol?: string }> {
+  private async fetchTokenMetadata(mintAddress: string): Promise<{ name?: string; symbol?: string }> {
     try {
-      // In production, you'd fetch metadata from Metaplex or pump.fun API
-      // For now, return basic info
-      return {
-        name: undefined,
-        symbol: undefined
-      };
+      console.log(`🔍 [PumpFun] Fetching metadata for ${mintAddress.slice(0, 8)}...`);
+      const metadata = await this.metadataFetcher.fetchMetadata(mintAddress);
+      
+      if (metadata) {
+        console.log(`✅ [PumpFun] Metadata found: ${metadata.name || 'N/A'} (${metadata.symbol || 'N/A'})`);
+        return {
+          name: metadata.name,
+          symbol: metadata.symbol
+        };
+      }
+      
+      console.log(`⚠️ [PumpFun] No metadata found for ${mintAddress.slice(0, 8)}...`);
+      return {};
     } catch (error) {
+      console.error(`❌ [PumpFun] Error fetching metadata:`, error);
       return {};
     }
   }
