@@ -448,8 +448,8 @@ export function TestDevWalletPanel() {
                 </div>
               )}
 
-              {/* DeFi Analysis Section */}
-              {result.analysis?.isDevWallet && (
+              {/* DeFi Analysis Section - DISABLED FOR DEBUGGING */}
+              {false && result && result.analysis?.isDevWallet && (
                 <div className="space-y-3">
                   <button
                     onClick={() => {
