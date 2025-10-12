@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Settings, Circle } from 'lucide-react';
+import { Settings, Circle, Wallet, Flame } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
 import { SettingsPanel } from './SettingsPanel';
 import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
+import { TokensTab } from './TokensTab';
+
+type Tab = 'wallets' | 'tokens';
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('wallets');
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
@@ -101,16 +105,48 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="space-y-6">
-          {/* Recent Token Mints */}
-          <RecentTokenMints />
-          
-          {/* Wallet Monitoring Hub */}
-          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
-            <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('wallets')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'wallets'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+            }`}
+          >
+            <Wallet className="w-5 h-5" />
+            Wallet Monitoring
+          </button>
+          <button
+            onClick={() => setActiveTab('tokens')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'tokens'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+            }`}
+          >
+            <Flame className="w-5 h-5" />
+            Token Launch History
+          </button>
         </div>
+
+        {/* Main Content */}
+        {activeTab === 'wallets' ? (
+          <div className="space-y-6">
+            {/* Recent Token Mints */}
+            <RecentTokenMints />
+            
+            {/* Wallet Monitoring Hub */}
+            <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+              <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+            <TokensTab />
+          </div>
+        )}
       </div>
     </div>
   );
