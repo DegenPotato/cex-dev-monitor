@@ -31,6 +31,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletLabel, setNewWalletLabel] = useState('');
+  const [newWalletMonitoringType, setNewWalletMonitoringType] = useState<'pumpfun' | 'trading'>('pumpfun');
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [filterBy, setFilterBy] = useState<FilterBy>('all');
 
@@ -148,11 +149,13 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
         body: JSON.stringify({
           address: newWalletAddress.trim(),
           label: newWalletLabel.trim() || null,
-          source: 'manual'
+          source: 'manual',
+          monitoring_type: newWalletMonitoringType
         })
       });
       setNewWalletAddress('');
       setNewWalletLabel('');
+      setNewWalletMonitoringType('pumpfun'); // Reset to default
       setShowAddWallet(false);
       fetchWallets();
       onUpdate();
@@ -325,11 +328,14 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
 
       {/* Add Wallet Form */}
       {showAddWallet && (
-        <div className="bg-slate-700/50 border border-purple-500/30 rounded-lg p-4 mb-6">
-          <h3 className="text-white font-semibold mb-4">Add New Wallet</h3>
+        <div className="bg-slate-700/50 border border-purple-500/30 rounded-lg p-6 mb-6">
+          <h3 className="text-white font-semibold mb-4 text-lg">Add New Wallet to Monitor</h3>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Wallet Address *</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Wallet Address *
+              </label>
               <input
                 type="text"
                 value={newWalletAddress}
@@ -339,7 +345,9 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Label (Optional)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Label (Optional)
+              </label>
               <input
                 type="text"
                 value={newWalletLabel}
@@ -349,17 +357,96 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
               />
             </div>
           </div>
+
+          {/* Monitoring Type Selector */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              Monitoring Type *
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Pumpfun Launches */}
+              <button
+                onClick={() => setNewWalletMonitoringType('pumpfun')}
+                className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                  newWalletMonitoringType === 'pumpfun'
+                    ? 'border-purple-500 bg-purple-500/20'
+                    : 'border-slate-600 bg-slate-700/30 hover:border-purple-500/50'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-purple-400" />
+                    <h4 className="text-white font-semibold">Pumpfun Launches</h4>
+                  </div>
+                  {newWalletMonitoringType === 'pumpfun' && (
+                    <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm text-gray-400">
+                  Track token deployments/mints on Pumpfun. Ideal for dev wallet detection.
+                </p>
+                <div className="mt-2 text-xs text-purple-400">
+                  ✓ Tested & Working
+                </div>
+              </button>
+
+              {/* Trading Activity */}
+              <button
+                onClick={() => setNewWalletMonitoringType('trading')}
+                className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                  newWalletMonitoringType === 'trading'
+                    ? 'border-blue-500 bg-blue-500/20'
+                    : 'border-slate-600 bg-slate-700/30 hover:border-blue-500/50'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-blue-400" />
+                    <h4 className="text-white font-semibold">Trading Activity</h4>
+                  </div>
+                  {newWalletMonitoringType === 'trading' && (
+                    <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm text-gray-400">
+                  Comprehensive buy/sell tracking across all DEXs. Full trading history & PnL analysis.
+                </p>
+                <div className="mt-2 text-xs text-amber-400">
+                  🧪 Testing Phase
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Info Box */}
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+            <p className="text-xs text-blue-300">
+              <strong>Note:</strong> These monitoring types are separate for testing. Eventually, they'll be combined into one efficient listener that tracks everything (minus spam) with historical backfill + real-time updates.
+            </p>
+          </div>
+
           <div className="flex gap-2">
             <button
               onClick={addWallet}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add Wallet
             </button>
             <button
-              onClick={() => setShowAddWallet(false)}
-              className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              onClick={() => {
+                setShowAddWallet(false);
+                setNewWalletMonitoringType('pumpfun'); // Reset to default
+              }}
+              className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
             >
               Cancel
             </button>
