@@ -71,9 +71,11 @@ export class DevWalletAnalyzer {
           console.log(`   Progress: ${checkedCount}/${signatures.length} checked, ${deployments.length} mints found`);
         }
 
-        // Request pacing: configurable delay between requests
-        // This spreads requests over time instead of instant burst
-        await this.delay(this.requestDelayMs);
+        // Request pacing: Only needed for RPC rotation mode
+        // Proxies don't need pacing - they're already isolated by IP
+        if (globalRPCServerRotator.isEnabled()) {
+          await this.delay(this.requestDelayMs);
+        }
 
         const tx = await this.proxiedConnection.withProxy(conn =>
           conn.getParsedTransaction(sigInfo.signature, {
