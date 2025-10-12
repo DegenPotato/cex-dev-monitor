@@ -122,8 +122,8 @@ export function DevWalletList({ devWallets }: DevWalletListProps) {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    // Open dev wallet detail view in new tab
-                    window.open(`/dev/${wallet.address}`, '_blank');
+                    // Open Solscan DeFi activities page
+                    window.open(`https://solscan.io/account/${wallet.address}?page_size=100#defiactivities`, '_blank');
                   }}
                   className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg transition-colors text-sm font-medium"
                 >

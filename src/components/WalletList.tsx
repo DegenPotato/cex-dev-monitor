@@ -1,5 +1,5 @@
 import { MonitoredWallet } from '../types';
-import { ExternalLink, Power, Sparkles, Calendar, Activity } from 'lucide-react';
+import { ExternalLink, Power, Sparkles, Calendar, Activity, Flame } from 'lucide-react';
 import { apiUrl } from '../config';
 
 interface WalletListProps {
@@ -28,7 +28,7 @@ export function WalletList({ wallets, onUpdate }: WalletListProps) {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-4">Monitored Wallets</h2>
+      <h2 className="text-2xl font-bold text-white mb-4">Recipient Wallets</h2>
       
       {wallets.length === 0 ? (
         <div className="text-center py-12">
@@ -65,6 +65,12 @@ export function WalletList({ wallets, onUpdate }: WalletListProps) {
                         <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
                           Fresh Wallet
+                        </span>
+                      )}
+                      {wallet.is_dev_wallet === 1 && (
+                        <span className="bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                          <Flame className="w-3 h-3" />
+                          Dev Wallet
                         </span>
                       )}
                     </div>
