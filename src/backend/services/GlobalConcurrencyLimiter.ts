@@ -9,11 +9,25 @@ export class GlobalConcurrencyLimiter {
   private currentRequests: number = 0;
   private queue: Array<() => void> = [];
   private enabled: boolean = true;
-  private lastLoggedCount: number = 0;
-  private lastLogTime: number = 0;
+  private periodicLogger: NodeJS.Timeout | null = null;
 
   constructor(maxConcurrent: number = 20) {
     this.maxConcurrent = maxConcurrent;
+    this.startPeriodicLogging();
+  }
+
+  /**
+   * Start periodic logging of current state (every 3 seconds)
+   */
+  private startPeriodicLogging(): void {
+    if (this.periodicLogger) return;
+    
+    this.periodicLogger = setInterval(() => {
+      if (this.currentRequests > 0 || this.queue.length > 0) {
+        const utilization = ((this.currentRequests / this.maxConcurrent) * 100).toFixed(1);
+        console.log(`⚡ [GlobalLimiter] ${this.currentRequests}/${this.maxConcurrent} concurrent (${utilization}%), ${this.queue.length} queued`);
+      }
+    }, 3000); // Log every 3 seconds if there's activity
   }
 
   /**
@@ -73,17 +87,6 @@ export class GlobalConcurrencyLimiter {
 
     // Acquire slot
     this.currentRequests++;
-    
-    // Log when concurrent count changes significantly OR every 2 seconds
-    const now = Date.now();
-    const countChanged = Math.abs(this.currentRequests - this.lastLoggedCount) >= 10;
-    const timeElapsed = now - this.lastLogTime > 2000;
-    
-    if (countChanged || timeElapsed) {
-      console.log(`⚡ [GlobalLimiter] ${this.currentRequests}/${this.maxConcurrent} concurrent, ${this.queue.length} queued`);
-      this.lastLoggedCount = this.currentRequests;
-      this.lastLogTime = now;
-    }
 
     try {
       const result = await fn();

@@ -348,9 +348,17 @@ app.post('/api/wallets/test-dev', async (req, res) => {
       }
     }
     
+    const finalWallet = await MonitoredWalletProvider.findByAddress(address);
+    
+    console.log(`✅ [Test] Analysis complete for ${address}`);
+    console.log(`   - Is Dev Wallet: ${devAnalysis.isDevWallet}`);
+    console.log(`   - Tokens Deployed: ${devAnalysis.tokensDeployed}`);
+    console.log(`   - Wallet Age: ${finalWallet?.wallet_age_days?.toFixed(1)} days`);
+    console.log(`   - Total TXs: ${finalWallet?.previous_tx_count || 0}`);
+    
     res.json({
       success: true,
-      wallet: await MonitoredWalletProvider.findByAddress(address),
+      wallet: finalWallet,
       analysis: {
         isDevWallet: devAnalysis.isDevWallet,
         tokensDeployed: devAnalysis.tokensDeployed,
@@ -358,8 +366,12 @@ app.post('/api/wallets/test-dev', async (req, res) => {
       }
     });
   } catch (error: any) {
-    console.error('Error analyzing test dev wallet:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ [Test] Error analyzing test dev wallet:', error);
+    console.error('   Stack:', error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: error.message || 'Unknown error during analysis' 
+    });
   }
 });
 

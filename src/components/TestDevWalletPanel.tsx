@@ -50,10 +50,17 @@ export function TestDevWalletPanel() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
+      
+      // Check if backend returned an error
+      if (!data.success && data.error) {
+        throw new Error(data.error);
+      }
+      
       setResult(data);
 
       // Auto-trigger DeFi analysis if it's a dev wallet
@@ -62,6 +69,7 @@ export function TestDevWalletPanel() {
         await analyzeDeFi();
       }
     } catch (error: any) {
+      console.error('Dev wallet analysis error:', error);
       setResult({
         success: false,
         error: error.message || 'Failed to fetch'
