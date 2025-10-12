@@ -60,30 +60,42 @@ export class DevWalletAnalyzer {
 
       console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions...`);
 
-      let checkedCount = 0;
       let pumpfunTxCount = 0;
-
-      for (const sigInfo of signatures) {
-        checkedCount++;
-
-        // Progress update every 100 transactions
-        if (checkedCount % 100 === 0) {
-          console.log(`   Progress: ${checkedCount}/${signatures.length} checked, ${deployments.length} mints found`);
+      
+      // Process transactions in parallel batches for maximum speed
+      // Batch size matches global concurrency limit for optimal throughput
+      const batchSize = 50; // Process 50 at a time
+      
+      for (let i = 0; i < signatures.length; i += batchSize) {
+        const batch = signatures.slice(i, Math.min(i + batchSize, signatures.length));
+        
+        // Progress update
+        if (i % 100 === 0 && i > 0) {
+          console.log(`   Progress: ${i}/${signatures.length} checked, ${deployments.length} mints found`);
         }
 
         // Request pacing: Only needed for RPC rotation mode
-        // Proxies don't need pacing - they're already isolated by IP
         if (globalRPCServerRotator.isEnabled()) {
           await this.delay(this.requestDelayMs);
         }
 
-        const tx = await this.proxiedConnection.withProxy(conn =>
-          conn.getParsedTransaction(sigInfo.signature, {
-            maxSupportedTransactionVersion: 0
-          })
+        // Process batch in parallel
+        const txResults = await Promise.all(
+          batch.map(sigInfo =>
+            this.proxiedConnection.withProxy(conn =>
+              conn.getParsedTransaction(sigInfo.signature, {
+                maxSupportedTransactionVersion: 0
+              })
+            ).catch(() => null) // Handle errors gracefully
+          )
         );
 
-        if (!tx || !tx.meta || tx.meta.err) continue;
+        // Process each transaction result
+        for (let j = 0; j < txResults.length; j++) {
+          const tx = txResults[j];
+          const sigInfo = batch[j];
+          
+          if (!tx || !tx.meta || tx.meta.err) continue;
 
         const accountKeys = tx.transaction.message.accountKeys;
 
@@ -149,11 +161,6 @@ export class DevWalletAnalyzer {
 
           console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
         }
-
-        // Add small delay only for RPC rotation mode (not needed with proxies)
-        // RPC servers have stricter rate limits, so we pace requests conservatively
-        if (globalRPCServerRotator.isEnabled() && checkedCount % 10 === 0) {
-          await this.delay(100); // 100ms every 10 txs for RPC mode
         }
       }
 
