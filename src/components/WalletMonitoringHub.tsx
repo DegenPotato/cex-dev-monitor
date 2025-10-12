@@ -18,6 +18,7 @@ interface MonitoredWallet {
   transaction_count?: number;
   is_dev?: number;
   dev_tokens_count?: number;
+  monitoring_type?: string;
 }
 
 type SortBy = 'date' | 'activity' | 'status' | 'label';
@@ -516,12 +517,33 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                         {wallet.label && (
                           <div className="text-xs text-gray-400 mt-1">{wallet.label}</div>
                         )}
-                        {wallet.is_dev === 1 && (
-                          <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded mt-1">
-                            <Flame className="w-3 h-3" />
-                            Dev • {wallet.dev_tokens_count || 0} tokens
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          {wallet.is_dev === 1 && (
+                            <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded">
+                              <Flame className="w-3 h-3" />
+                              Dev • {wallet.dev_tokens_count || 0} tokens
+                            </span>
+                          )}
+                          {wallet.monitoring_type && (
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${
+                              wallet.monitoring_type === 'pumpfun' 
+                                ? 'bg-purple-500/20 text-purple-400' 
+                                : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {wallet.monitoring_type === 'pumpfun' ? (
+                                <>
+                                  <Flame className="w-3 h-3" />
+                                  Pumpfun
+                                </>
+                              ) : (
+                                <>
+                                  <Activity className="w-3 h-3" />
+                                  Trading
+                                </>
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
