@@ -1271,6 +1271,32 @@ app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
   }
 });
 
+// Wipe market cap data for all tokens
+app.post('/api/tokens/wipe-mcap-data', async (_req, res) => {
+  try {
+    const tokens = await TokenMintProvider.findAll();
+    
+    let updated = 0;
+    for (const token of tokens) {
+      await TokenMintProvider.update(token.mint_address, {
+        starting_mcap: null,
+        current_mcap: null,
+        ath_mcap: null,
+        last_updated: null
+      });
+      updated++;
+    }
+    
+    res.json({
+      success: true,
+      message: `Wiped market cap data for ${updated} tokens`,
+      tokensUpdated: updated
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Re-fetch metadata for all existing tokens
 app.post('/api/tokens/refetch-all-metadata', async (_req, res) => {
   try {
