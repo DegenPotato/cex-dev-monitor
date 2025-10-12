@@ -1249,6 +1249,27 @@ app.get('/api/market-data/test/:addresses', async (req, res) => {
   }
 });
 
+// Test GeckoTerminal API for a token
+app.get('/api/market-data/test-gecko/:tokenAddress', async (req, res) => {
+  try {
+    const { tokenAddress } = req.params;
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenAddress}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    res.json({
+      api: 'GeckoTerminal',
+      url,
+      status: response.status,
+      tokenAddress,
+      response: data
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Test token metadata fetching
 app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
   try {
@@ -1279,10 +1300,10 @@ app.post('/api/tokens/wipe-mcap-data', async (_req, res) => {
     let updated = 0;
     for (const token of tokens) {
       await TokenMintProvider.update(token.mint_address, {
-        starting_mcap: null,
-        current_mcap: null,
-        ath_mcap: null,
-        last_updated: null
+        starting_mcap: undefined,
+        current_mcap: undefined,
+        ath_mcap: undefined,
+        last_updated: undefined
       });
       updated++;
     }
