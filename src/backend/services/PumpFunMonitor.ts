@@ -10,7 +10,6 @@ const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 export class PumpFunMonitor extends EventEmitter {
   private proxiedConnection: ProxiedSolanaConnection;
   private checkIntervals: Map<string, NodeJS.Timeout> = new Map();
-  private requestDelayMs: number = 15; // Default 15ms, configurable
 
   constructor() {
     super();
@@ -23,14 +22,7 @@ export class PumpFunMonitor extends EventEmitter {
     );
     
     console.log(`🎯 [PumpFunMonitor] Proxy mode: ${this.proxiedConnection.isProxyEnabled() ? 'ENABLED ✅' : 'DISABLED'}`);
-  }
-
-  /**
-   * Update request pacing delay
-   */
-  setRequestDelay(delayMs: number): void {
-    this.requestDelayMs = delayMs;
-    console.log(`🎛️  [PumpFunMonitor] Request delay updated to ${delayMs}ms`);
+    console.log(`🎛️  [PumpFunMonitor] Using Global Concurrency Limiter for request pacing`);
   }
 
   getProxiedConnection(): ProxiedSolanaConnection {
@@ -76,9 +68,7 @@ export class PumpFunMonitor extends EventEmitter {
       );
 
       for (const sigInfo of signatures) {
-        // Request pacing: configurable delay between requests
-        await new Promise(resolve => setTimeout(resolve, this.requestDelayMs));
-        
+        // Global Concurrency Limiter handles all request pacing now
         const tx = await this.proxiedConnection.withProxy(conn =>
           conn.getParsedTransaction(sigInfo.signature, {
             maxSupportedTransactionVersion: 0

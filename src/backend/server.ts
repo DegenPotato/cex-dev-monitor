@@ -20,6 +20,12 @@ import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 
 const app = express();
 const server = createServer(app);
+
+// CRITICAL: Remove default 2-minute timeout for long-running requests
+server.timeout = 0; // Disable timeout completely
+server.keepAliveTimeout = 0; // Disable keep-alive timeout
+server.headersTimeout = 0; // Disable headers timeout
+
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 // CORS configuration - allow all origins (we're behind Cloudflare)
@@ -78,15 +84,8 @@ const pumpFunMonitor = new PumpFunMonitor();
 // Load request pacing configuration from database
 (async () => {
   try {
-    const savedDelay = await ConfigProvider.get('request_pacing_delay_ms');
-    if (savedDelay) {
-      const delayMs = parseInt(savedDelay);
-      solanaMonitor.getDevWalletAnalyzer().setRequestDelay(delayMs);
-      pumpFunMonitor.setRequestDelay(delayMs);
-      console.log(`🎛️  [Init] Request pacing loaded: ${delayMs}ms`);
-    } else {
-      console.log(`🎛️  [Init] Using default request pacing: 15ms`);
-    }
+    // Request pacing now handled by Global Concurrency Limiter
+    console.log(`🎛️  [Init] Request pacing controlled by Global Concurrency Limiter`);
   } catch (error) {
     console.error('⚠️  [Init] Error loading request pacing config:', error);
   }
@@ -898,15 +897,15 @@ app.post('/api/request-pacing/config', async (req, res) => {
       // Update in database
       await ConfigProvider.set('request_pacing_delay_ms', requestDelayMs.toString());
       
-      // Update in all services
+      // Note: Request pacing now controlled by Global Concurrency Limiter
+      // This endpoint is deprecated but kept for backwards compatibility
       const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
-      devAnalyzer.setRequestDelay(requestDelayMs);
-      pumpFunMonitor.setRequestDelay(requestDelayMs);
+      devAnalyzer.setRequestDelay(requestDelayMs); // No-op
       
       res.json({
         success: true,
         requestDelayMs,
-        message: `Request pacing updated to ${requestDelayMs}ms`
+        message: `Note: Request pacing now controlled by Global Concurrency Limiter. This setting is deprecated.`
       });
     } else {
       res.status(400).json({ error: 'requestDelayMs is required' });
