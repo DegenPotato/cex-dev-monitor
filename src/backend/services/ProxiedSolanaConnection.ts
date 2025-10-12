@@ -118,6 +118,13 @@ export class ProxiedSolanaConnection {
     const usingProxies = !usingRPCRotation && this.useProxies;
     const shouldRateLimit = !usingRPCRotation && !this.useProxies;
     
+    // Set GlobalConcurrencyLimiter to correct mode based on what we're actually using
+    if (usingProxies) {
+      globalConcurrencyLimiter.useProxyRotation();
+    } else {
+      globalConcurrencyLimiter.useRPCRotation();
+    }
+    
     const executeRequest = async () => {
       let lastError: any;
       let retryCount = 0;
