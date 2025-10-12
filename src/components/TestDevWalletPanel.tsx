@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FlaskConical, Loader2, CheckCircle, XCircle, Activity, Coins } from 'lucide-react';
 import { apiUrl } from '../config';
 
@@ -37,6 +37,47 @@ export function TestDevWalletPanel() {
   const [defiProfile, setDefiProfile] = useState<any>(null);
   const [defiLoading, setDefiLoading] = useState(false);
   const [showFullActivityLog, setShowFullActivityLog] = useState(false);
+  const ws = useRef<WebSocket | null>(null);
+
+  // Setup WebSocket connection for receiving results
+  useEffect(() => {
+    const wsUrl = apiUrl('/ws').replace('http', 'ws');
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => {
+      console.log('✅ WebSocket connected for test results');
+    };
+
+    ws.current.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        
+        if (message.type === 'test-dev-complete') {
+          console.log('📡 Received test results via WebSocket');
+          setResult(message.data);
+          setLoading(false);
+        } else if (message.type === 'test-dev-error') {
+          console.error('📡 Received test error via WebSocket');
+          setResult(message.data);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('WebSocket message parse error:', err);
+      }
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    ws.current.onclose = () => {
+      console.log('❌ WebSocket disconnected');
+    };
+
+    return () => {
+      ws.current?.close();
+    };
+  }, []);
 
   const handleAnalyze = async () => {
     if (!address) {
@@ -50,6 +91,7 @@ export function TestDevWalletPanel() {
     setDefiProfile(null);
 
     try {
+      // Fire and forget - results come via WebSocket
       const response = await fetch(apiUrl('/api/wallets/test-dev'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,26 +108,15 @@ export function TestDevWalletPanel() {
       }
 
       const data = await response.json();
+      console.log('✅ Analysis started:', data.message);
       
-      // Check if backend returned an error
-      if (!data.success && data.error) {
-        throw new Error(data.error);
-      }
-      
-      setResult(data);
-
-      // Auto-trigger DeFi analysis if it's a dev wallet
-      if (data.success && data.analysis?.isDevWallet) {
-        setShowDefiAnalysis(true);
-        await analyzeDeFi();
-      }
+      // Loading continues until WebSocket delivers results
     } catch (error: any) {
       console.error('Dev wallet analysis error:', error);
       setResult({
         success: false,
         error: error.message || 'Network error - check if backend is running'
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -448,8 +479,8 @@ export function TestDevWalletPanel() {
                 </div>
               )}
 
-              {/* DeFi Analysis Section - DISABLED FOR DEBUGGING */}
-              {false && result && result.analysis?.isDevWallet && (
+              {/* DeFi Analysis Section - COMPLETELY DISABLED */}
+              {false && (
                 <div className="space-y-3">
                   <button
                     onClick={() => {

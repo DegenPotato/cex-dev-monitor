@@ -268,98 +268,132 @@ app.post('/api/wallets/test-dev', async (req, res) => {
     return res.status(400).json({ error: 'Wallet address is required' });
   }
 
-  try {
-    console.log(`🧪 [Test] Adding test dev wallet: ${address} (limit: ${limit || 1000})`);
-    
-    // Fetch wallet info from blockchain first
-    const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
-    const proxiedConnection = walletAnalyzer.getProxiedConnection();
-    
-    // Fetch transaction count and age
-    const pubkey = new PublicKey(address);
-    const signatures = await proxiedConnection.withProxy(conn => 
-      conn.getSignaturesForAddress(pubkey, { limit: 10 })
-    );
-    
-    const txCount = signatures.length;
-    const firstTxTime = signatures.length > 0 ? (signatures[signatures.length - 1].blockTime || 0) * 1000 : Date.now();
-    const walletAgeDays = (Date.now() - firstTxTime) / (1000 * 60 * 60 * 24);
-    const isFresh = txCount < 10 && walletAgeDays < 7;
-    
-    // Check if wallet already exists
-    let wallet = await MonitoredWalletProvider.findByAddress(address);
-    
-    if (!wallet) {
-      // Create new wallet entry with fetched data
-      await MonitoredWalletProvider.create({
-        address,
-        source: name || 'manual_test',
-        first_seen: Date.now(),
-        is_active: 1,
-        is_fresh: isFresh ? 1 : 0,
-        previous_tx_count: txCount,
-        wallet_age_days: walletAgeDays,
-        is_dev_wallet: 0,
-        tokens_deployed: 0,
-        dev_checked: 0
+  // Respond immediately - analysis runs in background
+  res.json({
+    success: true,
+    message: 'Analysis started - results will be broadcast via WebSocket when complete',
+    address
+  });
+
+  // Run analysis asynchronously
+  (async () => {
+    try {
+      console.log(`🧪 [Test] Adding test dev wallet: ${address} (limit: ${limit || 1000})`);
+      
+      // Fetch wallet info from blockchain first
+      const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
+      const proxiedConnection = walletAnalyzer.getProxiedConnection();
+      
+      // Fetch transaction count and age
+      const pubkey = new PublicKey(address);
+      const signatures = await proxiedConnection.withProxy(conn => 
+        conn.getSignaturesForAddress(pubkey, { limit: 10 })
+      );
+      
+      const txCount = signatures.length;
+      const firstTxTime = signatures.length > 0 ? (signatures[signatures.length - 1].blockTime || 0) * 1000 : Date.now();
+      const walletAgeDays = (Date.now() - firstTxTime) / (1000 * 60 * 60 * 24);
+      const isFresh = txCount < 10 && walletAgeDays < 7;
+      
+      // Check if wallet already exists
+      let wallet = await MonitoredWalletProvider.findByAddress(address);
+      
+      if (!wallet) {
+        // Create new wallet entry with fetched data
+        await MonitoredWalletProvider.create({
+          address,
+          source: name || 'manual_test',
+          first_seen: Date.now(),
+          is_active: 1,
+          is_fresh: isFresh ? 1 : 0,
+          previous_tx_count: txCount,
+          wallet_age_days: walletAgeDays,
+          is_dev_wallet: 0,
+          tokens_deployed: 0,
+          dev_checked: 0
+        });
+        
+        wallet = await MonitoredWalletProvider.findByAddress(address);
+      }
+      
+      // Trigger dev wallet analysis with custom limit
+      console.log(`🔬 [Test] Starting dev analysis for ${address}...`);
+      const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
+      const devAnalysis = await devAnalyzer.analyzeDevHistory(address, limit || 1000);
+      
+      // Update wallet with results
+      await MonitoredWalletProvider.update(address, {
+        is_dev_wallet: devAnalysis.isDevWallet ? 1 : 0,
+        tokens_deployed: devAnalysis.tokensDeployed,
+        dev_checked: 1
       });
       
-      wallet = await MonitoredWalletProvider.findByAddress(address);
-    }
-    
-    // Trigger dev wallet analysis with custom limit
-    console.log(`🔬 [Test] Starting dev analysis for ${address}...`);
-    const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
-    const devAnalysis = await devAnalyzer.analyzeDevHistory(address, limit || 1000);
-    
-    // Update wallet with results
-    await MonitoredWalletProvider.update(address, {
-      is_dev_wallet: devAnalysis.isDevWallet ? 1 : 0,
-      tokens_deployed: devAnalysis.tokensDeployed,
-      dev_checked: 1
-    });
-    
-    // Save tokens if dev wallet
-    if (devAnalysis.isDevWallet && devAnalysis.deployments.length > 0) {
-      for (const deployment of devAnalysis.deployments) {
-        const existing = await TokenMintProvider.findByMintAddress(deployment.mintAddress);
-        if (!existing) {
-          await TokenMintProvider.create({
-            mint_address: deployment.mintAddress,
-            creator_address: address,
-            timestamp: deployment.timestamp,
-            platform: 'pumpfun',
-            signature: deployment.signature
-          });
+      // Save tokens if dev wallet
+      if (devAnalysis.isDevWallet && devAnalysis.deployments.length > 0) {
+        for (const deployment of devAnalysis.deployments) {
+          const existing = await TokenMintProvider.findByMintAddress(deployment.mintAddress);
+          if (!existing) {
+            await TokenMintProvider.create({
+              mint_address: deployment.mintAddress,
+              creator_address: address,
+              timestamp: deployment.timestamp,
+              platform: 'pumpfun',
+              signature: deployment.signature
+            });
+          }
         }
       }
+      
+      const finalWallet = await MonitoredWalletProvider.findByAddress(address);
+      
+      console.log(`✅ [Test] Analysis complete for ${address}`);
+      console.log(`   - Is Dev Wallet: ${devAnalysis.isDevWallet}`);
+      console.log(`   - Tokens Deployed: ${devAnalysis.tokensDeployed}`);
+      console.log(`   - Wallet Age: ${finalWallet?.wallet_age_days?.toFixed(1)} days`);
+      console.log(`   - Total TXs: ${finalWallet?.previous_tx_count || 0}`);
+      
+      // Broadcast results to all connected WebSocket clients
+      const resultPayload = {
+        type: 'test-dev-complete',
+        data: {
+          success: true,
+          wallet: finalWallet,
+          analysis: {
+            isDevWallet: devAnalysis.isDevWallet,
+            tokensDeployed: devAnalysis.tokensDeployed,
+            deployments: devAnalysis.deployments,
+            activities: devAnalysis.activities
+          }
+        }
+      };
+      
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(resultPayload));
+        }
+      });
+      
+      console.log(`📡 [Test] Results broadcast to ${wss.clients.size} WebSocket clients`);
+      
+    } catch (error: any) {
+      console.error('❌ [Test] Error analyzing test dev wallet:', error);
+      console.error('   Stack:', error.stack);
+      
+      // Broadcast error to clients
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'test-dev-error',
+            data: {
+              success: false,
+              address,
+              error: error.message || 'Unknown error during analysis'
+            }
+          }));
+        }
+      });
     }
-    
-    const finalWallet = await MonitoredWalletProvider.findByAddress(address);
-    
-    console.log(`✅ [Test] Analysis complete for ${address}`);
-    console.log(`   - Is Dev Wallet: ${devAnalysis.isDevWallet}`);
-    console.log(`   - Tokens Deployed: ${devAnalysis.tokensDeployed}`);
-    console.log(`   - Wallet Age: ${finalWallet?.wallet_age_days?.toFixed(1)} days`);
-    console.log(`   - Total TXs: ${finalWallet?.previous_tx_count || 0}`);
-    
-    res.json({
-      success: true,
-      wallet: finalWallet,
-      analysis: {
-        isDevWallet: devAnalysis.isDevWallet,
-        tokensDeployed: devAnalysis.tokensDeployed,
-        deployments: devAnalysis.deployments
-      }
-    });
-  } catch (error: any) {
-    console.error('❌ [Test] Error analyzing test dev wallet:', error);
-    console.error('   Stack:', error.stack);
-    res.status(500).json({ 
-      success: false,
-      error: error.message || 'Unknown error during analysis' 
-    });
-  }
+  })();
 });
 
 // Analyze wallet's DeFi activities
