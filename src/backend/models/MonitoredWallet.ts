@@ -11,6 +11,8 @@ export interface MonitoredWallet {
   is_dev_wallet: number;
   tokens_deployed: number;
   dev_checked: number;
+  history_checked?: number;
+  last_history_check?: number;
   label?: string;
   monitoring_type?: string;
   metadata?: string;

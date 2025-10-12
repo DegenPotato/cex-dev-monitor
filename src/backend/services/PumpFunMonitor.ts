@@ -9,7 +9,8 @@ const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
 export class PumpFunMonitor extends EventEmitter {
   private proxiedConnection: ProxiedSolanaConnection;
-  private checkIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private activeSubscriptions: Map<string, number> = new Map();
+  private isBackfilling: Map<string, boolean> = new Map();
 
   constructor() {
     super();
@@ -30,57 +31,157 @@ export class PumpFunMonitor extends EventEmitter {
   }
 
   async startMonitoringWallet(walletAddress: string): Promise<void> {
-    if (this.checkIntervals.has(walletAddress)) {
-      console.log(`Already monitoring pump.fun for ${walletAddress}`);
+    if (this.activeSubscriptions.has(walletAddress)) {
+      console.log(`⚠️  Already monitoring pump.fun for ${walletAddress.slice(0, 8)}...`);
       return;
     }
 
-    console.log(`🎯 Started pump.fun monitoring for ${walletAddress}`);
+    console.log(`🎯 [PumpFun] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
 
-    // Initial check
-    await this.checkWalletForPumpFun(walletAddress);
+    // Check if wallet needs historical backfill
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+    
+    if (!wallet?.dev_checked) {
+      // Step 1: Historical backfill (fetch ALL past transactions)
+      console.log(`📚 [Backfill] Fetching historical data for ${walletAddress.slice(0, 8)}...`);
+      await this.backfillWalletHistory(walletAddress);
+    } else {
+      console.log(`✅ [Backfill] Wallet ${walletAddress.slice(0, 8)}... already backfilled`);
+    }
 
-    // Set up periodic checks (every 30 seconds)
-    // Note: For true real-time, we'd need to monitor program logs
-    const interval = setInterval(async () => {
-      await this.checkWalletForPumpFun(walletAddress);
-    }, 30000);
-
-    this.checkIntervals.set(walletAddress, interval);
+    // Step 2: Start real-time monitoring (websocket subscription)
+    await this.startRealtimeMonitoring(walletAddress);
   }
 
-  stopMonitoringWallet(walletAddress: string): void {
-    const interval = this.checkIntervals.get(walletAddress);
-    if (interval) {
-      clearInterval(interval);
-      this.checkIntervals.delete(walletAddress);
-      console.log(`⛔ Stopped pump.fun monitoring for ${walletAddress}`);
+  async stopMonitoringWallet(walletAddress: string): Promise<void> {
+    const subscriptionId = this.activeSubscriptions.get(walletAddress);
+    if (subscriptionId !== undefined) {
+      await this.proxiedConnection.withProxy(async conn => {
+        await conn.removeAccountChangeListener(subscriptionId);
+      });
+      this.activeSubscriptions.delete(walletAddress);
+      console.log(`⛔ [PumpFun] Stopped monitoring ${walletAddress.slice(0, 8)}...`);
     }
   }
 
-  private async checkWalletForPumpFun(walletAddress: string): Promise<void> {
+  /**
+   * Step 1: Historical Backfill
+   * Fetches ALL past transactions and extracts Pumpfun mints
+   */
+  private async backfillWalletHistory(walletAddress: string): Promise<void> {
+    this.isBackfilling.set(walletAddress, true);
+    
     try {
       const publicKey = new PublicKey(walletAddress);
-      
-      // Fetch signatures with proxy
-      const signatures = await this.proxiedConnection.withProxy(conn =>
-        conn.getSignaturesForAddress(publicKey, { limit: 20 })
-      );
+      let totalProcessed = 0;
+      let mintsFound = 0;
+      let lastSignature: string | undefined;
+      let hasMore = true;
 
-      for (const sigInfo of signatures) {
-        // Global Concurrency Limiter handles all request pacing now
-        const tx = await this.proxiedConnection.withProxy(conn =>
-          conn.getParsedTransaction(sigInfo.signature, {
-            maxSupportedTransactionVersion: 0
+      console.log(`📚 [Backfill] Starting full historical scan for ${walletAddress.slice(0, 8)}...`);
+
+      while (hasMore) {
+        // Fetch signatures in batches of 1000 (Solana max)
+        const signatures = await this.proxiedConnection.withProxy(conn =>
+          conn.getSignaturesForAddress(publicKey, {
+            limit: 1000,
+            before: lastSignature
           })
         );
 
-        if (tx) {
-          await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+        if (signatures.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        console.log(`📚 [Backfill] Processing batch of ${signatures.length} transactions...`);
+
+        // Process each transaction
+        for (const sigInfo of signatures) {
+          const tx = await this.proxiedConnection.withProxy(conn =>
+            conn.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0
+            })
+          );
+
+          if (tx) {
+            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+            if (foundMint) mintsFound++;
+          }
+          
+          totalProcessed++;
+        }
+
+        // Update last signature for pagination
+        lastSignature = signatures[signatures.length - 1].signature;
+
+        // Stop if we got less than 1000 (means we reached the end)
+        if (signatures.length < 1000) {
+          hasMore = false;
         }
       }
+
+      // Mark wallet as backfilled
+      await MonitoredWalletProvider.update(walletAddress, {
+        dev_checked: 1,
+        last_history_check: Date.now()
+      });
+
+      console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
+      console.log(`   Processed: ${totalProcessed} transactions`);
+      console.log(`   Found: ${mintsFound} Pumpfun token mints`);
+
     } catch (error) {
-      console.error(`Error checking pump.fun mints for ${walletAddress}:`, error);
+      console.error(`❌ [Backfill] Error for ${walletAddress.slice(0, 8)}...:`, error);
+    } finally {
+      this.isBackfilling.set(walletAddress, false);
+    }
+  }
+
+  /**
+   * Step 2: Real-time Monitoring
+   * Uses Solana's onLogs subscription for zero-latency updates
+   */
+  private async startRealtimeMonitoring(walletAddress: string): Promise<void> {
+    try {
+      const publicKey = new PublicKey(walletAddress);
+      
+      console.log(`🔴 [Live] Starting real-time monitoring for ${walletAddress.slice(0, 8)}...`);
+
+      // Subscribe to logs mentioning this wallet address
+      const subscriptionId = await this.proxiedConnection.withProxy(async conn => {
+        return conn.onLogs(
+          publicKey,
+          async (logs, _context) => {
+            // Check if this transaction involves Pumpfun
+            const involvesPumpfun = logs.logs.some(log => 
+              log.includes('Program ' + PUMPFUN_PROGRAM_ID)
+            );
+
+            if (involvesPumpfun) {
+              console.log(`🔴 [Live] Pumpfun activity detected for ${walletAddress.slice(0, 8)}...`);
+              
+              // Fetch and process the full transaction
+              const tx = await this.proxiedConnection.withProxy(conn =>
+                conn.getParsedTransaction(logs.signature, {
+                  maxSupportedTransactionVersion: 0
+                })
+              );
+
+              if (tx) {
+                await this.analyzeTransactionForMint(tx, walletAddress, logs.signature);
+              }
+            }
+          },
+          'confirmed'
+        );
+      });
+
+      this.activeSubscriptions.set(walletAddress, subscriptionId as number);
+      console.log(`✅ [Live] Real-time monitoring active for ${walletAddress.slice(0, 8)}...`);
+
+    } catch (error) {
+      console.error(`❌ [Live] Failed to start monitoring for ${walletAddress.slice(0, 8)}...:`, error);
     }
   }
 
@@ -88,8 +189,8 @@ export class PumpFunMonitor extends EventEmitter {
     tx: ParsedTransactionWithMeta,
     walletAddress: string,
     signature: string
-  ): Promise<void> {
-    if (!tx.meta || tx.meta.err) return;
+  ): Promise<boolean> {
+    if (!tx.meta || tx.meta.err) return false;
 
     // Get the actual blockchain timestamp (launch time)
     const launchTimestamp = tx.blockTime ? tx.blockTime * 1000 : Date.now();
@@ -101,7 +202,9 @@ export class PumpFunMonitor extends EventEmitter {
       key => key.pubkey.toBase58() === PUMPFUN_PROGRAM_ID
     );
 
-    if (!involvesPumpFun) return;
+    if (!involvesPumpFun) return false;
+
+    let mintFound = false;
 
     // Method 1: Check INNER INSTRUCTIONS for mint initialization (THIS IS THE KEY!)
     if (tx.meta.innerInstructions) {
@@ -116,6 +219,7 @@ export class PumpFunMonitor extends EventEmitter {
               
               if (mintAddress) {
                 await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
+                mintFound = true;
               }
             }
           }
@@ -130,9 +234,12 @@ export class PumpFunMonitor extends EventEmitter {
         if (balance.owner === walletAddress && balance.uiTokenAmount.uiAmount && balance.uiTokenAmount.uiAmount > 1000000) {
           const mintAddress = balance.mint;
           await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
+          mintFound = true;
         }
       }
     }
+
+    return mintFound;
   }
 
   // Helper method to process mint detection and avoid duplicates
@@ -213,19 +320,20 @@ export class PumpFunMonitor extends EventEmitter {
     }
   }
 
-  stopAll(): void {
+  async stopAll(): Promise<void> {
     console.log(`⏹️  Stopping all pump.fun monitors...`);
     
-    this.checkIntervals.forEach((interval, walletAddress) => {
-      clearInterval(interval);
-      console.log(`  ❌ Stopped monitoring ${walletAddress.slice(0, 8)}...`);
-    });
+    const walletAddresses = Array.from(this.activeSubscriptions.keys());
     
-    this.checkIntervals.clear();
+    for (const walletAddress of walletAddresses) {
+      await this.stopMonitoringWallet(walletAddress);
+      console.log(`  ❌ Stopped monitoring ${walletAddress.slice(0, 8)}...`);
+    }
+    
     console.log(`✅ All pump.fun monitoring stopped`);
   }
 
   getActiveMonitors(): string[] {
-    return Array.from(this.checkIntervals.keys());
+    return Array.from(this.activeSubscriptions.keys());
   }
 }
