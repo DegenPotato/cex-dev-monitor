@@ -89,10 +89,32 @@ export async function initDatabase() {
       );
     `);
     
-    // Copy data from old table
+    // Copy data from old table with column mapping and defaults for new columns
     db.run(`
-      INSERT INTO monitored_wallets_new 
-      SELECT * FROM monitored_wallets;
+      INSERT INTO monitored_wallets_new (
+        id, address, source, first_seen, last_activity, is_active, is_fresh,
+        wallet_age_days, previous_tx_count, is_dev_wallet, tokens_deployed, dev_checked,
+        metadata, label, monitoring_type, rate_limit_rps, rate_limit_enabled,
+        history_checked, last_history_check, last_processed_signature,
+        last_processed_slot, last_processed_time
+      )
+      SELECT 
+        id, address, source, first_seen, last_activity, is_active, is_fresh,
+        wallet_age_days, previous_tx_count, 
+        COALESCE(is_dev_wallet, 0),
+        COALESCE(tokens_deployed, 0),
+        COALESCE(dev_checked, 0),
+        metadata,
+        COALESCE(label, NULL),
+        COALESCE(monitoring_type, 'pumpfun'),
+        COALESCE(rate_limit_rps, 1),
+        COALESCE(rate_limit_enabled, 1),
+        COALESCE(history_checked, 0),
+        COALESCE(last_history_check, NULL),
+        COALESCE(last_processed_signature, NULL),
+        COALESCE(last_processed_slot, NULL),
+        COALESCE(last_processed_time, NULL)
+      FROM monitored_wallets;
     `);
     
     // Drop old table and rename new one
