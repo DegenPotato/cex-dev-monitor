@@ -1272,7 +1272,7 @@ app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
 });
 
 // Re-fetch metadata for all existing tokens
-app.post('/api/tokens/refetch-all-metadata', async (req, res) => {
+app.post('/api/tokens/refetch-all-metadata', async (_req, res) => {
   try {
     // Get all tokens
     const tokens = await TokenMintProvider.findAll();
