@@ -499,6 +499,51 @@ app.post('/api/wallets', async (req, res) => {
   }
 });
 
+// Fix first_seen timestamp for existing wallets (fetch from blockchain)
+app.post('/api/wallets/:address/fix-timestamp', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const wallet = await MonitoredWalletProvider.findByAddress(address);
+    
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Fetch actual first transaction time from blockchain
+    const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
+    const proxiedConnection = walletAnalyzer.getProxiedConnection();
+    
+    let firstTxTime = Date.now();
+    try {
+      const pubkey = new PublicKey(address);
+      const signatures = await proxiedConnection.withProxy(conn => 
+        conn.getSignaturesForAddress(pubkey, { limit: 10 })
+      );
+      if (signatures.length > 0) {
+        firstTxTime = (signatures[signatures.length - 1].blockTime || 0) * 1000;
+      }
+    } catch (error) {
+      console.error(`⚠️ [API] Could not fetch transaction history for ${address.slice(0, 8)}...`);
+      return res.status(500).json({ error: 'Failed to fetch blockchain data' });
+    }
+
+    // Update wallet
+    await MonitoredWalletProvider.update(address, {
+      first_seen: firstTxTime
+    });
+
+    res.json({ 
+      success: true,
+      message: 'Timestamp updated',
+      old_timestamp: wallet.first_seen,
+      new_timestamp: firstTxTime,
+      first_seen_date: new Date(firstTxTime).toLocaleString()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update wallet rate limit settings
 app.post('/api/wallets/:address/rate-limit', async (req, res) => {
   try {
