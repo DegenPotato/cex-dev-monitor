@@ -303,7 +303,7 @@ app.post('/api/wallets/test-dev', async (req, res) => {
         await MonitoredWalletProvider.create({
           address,
           source: name || 'manual_test',
-          first_seen: Date.now(),
+          first_seen: firstTxTime,
           is_active: 1,
           is_fresh: isFresh ? 1 : 0,
           previous_tx_count: txCount,
@@ -437,13 +437,28 @@ app.post('/api/wallets', async (req, res) => {
       return res.status(400).json({ error: `Wallet already being monitored with ${finalMonitoringType} type` });
     }
 
-    // Create wallet entry
+    // Fetch wallet's actual first transaction time from blockchain
     console.log(`📝 [API] Creating wallet: ${address.slice(0, 8)}... with type: ${finalMonitoringType}`);
+    const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
+    const proxiedConnection = walletAnalyzer.getProxiedConnection();
+    
+    let firstTxTime = Date.now(); // Fallback to now if no transactions
+    try {
+      const pubkey = new PublicKey(address);
+      const signatures = await proxiedConnection.withProxy(conn => 
+        conn.getSignaturesForAddress(pubkey, { limit: 10 })
+      );
+      if (signatures.length > 0) {
+        firstTxTime = (signatures[signatures.length - 1].blockTime || 0) * 1000;
+      }
+    } catch (error) {
+      console.warn(`⚠️ [API] Could not fetch transaction history for ${address.slice(0, 8)}..., using current time`);
+    }
     
     await MonitoredWalletProvider.create({
       address,
       source: source || 'manual',
-      first_seen: Date.now(),
+      first_seen: firstTxTime,
       is_active: 1,
       label: label || null,
       monitoring_type: finalMonitoringType,
