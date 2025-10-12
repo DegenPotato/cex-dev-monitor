@@ -548,6 +548,42 @@ app.post('/api/wallets/:address/toggle', async (req, res) => {
   res.json({ success: true, is_active: newState });
 });
 
+// Delete wallet(s) - stops monitoring and removes from database
+app.delete('/api/wallets/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+    
+    // Get all monitoring types for this address
+    const wallets = await MonitoredWalletProvider.findAllByAddress(address);
+    
+    if (wallets.length === 0) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Stop all monitors for this wallet
+    for (const wallet of wallets) {
+      if (wallet.monitoring_type === 'pumpfun') {
+        await pumpFunMonitor.stopMonitoringWallet(address);
+      } else if (wallet.monitoring_type === 'trading') {
+        await tradingActivityMonitor.stopMonitoringWallet(address);
+      }
+    }
+
+    // Delete all monitoring types for this address from database
+    await MonitoredWalletProvider.delete(address);
+
+    console.log(`🗑️  [API] Deleted wallet ${address.slice(0, 8)}... (${wallets.length} monitoring type(s))`);
+
+    res.json({ 
+      success: true, 
+      message: `Wallet ${address.slice(0, 8)}... deleted`,
+      deleted_count: wallets.length
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================
 // Source Wallet Endpoints (CEX wallets, etc.)
 // ============================================
