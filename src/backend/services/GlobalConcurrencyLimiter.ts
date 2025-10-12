@@ -1,19 +1,29 @@
 /**
  * Global Concurrency Limiter
  * Limits total concurrent requests across ALL services
- * Prevents request bursts that overwhelm RPC servers even with rotation
+ * Separate configs for Proxy Rotation vs RPC Rotation
  */
 
 export class GlobalConcurrencyLimiter {
-  private maxConcurrent: number = 20; // Default: 20 concurrent requests max
+  private proxyMaxConcurrent: number = 20; // Proxy rotation can handle more
+  private rpcMaxConcurrent: number = 2;    // RPC rotation needs to be conservative
   private currentRequests: number = 0;
   private queue: Array<() => void> = [];
   private enabled: boolean = true;
   private periodicLogger: NodeJS.Timeout | null = null;
+  private useProxyConfig: boolean = false; // Which config to use
 
-  constructor(maxConcurrent: number = 20) {
-    this.maxConcurrent = maxConcurrent;
+  constructor(proxyMaxConcurrent: number = 20, rpcMaxConcurrent: number = 2) {
+    this.proxyMaxConcurrent = proxyMaxConcurrent;
+    this.rpcMaxConcurrent = rpcMaxConcurrent;
     this.startPeriodicLogging();
+  }
+  
+  /**
+   * Get currently active max concurrent (based on rotation mode)
+   */
+  private getCurrentMaxConcurrent(): number {
+    return this.useProxyConfig ? this.proxyMaxConcurrent : this.rpcMaxConcurrent;
   }
 
   /**
@@ -24,21 +34,44 @@ export class GlobalConcurrencyLimiter {
     
     this.periodicLogger = setInterval(() => {
       if (this.currentRequests > 0 || this.queue.length > 0) {
-        const utilization = ((this.currentRequests / this.maxConcurrent) * 100).toFixed(1);
-        console.log(`⚡ [GlobalLimiter] ${this.currentRequests}/${this.maxConcurrent} concurrent (${utilization}%), ${this.queue.length} queued`);
+        const maxConcurrent = this.getCurrentMaxConcurrent();
+        const mode = this.useProxyConfig ? 'PROXY' : 'RPC';
+        const utilization = ((this.currentRequests / maxConcurrent) * 100).toFixed(1);
+        console.log(`⚡ [GlobalLimiter-${mode}] ${this.currentRequests}/${maxConcurrent} concurrent (${utilization}%), ${this.queue.length} queued`);
       }
     }, 3000); // Log every 3 seconds if there's activity
   }
 
   /**
-   * Update max concurrent requests
+   * Switch to proxy rotation mode
    */
-  setMaxConcurrent(max: number): void {
-    // Clamp between 1-2000 (with 10k proxies, we can go higher)
-    // Higher values = faster but more RAM/CPU usage
-    // Recommended: 200-500 for most use cases
-    this.maxConcurrent = Math.max(1, Math.min(max, 2000));
-    console.log(`🔧 [GlobalLimiter] Max concurrent updated to ${this.maxConcurrent}`);
+  useProxyRotation(): void {
+    this.useProxyConfig = true;
+    console.log(`🔧 [GlobalLimiter] Switched to PROXY mode (max: ${this.proxyMaxConcurrent})`);
+  }
+
+  /**
+   * Switch to RPC rotation mode
+   */
+  useRPCRotation(): void {
+    this.useProxyConfig = false;
+    console.log(`🔧 [GlobalLimiter] Switched to RPC mode (max: ${this.rpcMaxConcurrent})`);
+  }
+
+  /**
+   * Update proxy rotation max concurrent
+   */
+  setProxyMaxConcurrent(max: number): void {
+    this.proxyMaxConcurrent = Math.max(1, Math.min(max, 2000));
+    console.log(`🔧 [GlobalLimiter] Proxy max concurrent updated to ${this.proxyMaxConcurrent}`);
+  }
+
+  /**
+   * Update RPC rotation max concurrent
+   */
+  setRPCMaxConcurrent(max: number): void {
+    this.rpcMaxConcurrent = Math.max(1, Math.min(max, 100));
+    console.log(`🔧 [GlobalLimiter] RPC max concurrent updated to ${this.rpcMaxConcurrent}`);
   }
 
   /**
@@ -47,7 +80,10 @@ export class GlobalConcurrencyLimiter {
   getConfig() {
     return {
       enabled: this.enabled,
-      maxConcurrent: this.maxConcurrent,
+      mode: this.useProxyConfig ? 'proxy' : 'rpc',
+      proxyMaxConcurrent: this.proxyMaxConcurrent,
+      rpcMaxConcurrent: this.rpcMaxConcurrent,
+      activeMaxConcurrent: this.getCurrentMaxConcurrent(),
       currentRequests: this.currentRequests,
       queuedRequests: this.queue.length
     };
@@ -79,7 +115,8 @@ export class GlobalConcurrencyLimiter {
     }
 
     // Wait for slot if at capacity
-    if (this.currentRequests >= this.maxConcurrent) {
+    const maxConcurrent = this.getCurrentMaxConcurrent();
+    if (this.currentRequests >= maxConcurrent) {
       await new Promise<void>(resolve => {
         this.queue.push(resolve);
       });
@@ -107,12 +144,16 @@ export class GlobalConcurrencyLimiter {
    * Get stats
    */
   getStats() {
+    const maxConcurrent = this.getCurrentMaxConcurrent();
     return {
       enabled: this.enabled,
-      maxConcurrent: this.maxConcurrent,
+      mode: this.useProxyConfig ? 'proxy' : 'rpc',
+      proxyMaxConcurrent: this.proxyMaxConcurrent,
+      rpcMaxConcurrent: this.rpcMaxConcurrent,
+      activeMaxConcurrent: maxConcurrent,
       currentRequests: this.currentRequests,
       queuedRequests: this.queue.length,
-      utilizationPercent: ((this.currentRequests / this.maxConcurrent) * 100).toFixed(1)
+      utilizationPercent: ((this.currentRequests / maxConcurrent) * 100).toFixed(1)
     };
   }
 }

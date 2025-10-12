@@ -35,11 +35,11 @@ app.use(express.json());
 // Initialize database
 await initDatabase();
 
-// Old rate limiter disabled - using Global Concurrency Limiter + Request Pacing only
-
-// Load global concurrency limiter configuration
-const globalMaxConcurrent = await ConfigProvider.get('global_max_concurrent');
-globalConcurrencyLimiter.setMaxConcurrent(globalMaxConcurrent ? parseInt(globalMaxConcurrent) : 20);
+// Load separate concurrency configs for Proxy and RPC rotation
+const proxyMaxConcurrent = await ConfigProvider.get('proxy_max_concurrent');
+const rpcMaxConcurrent = await ConfigProvider.get('rpc_max_concurrent');
+globalConcurrencyLimiter.setProxyMaxConcurrent(proxyMaxConcurrent ? parseInt(proxyMaxConcurrent) : 20);
+globalConcurrencyLimiter.setRPCMaxConcurrent(rpcMaxConcurrent ? parseInt(rpcMaxConcurrent) : 2);
 
 // IMPORTANT: Enable RPC server rotation BEFORE initializing monitors
 // This allows the connections to detect it's enabled from the start
@@ -49,34 +49,40 @@ const testProxy = new testProxyManager('./proxies.txt');
 const hasProxies = testProxy.hasProxies();
 
 if (hasProxies) {
-  // Proxies available - disable both rate limiting and server rotation
+  // Proxies available - use proxy mode
   globalRateLimiter.disable();
   globalRPCServerRotator.disable();
-  console.log('🚀 [Init] Proxies FOUND - Will use proxy rotation');
+  globalConcurrencyLimiter.useProxyRotation();
+  console.log('🚀 [Init] Proxies FOUND - PROXY ROTATION MODE');
+  console.log(`   Max Concurrent: ${proxyMaxConcurrent || 20}`);
 } else {
-  // No proxies - enable RPC server rotation BEFORE creating connections
+  // No proxies - use RPC rotation mode
   globalRPCServerRotator.enable();
-  globalRateLimiter.disable(); // Don't need rate limiting with server rotation
-  console.log('🚀 [Init] No proxies - RPC SERVER ROTATION ENABLED');
+  globalRateLimiter.disable();
+  globalConcurrencyLimiter.useRPCRotation();
+  console.log('🚀 [Init] No proxies - RPC ROTATION MODE');
   console.log('🔄 [Init] Rotating through 20 RPC pool servers to bypass rate limits');
-  console.log('💡 [Init] This gives you ~2000 requests/10s instead of 100!');
+  console.log(`   Max Concurrent: ${rpcMaxConcurrent || 2}`);
 }
 
 // Initialize Solana monitor (connections will now detect rotation is enabled)
 const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
 
-// Load request pacing configuration from database
+// Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
   try {
-    const savedDelay = await ConfigProvider.get('request_pacing_delay_ms');
-    if (savedDelay) {
-      const delayMs = parseInt(savedDelay);
-      solanaMonitor.getDevWalletAnalyzer().setRequestDelay(delayMs);
-      console.log(`🎛️  [Init] Request pacing loaded: ${delayMs === 0 ? 'UNRESTRICTED ⚡' : `${delayMs}ms delay`}`);
-    } else {
-      console.log(`🎛️  [Init] Request pacing: UNRESTRICTED (0ms default)`);
-    }
+    const proxyDelay = await ConfigProvider.get('proxy_pacing_delay_ms');
+    const rpcDelay = await ConfigProvider.get('rpc_pacing_delay_ms');
+    
+    // Apply the appropriate delay based on current mode
+    const activeDelay = hasProxies 
+      ? (proxyDelay ? parseInt(proxyDelay) : 2)
+      : (rpcDelay ? parseInt(rpcDelay) : 2);
+    
+    solanaMonitor.getDevWalletAnalyzer().setRequestDelay(activeDelay);
+    const mode = hasProxies ? 'PROXY' : 'RPC';
+    console.log(`🎛️  [Init] Request pacing (${mode}): ${activeDelay === 0 ? 'UNRESTRICTED ⚡' : `${activeDelay}ms delay`}`);
   } catch (error) {
     console.error('⚠️  [Init] Error loading request pacing config:', error);
   }
@@ -830,25 +836,30 @@ app.get('/api/analysis-queue/status', (_req, res) => {
   res.json(globalAnalysisQueue.getStatus());
 });
 
-// Global Concurrency Limiter endpoints
+// Global Concurrency Limiter endpoints (separate for Proxy/RPC)
 app.get('/api/concurrency/config', (_req, res) => {
   res.json(globalConcurrencyLimiter.getConfig());
 });
 
 app.post('/api/concurrency/config', async (req, res) => {
   try {
-    const { maxConcurrent } = req.body;
+    const { proxyMaxConcurrent, rpcMaxConcurrent } = req.body;
     
     // Update in memory
-    globalConcurrencyLimiter.setMaxConcurrent(maxConcurrent);
+    if (proxyMaxConcurrent !== undefined) {
+      globalConcurrencyLimiter.setProxyMaxConcurrent(proxyMaxConcurrent);
+      await ConfigProvider.set('proxy_max_concurrent', proxyMaxConcurrent.toString());
+    }
     
-    // Save to database
-    await ConfigProvider.set('global_max_concurrent', maxConcurrent.toString());
+    if (rpcMaxConcurrent !== undefined) {
+      globalConcurrencyLimiter.setRPCMaxConcurrent(rpcMaxConcurrent);
+      await ConfigProvider.set('rpc_max_concurrent', rpcMaxConcurrent.toString());
+    }
     
     res.json({ 
       success: true, 
       config: globalConcurrencyLimiter.getConfig(),
-      message: 'Global concurrency limit updated'
+      message: 'Concurrency limits updated'
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -859,12 +870,14 @@ app.get('/api/concurrency/stats', (_req, res) => {
   res.json(globalConcurrencyLimiter.getStats());
 });
 
-// Request Pacing configuration endpoints
+// Request Pacing configuration endpoints (separate for Proxy/RPC)
 app.get('/api/request-pacing/config', async (_req, res) => {
   try {
-    const requestDelay = await ConfigProvider.get('request_pacing_delay_ms');
+    const proxyDelay = await ConfigProvider.get('proxy_pacing_delay_ms');
+    const rpcDelay = await ConfigProvider.get('rpc_pacing_delay_ms');
     res.json({
-      requestDelayMs: requestDelay ? parseInt(requestDelay) : 15
+      proxyDelayMs: proxyDelay ? parseInt(proxyDelay) : 2,
+      rpcDelayMs: rpcDelay ? parseInt(rpcDelay) : 2
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -873,28 +886,35 @@ app.get('/api/request-pacing/config', async (_req, res) => {
 
 app.post('/api/request-pacing/config', async (req, res) => {
   try {
-    const { requestDelayMs } = req.body;
+    const { proxyDelayMs, rpcDelayMs } = req.body;
     
-    if (requestDelayMs !== undefined) {
-      // Update in database
-      await ConfigProvider.set('request_pacing_delay_ms', requestDelayMs.toString());
-      
-      // Update DevWalletAnalyzer
-      const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
-      devAnalyzer.setRequestDelay(requestDelayMs);
-      
-      console.log(`🎛️  [RequestPacing] Delay updated to ${requestDelayMs === 0 ? 'UNRESTRICTED ⚡' : `${requestDelayMs}ms`}`);
-      
-      res.json({
-        success: true,
-        requestDelayMs,
-        message: requestDelayMs === 0 
-          ? `Request pacing: UNRESTRICTED. Max speed limited only by device & Global Concurrency Limiter.`
-          : `Request pacing: ${requestDelayMs}ms delay between request starts. Works with Global Concurrency Limiter.`
-      });
-    } else {
-      res.status(400).json({ error: 'requestDelayMs is required' });
+    if (proxyDelayMs !== undefined) {
+      await ConfigProvider.set('proxy_pacing_delay_ms', proxyDelayMs.toString());
+      console.log(`🎛️  [RequestPacing-Proxy] Delay updated to ${proxyDelayMs === 0 ? 'UNRESTRICTED ⚡' : `${proxyDelayMs}ms`}`);
     }
+    
+    if (rpcDelayMs !== undefined) {
+      await ConfigProvider.set('rpc_pacing_delay_ms', rpcDelayMs.toString());
+      console.log(`🎛️  [RequestPacing-RPC] Delay updated to ${rpcDelayMs === 0 ? 'UNRESTRICTED ⚡' : `${rpcDelayMs}ms`}`);
+    }
+    
+    // Update DevWalletAnalyzer with active mode's delay
+    const walletAnalyzer = solanaMonitor.getWalletAnalyzer();
+    const proxiesEnabled = walletAnalyzer.getProxiedConnection().isProxyEnabled();
+    const activeDelay = proxiesEnabled ? (proxyDelayMs ?? 2) : (rpcDelayMs ?? 2);
+    
+    const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
+    devAnalyzer.setRequestDelay(activeDelay);
+    
+    const savedProxyDelay = await ConfigProvider.get('proxy_pacing_delay_ms');
+    const savedRpcDelay = await ConfigProvider.get('rpc_pacing_delay_ms');
+    
+    res.json({
+      success: true,
+      proxyDelayMs: proxyDelayMs ?? (savedProxyDelay ? parseInt(savedProxyDelay) : 2),
+      rpcDelayMs: rpcDelayMs ?? (savedRpcDelay ? parseInt(savedRpcDelay) : 2),
+      message: 'Request pacing configuration updated'
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

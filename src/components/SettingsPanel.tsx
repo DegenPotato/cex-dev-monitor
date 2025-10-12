@@ -12,8 +12,10 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
   const [cexWallet, setCexWallet] = useState('');
   const [threshold, setThreshold] = useState('1');
   const [maxThreshold, setMaxThreshold] = useState('6.9');
-  const [requestPacingDelay, setRequestPacingDelay] = useState('0');
-  const [globalMaxConcurrent, setGlobalMaxConcurrent] = useState('20');
+  const [proxyPacingDelay, setProxyPacingDelay] = useState('2');
+  const [rpcPacingDelay, setRpcPacingDelay] = useState('2');
+  const [proxyMaxConcurrent, setProxyMaxConcurrent] = useState('20');
+  const [rpcMaxConcurrent, setRpcMaxConcurrent] = useState('2');
   const [loading, setLoading] = useState(false);
   const [wipeConfirmation, setWipeConfirmation] = useState('');
 
@@ -34,18 +36,24 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       if (thresholdConfig) setThreshold(thresholdConfig.value);
       if (maxThresholdConfig) setMaxThreshold(maxThresholdConfig.value);
       
-      // Fetch request pacing config
+      // Fetch request pacing config (proxy and RPC)
       const pacingResponse = await fetch(apiUrl('/api/request-pacing/config'));
       const pacingConfig = await pacingResponse.json();
-      if (pacingConfig.requestDelayMs) {
-        setRequestPacingDelay(pacingConfig.requestDelayMs.toString());
+      if (pacingConfig.proxyDelayMs !== undefined) {
+        setProxyPacingDelay(pacingConfig.proxyDelayMs.toString());
+      }
+      if (pacingConfig.rpcDelayMs !== undefined) {
+        setRpcPacingDelay(pacingConfig.rpcDelayMs.toString());
       }
       
-      // Fetch global concurrency config
+      // Fetch concurrency config (proxy and RPC)
       const concurrencyResponse = await fetch(apiUrl('/api/concurrency/config'));
       const concurrencyConfig = await concurrencyResponse.json();
-      if (concurrencyConfig.maxConcurrent) {
-        setGlobalMaxConcurrent(concurrencyConfig.maxConcurrent.toString());
+      if (concurrencyConfig.proxyMaxConcurrent !== undefined) {
+        setProxyMaxConcurrent(concurrencyConfig.proxyMaxConcurrent.toString());
+      }
+      if (concurrencyConfig.rpcMaxConcurrent !== undefined) {
+        setRpcMaxConcurrent(concurrencyConfig.rpcMaxConcurrent.toString());
       }
     } catch (error) {
       console.error('Error fetching config:', error);
@@ -73,21 +81,23 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
         body: JSON.stringify({ key: 'max_threshold_sol', value: maxThreshold })
       });
       
-      // Save request pacing config
+      // Save request pacing config (proxy and RPC)
       await fetch(apiUrl('/api/request-pacing/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requestDelayMs: parseInt(requestPacingDelay)
+          proxyDelayMs: parseInt(proxyPacingDelay),
+          rpcDelayMs: parseInt(rpcPacingDelay)
         })
       });
       
-      // Save global concurrency config
+      // Save concurrency config (proxy and RPC)
       await fetch(apiUrl('/api/concurrency/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          maxConcurrent: parseInt(globalMaxConcurrent)
+          proxyMaxConcurrent: parseInt(proxyMaxConcurrent),
+          rpcMaxConcurrent: parseInt(rpcMaxConcurrent)
         })
       });
       
@@ -187,79 +197,102 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
             </div>
           </div>
 
-          {/* Global Concurrency Limiter */}
-          <div className="bg-slate-700/50 rounded-lg p-6 border border-purple-500/20">
+          {/* Proxy Rotation Rate Limits */}
+          <div className="bg-gradient-to-br from-purple-900/30 to-purple-800/20 rounded-lg p-6 border border-purple-500/30">
             <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
               <Zap className="w-5 h-5 text-purple-400" />
-              Global Concurrency Limiter
+              🌐 Proxy Rotation Mode
             </h3>
             <p className="text-sm text-gray-400 mb-4">
-              Limits total concurrent requests across ALL services. Independent of rotation method.
-              <span className="text-purple-400 font-medium"> Controls throughput speed and server load!</span>
+              Settings active when using proxy rotation (10k+ proxies available).
+              <span className="text-purple-400 font-medium"> Can handle high concurrency!</span>
             </p>
             
-            <div className="max-w-sm">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Max Concurrent Requests
-              </label>
-              <input
-                type="number"
-                step="50"
-                min="5"
-                max="2000"
-                value={globalMaxConcurrent}
-                onChange={(e) => setGlobalMaxConcurrent(e.target.value)}
-                className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Current: {globalMaxConcurrent} concurrent requests • Higher = faster processing
-              </p>
-              <div className="mt-2 space-y-1 text-xs text-gray-500">
-                <div className="font-semibold text-purple-400 mt-2">With RPC Rotation (20 servers):</div>
-                <div>• 10-20 = Safe, matches server count ✓</div>
-                <div>• 30-50 = Faster, may cause bursts</div>
-                <div className="font-semibold text-purple-400 mt-2">With Proxy Rotation (10k proxies):</div>
-                <div>• 100-200 = Good balance</div>
-                <div>• 300-500 = Fast, recommended ✓</div>
-                <div>• 500-1000 = Very fast</div>
-                <div>• 1000-2000 = Maximum speed 🚀</div>
-                <div className="text-yellow-500 mt-2">⚠️ Very high values (&gt;1000) use significant RAM/CPU</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Max Concurrent Requests
+                </label>
+                <input
+                  type="number"
+                  step="10"
+                  min="5"
+                  max="2000"
+                  value={proxyMaxConcurrent}
+                  onChange={(e) => setProxyMaxConcurrent(e.target.value)}
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Recommended: 20-500 • Default: 20
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Request Pacing (ms)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={proxyPacingDelay}
+                  onChange={(e) => setProxyPacingDelay(e.target.value)}
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Recommended: 0-5ms • Default: 2ms
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Request Pacing Settings */}
-          <div className="bg-slate-700/50 rounded-lg p-6 border border-purple-500/20">
+          {/* RPC Rotation Rate Limits */}
+          <div className="bg-gradient-to-br from-blue-900/30 to-blue-800/20 rounded-lg p-6 border border-blue-500/30">
             <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-purple-400" />
-              ⚡ Request Pacing
+              <Zap className="w-5 h-5 text-blue-400" />
+              🔄 RPC Rotation Mode
             </h3>
             <p className="text-sm text-gray-400 mb-4">
-              Controls the delay between request STARTS. Works alongside Global Concurrency Limiter.
-              <span className="text-purple-400 font-medium"> Set to 0 for unrestricted speed!</span>
+              Settings active when using RPC server rotation (20 servers).
+              <span className="text-blue-400 font-medium"> Conservative limits to avoid rate limiting!</span>
             </p>
             
-            <div className="max-w-sm">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Request Delay (ms)
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                max="100"
-                value={requestPacingDelay}
-                onChange={(e) => setRequestPacingDelay(e.target.value)}
-                className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                0 = Unrestricted ⚡ • Higher = Slower but safer
-              </p>
-              <div className="mt-2 space-y-1 text-xs text-gray-500">
-                <div>• 0ms = Unrestricted speed (limited only by Concurrency) ✓</div>
-                <div>• 3ms = ~333 req/sec (fast)</div>
-                <div>• 5ms = ~200 req/sec (balanced)</div>
-                <div>• 10ms = ~100 req/sec (safe)</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Max Concurrent Requests
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="100"
+                  value={rpcMaxConcurrent}
+                  onChange={(e) => setRpcMaxConcurrent(e.target.value)}
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-blue-500/20 focus:border-blue-500/50 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Recommended: 2-20 • Default: 2
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Request Pacing (ms)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={rpcPacingDelay}
+                  onChange={(e) => setRpcPacingDelay(e.target.value)}
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-blue-500/20 focus:border-blue-500/50 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Recommended: 2-10ms • Default: 2ms
+                </p>
               </div>
             </div>
           </div>
