@@ -12,6 +12,7 @@ interface AnalysisResult {
       mintAddress: string;
       signature: string;
       timestamp: number;
+      decimals?: number;
     }>;
   };
   error?: string;
