@@ -3,6 +3,7 @@ import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { PublicKey } from '@solana/web3.js';
+import fetch from 'cross-fetch';
 import { initDatabase } from './database/connection.js';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
 import { PumpFunMonitor } from './services/PumpFunMonitor.js';
@@ -1180,6 +1181,27 @@ app.post('/api/rpc-rotation/toggle', (_req, res) => {
 // Market Data Tracker endpoints
 app.get('/api/market-data/status', (_req, res) => {
   res.json(marketDataTracker.getStatus());
+});
+
+// Test DexScreener API for specific tokens
+app.get('/api/market-data/test/:addresses', async (req, res) => {
+  try {
+    const addresses = req.params.addresses;
+    const url = `https://api.dexscreener.com/latest/dex/tokens/${addresses}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    res.json({
+      url,
+      status: response.status,
+      tokensRequested: addresses.split(',').length,
+      pairsFound: data.pairs ? data.pairs.length : 0,
+      response: data
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/market-data/start', (_req, res) => {

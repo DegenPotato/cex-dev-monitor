@@ -154,6 +154,9 @@ export class MarketDataTracker {
 
       const data = await response.json();
       
+      // Debug: Log the response to see what DexScreener returns
+      console.log(`📊 [MarketData] DexScreener response for ${mintAddresses.length} tokens:`, JSON.stringify(data, null, 2));
+      
       // DexScreener returns pairs, not direct token data
       // We need to match pairs to our tokens
       if (data.pairs && Array.isArray(data.pairs)) {
