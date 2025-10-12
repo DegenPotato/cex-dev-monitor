@@ -6,6 +6,7 @@ import { PublicKey } from '@solana/web3.js';
 import { initDatabase } from './database/connection.js';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
 import { PumpFunMonitor } from './services/PumpFunMonitor.js';
+import { TradingActivityMonitor } from './services/TradingActivityMonitor.js';
 import { MonitoredWalletProvider } from './providers/MonitoredWalletProvider.js';
 import { SourceWalletProvider } from './providers/SourceWalletProvider.js';
 import { TransactionProvider } from './providers/TransactionProvider.js';
@@ -68,6 +69,7 @@ if (hasProxies) {
 // Initialize Solana monitor (connections will now detect rotation is enabled)
 const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
+const tradingActivityMonitor = new TradingActivityMonitor();
 
 // Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
@@ -443,8 +445,8 @@ app.post('/api/wallets', async (req, res) => {
       pumpFunMonitor.startMonitoringWallet(address);
       console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
     } else if (monitoring_type === 'trading') {
-      // TODO: Start trading activity monitoring
-      console.log(`📊 [API] Trading monitoring queued for ${address.slice(0, 8)}... (not yet implemented)`);
+      tradingActivityMonitor.startMonitoringWallet(address);
+      console.log(`📊 [API] Started Trading Activity monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
     }
 
     res.json({ 
@@ -507,10 +509,19 @@ app.post('/api/wallets/:address/toggle', async (req, res) => {
   const newState = wallet.is_active ? 0 : 1;
   await MonitoredWalletProvider.setActive(address, newState === 1);
 
+  // Start or stop monitoring based on type
   if (newState === 1) {
-    pumpFunMonitor.startMonitoringWallet(address);
+    if (wallet.monitoring_type === 'trading') {
+      await tradingActivityMonitor.startMonitoringWallet(address);
+    } else {
+      await pumpFunMonitor.startMonitoringWallet(address);
+    }
   } else {
-    await pumpFunMonitor.stopMonitoringWallet(address);
+    if (wallet.monitoring_type === 'trading') {
+      await tradingActivityMonitor.stopMonitoringWallet(address);
+    } else {
+      await pumpFunMonitor.stopMonitoringWallet(address);
+    }
   }
 
   res.json({ success: true, is_active: newState });
