@@ -36,6 +36,7 @@ export function TestDevWalletPanel() {
   const [showDefiAnalysis, setShowDefiAnalysis] = useState(false);
   const [defiProfile, setDefiProfile] = useState<any>(null);
   const [defiLoading, setDefiLoading] = useState(false);
+  const [showFullActivityLog, setShowFullActivityLog] = useState(false);
 
   const handleAnalyze = async () => {
     if (!address) {
@@ -351,12 +352,25 @@ export function TestDevWalletPanel() {
                 </div>
               )}
 
-              {/* All Activities Section */}
+              {/* All Activities Section - EXPERIMENTAL */}
               {result.analysis?.activities && result.analysis.activities.length > 0 && (
                 <div className="bg-slate-700/50 rounded-lg p-4">
-                  <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    📊 Complete On-Chain Activity ({result.analysis.activities.length} transactions)
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                      📊 Complete On-Chain Activity ({result.analysis.activities.length} transactions)
+                      <span className="text-xs bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded">EXPERIMENTAL</span>
+                    </h4>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showFullActivityLog}
+                        onChange={(e) => setShowFullActivityLog(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-600 bg-slate-700 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-gray-300">Enable Activity Log</span>
+                    </label>
+                  </div>
+                  {showFullActivityLog && (
                   <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-slate-800">
@@ -430,6 +444,7 @@ export function TestDevWalletPanel() {
                       </tbody>
                     </table>
                   </div>
+                  )}
                 </div>
               )}
 
