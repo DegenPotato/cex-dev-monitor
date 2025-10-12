@@ -131,6 +131,27 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN last_processed_signature TEXT;`);
+    console.log('✅ Added last_processed_signature column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN last_processed_slot INTEGER;`);
+    console.log('✅ Added last_processed_slot column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE monitored_wallets ADD COLUMN last_processed_time INTEGER;`);
+    console.log('✅ Added last_processed_time column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS source_wallets (

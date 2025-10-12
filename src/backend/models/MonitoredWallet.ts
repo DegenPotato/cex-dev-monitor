@@ -13,6 +13,9 @@ export interface MonitoredWallet {
   dev_checked: number;
   history_checked?: number;
   last_history_check?: number;
+  last_processed_signature?: string; // Checkpoint: last signature we processed
+  last_processed_slot?: number; // Checkpoint: last block slot
+  last_processed_time?: number; // Checkpoint: last transaction timestamp
   label?: string;
   monitoring_type?: string;
   rate_limit_rps?: number; // Requests per second (default: 1)

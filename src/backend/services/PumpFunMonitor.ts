@@ -56,12 +56,24 @@ export class PumpFunMonitor extends EventEmitter {
 
     console.log(`🎚️  [RateLimit] Initialized for ${walletAddress.slice(0, 8)}... at ${rps} RPS (${enabled ? 'enabled' : 'disabled'})`);
     
+    // Check if wallet needs backfill or catch-up
     if (!wallet.dev_checked) {
-      // Step 1: Historical backfill (fetch ALL past transactions)
-      console.log(`📚 [Backfill] Fetching historical data for ${walletAddress.slice(0, 8)}...`);
+      // First time: Full historical backfill
+      console.log(`📚 [Backfill] First-time setup for ${walletAddress.slice(0, 8)}...`);
       await this.backfillWalletHistory(walletAddress);
+    } else if (wallet.last_processed_signature) {
+      // Already backfilled: Check if we need to catch up
+      const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
+      if (needsCatchUp) {
+        console.log(`🔄 [Catch-up] Wallet ${walletAddress.slice(0, 8)}... has gap, catching up...`);
+        await this.catchUpFromCheckpoint(walletAddress, wallet);
+      } else {
+        console.log(`✅ [Up-to-date] Wallet ${walletAddress.slice(0, 8)}... is current, no catch-up needed`);
+      }
     } else {
-      console.log(`✅ [Backfill] Wallet ${walletAddress.slice(0, 8)}... already backfilled`);
+      // Backfilled but no checkpoint (old data): Re-backfill
+      console.log(`⚠️  [Backfill] Wallet ${walletAddress.slice(0, 8)}... needs checkpoint update...`);
+      await this.backfillWalletHistory(walletAddress);
     }
 
     // Step 2: Start real-time monitoring (websocket subscription)
@@ -76,6 +88,151 @@ export class PumpFunMonitor extends EventEmitter {
       });
       this.activeSubscriptions.delete(walletAddress);
       console.log(`⛔ [PumpFun] Stopped monitoring ${walletAddress.slice(0, 8)}...`);
+    }
+  }
+
+  /**
+   * Check if wallet needs catch-up (has new transactions since last checkpoint)
+   */
+  private async checkIfCatchUpNeeded(walletAddress: string, wallet: any): Promise<boolean> {
+    try {
+      const publicKey = new PublicKey(walletAddress);
+      
+      // Fetch the most recent signature
+      const recentSignatures = await this.proxiedConnection.withProxy(conn =>
+        conn.getSignaturesForAddress(publicKey, { limit: 1 })
+      );
+
+      if (recentSignatures.length === 0) {
+        return false; // No new transactions
+      }
+
+      const mostRecentSig = recentSignatures[0].signature;
+      
+      // Compare with our checkpoint
+      if (wallet.last_processed_signature === mostRecentSig) {
+        return false; // Already up-to-date
+      }
+
+      console.log(`🔍 [Check] Wallet ${walletAddress.slice(0, 8)}... has new transactions`);
+      console.log(`   Last processed: ${wallet.last_processed_signature?.slice(0, 8)}... (${new Date(wallet.last_processed_time!).toLocaleString()})`);
+      console.log(`   Most recent: ${mostRecentSig.slice(0, 8)}... (${new Date(recentSignatures[0].blockTime! * 1000).toLocaleString()})`);
+      
+      return true; // Need to catch up
+    } catch (error) {
+      console.error(`❌ Error checking catch-up status:`, error);
+      return true; // On error, assume we need catch-up
+    }
+  }
+
+  /**
+   * Catch up from last checkpoint to current state
+   * Only fetches and processes NEW transactions since last checkpoint
+   */
+  private async catchUpFromCheckpoint(walletAddress: string, wallet: any): Promise<void> {
+    this.isBackfilling.set(walletAddress, true);
+    const rateLimiter = this.rateLimiters.get(walletAddress);
+    
+    try {
+      const publicKey = new PublicKey(walletAddress);
+      
+      console.log(`🔄 [Catch-up] Fetching new transactions since ${wallet.last_processed_signature?.slice(0, 8)}...`);
+
+      // Fetch signatures UNTIL we hit our checkpoint
+      const newSignatures: any[] = [];
+      let lastSignature: string | undefined;
+      let hasMore = true;
+      let foundCheckpoint = false;
+
+      while (hasMore && !foundCheckpoint) {
+        const signatures = rateLimiter 
+          ? await rateLimiter.execute(() => 
+              this.proxiedConnection.withProxy(conn =>
+                conn.getSignaturesForAddress(publicKey, {
+                  limit: 1000,
+                  before: lastSignature
+                })
+              )
+            )
+          : await this.proxiedConnection.withProxy(conn =>
+              conn.getSignaturesForAddress(publicKey, {
+                limit: 1000,
+                before: lastSignature
+              })
+            );
+
+        if (signatures.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        // Check each signature until we find our checkpoint
+        for (const sig of signatures) {
+          if (sig.signature === wallet.last_processed_signature) {
+            foundCheckpoint = true;
+            break;
+          }
+          newSignatures.push(sig);
+        }
+
+        if (!foundCheckpoint) {
+          lastSignature = signatures[signatures.length - 1].signature;
+          if (signatures.length < 1000) {
+            hasMore = false;
+          }
+        }
+      }
+
+      if (newSignatures.length === 0) {
+        console.log(`✅ [Catch-up] No new transactions for ${walletAddress.slice(0, 8)}...`);
+        return;
+      }
+
+      // Reverse to process chronologically (oldest → newest)
+      newSignatures.reverse();
+
+      console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions...`);
+      
+      let mintsFound = 0;
+      for (const sigInfo of newSignatures) {
+        const tx = rateLimiter
+          ? await rateLimiter.execute(() =>
+              this.proxiedConnection.withProxy(conn =>
+                conn.getParsedTransaction(sigInfo.signature, {
+                  maxSupportedTransactionVersion: 0
+                })
+              )
+            )
+          : await this.proxiedConnection.withProxy(conn =>
+              conn.getParsedTransaction(sigInfo.signature, {
+                maxSupportedTransactionVersion: 0
+              })
+            );
+
+        if (tx) {
+          const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+          if (foundMint) mintsFound++;
+        }
+      }
+
+      // Update checkpoint to newest processed transaction
+      const newestSig = newSignatures[newSignatures.length - 1];
+      await MonitoredWalletProvider.update(walletAddress, {
+        last_processed_signature: newestSig.signature,
+        last_processed_slot: newestSig.slot,
+        last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now(),
+        last_history_check: Date.now()
+      });
+
+      console.log(`✅ [Catch-up] Complete for ${walletAddress.slice(0, 8)}...`);
+      console.log(`   New transactions processed: ${newSignatures.length}`);
+      console.log(`   New mints found: ${mintsFound}`);
+      console.log(`   Checkpoint updated to: ${newestSig.signature.slice(0, 8)}... (${new Date(newestSig.blockTime! * 1000).toLocaleString()})`);
+
+    } catch (error) {
+      console.error(`❌ [Catch-up] Error for ${walletAddress.slice(0, 8)}...:`, error);
+    } finally {
+      this.isBackfilling.set(walletAddress, false);
     }
   }
 
@@ -183,16 +340,20 @@ export class PumpFunMonitor extends EventEmitter {
         }
       }
 
-      // Mark wallet as backfilled with the newest signature as checkpoint
+      // Mark wallet as backfilled and save checkpoint (newest signature)
       await MonitoredWalletProvider.update(walletAddress, {
         dev_checked: 1,
-        last_history_check: Date.now()
+        last_history_check: Date.now(),
+        last_processed_signature: newestSig.signature,
+        last_processed_slot: newestSig.slot,
+        last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now()
       });
 
       console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   Total Transactions: ${totalProcessed}`);
       console.log(`   Pumpfun Mints Found: ${mintsFound}`);
       console.log(`   Timespan: ${new Date(oldestSig.blockTime! * 1000).toLocaleDateString()} → ${new Date(newestSig.blockTime! * 1000).toLocaleDateString()}`);
+      console.log(`   Checkpoint saved: ${newestSig.signature.slice(0, 8)}...`);
       console.log(`   Ready for real-time monitoring from: ${new Date(newestSig.blockTime! * 1000).toISOString()}`);
 
     } catch (error) {
@@ -234,6 +395,13 @@ export class PumpFunMonitor extends EventEmitter {
 
               if (tx) {
                 await this.analyzeTransactionForMint(tx, walletAddress, logs.signature);
+                
+                // Update checkpoint after processing real-time transaction
+                await MonitoredWalletProvider.update(walletAddress, {
+                  last_processed_signature: logs.signature,
+                  last_processed_slot: tx.slot,
+                  last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
+                });
               }
             }
           },
