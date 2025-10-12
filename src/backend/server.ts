@@ -902,6 +902,8 @@ app.post('/api/request-pacing/config', async (req, res) => {
       const devAnalyzer = solanaMonitor.getDevWalletAnalyzer();
       devAnalyzer.setRequestDelay(requestDelayMs); // No-op
       
+      console.log(`🎛️  [RequestPacing] Delay updated to ${requestDelayMs}ms (DEPRECATED - use Global Concurrency Limiter)`);
+      
       res.json({
         success: true,
         requestDelayMs,
