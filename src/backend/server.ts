@@ -448,20 +448,27 @@ app.post('/api/wallets', async (req, res) => {
     const verifyWallet = await MonitoredWalletProvider.findByAddress(address, finalMonitoringType);
     console.log(`🔍 [API] Verification result:`, verifyWallet ? 'FOUND ✅' : 'NOT FOUND ❌');
 
-    // Start monitoring based on type
-    if (finalMonitoringType === 'pumpfun') {
-      await pumpFunMonitor.startMonitoringWallet(address);
-      console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
-    } else if (finalMonitoringType === 'trading') {
-      await tradingActivityMonitor.startMonitoringWallet(address);
-      console.log(`📊 [API] Started Trading Activity monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
-    }
-
+    // Respond immediately to avoid timeout
     res.json({ 
       success: true, 
-      message: `Wallet added with ${monitoring_type} monitoring`,
-      wallet: { address, label, monitoring_type, rate_limit_rps: rate_limit_rps || 1 }
+      message: `Wallet added with ${finalMonitoringType} monitoring`,
+      wallet: { address, label, monitoring_type: finalMonitoringType, rate_limit_rps: rate_limit_rps || 1 }
     });
+
+    // Start monitoring in the background (don't await - async)
+    if (finalMonitoringType === 'pumpfun') {
+      pumpFunMonitor.startMonitoringWallet(address).then(() => {
+        console.log(`🔥 [API] Started Pumpfun monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
+      }).catch(err => {
+        console.error(`❌ [API] Error starting Pumpfun monitoring for ${address.slice(0, 8)}...:`, err);
+      });
+    } else if (finalMonitoringType === 'trading') {
+      tradingActivityMonitor.startMonitoringWallet(address).then(() => {
+        console.log(`📊 [API] Started Trading Activity monitoring for ${address.slice(0, 8)}... (${rate_limit_rps || 1} RPS)`);
+      }).catch(err => {
+        console.error(`❌ [API] Error starting Trading Activity monitoring for ${address.slice(0, 8)}...:`, err);
+      });
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
