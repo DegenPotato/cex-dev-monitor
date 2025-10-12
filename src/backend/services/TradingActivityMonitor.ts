@@ -12,7 +12,6 @@ import { EventEmitter } from 'events';
 export class TradingActivityMonitor extends EventEmitter {
   private proxiedConnection: ProxiedSolanaConnection;
   private activeSubscriptions: Map<string, number> = new Map();
-  private isBackfilling: Map<string, boolean> = new Map();
   private rateLimiters: Map<string, WalletRateLimiter> = new Map();
 
   constructor() {
@@ -132,7 +131,7 @@ export class TradingActivityMonitor extends EventEmitter {
    */
   private async analyzeTransaction(
     tx: ParsedTransactionWithMeta,
-    walletAddress: string,
+    _walletAddress: string,
     signature: string
   ): Promise<void> {
     if (!tx.meta || tx.meta.err) return;
