@@ -75,7 +75,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
 
   const toggleMonitoring = async (address: string, currentState: number) => {
     try {
-      await fetch(apiUrl(`/api/wallets/${address}/monitoring`), {
+      await fetch(apiUrl(`/api/wallets/${address}/toggle`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: currentState === 1 ? 0 : 1 })
@@ -93,7 +93,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
     try {
       await Promise.all(
         Array.from(selectedWallets).map(address =>
-          fetch(apiUrl(`/api/wallets/${address}/monitoring`), {
+          fetch(apiUrl(`/api/wallets/${address}/toggle`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ is_active: active ? 1 : 0 })
