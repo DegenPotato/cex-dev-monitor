@@ -1271,6 +1271,60 @@ app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
   }
 });
 
+// Re-fetch metadata for all existing tokens
+app.post('/api/tokens/refetch-all-metadata', async (req, res) => {
+  try {
+    // Get all tokens
+    const tokens = await TokenMintProvider.findAll();
+    
+    // Respond immediately
+    res.json({
+      success: true,
+      message: `Re-fetching metadata for ${tokens.length} tokens...`,
+      tokensCount: tokens.length
+    });
+    
+    // Process in background
+    (async () => {
+      const { TokenMetadataFetcher } = await import('./services/TokenMetadataFetcher.js');
+      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      const metadataFetcher = new TokenMetadataFetcher(connection);
+      
+      let updated = 0;
+      let failed = 0;
+      
+      for (const token of tokens) {
+        try {
+          console.log(`🔍 [Metadata] Fetching for ${token.mint_address.slice(0, 8)}...`);
+          const metadata = await metadataFetcher.fetchMetadata(token.mint_address);
+          
+          if (metadata) {
+            await TokenMintProvider.update(token.mint_address, {
+              name: metadata.name || token.name,
+              symbol: metadata.symbol || token.symbol
+            });
+            console.log(`✅ [Metadata] Updated: ${metadata.name} (${metadata.symbol})`);
+            updated++;
+          } else {
+            console.log(`⚠️ [Metadata] No metadata found for ${token.mint_address.slice(0, 8)}...`);
+            failed++;
+          }
+          
+          // Small delay to avoid rate limits
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error: any) {
+          console.error(`❌ [Metadata] Error for ${token.mint_address.slice(0, 8)}...:`, error.message);
+          failed++;
+        }
+      }
+      
+      console.log(`\n📊 [Metadata] Refetch complete: ${updated} updated, ${failed} failed\n`);
+    })();
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Analyze Pump.fun mint transaction to understand bonding curve structure
 app.get('/api/market-data/analyze-mint/:mintAddress', async (req, res) => {
   try {
