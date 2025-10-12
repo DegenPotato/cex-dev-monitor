@@ -81,7 +81,8 @@ export class PumpFunMonitor extends EventEmitter {
 
   /**
    * Step 1: Historical Backfill
-   * Fetches ALL past transactions and extracts Pumpfun mints
+   * Fetches ALL past transactions from OLDEST to NEWEST (chronological order)
+   * Establishes the starting point for real-time monitoring
    */
   private async backfillWalletHistory(walletAddress: string): Promise<void> {
     this.isBackfilling.set(walletAddress, true);
@@ -89,15 +90,15 @@ export class PumpFunMonitor extends EventEmitter {
     
     try {
       const publicKey = new PublicKey(walletAddress);
-      let totalProcessed = 0;
-      let mintsFound = 0;
+      
+      console.log(`📚 [Backfill] Phase 1: Fetching all signatures for ${walletAddress.slice(0, 8)}...`);
+
+      // Phase 1: Collect ALL signatures (newest → oldest)
+      const allSignatures: any[] = [];
       let lastSignature: string | undefined;
       let hasMore = true;
 
-      console.log(`📚 [Backfill] Starting full historical scan for ${walletAddress.slice(0, 8)}...`);
-
       while (hasMore) {
-        // Fetch signatures in batches of 1000 (Solana max) - rate limited
         const signatures = rateLimiter 
           ? await rateLimiter.execute(() => 
               this.proxiedConnection.withProxy(conn =>
@@ -119,10 +120,46 @@ export class PumpFunMonitor extends EventEmitter {
           break;
         }
 
-        console.log(`📚 [Backfill] Processing batch of ${signatures.length} transactions...`);
+        allSignatures.push(...signatures);
+        lastSignature = signatures[signatures.length - 1].signature;
 
-        // Process each transaction - rate limited
-        for (const sigInfo of signatures) {
+        console.log(`📚 [Backfill] Collected ${allSignatures.length} signatures...`);
+
+        if (signatures.length < 1000) {
+          hasMore = false;
+        }
+      }
+
+      if (allSignatures.length === 0) {
+        console.log(`📚 [Backfill] No transactions found for ${walletAddress.slice(0, 8)}...`);
+        await MonitoredWalletProvider.update(walletAddress, {
+          dev_checked: 1,
+          last_history_check: Date.now()
+        });
+        return;
+      }
+
+      // Reverse to get chronological order (oldest → newest)
+      allSignatures.reverse();
+
+      const oldestSig = allSignatures[0];
+      const newestSig = allSignatures[allSignatures.length - 1];
+      
+      console.log(`📚 [Backfill] Phase 2: Processing ${allSignatures.length} transactions chronologically...`);
+      console.log(`   Oldest: ${new Date(oldestSig.blockTime! * 1000).toISOString()} (${oldestSig.signature.slice(0, 8)}...)`);
+      console.log(`   Newest: ${new Date(newestSig.blockTime! * 1000).toISOString()} (${newestSig.signature.slice(0, 8)}...)`);
+
+      // Phase 2: Process in chronological order (oldest → newest)
+      let totalProcessed = 0;
+      let mintsFound = 0;
+      const batchSize = 100;
+
+      for (let i = 0; i < allSignatures.length; i += batchSize) {
+        const batch = allSignatures.slice(i, Math.min(i + batchSize, allSignatures.length));
+        
+        console.log(`📚 [Backfill] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allSignatures.length / batchSize)} (${batch.length} transactions)...`);
+
+        for (const sigInfo of batch) {
           const tx = rateLimiter
             ? await rateLimiter.execute(() =>
                 this.proxiedConnection.withProxy(conn =>
@@ -144,25 +181,19 @@ export class PumpFunMonitor extends EventEmitter {
           
           totalProcessed++;
         }
-
-        // Update last signature for pagination
-        lastSignature = signatures[signatures.length - 1].signature;
-
-        // Stop if we got less than 1000 (means we reached the end)
-        if (signatures.length < 1000) {
-          hasMore = false;
-        }
       }
 
-      // Mark wallet as backfilled
+      // Mark wallet as backfilled with the newest signature as checkpoint
       await MonitoredWalletProvider.update(walletAddress, {
         dev_checked: 1,
         last_history_check: Date.now()
       });
 
       console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
-      console.log(`   Processed: ${totalProcessed} transactions`);
-      console.log(`   Found: ${mintsFound} Pumpfun token mints`);
+      console.log(`   Total Transactions: ${totalProcessed}`);
+      console.log(`   Pumpfun Mints Found: ${mintsFound}`);
+      console.log(`   Timespan: ${new Date(oldestSig.blockTime! * 1000).toLocaleDateString()} → ${new Date(newestSig.blockTime! * 1000).toLocaleDateString()}`);
+      console.log(`   Ready for real-time monitoring from: ${new Date(newestSig.blockTime! * 1000).toISOString()}`);
 
     } catch (error) {
       console.error(`❌ [Backfill] Error for ${walletAddress.slice(0, 8)}...:`, error);
