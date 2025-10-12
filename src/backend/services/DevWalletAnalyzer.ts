@@ -14,6 +14,15 @@ export interface DevWalletAnalysis {
   isDevWallet: boolean;
   tokensDeployed: number;
   deployments: TokenDeployment[];
+  activities: Array<{
+    signature: string;
+    timestamp: number;
+    type: 'deployment' | 'buy' | 'sell' | 'transfer_in' | 'transfer_out' | 'burn' | 'swap' | 'other';
+    program: string;
+    details: any;
+    amount?: number;
+    token?: string;
+  }>;
 }
 
 export class DevWalletAnalyzer {
@@ -44,19 +53,27 @@ export class DevWalletAnalyzer {
   }
 
   async analyzeDevHistory(walletAddress: string, limit: number = 1000): Promise<DevWalletAnalysis> {
-    console.log(`🔎 [DevAnalyzer] Checking dev history for ${walletAddress.slice(0, 8)}... (limit: ${limit})`);
+    console.log(`🔎 [DevAnalyzer] Checking COMPLETE on-chain history for ${walletAddress.slice(0, 8)}... (limit: ${limit})`);
+    const walletPubkey = new PublicKey(walletAddress);
+    const deployments: { mintAddress: string; signature: string; timestamp: number }[] = [];
+    const activities: Array<{
+      signature: string;
+      timestamp: number;
+      type: 'deployment' | 'buy' | 'sell' | 'transfer_in' | 'transfer_out' | 'burn' | 'swap' | 'other';
+      program: string;
+      details: any;
+      amount?: number;
+      token?: string;
+    }> = [];
 
     try {
-      const publicKey = new PublicKey(walletAddress);
-      const deployments: TokenDeployment[] = [];
-
-      // Fetch transaction history with proxy
-      console.log(`📡 [DevAnalyzer] Fetching transaction history with proxy rotation...`);
+      console.log(`⏳ [DevAnalyzer] Fetching signatures (limit: ${limit})...`);
+      
       const signatures = await this.proxiedConnection.withProxy(conn =>
-        conn.getSignaturesForAddress(publicKey, { limit })
+        conn.getSignaturesForAddress(walletPubkey, { limit })
       );
-
-      console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions...`);
+      
+      console.log(`📊 [DevAnalyzer] Analyzing ${signatures.length} transactions for ALL activities...`);
       console.log(`   Global Concurrency Limiter will control throughput speed`);
 
       let pumpfunTxCount = 0;
@@ -88,12 +105,23 @@ export class DevWalletAnalyzer {
         processedCount++;
         
         if (processedCount % 100 === 0) {
-          console.log(`   Processed: ${processedCount}/${signatures.length}, ${deployments.length} mints found`);
+          console.log(`   Processed: ${processedCount}/${signatures.length}, ${deployments.length} mints, ${activities.length} activities found`);
         }
         
         if (!tx || !tx.meta || tx.meta.err) continue;
 
         const accountKeys = tx.transaction.message.accountKeys;
+        const timestamp = sigInfo.blockTime ? sigInfo.blockTime * 1000 : Date.now();
+        
+        // Analyze transaction type and categorize it
+        const txType = this.categorizeTransaction(tx, walletAddress);
+        if (txType) {
+          activities.push({
+            signature: sigInfo.signature,
+            timestamp,
+            ...txType
+          });
+        }
 
         // Check if transaction involves pump.fun
         const involvesPumpFun = accountKeys.some(
@@ -149,10 +177,9 @@ export class DevWalletAnalyzer {
           const mintAddress = newTokens[0].mint;
           
           deployments.push({
-            mintAddress,
+            mintAddress: mintAddress,
             signature: sigInfo.signature,
-            timestamp: (sigInfo.blockTime || 0) * 1000,
-            decimals: newTokens[0].uiTokenAmount?.decimals
+            timestamp: sigInfo.blockTime ? sigInfo.blockTime * 1000 : Date.now()
           });
 
           console.log(`   🚀 Found token mint: ${mintAddress.slice(0, 16)}... (creator: ${walletAddress.slice(0, 8)}...)`);
@@ -165,19 +192,83 @@ export class DevWalletAnalyzer {
       console.log(`   Pump.fun transactions: ${pumpfunTxCount}`);
       console.log(`   Tokens deployed: ${deployments.length}`);
       console.log(`   Is Dev Wallet: ${isDevWallet ? 'YES 🔥' : 'NO'}`);
-
+      console.log(`   Total activities tracked: ${activities.length}`);
+      
       return {
         isDevWallet,
         tokensDeployed: deployments.length,
-        deployments
+        deployments,
+        activities
       };
     } catch (error) {
-      console.error(`❌ [DevAnalyzer] Error analyzing ${walletAddress}:`, error);
+      console.error(`❌ [DevAnalyzer] Error analyzing history:`, error);
       return {
         isDevWallet: false,
         tokensDeployed: 0,
-        deployments: []
+        deployments: [],
+        activities: []
       };
     }
+  }
+
+  private categorizeTransaction(tx: any, walletAddress: string): any {
+    const instructions = tx.transaction.message.instructions;
+    const preBalances = tx.meta.preTokenBalances || [];
+    const postBalances = tx.meta.postTokenBalances || [];
+    
+    // Get the program IDs involved
+    const programIds = instructions.map((ix: any) => ix.programId.toBase58());
+    
+    // Detect token transfers
+    if (postBalances.length > 0 || preBalances.length > 0) {
+      // Check if it's a transfer
+      const walletPreBalance = preBalances.find((b: any) => b.owner === walletAddress);
+      const walletPostBalance = postBalances.find((b: any) => b.owner === walletAddress);
+      
+      if (walletPreBalance && walletPostBalance) {
+        const preAmount = walletPreBalance.uiTokenAmount?.uiAmount || 0;
+        const postAmount = walletPostBalance.uiTokenAmount?.uiAmount || 0;
+        
+        if (postAmount > preAmount) {
+          return {
+            type: 'transfer_in' as const,
+            program: programIds[0] || 'Unknown',
+            details: { amount: postAmount - preAmount },
+            amount: postAmount - preAmount,
+            token: walletPostBalance.mint
+          };
+        } else if (postAmount < preAmount) {
+          return {
+            type: 'transfer_out' as const,
+            program: programIds[0] || 'Unknown',
+            details: { amount: preAmount - postAmount },
+            amount: preAmount - postAmount,
+            token: walletPreBalance.mint
+          };
+        }
+      }
+    }
+    
+    // Detect swaps (Raydium, Orca, Jupiter)
+    const SWAP_PROGRAMS = [
+      '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8', // Raydium AMM
+      '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP', // Orca
+      'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', // Jupiter v6
+    ];
+    
+    if (programIds.some((id: string) => SWAP_PROGRAMS.includes(id))) {
+      return {
+        type: 'swap' as const,
+        program: programIds.find((id: string) => SWAP_PROGRAMS.includes(id)),
+        details: { programIds }
+      };
+    }
+    
+    // Default to 'other'
+    return {
+      type: 'other' as const,
+      program: programIds[0] || 'Unknown',
+      details: { programIds }
+    };
   }
 }
