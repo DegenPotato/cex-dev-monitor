@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
 import { initDatabase } from './database/connection.js';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
@@ -1243,6 +1243,54 @@ app.get('/api/market-data/test/:addresses', async (req, res) => {
       tokensRequested: addresses.split(',').length,
       pairsFound: data.pairs ? data.pairs.length : 0,
       response: data
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Analyze Pump.fun mint transaction to understand bonding curve structure
+app.get('/api/market-data/analyze-mint/:mintAddress', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    const mint = new PublicKey(mintAddress);
+    
+    // Get token creation signature
+    const signatures = await connection.getSignaturesForAddress(mint, { limit: 100 });
+    
+    if (signatures.length === 0) {
+      return res.status(404).json({ error: 'No transactions found for this token' });
+    }
+    
+    // Get the oldest signature (creation tx)
+    const createSig = signatures[signatures.length - 1].signature;
+    const tx = await connection.getParsedTransaction(createSig, { maxSupportedTransactionVersion: 0 });
+    
+    if (!tx) {
+      return res.status(404).json({ error: 'Could not fetch creation transaction' });
+    }
+    
+    // Find bonding curve account in transaction
+    const bondingCurveAccounts = tx.transaction.message.accountKeys.filter((key: any) => 
+      key.pubkey.toBase58().includes('pump') || key.signer === false
+    );
+    
+    res.json({
+      mintAddress,
+      createSignature: createSig,
+      blockTime: tx.blockTime,
+      accounts: bondingCurveAccounts.map((acc: any) => ({
+        pubkey: acc.pubkey.toBase58(),
+        signer: acc.signer,
+        writable: acc.writable
+      })),
+      instructions: tx.transaction.message.instructions.map((ix: any) => ({
+        program: ix.programId?.toBase58(),
+        parsed: ix.parsed,
+        data: ix.data
+      })),
+      fullTransaction: tx
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

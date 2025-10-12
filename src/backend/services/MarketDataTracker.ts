@@ -172,43 +172,31 @@ export class MarketDataTracker {
       const accountInfo = await this.connection.getAccountInfo(bondingCurvePDA);
       
       if (!accountInfo || !accountInfo.data) {
+        console.log(`⚠️ [PumpFun] No bonding curve account found for ${mintAddress.slice(0, 8)}...`);
         return null;
       }
 
-      // Parse bonding curve data
-      // Layout (simplified, adjust based on actual Pump.fun program):
-      // - 8 bytes: virtual_sol_reserves (u64)
-      // - 8 bytes: virtual_token_reserves (u64)
-      // - 8 bytes: real_sol_reserves (u64)
-      // - 8 bytes: real_token_reserves (u64)
-      
       const data = accountInfo.data;
-      const virtualSolReserves = data.readBigUInt64LE(0);
-      const virtualTokenReserves = data.readBigUInt64LE(8);
-      // Note: real reserves at offset 16 & 24 if needed later
       
-      // Calculate price: SOL per token
-      const priceInSol = Number(virtualSolReserves) / Number(virtualTokenReserves);
+      // DEBUG: Log raw account data
+      console.log(`\n🔍 [DEBUG] Bonding Curve Account for ${mintAddress.slice(0, 8)}...`);
+      console.log(`   Account size: ${data.length} bytes`);
+      console.log(`   Owner: ${accountInfo.owner.toBase58()}`);
+      console.log(`   First 128 bytes (hex):`, data.slice(0, 128).toString('hex'));
       
-      // TODO: Fetch SOL/USD price from an oracle or API
-      const solPriceUSD = 150; // Hardcoded for now, should fetch real-time
+      // Try to parse - we need to find the correct offsets
+      // Let's read several positions to see what makes sense
+      for (let i = 0; i < Math.min(data.length - 8, 200); i += 8) {
+        const value = data.readBigUInt64LE(i);
+        if (Number(value) > 0 && Number(value) < Number.MAX_SAFE_INTEGER) {
+          console.log(`   Offset ${i}: ${value.toString()} (${Number(value)})`);
+        }
+      }
       
-      // Market cap = price * total supply
-      const marketCapUSD = priceInSol * this.TOTAL_SUPPLY * solPriceUSD;
+      console.log(`\n`);
       
-      // Calculate bonding curve progress
-      const initialTokenReserves = 800_000_000; // Pump.fun starts with 800M tokens
-      const tokensLeft = Number(virtualTokenReserves);
-      const bondingCurveProgress = ((initialTokenReserves - tokensLeft) / initialTokenReserves) * 100;
-      
-      console.log(`💎 [PumpFun] ${mintAddress.slice(0, 8)}... - MCap: $${marketCapUSD.toFixed(0)}, Progress: ${bondingCurveProgress.toFixed(1)}%`);
-      
-      return {
-        marketCap: marketCapUSD,
-        virtualSolReserves: Number(virtualSolReserves),
-        virtualTokenReserves: Number(virtualTokenReserves),
-        bondingCurveProgress
-      };
+      // Don't try to calculate yet, just return null for debugging
+      return null;
     } catch (error: any) {
       console.error(`❌ [PumpFun] Error reading bonding curve for ${mintAddress.slice(0, 8)}...:`, error.message);
       return null;
