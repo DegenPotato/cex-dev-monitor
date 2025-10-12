@@ -42,11 +42,12 @@ export function MonitoringControls() {
     fetchStatus();
     fetchProxyStatus();
     fetchRpcRotationStatus();
+    // Poll more frequently (2 seconds) for more accurate status
     const interval = setInterval(() => {
       fetchStatus();
       fetchProxyStatus();
       fetchRpcRotationStatus();
-    }, 5000);
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -58,7 +59,9 @@ export function MonitoringControls() {
       
       if (data.success) {
         alert(`✅ Monitoring started!\n\n${data.walletsMonitored} wallets:\n- ${data.breakdown.fresh} fresh\n- ${data.breakdown.dev} dev`);
-        fetchStatus();
+        // Wait 1 second for monitors to fully start, then refresh status
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }
@@ -77,7 +80,9 @@ export function MonitoringControls() {
       
       if (data.success) {
         alert('⏹️ Monitoring stopped!');
-        fetchStatus();
+        // Wait 500ms for monitors to fully stop, then refresh status
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }
