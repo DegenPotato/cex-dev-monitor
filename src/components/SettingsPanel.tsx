@@ -12,10 +12,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
   const [cexWallet, setCexWallet] = useState('');
   const [threshold, setThreshold] = useState('1');
   const [maxThreshold, setMaxThreshold] = useState('6.9');
-  const [rateLimitMaxRequests, setRateLimitMaxRequests] = useState('90');
-  const [rateLimitMaxConcurrent, setRateLimitMaxConcurrent] = useState('35');
-  const [rateLimitMinDelay, setRateLimitMinDelay] = useState('105');
-  const [requestPacingDelay, setRequestPacingDelay] = useState('15');
+  const [requestPacingDelay, setRequestPacingDelay] = useState('0');
   const [globalMaxConcurrent, setGlobalMaxConcurrent] = useState('20');
   const [loading, setLoading] = useState(false);
   const [wipeConfirmation, setWipeConfirmation] = useState('');
@@ -74,17 +71,6 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: 'max_threshold_sol', value: maxThreshold })
-      });
-      
-      // Save rate limiter config
-      await fetch(apiUrl('/api/ratelimiter/config'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          maxRequestsPer10s: parseInt(rateLimitMaxRequests),
-          maxConcurrentConnections: parseInt(rateLimitMaxConcurrent),
-          minDelayMs: parseInt(rateLimitMinDelay)
-        })
       });
       
       // Save request pacing config
@@ -201,64 +187,6 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
             </div>
           </div>
 
-          {/* Rate Limiter Settings (Active when proxies disabled) */}
-          <div className="border-t border-gray-700 pt-6 mt-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Rate Limiter Settings (Proxies Disabled)</h3>
-            <p className="text-sm text-gray-400 mb-4">
-              These settings apply when proxies are disabled to prevent hitting Solana RPC rate limits.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Max Requests per 10s
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  min="10"
-                  max="100"
-                  value={rateLimitMaxRequests}
-                  onChange={(e) => setRateLimitMaxRequests(e.target.value)}
-                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
-                />
-                <p className="text-xs text-gray-400 mt-1">Solana limit: 100</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Max Concurrent Connections
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  min="5"
-                  max="40"
-                  value={rateLimitMaxConcurrent}
-                  onChange={(e) => setRateLimitMaxConcurrent(e.target.value)}
-                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
-                />
-                <p className="text-xs text-gray-400 mt-1">Solana limit: 40</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Min Delay Between Requests (ms)
-                </label>
-                <input
-                  type="number"
-                  step="5"
-                  min="50"
-                  max="500"
-                  value={rateLimitMinDelay}
-                  onChange={(e) => setRateLimitMinDelay(e.target.value)}
-                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
-                />
-                <p className="text-xs text-gray-400 mt-1">Lower = faster, higher = safer</p>
-              </div>
-            </div>
-          </div>
-
           {/* Global Concurrency Limiter */}
           <div className="bg-slate-700/50 rounded-lg p-6 border border-purple-500/20">
             <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
@@ -301,10 +229,14 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
           </div>
 
           {/* Request Pacing Settings */}
-          <div className="border-t border-gray-700 pt-6 mt-6">
-            <h3 className="text-lg font-semibold text-white mb-4">⚡ Request Pacing</h3>
+          <div className="bg-slate-700/50 rounded-lg p-6 border border-purple-500/20">
+            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-purple-400" />
+              ⚡ Request Pacing
+            </h3>
             <p className="text-sm text-gray-400 mb-4">
-              Controls the delay between requests to prevent rate limit bursts. Works with both proxies and RPC rotation.
+              Controls the delay between request STARTS. Works alongside Global Concurrency Limiter.
+              <span className="text-purple-400 font-medium"> Set to 0 for unrestricted speed!</span>
             </p>
             
             <div className="max-w-sm">
@@ -314,20 +246,20 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
               <input
                 type="number"
                 step="1"
-                min="5"
+                min="0"
                 max="100"
                 value={requestPacingDelay}
                 onChange={(e) => setRequestPacingDelay(e.target.value)}
                 className="w-full bg-slate-700 text-white rounded-lg px-4 py-2 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none"
               />
               <p className="text-xs text-gray-400 mt-1">
-                15ms = ~66 req/sec (recommended) • Lower = faster but riskier • Higher = slower but safer
+                0 = Unrestricted ⚡ • Higher = Slower but safer
               </p>
               <div className="mt-2 space-y-1 text-xs text-gray-500">
-                <div>• 10ms = ~100 req/sec (fast, may hit limits)</div>
-                <div>• 15ms = ~66 req/sec (balanced ✓)</div>
-                <div>• 20ms = ~50 req/sec (safe)</div>
-                <div>• 25ms = ~40 req/sec (very safe)</div>
+                <div>• 0ms = Unrestricted speed (limited only by Concurrency) ✓</div>
+                <div>• 3ms = ~333 req/sec (fast)</div>
+                <div>• 5ms = ~200 req/sec (balanced)</div>
+                <div>• 10ms = ~100 req/sec (safe)</div>
               </div>
             </div>
           </div>

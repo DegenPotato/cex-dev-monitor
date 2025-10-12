@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Clock, TrendingUp, Activity, CheckCircle, XCircle, Shield } from 'lucide-react';
+import { BarChart3, Clock, TrendingUp, Activity, CheckCircle, XCircle } from 'lucide-react';
 import { apiUrl } from '../config';
 
 export function RequestStatsPanel() {
   const [stats, setStats] = useState<any>(null);
-  const [rateLimiterStats, setRateLimiterStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,19 +14,14 @@ export function RequestStatsPanel() {
 
   const fetchStats = async () => {
     try {
-      const [statsRes, rateLimiterRes] = await Promise.all([
-        fetch(apiUrl('/api/stats/requests')),
-        fetch(apiUrl('/api/ratelimiter/stats'))
-      ]);
-      
+      const statsRes = await fetch(apiUrl('/api/stats/requests'));
       const statsData = await statsRes.json();
-      const rateLimiterData = await rateLimiterRes.json();
       
       setStats(statsData);
-      setRateLimiterStats(rateLimiterData);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching request stats:', error);
+      setLoading(false);
     }
   };
 
@@ -81,55 +75,6 @@ export function RequestStatsPanel() {
             <div className="text-2xl font-bold text-orange-400">{stats.overview.eventualSuccessRate || stats.overview.successRate}%</div>
           </div>
         </div>
-
-        {/* Rate Limiter Status */}
-        {rateLimiterStats && rateLimiterStats.enabled && (
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
-            <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-blue-400" />
-              🚦 Rate Limiter Active (Proxies Disabled)
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center mb-3">
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Queue Size</div>
-                <div className={`text-lg font-bold ${rateLimiterStats.queueSize > 10 ? 'text-yellow-400' : 'text-green-400'}`}>
-                  {rateLimiterStats.queueSize}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Active Connections</div>
-                <div className="text-lg font-bold text-blue-400">
-                  {rateLimiterStats.activeConnections}/{rateLimiterStats.limits.maxConcurrentConnections}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Requests (10s)</div>
-                <div className={`text-lg font-bold ${
-                  rateLimiterStats.requestsLast10s > rateLimiterStats.limits.maxRequestsPer10s * 0.8 ? 'text-red-400' : 'text-green-400'
-                }`}>
-                  {rateLimiterStats.requestsLast10s}/{rateLimiterStats.limits.maxRequestsPer10s}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Connections (10s)</div>
-                <div className="text-lg font-bold text-purple-400">
-                  {rateLimiterStats.connectionsLast10s}/{rateLimiterStats.limits.maxConnectionRate}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-1">Limit Usage</div>
-                <div className={`text-lg font-bold ${
-                  (rateLimiterStats.requestsLast10s / rateLimiterStats.limits.maxRequestsPer10s) > 0.8 ? 'text-red-400' : 'text-green-400'
-                }`}>
-                  {Math.round((rateLimiterStats.requestsLast10s / rateLimiterStats.limits.maxRequestsPer10s) * 100)}%
-                </div>
-              </div>
-            </div>
-            <div className="text-xs text-blue-300 bg-blue-900/20 rounded p-2">
-              ℹ️ Rate limiter is preventing burst requests to stay within Solana RPC limits. Queue delays ensure compliance.
-            </div>
-          </div>
-        )}
 
         {/* Retry & Rate Limit Stats */}
         {stats.retryStats && (stats.retryStats.totalRetries > 0 || stats.retryStats.rateLimitErrors > 0) && (
@@ -209,7 +154,7 @@ export function RequestStatsPanel() {
         {/* Proxy Usage */}
         <div className="bg-slate-900/50 rounded-lg p-4 mb-4">
           <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-purple-400" />
+            <Activity className="w-4 h-4 text-purple-400" />
             Proxy Usage
           </h4>
           <div className="grid grid-cols-3 gap-4 text-center">

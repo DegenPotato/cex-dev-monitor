@@ -35,16 +35,7 @@ app.use(express.json());
 // Initialize database
 await initDatabase();
 
-// Load rate limiter configuration from database
-const rateLimitMaxRequests = await ConfigProvider.get('ratelimit_max_requests_10s');
-const rateLimitMaxConcurrent = await ConfigProvider.get('ratelimit_max_concurrent');
-const rateLimitMinDelay = await ConfigProvider.get('ratelimit_min_delay_ms');
-
-globalRateLimiter.updateConfig({
-  maxRequestsPer10s: rateLimitMaxRequests ? parseInt(rateLimitMaxRequests) : 90,
-  maxConcurrentConnections: rateLimitMaxConcurrent ? parseInt(rateLimitMaxConcurrent) : 35,
-  minDelayMs: rateLimitMinDelay ? parseInt(rateLimitMinDelay) : 105
-});
+// Old rate limiter disabled - using Global Concurrency Limiter + Request Pacing only
 
 // Load global concurrency limiter configuration
 const globalMaxConcurrent = await ConfigProvider.get('global_max_concurrent');
@@ -819,11 +810,6 @@ app.post('/api/stats/requests/reset', (_req, res) => {
   res.json({ success: true, message: 'Request statistics reset' });
 });
 
-// Rate limiter stats
-app.get('/api/ratelimiter/stats', (_req, res) => {
-  res.json(globalRateLimiter.getStats());
-});
-
 // Reset dev wallet flags (cleanup false positives from old buggy logic)
 app.post('/api/dev/reset', async (_req, res) => {
   try {
@@ -833,44 +819,6 @@ app.post('/api/dev/reset', async (_req, res) => {
     res.json({
       success: true,
       message: 'All dev flags reset. Wallets will be re-analyzed on next check.'
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get rate limiter configuration
-app.get('/api/ratelimiter/config', (_req, res) => {
-  res.json(globalRateLimiter.getConfig());
-});
-
-// Update rate limiter configuration
-app.post('/api/ratelimiter/config', async (req, res) => {
-  try {
-    const { maxRequestsPer10s, maxConcurrentConnections, minDelayMs } = req.body;
-    
-    // Update in memory
-    globalRateLimiter.updateConfig({
-      maxRequestsPer10s,
-      maxConcurrentConnections,
-      minDelayMs
-    });
-    
-    // Save to database
-    if (maxRequestsPer10s !== undefined) {
-      await ConfigProvider.set('ratelimit_max_requests_10s', maxRequestsPer10s.toString());
-    }
-    if (maxConcurrentConnections !== undefined) {
-      await ConfigProvider.set('ratelimit_max_concurrent', maxConcurrentConnections.toString());
-    }
-    if (minDelayMs !== undefined) {
-      await ConfigProvider.set('ratelimit_min_delay_ms', minDelayMs.toString());
-    }
-    
-    res.json({ 
-      success: true, 
-      config: globalRateLimiter.getConfig(),
-      message: 'Rate limiter configuration updated'
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
