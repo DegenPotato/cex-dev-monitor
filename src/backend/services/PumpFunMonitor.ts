@@ -1,10 +1,9 @@
-import { PublicKey, ParsedTransactionWithMeta, Connection } from '@solana/web3.js';
+import { PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { WalletRateLimiter } from './WalletRateLimiter.js';
 import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
 import { EventEmitter } from 'events';
 
 // Pump.fun program ID
@@ -449,66 +448,36 @@ export class PumpFunMonitor extends EventEmitter {
 
   /**
    * Step 2: Real-time Monitoring
-   * Uses Solana's onLogs subscription for zero-latency updates
+   * Uses HTTP polling (same as catch-up) to check for new transactions every 10 seconds
    */
   private async startRealtimeMonitoring(walletAddress: string): Promise<void> {
-    try {
-      const publicKey = new PublicKey(walletAddress);
-      
-      console.log(`🔴 [Live] Starting real-time monitoring for ${walletAddress.slice(0, 8)}...`);
+    console.log(`🔴 [Live] Starting real-time monitoring (HTTP polling) for ${walletAddress.slice(0, 8)}...`);
+    
+    // Poll every 10 seconds for new transactions
+    const pollInterval = setInterval(async () => {
+      try {
+        const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
+        if (!wallet || !wallet.is_active) {
+          console.log(`⏹️  [Live] Wallet ${walletAddress.slice(0, 8)}... is inactive, stopping poll`);
+          clearInterval(pollInterval);
+          this.activeSubscriptions.delete(walletAddress);
+          return;
+        }
 
-      // Get WebSocket connection based on current mode (RPC rotation or direct)
-      let wsConnection: Connection;
-      if (globalRPCServerRotator.isEnabled()) {
-        // Use RPC rotation server for WebSocket (same as catch-up)
-        const rpcServer = await globalRPCServerRotator.getNextServer();
-        wsConnection = new Connection(rpcServer, 'confirmed');
-        console.log(`🔴 [Live] Using RPC rotation server for WebSocket: ${rpcServer.slice(0, 30)}...`);
-      } else {
-        // Fallback to Helius for WebSocket (has proper WS support)
-        wsConnection = new Connection('https://mainnet.helius-rpc.com/?api-key=e589d712-ed13-493b-a523-1c4aa6e33e0b', 'confirmed');
-        console.log(`🔴 [Live] Using Helius for WebSocket`);
+        // Check if there are new transactions (same logic as catch-up check)
+        const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
+        if (needsCatchUp) {
+          console.log(`🔄 [Live] New transactions detected, running catch-up for ${walletAddress.slice(0, 8)}...`);
+          await this.catchUpFromCheckpoint(walletAddress, wallet);
+        }
+      } catch (error) {
+        console.error(`❌ [Live] Error polling ${walletAddress.slice(0, 8)}...:`, error);
       }
+    }, 10000); // 10 seconds
 
-      const subscriptionId = wsConnection.onLogs(
-        publicKey,
-        async (logs, _context) => {
-            // Fetch transaction to get slot info for checkpoint
-            const tx = await this.proxiedConnection.withProxy(conn =>
-              conn.getParsedTransaction(logs.signature, {
-                maxSupportedTransactionVersion: 0
-              })
-            );
-
-            if (tx) {
-              // Check if this transaction involves Pumpfun
-              const involvesPumpfun = logs.logs.some(log => 
-                log.includes('Program ' + PUMPFUN_PROGRAM_ID)
-              );
-
-              if (involvesPumpfun) {
-                console.log(`🔴 [Live] Pumpfun activity detected for ${walletAddress.slice(0, 8)}...`);
-                await this.analyzeTransactionForMint(tx, walletAddress, logs.signature);
-              }
-              
-              // ALWAYS update checkpoint (even for non-Pumpfun transactions)
-              // This ensures we don't miss transactions on restart
-              await MonitoredWalletProvider.update(walletAddress, {
-                last_processed_signature: logs.signature,
-                last_processed_slot: tx.slot,
-                last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
-              }, 'pumpfun');
-            }
-        },
-        'confirmed'
-      );
-
-      this.activeSubscriptions.set(walletAddress, subscriptionId as number);
-      console.log(`✅ [Live] Real-time monitoring active for ${walletAddress.slice(0, 8)}...`);
-
-    } catch (error) {
-      console.error(`❌ [Live] Failed to start monitoring for ${walletAddress.slice(0, 8)}...:`, error);
-    }
+    // Store interval ID so we can stop it later
+    this.activeSubscriptions.set(walletAddress, pollInterval as any);
+    console.log(`✅ [Live] Real-time monitoring active (polling every 10s) for ${walletAddress.slice(0, 8)}...`);
   }
 
   private async analyzeTransactionForMint(
