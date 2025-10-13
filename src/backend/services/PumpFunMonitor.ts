@@ -511,6 +511,9 @@ export class PumpFunMonitor extends EventEmitter {
     if (existing) return;
 
     try {
+      // Note: We already verified tx signer = monitored wallet in analyzeTransactionForMint
+      // That's the definitive proof of creator - no need for additional checks
+      
       // Try to fetch token metadata
       const tokenInfo = await this.fetchTokenMetadata(mintAddress);
 
