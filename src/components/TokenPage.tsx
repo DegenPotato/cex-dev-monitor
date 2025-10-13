@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check } from 'lucide-react';
-import { apiUrl } from '../config';
+import { apiUrl, config } from '../config';
 
 interface TokenData {
   mint_address: string;
@@ -91,9 +91,7 @@ export function TokenPage() {
   useEffect(() => {
     if (!address) return;
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host;
-    const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
+    const ws = new WebSocket(`${config.wsUrl}/ws`);
     wsRef.current = ws;
 
     ws.onopen = () => {

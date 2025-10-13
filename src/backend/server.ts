@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { initDatabase, getDb } from './database/connection.js';
+import { queryAll } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
