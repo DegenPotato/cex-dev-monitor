@@ -77,29 +77,31 @@ export class MarketDataTracker {
         const data = marketDataMap.get(token.mint_address);
         
         if (data) {
-          // Market Cap = Price × Total Supply
-          // GeckoTerminal's fdvUsd is exactly this (Fully Diluted Valuation)
+          // Market Cap = Price × Total Supply (FDV)
           const marketCap = data.fdvUsd || null;
           
           const priceUsd = data.priceUsd || null;
           const priceSol = priceUsd ? priceUsd / SOL_PRICE_USD : null;
           
+          // Parse launchpad completed timestamp
+          let completedAt = null;
+          if (data.launchpadCompletedAt) {
+            try {
+              completedAt = new Date(data.launchpadCompletedAt).getTime();
+            } catch (e) {
+              // Invalid date, keep null
+            }
+          }
+          
           const updates: any = {
             current_mcap: marketCap,
             price_usd: priceUsd,
             price_sol: priceSol,
+            graduation_percentage: data.launchpadGraduationPercentage || null,
+            launchpad_completed: data.launchpadCompleted ? 1 : 0,
+            launchpad_completed_at: completedAt,
             last_updated: Date.now()
           };
-
-          // Update starting mcap if not set
-          if (!token.starting_mcap && updates.current_mcap) {
-            updates.starting_mcap = updates.current_mcap;
-          }
-
-          // Update ATH if current is higher
-          if (updates.current_mcap && (!token.ath_mcap || updates.current_mcap > token.ath_mcap)) {
-            updates.ath_mcap = updates.current_mcap;
-          }
 
           // Update name/symbol if missing
           if (data.name && !token.name) {

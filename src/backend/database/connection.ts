@@ -330,6 +330,34 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN graduation_percentage REAL;`);
+    console.log('✅ Added graduation_percentage column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN launchpad_completed INTEGER DEFAULT 0;`);
+    console.log('✅ Added launchpad_completed column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN launchpad_completed_at INTEGER;`);
+    console.log('✅ Added launchpad_completed_at column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN migrated_pool_address TEXT;`);
+    console.log('✅ Added migrated_pool_address column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
 
