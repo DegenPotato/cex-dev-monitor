@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Database, Table, Search, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Database, Table, Search, ChevronLeft, ChevronRight, RefreshCw, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { apiUrl } from '../config';
 
 interface TableInfo {
@@ -36,6 +36,9 @@ export function DatabaseTab() {
   const [search, setSearch] = useState('');
   const [searchColumn, setSearchColumn] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showLeftScroll, setShowLeftScroll] = useState(false);
+  const [showRightScroll, setShowRightScroll] = useState(false);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchTables();
@@ -47,6 +50,16 @@ export function DatabaseTab() {
       fetchData();
     }
   }, [selectedTable, pagination.page, search, searchColumn]);
+
+  // Check scroll position when data changes
+  useEffect(() => {
+    if (tableScrollRef.current && data.length > 0) {
+      const element = tableScrollRef.current;
+      const hasScroll = element.scrollWidth > element.clientWidth;
+      setShowRightScroll(hasScroll);
+      setShowLeftScroll(false);
+    }
+  }, [data]);
 
   const fetchTables = async () => {
     try {
@@ -100,6 +113,23 @@ export function DatabaseTab() {
   const handleSearch = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
     fetchData();
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    setShowLeftScroll(element.scrollLeft > 0);
+    setShowRightScroll(element.scrollLeft < element.scrollWidth - element.clientWidth - 10);
+  };
+
+  const scrollTable = (direction: 'left' | 'right') => {
+    if (tableScrollRef.current) {
+      const scrollAmount = 300;
+      const newScrollLeft = direction === 'left'
+        ? tableScrollRef.current.scrollLeft - scrollAmount
+        : tableScrollRef.current.scrollLeft + scrollAmount;
+      
+      tableScrollRef.current.scrollTo({ left: newScrollLeft, behavior: 'smooth' });
+    }
   };
 
   return (
@@ -200,53 +230,99 @@ export function DatabaseTab() {
 
             {/* Data Table */}
             <div className="bg-slate-800 rounded overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-700">
-                    <tr>
-                      {schema.map(col => (
-                        <th key={col.name} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          {col.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700">
-                    {loading ? (
+              {/* Scroll Hint + Column Counter */}
+              <div className="px-4 py-2 bg-slate-700/50 border-b border-slate-600 flex items-center justify-between">
+                <div className="text-xs text-gray-400 flex items-center gap-2">
+                  <Table className="w-4 h-4" />
+                  <span>{schema.length} columns • Scroll horizontally to see more →</span>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => scrollTable('left')}
+                    disabled={!showLeftScroll}
+                    className="p-1 rounded bg-slate-600 hover:bg-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Scroll left"
+                  >
+                    <ChevronsLeft className="w-4 h-4 text-white" />
+                  </button>
+                  <button
+                    onClick={() => scrollTable('right')}
+                    disabled={!showRightScroll}
+                    className="p-1 rounded bg-slate-600 hover:bg-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Scroll right"
+                  >
+                    <ChevronsRight className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Table Container with Scroll Shadows */}
+              <div className="relative">
+                {/* Left Shadow */}
+                {showLeftScroll && (
+                  <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-800 to-transparent pointer-events-none z-10" />
+                )}
+                
+                {/* Right Shadow */}
+                {showRightScroll && (
+                  <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-800 to-transparent pointer-events-none z-10" />
+                )}
+
+                {/* Scrollable Table */}
+                <div 
+                  ref={tableScrollRef}
+                  onScroll={handleScroll}
+                  className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800"
+                  style={{ scrollbarWidth: 'thin' }}
+                >
+                  <table className="w-full">
+                    <thead className="bg-slate-700 sticky top-0 z-20 shadow-md">
                       <tr>
-                        <td colSpan={schema.length} className="px-4 py-8 text-center text-gray-400">
-                          Loading...
-                        </td>
+                        {schema.map(col => (
+                          <th key={col.name} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap border-r border-slate-600 last:border-r-0">
+                            {col.name}
+                            {col.pk === 1 && <span className="ml-1 text-yellow-400">🔑</span>}
+                          </th>
+                        ))}
                       </tr>
-                    ) : data.length === 0 ? (
-                      <tr>
-                        <td colSpan={schema.length} className="px-4 py-8 text-center text-gray-400">
-                          No data found
-                        </td>
-                      </tr>
-                    ) : (
-                      data.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-slate-700/50">
-                          {schema.map(col => (
-                            <td key={col.name} className="px-4 py-3 text-sm text-gray-300">
-                              {row[col.name] === null ? (
-                                <span className="text-gray-500 italic">NULL</span>
-                              ) : typeof row[col.name] === 'object' ? (
-                                <span className="text-xs text-purple-400">{JSON.stringify(row[col.name])}</span>
-                              ) : String(row[col.name]).length > 50 ? (
-                                <span className="text-xs" title={String(row[col.name])}>
-                                  {String(row[col.name]).slice(0, 50)}...
-                                </span>
-                              ) : (
-                                String(row[col.name])
-                              )}
-                            </td>
-                          ))}
+                    </thead>
+                    <tbody className="divide-y divide-slate-700 bg-slate-800">
+                      {loading ? (
+                        <tr>
+                          <td colSpan={schema.length} className="px-4 py-8 text-center text-gray-400">
+                            Loading...
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : data.length === 0 ? (
+                        <tr>
+                          <td colSpan={schema.length} className="px-4 py-8 text-center text-gray-400">
+                            No data found
+                          </td>
+                        </tr>
+                      ) : (
+                        data.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-700/50">
+                            {schema.map(col => (
+                              <td key={col.name} className="px-4 py-3 text-sm text-gray-300 border-r border-slate-700/50 last:border-r-0 whitespace-nowrap">
+                                {row[col.name] === null ? (
+                                  <span className="text-gray-500 italic">NULL</span>
+                                ) : typeof row[col.name] === 'object' ? (
+                                  <span className="text-xs text-purple-400">{JSON.stringify(row[col.name])}</span>
+                                ) : String(row[col.name]).length > 50 ? (
+                                  <span className="text-xs" title={String(row[col.name])}>
+                                    {String(row[col.name]).slice(0, 50)}...
+                                  </span>
+                                ) : (
+                                  String(row[col.name])
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Pagination */}
