@@ -319,13 +319,13 @@ export function TokensTab() {
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="text-xs text-gray-400">Bonding Curve Progress</span>
                             <span className="text-xs font-semibold text-orange-400">
-                              {token.graduation_percentage.toFixed(2)}%
+                              {token.graduation_percentage?.toFixed(2) || '0.00'}%
                             </span>
                           </div>
                           <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-orange-500 to-green-500 transition-all duration-500"
-                              style={{ width: `${Math.min(token.graduation_percentage, 100)}%` }}
+                              style={{ width: `${Math.min(token.graduation_percentage || 0, 100)}%` }}
                             />
                           </div>
                         </div>
