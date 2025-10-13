@@ -141,7 +141,9 @@ export function MonitoringControls() {
       
       if (data.success) {
         alert(data.message);
-        fetchStatus();
+        // Wait for state to update on backend before fetching status
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }
@@ -161,7 +163,9 @@ export function MonitoringControls() {
       
       if (data.success) {
         alert(data.message);
-        fetchStatus();
+        // Wait for state to update on backend before fetching status
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }

@@ -481,7 +481,8 @@ export class PumpFunMonitor extends EventEmitter {
 
     let mintFound = false;
 
-    // Method 1: Check INNER INSTRUCTIONS for mint initialization (THIS IS THE KEY!)
+    // ONLY METHOD: Check INNER INSTRUCTIONS for mint initialization
+    // This is the ONLY reliable way - initializeMint ONLY happens on token creation, never on buys/sells
     if (tx.meta.innerInstructions) {
       for (const innerSet of tx.meta.innerInstructions) {
         for (const instruction of innerSet.instructions) {
@@ -493,23 +494,12 @@ export class PumpFunMonitor extends EventEmitter {
               const mintAddress = parsed.info?.mint;
               
               if (mintAddress) {
+                console.log(`🔍 [PumpFun] Found initializeMint for ${mintAddress.slice(0, 8)} in tx ${signature.slice(0, 8)}`);
                 await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
                 mintFound = true;
               }
             }
           }
-        }
-      }
-    }
-
-    // Method 2: Check for new token accounts in post token balances (high supply = creator)
-    if (tx.meta.postTokenBalances && tx.meta.postTokenBalances.length > 0) {
-      for (const balance of tx.meta.postTokenBalances) {
-        // Creator typically has very high token balance (millions)
-        if (balance.owner === walletAddress && balance.uiTokenAmount.uiAmount && balance.uiTokenAmount.uiAmount > 1000000) {
-          const mintAddress = balance.mint;
-          await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
-          mintFound = true;
         }
       }
     }
@@ -607,7 +597,11 @@ export class PumpFunMonitor extends EventEmitter {
           decimals: tokenInfo.decimals,
           image: tokenInfo.image,
           totalReserveUsd: tokenInfo.totalReserveUsd,
-          volumeUsd24h: tokenInfo.volumeUsd24h
+          volumeUsd24h: tokenInfo.volumeUsd24h,
+          // Store complete metadata for future use
+          geckoTerminal: {
+            ...tokenInfo
+          }
         })
       });
 
