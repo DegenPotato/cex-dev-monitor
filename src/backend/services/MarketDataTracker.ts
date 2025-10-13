@@ -1,5 +1,6 @@
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
+import { solPriceOracle } from './SolPriceOracle.js';
 
 /**
  * Market Data Tracker using GeckoTerminal API
@@ -70,8 +71,8 @@ export class MarketDataTracker {
       const addresses = tokens.map(t => t.mint_address);
       const marketDataMap = await this.metadataFetcher.fetchMetadataBatch(addresses);
       
-      // Hardcoded SOL price (should use oracle in production)
-      const SOL_PRICE_USD = 150;
+      // Get current SOL price from oracle
+      const SOL_PRICE_USD = solPriceOracle.getPrice();
       
       // Update each token with fetched data
       for (const token of tokens) {

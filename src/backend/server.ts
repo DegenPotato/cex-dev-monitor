@@ -22,6 +22,7 @@ import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
+import { solPriceOracle } from './services/SolPriceOracle.js';
 import databaseRoutes from './routes/database.js';
 
 const app = express();
@@ -1038,6 +1039,9 @@ app.post('/api/monitoring/start', async (_req, res) => {
     globalAnalysisQueue.resume();
     console.log('▶️  Analysis queue resumed');
     
+    // Start SOL price oracle
+    await solPriceOracle.start();
+    
     await solanaMonitor.startMonitoring(cexWallet);
     
     // Start monitoring ONLY fresh wallets and dev wallets
@@ -1073,6 +1077,9 @@ app.post('/api/monitoring/stop', async (_req, res) => {
     globalAnalysisQueue.stop();
     console.log('🛑 Analysis queue stopped');
     
+    // Stop SOL price oracle
+    solPriceOracle.stop();
+    
     // Then stop monitors
     solanaMonitor.stopAll();
     pumpFunMonitor.stopAll();
@@ -1099,6 +1106,7 @@ app.get('/api/monitoring/status', async (_req, res) => {
       monitored: pumpFunMonitor.getActiveMonitors().length
     },
     marketDataTracker: marketDataTracker.getStatus(),
+    solPriceOracle: solPriceOracle.getStatus(),
     ohlcvCollector: ohlcvStatus,
     metricsCalculator: metricsCalculator.getStatus()
   });
