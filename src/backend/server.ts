@@ -662,7 +662,7 @@ app.delete('/api/wallets/:address', async (req, res) => {
 app.post('/api/wallets/:address/rebackfill', async (req, res) => {
   try {
     const { address } = req.params;
-    const { rps } = req.body; // Optional: requests per second (default = 10x current)
+    const { minSlot } = req.body; // Optional: minimum slot to start from
     
     // Check if wallet exists
     const wallet = await MonitoredWalletProvider.findByAddress(address, 'pumpfun');
@@ -671,31 +671,17 @@ app.post('/api/wallets/:address/rebackfill', async (req, res) => {
       return res.status(404).json({ error: 'Pump.fun wallet not found' });
     }
 
-    // Calculate backfill RPS (10x faster than normal monitoring)
-    const currentRps = wallet.rate_limit_rps || 1;
-    const backfillRps = rps || (currentRps * 10);
-
-    console.log(`🔄 [API] Force re-backfill requested for ${address.slice(0, 8)}... at ${backfillRps} RPS (${backfillRps / currentRps}x speed)`);
+    const slotMsg = minSlot ? ` from slot ${minSlot}` : '';
+    console.log(`🔄 [API] Force re-backfill requested for ${address.slice(0, 8)}...${slotMsg} (NO RATE LIMITING - global limiter handles all)`);
     
-    // Temporarily increase RPS for faster backfill
-    await MonitoredWalletProvider.update(address, {
-      dev_checked: 0,
-      last_processed_signature: '',
-      rate_limit_rps: backfillRps
-    });
-    
-    // Stop and restart monitoring (will trigger full backfill)
-    await pumpFunMonitor.stopMonitoringWallet(address);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-    await pumpFunMonitor.startMonitoringWallet(address);
+    // Trigger re-backfill with optional minSlot
+    await pumpFunMonitor.forceRebackfill(address, minSlot);
 
     res.json({ 
       success: true, 
-      message: `Re-backfill started for ${address.slice(0, 8)}... at ${backfillRps} RPS`,
-      backfill_rps: backfillRps,
-      normal_rps: currentRps,
-      speed_multiplier: backfillRps / currentRps,
-      note: 'This will fetch ALL historical deployments. Remember to reduce RPS after backfill completes!'
+      message: `Re-backfill started for ${address.slice(0, 8)}...${slotMsg}`,
+      min_slot: minSlot || null,
+      note: 'NO RATE LIMITING - Global limiter handles all requests. Max speed with proxies!'
     });
   } catch (error: any) {
     console.error(`❌ [API] Re-backfill error:`, error);

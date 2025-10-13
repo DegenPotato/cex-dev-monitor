@@ -85,6 +85,43 @@ export class PumpFunMonitor extends EventEmitter {
     await this.startRealtimeMonitoring(walletAddress);
   }
 
+  /**
+   * Force re-backfill from a specific slot (for recovering missed deployments)
+   */
+  async forceRebackfill(walletAddress: string, minSlot?: number): Promise<void> {
+    console.log(`🔄 [Force-Rebackfill] Starting for ${walletAddress.slice(0, 8)}...${minSlot ? ` from slot ${minSlot}` : ''}`);
+    
+    // Reset checkpoint
+    await MonitoredWalletProvider.update(walletAddress, {
+      dev_checked: 0,
+      last_processed_signature: ''
+    });
+    
+    // Stop monitoring if active
+    await this.stopMonitoringWallet(walletAddress);
+    
+    // Wait a bit for cleanup
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Get wallet config
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Initialize rate limiter (though backfill won't use it - global limiter handles everything)
+    const rps = wallet.rate_limit_rps || 1;
+    const enabled = wallet.rate_limit_enabled !== 0;
+    const rateLimiter = new WalletRateLimiter(walletAddress, rps, enabled);
+    this.rateLimiters.set(walletAddress, rateLimiter);
+    
+    // Trigger backfill with minSlot
+    await this.backfillWalletHistory(walletAddress, minSlot);
+    
+    // Start real-time monitoring after backfill
+    await this.startRealtimeMonitoring(walletAddress);
+  }
+
   async stopMonitoringWallet(walletAddress: string): Promise<void> {
     const subscriptionId = this.activeSubscriptions.get(walletAddress);
     if (subscriptionId !== undefined) {
@@ -246,14 +283,14 @@ export class PumpFunMonitor extends EventEmitter {
    * Fetches ALL past transactions from OLDEST to NEWEST (chronological order)
    * Establishes the starting point for real-time monitoring
    */
-  private async backfillWalletHistory(walletAddress: string): Promise<void> {
+  private async backfillWalletHistory(walletAddress: string, minSlot?: number): Promise<void> {
     this.isBackfilling.set(walletAddress, true);
-    const rateLimiter = this.rateLimiters.get(walletAddress);
     
     try {
       const publicKey = new PublicKey(walletAddress);
       
-      console.log(`📚 [Backfill] Phase 1: Fetching all signatures for ${walletAddress.slice(0, 8)}...`);
+      const minSlotMsg = minSlot ? ` from slot ${minSlot}` : '';
+      console.log(`📚 [Backfill] Phase 1: Fetching signatures${minSlotMsg} for ${walletAddress.slice(0, 8)}...`);
 
       // Phase 1: Collect ALL signatures (newest → oldest)
       const allSignatures: any[] = [];
@@ -261,28 +298,31 @@ export class PumpFunMonitor extends EventEmitter {
       let hasMore = true;
 
       while (hasMore) {
-        const signatures = rateLimiter 
-          ? await rateLimiter.execute(() => 
-              this.proxiedConnection.withProxy(conn =>
-                conn.getSignaturesForAddress(publicKey, {
-                  limit: 1000,
-                  before: lastSignature
-                })
-              )
-            )
-          : await this.proxiedConnection.withProxy(conn =>
-              conn.getSignaturesForAddress(publicKey, {
-                limit: 1000,
-                before: lastSignature
-              })
-            );
+        // NO RATE LIMITING - Global limiter handles all requests
+        const signatures = await this.proxiedConnection.withProxy(conn =>
+          conn.getSignaturesForAddress(publicKey, {
+            limit: 1000,
+            before: lastSignature,
+            ...(minSlot ? { minContextSlot: minSlot } : {})
+          })
+        );
 
         if (signatures.length === 0) {
           hasMore = false;
           break;
         }
 
-        allSignatures.push(...signatures);
+        // Filter by slot if specified
+        const filteredSigs = minSlot 
+          ? signatures.filter(sig => sig.slot >= minSlot)
+          : signatures;
+
+        if (filteredSigs.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        allSignatures.push(...filteredSigs);
         lastSignature = signatures[signatures.length - 1].signature;
 
         console.log(`📚 [Backfill] Collected ${allSignatures.length} signatures...`);
@@ -322,19 +362,12 @@ export class PumpFunMonitor extends EventEmitter {
         console.log(`📚 [Backfill] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allSignatures.length / batchSize)} (${batch.length} transactions)...`);
 
         for (const sigInfo of batch) {
-          const tx = rateLimiter
-            ? await rateLimiter.execute(() =>
-                this.proxiedConnection.withProxy(conn =>
-                  conn.getParsedTransaction(sigInfo.signature, {
-                    maxSupportedTransactionVersion: 0
-                  })
-                )
-              )
-            : await this.proxiedConnection.withProxy(conn =>
-                conn.getParsedTransaction(sigInfo.signature, {
-                  maxSupportedTransactionVersion: 0
-                })
-              );
+          // NO RATE LIMITING - Global limiter handles all requests
+          const tx = await this.proxiedConnection.withProxy(conn =>
+            conn.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0
+            })
+          );
 
           if (tx) {
             const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
