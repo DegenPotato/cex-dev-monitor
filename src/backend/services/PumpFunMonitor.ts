@@ -249,25 +249,42 @@ export class PumpFunMonitor extends EventEmitter {
       console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions...`);
       
       let mintsFound = 0;
+      const batchSize = 100; // Save checkpoint every 100 transactions
       
-      // Process in parallel chunks for max concurrency
-      const chunkSize = 2; // Match GlobalLimiter max concurrent
-      for (let i = 0; i < newSignatures.length; i += chunkSize) {
-        const chunk = newSignatures.slice(i, Math.min(i + chunkSize, newSignatures.length));
+      // Process in batches with checkpoints
+      for (let i = 0; i < newSignatures.length; i += batchSize) {
+        const batch = newSignatures.slice(i, Math.min(i + batchSize, newSignatures.length));
         
-        await Promise.all(chunk.map(async (sigInfo) => {
-          // NO RATE LIMITING - Global limiter handles everything
-          const tx = await this.proxiedConnection.withProxy(conn =>
-            conn.getParsedTransaction(sigInfo.signature, {
-              maxSupportedTransactionVersion: 0
-            })
-          );
+        console.log(`🔄 [Catch-up] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(newSignatures.length / batchSize)} (${batch.length} transactions)...`);
+        
+        // Process in parallel chunks within each batch
+        const chunkSize = 2; // Match GlobalLimiter max concurrent
+        for (let j = 0; j < batch.length; j += chunkSize) {
+          const chunk = batch.slice(j, Math.min(j + chunkSize, batch.length));
+          
+          await Promise.all(chunk.map(async (sigInfo) => {
+            // NO RATE LIMITING - Global limiter handles everything
+            const tx = await this.proxiedConnection.withProxy(conn =>
+              conn.getParsedTransaction(sigInfo.signature, {
+                maxSupportedTransactionVersion: 0
+              })
+            );
 
-          if (tx) {
-            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
-            if (foundMint) mintsFound++;
-          }
-        }));
+            if (tx) {
+              const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+              if (foundMint) mintsFound++;
+            }
+          }));
+        }
+        
+        // Save incremental checkpoint after each batch
+        const lastSigInBatch = batch[batch.length - 1];
+        await MonitoredWalletProvider.update(walletAddress, {
+          last_processed_signature: lastSigInBatch.signature,
+          last_processed_slot: lastSigInBatch.slot,
+          last_processed_time: lastSigInBatch.blockTime ? lastSigInBatch.blockTime * 1000 : Date.now()
+        }, 'pumpfun');
+        console.log(`💾 [Checkpoint] Saved after batch ${Math.floor(i / batchSize) + 1} (slot: ${lastSigInBatch.slot})`);
       }
 
       // Update checkpoint to newest processed transaction
