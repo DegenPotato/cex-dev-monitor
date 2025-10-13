@@ -52,6 +52,9 @@ export interface TokenMint {
   launchpad_completed?: number; // 0 or 1 (SQLite boolean)
   launchpad_completed_at?: number; // Timestamp
   migrated_pool_address?: string;
+  total_supply?: string;
+  market_cap_usd?: number;
+  coingecko_coin_id?: string;
   last_updated?: number;
   metadata?: string;
 }

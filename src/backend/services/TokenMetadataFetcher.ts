@@ -26,6 +26,9 @@ export class TokenMetadataFetcher {
     launchpadGraduationPercentage?: number;
     launchpadCompleted?: boolean;
     launchpadCompletedAt?: string | null;
+    totalSupply?: string;
+    marketCapUsd?: number;
+    coingeckoCoinId?: string | null;
   } | null> {
     try {
       const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
@@ -59,7 +62,10 @@ export class TokenMetadataFetcher {
         volumeUsd24h: attributes.volume_usd?.h24 ? parseFloat(attributes.volume_usd.h24) : undefined,
         launchpadGraduationPercentage: attributes.launchpad_details?.graduation_percentage || undefined,
         launchpadCompleted: attributes.launchpad_details?.completed || false,
-        launchpadCompletedAt: attributes.launchpad_details?.completed_at || null
+        launchpadCompletedAt: attributes.launchpad_details?.completed_at || null,
+        totalSupply: attributes.normalized_total_supply || attributes.total_supply || undefined,
+        marketCapUsd: attributes.market_cap_usd ? parseFloat(attributes.market_cap_usd) : undefined,
+        coingeckoCoinId: attributes.coingecko_coin_id || null
       };
 
       console.log(`✅ [GeckoTerminal] ${attributes.name} (${attributes.symbol}) - FDV: $${metadata.fdvUsd?.toFixed(2) || 'N/A'}, Progress: ${metadata.launchpadGraduationPercentage}%`);

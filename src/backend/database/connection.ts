@@ -366,6 +366,27 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN total_supply TEXT;`);
+    console.log('✅ Added total_supply column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN market_cap_usd REAL;`);
+    console.log('✅ Added market_cap_usd column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN coingecko_coin_id TEXT;`);
+    console.log('✅ Added coingecko_coin_id column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   // OHLCV Data Tables
   db.run(`

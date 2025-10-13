@@ -591,6 +591,9 @@ export class PumpFunMonitor extends EventEmitter {
         graduation_percentage: tokenInfo.launchpadGraduationPercentage,
         launchpad_completed: tokenInfo.launchpadCompleted ? 1 : 0,
         launchpad_completed_at: tokenInfo.launchpadCompletedAt ? new Date(tokenInfo.launchpadCompletedAt).getTime() : undefined,
+        total_supply: tokenInfo.totalSupply,
+        market_cap_usd: tokenInfo.marketCapUsd,
+        coingecko_coin_id: tokenInfo.coingeckoCoinId || undefined,
         last_updated: Date.now(),
         metadata: JSON.stringify({
           launchTime: new Date(launchTimestamp).toISOString(),
@@ -658,6 +661,9 @@ export class PumpFunMonitor extends EventEmitter {
     launchpadGraduationPercentage?: number;
     launchpadCompleted?: boolean;
     launchpadCompletedAt?: string | null;
+    totalSupply?: string;
+    marketCapUsd?: number;
+    coingeckoCoinId?: string | null;
   }> {
     try {
       console.log(`🔍 [PumpFun] Fetching metadata for ${mintAddress.slice(0, 8)}...`);
