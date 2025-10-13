@@ -3,14 +3,15 @@ import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
 
 /**
  * Market Data Tracker using GeckoTerminal API
- * - Polls every 1 minute
- * - Updates current_mcap and ath_mcap
+ * - Polls every 30 minutes (slow to avoid competing with OHLCV collector)
+ * - Fetches graduation data, prices, and metadata
  * - Batch support: 30 tokens per request
+ * - Uses global rate limiter to coordinate with OHLCV collector
  */
 export class MarketDataTracker {
   private isRunning = false;
   private intervalId: NodeJS.Timeout | null = null;
-  private readonly POLL_INTERVAL = 60 * 1000; // 1 minute
+  private readonly POLL_INTERVAL = 30 * 60 * 1000; // 30 minutes (was 1 minute - too aggressive)
   private metadataFetcher: TokenMetadataFetcher;
 
   constructor() {
@@ -27,9 +28,9 @@ export class MarketDataTracker {
     }
 
     this.isRunning = true;
-    console.log('📊 [MarketData] Starting tracker via GeckoTerminal API');
+    console.log('📊 [MarketData] Starting tracker via GeckoTerminal API (30 min interval)');
     
-    // Run immediately, then poll every minute
+    // Run immediately, then poll every 30 minutes
     this.updateAllTokens();
     this.intervalId = setInterval(() => {
       this.updateAllTokens();

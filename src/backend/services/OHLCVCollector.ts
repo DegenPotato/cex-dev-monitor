@@ -30,12 +30,11 @@ export class OHLCVCollector {
     { name: '1d', api: 'day', aggregate: 1, intervalMs: 24 * 60 * 60 * 1000 }
   ];
   
-  // Rate limiting - VERY conservative to avoid 429s
-  private readonly BACKFILL_INTERVAL = 15 * 60 * 1000; // Run backfill every 15 minutes
-  private readonly REQUESTS_PER_MINUTE = 10; // Very conservative GeckoTerminal limit
-  private readonly REQUEST_DELAY = Math.ceil((60 * 1000) / this.REQUESTS_PER_MINUTE); // 6 seconds
+  // Rate limiting - Global rate limiter handles all pacing
+  private readonly BACKFILL_INTERVAL = 5 * 60 * 1000; // Run backfill every 5 minutes
+  private readonly REQUESTS_PER_MINUTE = 10; // Very conservative GeckoTerminal limit (for display only)
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // GeckoTerminal max
-  private readonly MAX_TOKENS_PER_CYCLE = 20; // Process max 20 tokens per cycle to avoid rate limits
+  // NOTE: We process ALL tokens every cycle - global rate limiter queues and paces ALL requests automatically
   
   constructor() {
     console.log('📊 [OHLCV] Collector initialized (NOT auto-starting)');
@@ -93,14 +92,10 @@ export class OHLCVCollector {
         return;
       }
       
-      console.log(`📊 [OHLCV] Found ${tokens.length} tokens in database`);
+      console.log(`📊 [OHLCV] Processing all ${tokens.length} tokens (global rate limiter will pace requests)`);
       
-      // Limit tokens per cycle to avoid rate limits
-      const tokensToProcess = tokens.slice(0, this.MAX_TOKENS_PER_CYCLE);
-      console.log(`📊 [OHLCV] Processing ${tokensToProcess.length} tokens this cycle (rate limit protection)`);
-      
-      // Process each token
-      for (const token of tokensToProcess) {
+      // Process each token - global rate limiter handles pacing
+      for (const token of tokens) {
         if (!this.isRunning) {
           console.log('📊 [OHLCV] Stopped during cycle');
           return;
@@ -133,12 +128,11 @@ export class OHLCVCollector {
       console.log(`📊 [OHLCV] Pool found for ${mintAddress.slice(0, 8)}..., processing timeframes`);
 
       
-      // Step 2: Process each timeframe
+      // Step 2: Process each timeframe (global rate limiter handles delays)
       for (const timeframe of this.TIMEFRAMES) {
         if (!this.isRunning) return;
         
         await this.backfillTimeframe(mintAddress, poolAddress, timeframe, creationTimestamp);
-        await this.delay(this.REQUEST_DELAY); // Rate limiting between timeframes
       }
     } catch (error: any) {
       console.error(`📊 [OHLCV] Error processing ${mintAddress.slice(0, 8)}...:`, error);
@@ -537,12 +531,5 @@ export class OHLCVCollector {
         backfillInterval: this.BACKFILL_INTERVAL
       };
     }
-  }
-  
-  /**
-   * Delay utility
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
