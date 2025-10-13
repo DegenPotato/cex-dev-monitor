@@ -173,55 +173,46 @@ export class PumpFunMonitor extends EventEmitter {
    */
   private async catchUpFromCheckpoint(walletAddress: string, wallet: any): Promise<void> {
     this.isBackfilling.set(walletAddress, true);
-    const rateLimiter = this.rateLimiters.get(walletAddress);
     
     try {
       const publicKey = new PublicKey(walletAddress);
       
-      console.log(`🔄 [Catch-up] Fetching new transactions since ${wallet.last_processed_signature?.slice(0, 8)}...`);
+      const checkpointSlot = wallet.last_processed_slot || 0;
+      console.log(`🔄 [Catch-up] Fetching new transactions since slot ${checkpointSlot} (${wallet.last_processed_signature?.slice(0, 8)}...)`);
 
-      // Fetch signatures UNTIL we hit our checkpoint
+      // Fetch ALL signatures newer than checkpoint slot (reliable even for very active wallets)
       const newSignatures: any[] = [];
       let lastSignature: string | undefined;
       let hasMore = true;
-      let foundCheckpoint = false;
 
-      while (hasMore && !foundCheckpoint) {
-        const signatures = rateLimiter 
-          ? await rateLimiter.execute(() => 
-              this.proxiedConnection.withProxy(conn =>
-                conn.getSignaturesForAddress(publicKey, {
-                  limit: 1000,
-                  before: lastSignature
-                })
-              )
-            )
-          : await this.proxiedConnection.withProxy(conn =>
-              conn.getSignaturesForAddress(publicKey, {
-                limit: 1000,
-                before: lastSignature
-              })
-            );
+      while (hasMore) {
+        // NO RATE LIMITING - Global limiter handles everything
+        const signatures = await this.proxiedConnection.withProxy(conn =>
+          conn.getSignaturesForAddress(publicKey, {
+            limit: 1000,
+            before: lastSignature
+          })
+        );
 
         if (signatures.length === 0) {
           hasMore = false;
           break;
         }
 
-        // Check each signature until we find our checkpoint
+        // Filter by slot number (reliable checkpoint method)
         for (const sig of signatures) {
-          if (sig.signature === wallet.last_processed_signature) {
-            foundCheckpoint = true;
+          if (sig.slot > checkpointSlot) {
+            newSignatures.push(sig);
+          } else {
+            // Reached checkpoint - stop searching
+            hasMore = false;
             break;
           }
-          newSignatures.push(sig);
         }
 
-        if (!foundCheckpoint) {
-          lastSignature = signatures[signatures.length - 1].signature;
-          if (signatures.length < 1000) {
-            hasMore = false;
-          }
+        lastSignature = signatures[signatures.length - 1].signature;
+        if (signatures.length < 1000) {
+          hasMore = false;
         }
       }
 
@@ -237,19 +228,12 @@ export class PumpFunMonitor extends EventEmitter {
       
       let mintsFound = 0;
       for (const sigInfo of newSignatures) {
-        const tx = rateLimiter
-          ? await rateLimiter.execute(() =>
-              this.proxiedConnection.withProxy(conn =>
-                conn.getParsedTransaction(sigInfo.signature, {
-                  maxSupportedTransactionVersion: 0
-                })
-              )
-            )
-          : await this.proxiedConnection.withProxy(conn =>
-              conn.getParsedTransaction(sigInfo.signature, {
-                maxSupportedTransactionVersion: 0
-              })
-            );
+        // NO RATE LIMITING - Global limiter handles everything
+        const tx = await this.proxiedConnection.withProxy(conn =>
+          conn.getParsedTransaction(sigInfo.signature, {
+            maxSupportedTransactionVersion: 0
+          })
+        );
 
         if (tx) {
           const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
