@@ -112,9 +112,14 @@ export class PumpFunMonitor extends EventEmitter {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Get wallet config
-    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
     if (!wallet) {
       throw new Error('Wallet not found');
+    }
+    
+    // Verify wallet supports pumpfun monitoring
+    if (wallet.monitoring_type !== 'pumpfun' && wallet.monitoring_type !== 'both') {
+      throw new Error(`Wallet has monitoring_type '${wallet.monitoring_type}', not 'pumpfun' or 'both'`);
     }
     
     // Initialize rate limiter (though backfill won't use it - global limiter handles everything)
@@ -139,6 +144,10 @@ export class PumpFunMonitor extends EventEmitter {
       this.activeSubscriptions.delete(walletAddress);
       console.log(`⛔ [PumpFun] Stopped monitoring ${walletAddress.slice(0, 8)}...`);
     }
+    
+    // Clean up backfill and rate limiter state
+    this.isBackfilling.delete(walletAddress);
+    this.rateLimiters.delete(walletAddress);
   }
 
   /**
@@ -336,7 +345,7 @@ export class PumpFunMonitor extends EventEmitter {
         await MonitoredWalletProvider.update(walletAddress, {
           dev_checked: 1,
           last_history_check: Date.now()
-        }, 'pumpfun');
+        });
         return;
       }
 
@@ -390,7 +399,7 @@ export class PumpFunMonitor extends EventEmitter {
         last_processed_signature: newestSig.signature,
         last_processed_slot: newestSig.slot,
         last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now()
-      }, 'pumpfun');
+      });
 
       console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   Total Transactions: ${totalProcessed}`);

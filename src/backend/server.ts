@@ -636,9 +636,10 @@ app.delete('/api/wallets/:address', async (req, res) => {
 
     // Stop all monitors for this wallet
     for (const wallet of wallets) {
-      if (wallet.monitoring_type === 'pumpfun') {
+      if (wallet.monitoring_type === 'pumpfun' || wallet.monitoring_type === 'both') {
         await pumpFunMonitor.stopMonitoringWallet(address);
-      } else if (wallet.monitoring_type === 'trading') {
+      }
+      if (wallet.monitoring_type === 'trading' || wallet.monitoring_type === 'both') {
         await tradingActivityMonitor.stopMonitoringWallet(address);
       }
     }
@@ -771,11 +772,15 @@ app.post('/api/wallets/:address/rebackfill/:minSlot?', async (req, res) => {
     const { address, minSlot: minSlotParam } = req.params;
     const minSlot = minSlotParam ? parseInt(minSlotParam) : undefined;
     
-    // Check if wallet exists
-    const wallet = await MonitoredWalletProvider.findByAddress(address, 'pumpfun');
+    // Check if wallet exists and supports pumpfun monitoring
+    const wallet = await MonitoredWalletProvider.findByAddress(address);
     
     if (!wallet) {
-      return res.status(404).json({ error: 'Pump.fun wallet not found' });
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+    
+    if (wallet.monitoring_type !== 'pumpfun' && wallet.monitoring_type !== 'both') {
+      return res.status(400).json({ error: `Wallet has monitoring_type '${wallet.monitoring_type}', not 'pumpfun' or 'both'` });
     }
 
     const slotMsg = minSlot ? ` from slot ${minSlot}` : ' (FULL HISTORY)';
