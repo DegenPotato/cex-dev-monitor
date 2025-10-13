@@ -1,9 +1,10 @@
-import { PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
+import { PublicKey, ParsedTransactionWithMeta, Connection } from '@solana/web3.js';
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
 import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { WalletRateLimiter } from './WalletRateLimiter.js';
 import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
+import { globalRPCServerRotator } from './RPCServerRotator.js';
 import { EventEmitter } from 'events';
 
 // Pump.fun program ID
@@ -456,11 +457,22 @@ export class PumpFunMonitor extends EventEmitter {
       
       console.log(`🔴 [Live] Starting real-time monitoring for ${walletAddress.slice(0, 8)}...`);
 
-      // Subscribe to logs mentioning this wallet address
-      const subscriptionId = await this.proxiedConnection.withProxy(async conn => {
-        return conn.onLogs(
-          publicKey,
-          async (logs, _context) => {
+      // Get WebSocket connection based on current mode (RPC rotation or direct)
+      let wsConnection: Connection;
+      if (globalRPCServerRotator.isEnabled()) {
+        // Use RPC rotation server for WebSocket (same as catch-up)
+        const rpcServer = await globalRPCServerRotator.getNextServer();
+        wsConnection = new Connection(rpcServer, 'confirmed');
+        console.log(`🔴 [Live] Using RPC rotation server for WebSocket: ${rpcServer.slice(0, 30)}...`);
+      } else {
+        // Fallback to Helius for WebSocket (has proper WS support)
+        wsConnection = new Connection('https://mainnet.helius-rpc.com/?api-key=e589d712-ed13-493b-a523-1c4aa6e33e0b', 'confirmed');
+        console.log(`🔴 [Live] Using Helius for WebSocket`);
+      }
+
+      const subscriptionId = wsConnection.onLogs(
+        publicKey,
+        async (logs, _context) => {
             // Fetch transaction to get slot info for checkpoint
             const tx = await this.proxiedConnection.withProxy(conn =>
               conn.getParsedTransaction(logs.signature, {
@@ -487,10 +499,9 @@ export class PumpFunMonitor extends EventEmitter {
                 last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
               }, 'pumpfun');
             }
-          },
-          'confirmed'
-        );
-      });
+        },
+        'confirmed'
+      );
 
       this.activeSubscriptions.set(walletAddress, subscriptionId as number);
       console.log(`✅ [Live] Real-time monitoring active for ${walletAddress.slice(0, 8)}...`);
