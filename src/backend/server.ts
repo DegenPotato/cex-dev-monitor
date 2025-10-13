@@ -663,7 +663,7 @@ app.post('/api/wallets/:address/rebackfill', async (req, res) => {
   try {
     const { address } = req.params;
     // Support both body and query parameter
-    const minSlot = req.body?.minSlot || req.query.minSlot ? parseInt(req.query.minSlot as string) : undefined;
+    const minSlot = req.body?.minSlot || (req.query.minSlot ? parseInt(req.query.minSlot as string) : undefined);
     
     console.log(`🔄 [API] Re-backfill request received for ${address.slice(0, 8)}...`);
     console.log(`🔄 [API] Request body:`, req.body);
