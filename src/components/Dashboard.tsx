@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, Circle, Wallet, Flame } from 'lucide-react';
+import { Settings, Circle, Wallet, Flame, Database } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
@@ -7,8 +7,9 @@ import { SettingsPanel } from './SettingsPanel';
 import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
+import { DatabaseTab } from './DatabaseTab';
 
-type Tab = 'wallets' | 'tokens';
+type Tab = 'wallets' | 'tokens' | 'database';
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -129,6 +130,17 @@ export function Dashboard() {
             <Flame className="w-5 h-5" />
             Token Launch History
           </button>
+          <button
+            onClick={() => setActiveTab('database')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'database'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+            }`}
+          >
+            <Database className="w-5 h-5" />
+            Database Admin
+          </button>
         </div>
 
         {/* Main Content */}
@@ -142,9 +154,13 @@ export function Dashboard() {
               <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'tokens' ? (
           <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
             <TokensTab />
+          </div>
+        ) : (
+          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl h-[calc(100vh-250px)]">
+            <DatabaseTab />
           </div>
         )}
       </div>

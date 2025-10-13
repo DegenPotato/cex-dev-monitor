@@ -22,6 +22,7 @@ import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
+import databaseRoutes from './routes/database.js';
 
 const app = express();
 const server = createServer(app);
@@ -39,6 +40,9 @@ app.use(express.json());
 
 // Initialize database
 await initDatabase();
+
+// Register database admin routes
+app.use('/api/database', databaseRoutes);
 
 // Load separate concurrency configs for Proxy and RPC rotation
 const proxyMaxConcurrent = await ConfigProvider.get('proxy_max_concurrent');
