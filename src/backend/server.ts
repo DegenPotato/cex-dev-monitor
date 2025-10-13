@@ -658,40 +658,68 @@ app.delete('/api/wallets/:address', async (req, res) => {
   }
 });
 
-// Verify and clean up token mints - remove entries with wrong creator
+// Verify and clean up token mints - verify ON-CHAIN creators
 app.post('/api/tokens/verify-creators', async (_req, res) => {
   try {
-    // Get all monitored wallets
-    const wallets = await MonitoredWalletProvider.findAll();
-    const monitoredAddresses = new Set(wallets.map(w => w.address));
+    const EXPECTED_CREATOR = 'FM1YCKED2KaqB8Uat8aB1nsffR1vezr7s6FAEieXJgke';
+    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
     
     // Get all token mints
     const allTokens = await TokenMintProvider.findAll();
+    console.log(`🔍 Verifying ${allTokens.length} tokens on-chain...`);
     
-    // Separate valid and invalid
-    const valid: any[] = [];
-    const invalid: any[] = [];
+    const results = {
+      total: allTokens.length,
+      checked: 0,
+      valid: 0,
+      invalid: 0,
+      errors: 0,
+      invalid_tokens: [] as any[]
+    };
     
     for (const token of allTokens) {
-      if (monitoredAddresses.has(token.creator_address)) {
-        valid.push(token);
-      } else {
-        invalid.push({
-          mint_address: token.mint_address,
-          creator_address: token.creator_address,
-          name: token.name,
-          symbol: token.symbol
-        });
+      try {
+        const mintPubkey = new PublicKey(token.mint_address);
+        const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
+        
+        results.checked++;
+        
+        if (!mintInfo.value) {
+          console.log(`⚠️  [${results.checked}/${allTokens.length}] ${token.symbol} - Account not found`);
+          results.errors++;
+          continue;
+        }
+        
+        const data = mintInfo.value.data;
+        if (data && 'parsed' in data) {
+          const mintAuthority = data.parsed.info.mintAuthority;
+          
+          if (mintAuthority !== EXPECTED_CREATOR) {
+            console.log(`❌ [${results.checked}/${allTokens.length}] ${token.symbol || token.mint_address.slice(0, 8)} - WRONG CREATOR: ${mintAuthority?.slice(0, 8)}`);
+            results.invalid++;
+            results.invalid_tokens.push({
+              mint_address: token.mint_address,
+              db_creator: token.creator_address,
+              onchain_creator: mintAuthority,
+              name: token.name,
+              symbol: token.symbol
+            });
+          } else {
+            console.log(`✅ [${results.checked}/${allTokens.length}] ${token.symbol} - Valid`);
+            results.valid++;
+          }
+        }
+        
+        // Rate limit
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error: any) {
+        console.error(`❌ Error checking ${token.mint_address.slice(0, 8)}:`, error.message);
+        results.errors++;
       }
     }
     
-    res.json({
-      total: allTokens.length,
-      valid: valid.length,
-      invalid: invalid.length,
-      monitored_wallets: Array.from(monitoredAddresses),
-      invalid_tokens: invalid
-    });
+    res.json(results);
   } catch (error: any) {
     console.error(`❌ [API] Token verification error:`, error);
     res.status(500).json({ error: error.message });
