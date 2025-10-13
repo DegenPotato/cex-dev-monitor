@@ -957,6 +957,13 @@ app.get('/api/tokens', async (req, res) => {
   res.json(mappedTokens);
 });
 
+// Get recent token mints (alias for /api/tokens)
+app.get('/api/tokens/recent', async (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 100;
+  const tokens = await TokenMintProvider.findRecent(limit);
+  res.json(tokens);
+});
+
 // Get token mints by creator
 app.get('/api/tokens/creator/:address', async (req, res) => {
   const { address } = req.params;
@@ -1161,6 +1168,23 @@ app.post('/api/ohlcv/stop', (_req, res) => {
 app.get('/api/ohlcv/status', async (_req, res) => {
   const status = await ohlcvCollector.getStatus();
   res.json(status);
+});
+
+// Get OHLCV data for a token
+app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
+  try {
+    const { address, timeframe } = req.params;
+    
+    const candles = await queryAll(
+      `SELECT * FROM ohlcv_${timeframe} WHERE mint_address = ? ORDER BY timestamp ASC`,
+      [address]
+    );
+    
+    res.json(candles || []);
+  } catch (error: any) {
+    console.error(`Error fetching OHLCV data:`, error);
+    res.json([]);
+  }
 });
 
 // OHLCV Metrics Calculator control endpoints
