@@ -679,39 +679,46 @@ app.post('/api/tokens/verify-creators', async (_req, res) => {
     
     for (const token of allTokens) {
       try {
-        const mintPubkey = new PublicKey(token.mint_address);
-        const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
+        if (!token.signature) {
+          console.log(`⚠️  [${results.checked + 1}/${allTokens.length}] ${token.symbol} - No signature`);
+          results.errors++;
+          results.checked++;
+          continue;
+        }
+        
+        // Fetch the creation transaction
+        const txInfo = await connection.getParsedTransaction(token.signature, {
+          maxSupportedTransactionVersion: 0
+        });
         
         results.checked++;
         
-        if (!mintInfo.value) {
-          console.log(`⚠️  [${results.checked}/${allTokens.length}] ${token.symbol} - Account not found`);
+        if (!txInfo || !txInfo.transaction) {
+          console.log(`⚠️  [${results.checked}/${allTokens.length}] ${token.symbol} - Tx not found`);
           results.errors++;
           continue;
         }
         
-        const data = mintInfo.value.data;
-        if (data && 'parsed' in data) {
-          const mintAuthority = data.parsed.info.mintAuthority;
-          
-          if (mintAuthority !== EXPECTED_CREATOR) {
-            console.log(`❌ [${results.checked}/${allTokens.length}] ${token.symbol || token.mint_address.slice(0, 8)} - WRONG CREATOR: ${mintAuthority?.slice(0, 8)}`);
-            results.invalid++;
-            results.invalid_tokens.push({
-              mint_address: token.mint_address,
-              db_creator: token.creator_address,
-              onchain_creator: mintAuthority,
-              name: token.name,
-              symbol: token.symbol
-            });
-          } else {
-            console.log(`✅ [${results.checked}/${allTokens.length}] ${token.symbol} - Valid`);
-            results.valid++;
-          }
+        // Get the transaction signer (creator/dev)
+        const signer = txInfo.transaction.message.accountKeys[0].pubkey.toBase58();
+        
+        if (signer !== EXPECTED_CREATOR) {
+          console.log(`❌ [${results.checked}/${allTokens.length}] ${token.symbol} - WRONG CREATOR: ${signer.slice(0, 8)}`);
+          results.invalid++;
+          results.invalid_tokens.push({
+            mint_address: token.mint_address,
+            db_creator: token.creator_address,
+            onchain_creator: signer,
+            name: token.name,
+            symbol: token.symbol
+          });
+        } else {
+          console.log(`✅ [${results.checked}/${allTokens.length}] ${token.symbol} - Valid`);
+          results.valid++;
         }
         
         // Rate limit
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
         
       } catch (error: any) {
         console.error(`❌ Error checking ${token.mint_address.slice(0, 8)}:`, error.message);
