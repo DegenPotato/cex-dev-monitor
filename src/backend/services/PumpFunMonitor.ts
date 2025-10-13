@@ -229,18 +229,25 @@ export class PumpFunMonitor extends EventEmitter {
       console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions...`);
       
       let mintsFound = 0;
-      for (const sigInfo of newSignatures) {
-        // NO RATE LIMITING - Global limiter handles everything
-        const tx = await this.proxiedConnection.withProxy(conn =>
-          conn.getParsedTransaction(sigInfo.signature, {
-            maxSupportedTransactionVersion: 0
-          })
-        );
+      
+      // Process in parallel chunks for max concurrency
+      const chunkSize = 2; // Match GlobalLimiter max concurrent
+      for (let i = 0; i < newSignatures.length; i += chunkSize) {
+        const chunk = newSignatures.slice(i, Math.min(i + chunkSize, newSignatures.length));
+        
+        await Promise.all(chunk.map(async (sigInfo) => {
+          // NO RATE LIMITING - Global limiter handles everything
+          const tx = await this.proxiedConnection.withProxy(conn =>
+            conn.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0
+            })
+          );
 
-        if (tx) {
-          const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
-          if (foundMint) mintsFound++;
-        }
+          if (tx) {
+            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+            if (foundMint) mintsFound++;
+          }
+        }));
       }
 
       // Update checkpoint to newest processed transaction
@@ -347,20 +354,26 @@ export class PumpFunMonitor extends EventEmitter {
         
         console.log(`📚 [Backfill] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allSignatures.length / batchSize)} (${batch.length} transactions)...`);
 
-        for (const sigInfo of batch) {
-          // NO RATE LIMITING - Global limiter handles all requests
-          const tx = await this.proxiedConnection.withProxy(conn =>
-            conn.getParsedTransaction(sigInfo.signature, {
-              maxSupportedTransactionVersion: 0
-            })
-          );
-
-          if (tx) {
-            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
-            if (foundMint) mintsFound++;
-          }
+        // Process transactions in parallel chunks for max concurrency
+        const chunkSize = 2; // Match GlobalLimiter max concurrent
+        for (let j = 0; j < batch.length; j += chunkSize) {
+          const chunk = batch.slice(j, Math.min(j + chunkSize, batch.length));
           
-          totalProcessed++;
+          await Promise.all(chunk.map(async (sigInfo) => {
+            // NO RATE LIMITING - Global limiter handles all requests
+            const tx = await this.proxiedConnection.withProxy(conn =>
+              conn.getParsedTransaction(sigInfo.signature, {
+                maxSupportedTransactionVersion: 0
+              })
+            );
+
+            if (tx) {
+              const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+              if (foundMint) mintsFound++;
+            }
+            
+            totalProcessed++;
+          }));
         }
       }
 
