@@ -444,31 +444,31 @@ export class PumpFunMonitor extends EventEmitter {
         return conn.onLogs(
           publicKey,
           async (logs, _context) => {
-            // Check if this transaction involves Pumpfun
-            const involvesPumpfun = logs.logs.some(log => 
-              log.includes('Program ' + PUMPFUN_PROGRAM_ID)
+            // Fetch transaction to get slot info for checkpoint
+            const tx = await this.proxiedConnection.withProxy(conn =>
+              conn.getParsedTransaction(logs.signature, {
+                maxSupportedTransactionVersion: 0
+              })
             );
 
-            if (involvesPumpfun) {
-              console.log(`🔴 [Live] Pumpfun activity detected for ${walletAddress.slice(0, 8)}...`);
-              
-              // Fetch and process the full transaction
-              const tx = await this.proxiedConnection.withProxy(conn =>
-                conn.getParsedTransaction(logs.signature, {
-                  maxSupportedTransactionVersion: 0
-                })
+            if (tx) {
+              // Check if this transaction involves Pumpfun
+              const involvesPumpfun = logs.logs.some(log => 
+                log.includes('Program ' + PUMPFUN_PROGRAM_ID)
               );
 
-              if (tx) {
+              if (involvesPumpfun) {
+                console.log(`🔴 [Live] Pumpfun activity detected for ${walletAddress.slice(0, 8)}...`);
                 await this.analyzeTransactionForMint(tx, walletAddress, logs.signature);
-                
-                // Update checkpoint after processing real-time transaction
-                await MonitoredWalletProvider.update(walletAddress, {
-                  last_processed_signature: logs.signature,
-                  last_processed_slot: tx.slot,
-                  last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
-                }, 'pumpfun');
               }
+              
+              // ALWAYS update checkpoint (even for non-Pumpfun transactions)
+              // This ensures we don't miss transactions on restart
+              await MonitoredWalletProvider.update(walletAddress, {
+                last_processed_signature: logs.signature,
+                last_processed_slot: tx.slot,
+                last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
+              });
             }
           },
           'confirmed'
