@@ -1,5 +1,6 @@
 import fetch from 'cross-fetch';
-import { getDatabase } from '../database/connection.js';
+import { saveDatabase } from '../database/connection.js';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
 
 /**
  * OHLCV Data Collector using GeckoTerminal API
@@ -33,8 +34,6 @@ export class OHLCVCollector {
   private readonly REQUESTS_PER_MINUTE = 30; // Conservative GeckoTerminal limit
   private readonly REQUEST_DELAY = Math.ceil((60 * 1000) / this.REQUESTS_PER_MINUTE);
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // GeckoTerminal max
-  
-  private db = getDatabase();
   
   constructor() {
     console.log('📊 [OHLCV] Collector initialized (NOT auto-starting)');
@@ -81,11 +80,11 @@ export class OHLCVCollector {
       console.log('📊 [OHLCV] Starting backfill cycle...');
       
       // Get all tokens
-      const tokens = this.db.prepare(`
-        SELECT mint_address, timestamp as creation_timestamp 
-        FROM token_mints 
-        ORDER BY timestamp DESC
-      `).all() as Array<{ mint_address: string; creation_timestamp: number }>;
+      const tokens = await queryAll<{ mint_address: string; creation_timestamp: number }>(
+        `SELECT mint_address, timestamp as creation_timestamp 
+         FROM token_mints 
+         ORDER BY timestamp DESC`
+      );
       
       if (tokens.length === 0) {
         console.log('📊 [OHLCV] No tokens to process');
@@ -139,9 +138,10 @@ export class OHLCVCollector {
    */
   private async ensurePoolAddress(mintAddress: string): Promise<string | null> {
     // Check if we already have it
-    const existing = this.db.prepare(`
-      SELECT pool_address FROM token_pools WHERE mint_address = ?
-    `).get(mintAddress) as { pool_address: string } | undefined;
+    const existing = await queryOne<{ pool_address: string }>(
+      `SELECT pool_address FROM token_pools WHERE mint_address = ?`,
+      [mintAddress]
+    );
     
     if (existing) {
       return existing.pool_address;
@@ -175,11 +175,13 @@ export class OHLCVCollector {
       const poolAddress = poolId.replace('solana_', '');
       
       // Store it
-      this.db.prepare(`
-        INSERT OR REPLACE INTO token_pools 
-        (mint_address, pool_address, discovered_at) 
-        VALUES (?, ?, ?)
-      `).run(mintAddress, poolAddress, Date.now());
+      await execute(
+        `INSERT OR REPLACE INTO token_pools 
+         (mint_address, pool_address, discovered_at) 
+         VALUES (?, ?, ?)`,
+        [mintAddress, poolAddress, Date.now()]
+      );
+      saveDatabase();
       
       console.log(`✅ [OHLCV] Found pool for ${mintAddress.slice(0, 8)}...: ${poolAddress.slice(0, 8)}...`);
       
@@ -202,14 +204,15 @@ export class OHLCVCollector {
   ) {
     try {
       // Get progress
-      const progress = this.db.prepare(`
-        SELECT * FROM ohlcv_backfill_progress 
-        WHERE mint_address = ? AND timeframe = ?
-      `).get(mintAddress, timeframe.name) as {
+      const progress = await queryOne<{
         oldest_timestamp: number | null;
         newest_timestamp: number | null;
         backfill_complete: number;
-      } | undefined;
+      }>(
+        `SELECT * FROM ohlcv_backfill_progress 
+         WHERE mint_address = ? AND timeframe = ?`,
+        [mintAddress, timeframe.name]
+      );
       
       // If backfill complete, skip
       if (progress?.backfill_complete) {
@@ -246,26 +249,30 @@ export class OHLCVCollector {
       let stored = 0;
       for (const candle of candles) {
         try {
-          this.db.prepare(`
-            INSERT OR IGNORE INTO ohlcv_data 
-            (mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            mintAddress,
-            poolAddress,
-            timeframe.name,
-            candle.timestamp,
-            candle.open,
-            candle.high,
-            candle.low,
-            candle.close,
-            candle.volume,
-            Date.now()
+          await execute(
+            `INSERT OR IGNORE INTO ohlcv_data 
+             (mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              mintAddress,
+              poolAddress,
+              timeframe.name,
+              candle.timestamp,
+              candle.open,
+              candle.high,
+              candle.low,
+              candle.close,
+              candle.volume,
+              Date.now()
+            ]
           );
           stored++;
         } catch (e) {
           // Duplicate, skip
         }
+      }
+      if (stored > 0) {
+        saveDatabase();
       }
       
       // Update progress
@@ -275,25 +282,28 @@ export class OHLCVCollector {
       
       const isComplete = oldestFetched <= creationUnix;
       
-      this.db.prepare(`
-        INSERT OR REPLACE INTO ohlcv_backfill_progress 
-        (mint_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
-        VALUES (
-          ?, ?, 
-          COALESCE((SELECT MIN(oldest_timestamp, ?) FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?), ?),
-          COALESCE((SELECT MAX(newest_timestamp, ?) FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?), ?),
-          ?,
-          ?,
-          COALESCE((SELECT fetch_count FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?), 0) + 1
-        )
-      `).run(
-        mintAddress, timeframe.name,
-        oldestFetched, mintAddress, timeframe.name, oldestFetched,
-        newestFetched, mintAddress, timeframe.name, newestFetched,
-        isComplete ? 1 : 0,
-        Date.now(),
-        mintAddress, timeframe.name
+      // Get current fetch count
+      const currentProgress = await queryOne<{ fetch_count: number }>(
+        `SELECT fetch_count FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?`,
+        [mintAddress, timeframe.name]
       );
+      const fetchCount = (currentProgress?.fetch_count || 0) + 1;
+      
+      await execute(
+        `INSERT OR REPLACE INTO ohlcv_backfill_progress 
+         (mint_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          mintAddress,
+          timeframe.name,
+          progress?.oldest_timestamp ? Math.min(progress.oldest_timestamp, oldestFetched) : oldestFetched,
+          progress?.newest_timestamp ? Math.max(progress.newest_timestamp, newestFetched) : newestFetched,
+          isComplete ? 1 : 0,
+          Date.now(),
+          fetchCount
+        ]
+      );
+      saveDatabase();
       
       console.log(`✅ [OHLCV] ${mintAddress.slice(0, 8)}... ${timeframe.name}: ${stored} candles (${isComplete ? 'COMPLETE' : 'continuing'})`);
       
@@ -301,11 +311,19 @@ export class OHLCVCollector {
       console.error(`❌ [OHLCV] Error backfilling ${mintAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
       
       // Track error
-      this.db.prepare(`
-        UPDATE ohlcv_backfill_progress 
-        SET error_count = error_count + 1, last_error = ?
-        WHERE mint_address = ? AND timeframe = ?
-      `).run(error.message, mintAddress, timeframe.name);
+      const currentProgress = await queryOne<{ error_count: number }>(
+        `SELECT error_count FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?`,
+        [mintAddress, timeframe.name]
+      );
+      const errorCount = (currentProgress?.error_count || 0) + 1;
+      
+      await execute(
+        `UPDATE ohlcv_backfill_progress 
+         SET error_count = ?, last_error = ?
+         WHERE mint_address = ? AND timeframe = ?`,
+        [errorCount, error.message, mintAddress, timeframe.name]
+      );
+      saveDatabase();
     }
   }
   
@@ -362,12 +380,14 @@ export class OHLCVCollector {
   /**
    * Mark backfill as complete for a token/timeframe
    */
-  private markBackfillComplete(mintAddress: string, timeframe: string) {
-    this.db.prepare(`
-      UPDATE ohlcv_backfill_progress 
-      SET backfill_complete = 1 
-      WHERE mint_address = ? AND timeframe = ?
-    `).run(mintAddress, timeframe);
+  private async markBackfillComplete(mintAddress: string, timeframe: string) {
+    await execute(
+      `UPDATE ohlcv_backfill_progress 
+       SET backfill_complete = 1 
+       WHERE mint_address = ? AND timeframe = ?`,
+      [mintAddress, timeframe]
+    );
+    saveDatabase();
     
     console.log(`✅ [OHLCV] Backfill complete for ${mintAddress.slice(0, 8)}... ${timeframe}`);
   }
@@ -375,33 +395,40 @@ export class OHLCVCollector {
   /**
    * Get collector status
    */
-  getStatus() {
-    const stats = this.db.prepare(`
-      SELECT 
-        COUNT(DISTINCT mint_address) as total_tokens,
-        COUNT(*) as total_candles,
-        COUNT(CASE WHEN timeframe = '1m' THEN 1 END) as candles_1m,
-        COUNT(CASE WHEN timeframe = '15m' THEN 1 END) as candles_15m,
-        COUNT(CASE WHEN timeframe = '1h' THEN 1 END) as candles_1h,
-        COUNT(CASE WHEN timeframe = '4h' THEN 1 END) as candles_4h,
-        COUNT(CASE WHEN timeframe = '1d' THEN 1 END) as candles_1d
-      FROM ohlcv_data
-    `).get() as any;
-    
-    const progress = this.db.prepare(`
-      SELECT 
-        COUNT(*) as total_progress_entries,
-        COUNT(CASE WHEN backfill_complete = 1 THEN 1 END) as completed,
-        COUNT(CASE WHEN backfill_complete = 0 THEN 1 END) as in_progress
-      FROM ohlcv_backfill_progress
-    `).get() as any;
-    
-    return {
-      isRunning: this.isRunning,
-      backfillInterval: this.BACKFILL_INTERVAL,
-      ...stats,
-      ...progress
-    };
+  async getStatus() {
+    try {
+      const stats = await queryOne<any>(`
+        SELECT 
+          COUNT(DISTINCT mint_address) as total_tokens,
+          COUNT(*) as total_candles,
+          COUNT(CASE WHEN timeframe = '1m' THEN 1 END) as candles_1m,
+          COUNT(CASE WHEN timeframe = '15m' THEN 1 END) as candles_15m,
+          COUNT(CASE WHEN timeframe = '1h' THEN 1 END) as candles_1h,
+          COUNT(CASE WHEN timeframe = '4h' THEN 1 END) as candles_4h,
+          COUNT(CASE WHEN timeframe = '1d' THEN 1 END) as candles_1d
+        FROM ohlcv_data
+      `);
+      
+      const progress = await queryOne<any>(`
+        SELECT 
+          COUNT(*) as total_progress_entries,
+          COUNT(CASE WHEN backfill_complete = 1 THEN 1 END) as completed,
+          COUNT(CASE WHEN backfill_complete = 0 THEN 1 END) as in_progress
+        FROM ohlcv_backfill_progress
+      `);
+      
+      return {
+        isRunning: this.isRunning,
+        backfillInterval: this.BACKFILL_INTERVAL,
+        ...stats,
+        ...progress
+      };
+    } catch (error) {
+      return {
+        isRunning: this.isRunning,
+        backfillInterval: this.BACKFILL_INTERVAL
+      };
+    }
   }
   
   /**

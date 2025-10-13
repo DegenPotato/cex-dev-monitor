@@ -938,7 +938,8 @@ app.post('/api/monitoring/stop', async (_req, res) => {
   }
 });
 
-app.get('/api/monitoring/status', (_req, res) => {
+app.get('/api/monitoring/status', async (_req, res) => {
+  const ohlcvStatus = await ohlcvCollector.getStatus();
   res.json({
     cexMonitor: {
       active: solanaMonitor.getActiveSubscriptions().length > 0,
@@ -949,7 +950,7 @@ app.get('/api/monitoring/status', (_req, res) => {
       monitored: pumpFunMonitor.getActiveMonitors().length
     },
     marketDataTracker: marketDataTracker.getStatus(),
-    ohlcvCollector: ohlcvCollector.getStatus()
+    ohlcvCollector: ohlcvStatus
   });
 });
 
@@ -978,8 +979,9 @@ app.post('/api/ohlcv/stop', (_req, res) => {
   }
 });
 
-app.get('/api/ohlcv/status', (_req, res) => {
-  res.json(ohlcvCollector.getStatus());
+app.get('/api/ohlcv/status', async (_req, res) => {
+  const status = await ohlcvCollector.getStatus();
+  res.json(status);
 });
 
 // One-time migration to create OHLCV tables (if they don't exist)
