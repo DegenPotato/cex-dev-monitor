@@ -316,6 +316,20 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN price_usd REAL;`);
+    console.log('✅ Added price_usd column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN price_sol REAL;`);
+    console.log('✅ Added price_sol column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   db.run(`
 

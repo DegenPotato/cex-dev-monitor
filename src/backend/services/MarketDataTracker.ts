@@ -69,13 +69,27 @@ export class MarketDataTracker {
       const addresses = tokens.map(t => t.mint_address);
       const marketDataMap = await this.metadataFetcher.fetchMetadataBatch(addresses);
       
+      // Hardcoded SOL price (should use oracle in production)
+      const SOL_PRICE_USD = 150;
+      
       // Update each token with fetched data
       for (const token of tokens) {
         const data = marketDataMap.get(token.mint_address);
         
         if (data) {
+          // For bonding curve tokens (not completed), use total reserves as market cap
+          // For graduated tokens, use FDV
+          const marketCap = data.launchpadCompleted 
+            ? (data.fdvUsd || data.totalReserveUsd || null)
+            : (data.totalReserveUsd || data.fdvUsd || null);
+          
+          const priceUsd = data.priceUsd || null;
+          const priceSol = priceUsd ? priceUsd / SOL_PRICE_USD : null;
+          
           const updates: any = {
-            current_mcap: data.fdvUsd || null,
+            current_mcap: marketCap,
+            price_usd: priceUsd,
+            price_sol: priceSol,
             last_updated: Date.now()
           };
 
