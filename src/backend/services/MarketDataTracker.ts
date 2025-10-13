@@ -1,27 +1,20 @@
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
-import fetch from 'cross-fetch';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
 
 /**
- * Market Data Tracker using DexScreener API
+ * Market Data Tracker using GeckoTerminal API
  * - Polls every 1 minute
  * - Updates current_mcap and ath_mcap
  * - Batch support: 30 tokens per request
- * - Rate limited to 300 calls/minute
  */
 export class MarketDataTracker {
   private isRunning = false;
   private intervalId: NodeJS.Timeout | null = null;
-  private readonly DEXSCREENER_BASE = 'https://api.dexscreener.com';
   private readonly POLL_INTERVAL = 60 * 1000; // 1 minute
-  private readonly BATCH_SIZE = 30; // DexScreener allows up to 30 tokens per request
-  private readonly MAX_CALLS_PER_MINUTE = 280; // Stay under 300/min limit
-  private readonly DELAY_BETWEEN_CALLS = Math.ceil((60 * 1000) / this.MAX_CALLS_PER_MINUTE);
-  private readonly PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-  private connection: Connection;
+  private metadataFetcher: TokenMetadataFetcher;
 
   constructor() {
-    this.connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    this.metadataFetcher = new TokenMetadataFetcher();
   }
 
   /**
@@ -34,7 +27,7 @@ export class MarketDataTracker {
     }
 
     this.isRunning = true;
-    console.log(`📊 [MarketData] Starting tracker (${this.DELAY_BETWEEN_CALLS}ms delay between calls)`);
+    console.log('📊 [MarketData] Starting tracker via GeckoTerminal API');
     
     // Run immediately, then poll every minute
     this.updateAllTokens();
@@ -56,80 +49,58 @@ export class MarketDataTracker {
   }
 
   /**
-   * Update all tokens from database using batch requests
+   * Update all tokens from database using GeckoTerminal batch API
    */
   private async updateAllTokens() {
     try {
       const tokens = await TokenMintProvider.findAll();
-      console.log(`📊 [MarketData] Updating ${tokens.length} tokens in batches of ${this.BATCH_SIZE}...`);
       
+      if (tokens.length === 0) {
+        console.log('📊 [MarketData] No tokens to update');
+        return;
+      }
+
+      console.log(`📊 [MarketData] Updating ${tokens.length} tokens via GeckoTerminal...`);
+
       let updated = 0;
       let failed = 0;
 
-      // Process tokens in batches
-      for (let i = 0; i < tokens.length; i += this.BATCH_SIZE) {
-        const batch = tokens.slice(i, i + this.BATCH_SIZE);
-        const addresses = batch.map(t => t.mint_address);
+      // Fetch all tokens using batch API
+      const addresses = tokens.map(t => t.mint_address);
+      const marketDataMap = await this.metadataFetcher.fetchMetadataBatch(addresses);
+      
+      // Update each token with fetched data
+      for (const token of tokens) {
+        const data = marketDataMap.get(token.mint_address);
+        
+        if (data) {
+          const updates: any = {
+            current_mcap: data.fdvUsd || null,
+            last_updated: Date.now()
+          };
 
-        try {
-          const marketDataMap = await this.fetchTokensBatch(addresses);
-          
-          // Update each token in the batch
-          for (const token of batch) {
-            let marketData = marketDataMap.get(token.mint_address);
-            
-            // PRIORITY: Try Pump.fun on-chain data FIRST for pumpfun tokens
-            if (token.platform === 'pumpfun') {
-              const pumpFunData = await this.fetchPumpFunData(token.mint_address);
-              if (pumpFunData && pumpFunData.marketCap) {
-                marketData = {
-                  fdv: pumpFunData.marketCap,
-                  marketCap: pumpFunData.marketCap
-                };
-              }
-            }
-            
-            // Fallback to DexScreener if Pump.fun data not available (token graduated to Raydium)
-            if (!marketData) {
-              marketData = marketDataMap.get(token.mint_address);
-            }
-            
-            if (marketData) {
-              const updates: any = {
-                current_mcap: marketData.fdv || marketData.marketCap || null,
-                last_updated: Date.now()
-              };
-
-              // Update starting mcap if not set
-              if (!token.starting_mcap && updates.current_mcap) {
-                updates.starting_mcap = updates.current_mcap;
-              }
-
-              // Update ATH if current is higher
-              if (updates.current_mcap && (!token.ath_mcap || updates.current_mcap > token.ath_mcap)) {
-                updates.ath_mcap = updates.current_mcap;
-              }
-
-              // Update name/symbol if we have it from DexScreener
-              if (marketData.name && !token.name) {
-                updates.name = marketData.name;
-              }
-              if (marketData.symbol && !token.symbol) {
-                updates.symbol = marketData.symbol;
-              }
-
-              await TokenMintProvider.update(token.mint_address, updates);
-              updated++;
-            } else {
-              failed++;
-            }
+          // Update starting mcap if not set
+          if (!token.starting_mcap && updates.current_mcap) {
+            updates.starting_mcap = updates.current_mcap;
           }
 
-          // Rate limiting delay between batches
-          await this.delay(this.DELAY_BETWEEN_CALLS);
-        } catch (error: any) {
-          console.error(`📊 [MarketData] Error updating batch:`, error.message);
-          failed += batch.length;
+          // Update ATH if current is higher
+          if (updates.current_mcap && (!token.ath_mcap || updates.current_mcap > token.ath_mcap)) {
+            updates.ath_mcap = updates.current_mcap;
+          }
+
+          // Update name/symbol if missing
+          if (data.name && !token.name) {
+            updates.name = data.name;
+          }
+          if (data.symbol && !token.symbol) {
+            updates.symbol = data.symbol;
+          }
+
+          await TokenMintProvider.update(token.mint_address, updates);
+          updated++;
+        } else {
+          failed++;
         }
       }
 
@@ -140,179 +111,12 @@ export class MarketDataTracker {
   }
 
   /**
-   * Get bonding curve PDA for a Pump.fun token
-   */
-  private async getBondingCurvePDA(mintAddress: string): Promise<PublicKey> {
-    const mint = new PublicKey(mintAddress);
-    const programId = new PublicKey(this.PUMPFUN_PROGRAM_ID);
-    
-    const [bondingCurve] = PublicKey.findProgramAddressSync(
-      [Buffer.from('bonding-curve'), mint.toBuffer()],
-      programId
-    );
-    
-    return bondingCurve;
-  }
-
-  /**
-   * Fetch bonding curve data from Pump.fun on-chain
-   * Reads bonding curve account and calculates market cap
-   */
-  private async fetchPumpFunData(mintAddress: string): Promise<{
-    marketCap?: number;
-    virtualSolReserves?: number;
-    virtualTokenReserves?: number;
-    bondingCurveProgress?: number;
-  } | null> {
-    try {
-      const bondingCurvePDA = await this.getBondingCurvePDA(mintAddress);
-      
-      // Fetch bonding curve account
-      const accountInfo = await this.connection.getAccountInfo(bondingCurvePDA);
-      
-      if (!accountInfo || !accountInfo.data) {
-        console.log(`⚠️ [PumpFun] No bonding curve account found for ${mintAddress.slice(0, 8)}...`);
-        return null;
-      }
-
-      const data = accountInfo.data;
-      
-      // Parse bonding curve data (confirmed structure from blockchain analysis)
-      // Offset 0-7: Discriminator
-      // Offset 8-15: virtual_token_reserves (u64 lamports)
-      // Offset 16-23: virtual_sol_reserves (u64 lamports)
-      // Offset 24-31: real_token_reserves (u64 lamports)
-      // Offset 32-39: real_sol_reserves (u64 lamports)
-      // Offset 40-47: token_total_supply (u64 lamports)
-      
-      const virtualTokenReserves = data.readBigUInt64LE(8);
-      const virtualSolReserves = data.readBigUInt64LE(16);
-      // Note: real reserves at offsets 24 & 32 if needed
-      const tokenTotalSupply = data.readBigUInt64LE(40);
-      
-      // Check if bonding curve is complete (all zeros)
-      if (virtualTokenReserves === 0n && virtualSolReserves === 0n) {
-        console.log(`✅ [PumpFun] ${mintAddress.slice(0, 8)}... - Graduated to Raydium!`);
-        return null; // Use DexScreener for graduated tokens
-      }
-      
-      // Convert from lamports to readable units
-      const virtualTokens = Number(virtualTokenReserves) / 1e6; // 6 decimals for tokens
-      const virtualSol = Number(virtualSolReserves) / 1e9; // 9 decimals for SOL
-      const totalSupply = Number(tokenTotalSupply) / 1e6;
-      
-      // Calculate price: SOL per token
-      const priceInSol = virtualSol / virtualTokens;
-      
-      // Fetch SOL price (hardcoded for now, should use an oracle)
-      const solPriceUSD = 150;
-      
-      // Calculate market cap
-      const marketCapUSD = priceInSol * totalSupply * solPriceUSD;
-      
-      // Calculate bonding curve progress
-      const initialTokenReserves = 800_000_000; // Pump.fun starts with 800M tokens
-      const tokensLeft = virtualTokens;
-      const bondingCurveProgress = ((initialTokenReserves - tokensLeft) / initialTokenReserves) * 100;
-      
-      console.log(`💎 [PumpFun] ${mintAddress.slice(0, 8)}... - MCap: $${marketCapUSD.toFixed(0)}, Progress: ${bondingCurveProgress.toFixed(2)}%, Price: ${priceInSol.toFixed(9)} SOL`);
-      
-      return {
-        marketCap: marketCapUSD,
-        virtualSolReserves: virtualSol,
-        virtualTokenReserves: virtualTokens,
-        bondingCurveProgress
-      };
-    } catch (error: any) {
-      console.error(`❌ [PumpFun] Error reading bonding curve for ${mintAddress.slice(0, 8)}...:`, error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch market data from DexScreener for multiple tokens (batch)
-   * Returns a Map of mint_address -> market data
-   */
-  private async fetchTokensBatch(mintAddresses: string[]): Promise<Map<string, {
-    name?: string;
-    symbol?: string;
-    priceUsd?: string;
-    fdv?: number;
-    marketCap?: number;
-    liquidity?: number;
-    volume24h?: number;
-    priceChange24h?: number;
-    imageUrl?: string;
-    websites?: string[];
-    socials?: any[];
-  }>> {
-    const resultMap = new Map();
-
-    try {
-      const addressesParam = mintAddresses.join(',');
-      const url = `${this.DEXSCREENER_BASE}/latest/dex/tokens/${addressesParam}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-
-      if (!response.ok) {
-        console.error(`📊 [MarketData] DexScreener API error: ${response.status}`);
-        return resultMap;
-      }
-
-      const data = await response.json();
-      
-      // Debug: Log the response to see what DexScreener returns
-      console.log(`📊 [MarketData] DexScreener response for ${mintAddresses.length} tokens:`, JSON.stringify(data, null, 2));
-      
-      // DexScreener returns pairs, not direct token data
-      // We need to match pairs to our tokens
-      if (data.pairs && Array.isArray(data.pairs)) {
-        for (const pair of data.pairs) {
-          const tokenAddress = pair.baseToken?.address;
-          
-          if (tokenAddress && mintAddresses.includes(tokenAddress)) {
-            resultMap.set(tokenAddress, {
-              name: pair.baseToken?.name,
-              symbol: pair.baseToken?.symbol,
-              priceUsd: pair.priceUsd,
-              fdv: pair.fdv,
-              marketCap: pair.marketCap,
-              liquidity: pair.liquidity?.usd,
-              volume24h: pair.volume?.h24,
-              priceChange24h: pair.priceChange?.h24,
-              imageUrl: pair.info?.imageUrl,
-              websites: pair.info?.websites?.map((w: any) => w.url),
-              socials: pair.info?.socials
-            });
-          }
-        }
-      }
-
-      console.log(`📊 [MarketData] Fetched ${resultMap.size}/${mintAddresses.length} tokens from DexScreener`);
-      return resultMap;
-    } catch (error: any) {
-      console.error(`📊 [MarketData] Error fetching batch:`, error.message);
-      return resultMap;
-    }
-  }
-
-  /**
    * Get status
    */
   getStatus() {
     return {
       isRunning: this.isRunning,
-      pollInterval: this.POLL_INTERVAL,
-      maxCallsPerMinute: this.MAX_CALLS_PER_MINUTE,
-      delayBetweenCalls: this.DELAY_BETWEEN_CALLS
+      pollInterval: this.POLL_INTERVAL
     };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
