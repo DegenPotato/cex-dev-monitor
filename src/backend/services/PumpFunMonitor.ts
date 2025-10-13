@@ -584,8 +584,7 @@ export class PumpFunMonitor extends EventEmitter {
         timestamp: launchTimestamp, // Actual blockchain launch time
         platform: 'pumpfun',
         signature: signature, // Store transaction signature
-        // Save initial market data from GeckoTerminal
-        starting_mcap: tokenInfo.fdvUsd,
+        // Save market data from GeckoTerminal (starting_mcap will be added later from internal data)
         current_mcap: tokenInfo.fdvUsd,
         price_usd: tokenInfo.priceUsd,
         graduation_percentage: tokenInfo.launchpadGraduationPercentage,

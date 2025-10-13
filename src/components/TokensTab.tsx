@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Flame, ExternalLink, TrendingUp, TrendingDown, DollarSign, BarChart3, Clock, User, ArrowUpDown } from 'lucide-react';
+import { Flame, ExternalLink, TrendingUp, TrendingDown, DollarSign, BarChart3, Clock, User, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { apiUrl } from '../config';
 
 interface Token {
@@ -36,6 +36,8 @@ export function TokensTab() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('newest');
   const [marketDataStatus, setMarketDataStatus] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
+  const [refreshCooldowns, setRefreshCooldowns] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchTokens();
@@ -104,6 +106,37 @@ export function TokensTab() {
     if (gain > 0) return 'text-green-400';
     if (gain < 0) return 'text-red-400';
     return 'text-gray-400';
+  };
+
+  const handleRefreshToken = async (mintAddress: string) => {
+    // Check cooldown
+    const now = Date.now();
+    if (refreshCooldowns[mintAddress] && now - refreshCooldowns[mintAddress] < 60000) {
+      const remaining = Math.ceil((60000 - (now - refreshCooldowns[mintAddress])) / 1000);
+      alert(`Please wait ${remaining}s before refreshing again`);
+      return;
+    }
+
+    setRefreshing(prev => ({ ...prev, [mintAddress]: true }));
+    try {
+      const response = await fetch(apiUrl(`/api/tokens/${mintAddress}/refresh`), {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        await response.json();
+        alert(`✅ Token data refreshed!`);
+        setRefreshCooldowns(prev => ({ ...prev, [mintAddress]: now }));
+        fetchTokens(); // Refresh the list
+      } else {
+        const error = await response.json();
+        alert(`❌ Error: ${error.error || 'Failed to refresh'}`);
+      }
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+    } finally {
+      setRefreshing(prev => ({ ...prev, [mintAddress]: false }));
+    }
   };
 
   const sortedTokens = [...tokens].sort((a, b) => {
@@ -318,7 +351,7 @@ export function TokensTab() {
                           )}
                           {token.migrated_pool_address && (
                             <a
-                              href={`https://dexscreener.com/solana/${token.migrated_pool_address}`}
+                              href={`https://gmgn.ai/sol/token/${token.migrated_pool_address}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
@@ -378,13 +411,13 @@ export function TokensTab() {
                     <ExternalLink className="w-3 h-3" />
                   </a>
                   <a
-                    href={`https://dexscreener.com/solana/${token.mint_address}`}
+                    href={`https://gmgn.ai/sol/token/${token.mint_address}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
                   >
                     <BarChart3 className="w-3 h-3" />
-                    DexScreener
+                    GMGN
                     <ExternalLink className="w-3 h-3" />
                   </a>
                   <a
@@ -396,6 +429,14 @@ export function TokensTab() {
                     Solscan
                     <ExternalLink className="w-3 h-3" />
                   </a>
+                  <button
+                    onClick={() => handleRefreshToken(token.mint_address)}
+                    disabled={refreshing[token.mint_address]}
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition-colors"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${refreshing[token.mint_address] ? 'animate-spin' : ''}`} />
+                    {refreshing[token.mint_address] ? 'Updating...' : 'Refresh Data'}
+                  </button>
                 </div>
               </div>
 

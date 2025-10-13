@@ -1565,6 +1565,73 @@ app.get('/api/tokens/test-metadata/:mintAddress', async (req, res) => {
   }
 });
 
+// Manual token metadata refresh
+app.post('/api/tokens/:mintAddress/refresh', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    
+    // Check if token exists
+    const token = await TokenMintProvider.findByMintAddress(mintAddress);
+    if (!token) {
+      return res.status(404).json({ error: 'Token not found' });
+    }
+    
+    // Fetch fresh metadata from both GeckoTerminal endpoints
+    const { TokenMetadataFetcher } = await import('./services/TokenMetadataFetcher.js');
+    const metadataFetcher = new TokenMetadataFetcher();
+    const metadata = await metadataFetcher.fetchMetadata(mintAddress);
+    
+    if (!metadata) {
+      return res.status(404).json({ error: 'No metadata found for token' });
+    }
+    
+    // Update token with fresh data
+    await TokenMintProvider.update(mintAddress, {
+      current_mcap: metadata.fdvUsd,
+      price_usd: metadata.priceUsd,
+      graduation_percentage: metadata.launchpadGraduationPercentage,
+      launchpad_completed: metadata.launchpadCompleted ? 1 : 0,
+      launchpad_completed_at: metadata.launchpadCompletedAt ? new Date(metadata.launchpadCompletedAt).getTime() : undefined,
+      total_supply: metadata.totalSupply,
+      market_cap_usd: metadata.marketCapUsd,
+      coingecko_coin_id: metadata.coingeckoCoinId || undefined,
+      gt_score: metadata.gtScore,
+      description: metadata.description,
+      last_updated: Date.now(),
+      metadata: JSON.stringify({
+        ...JSON.parse(token.metadata || '{}'),
+        decimals: metadata.decimals,
+        image: metadata.image,
+        totalReserveUsd: metadata.totalReserveUsd,
+        volumeUsd24h: metadata.volumeUsd24h,
+        gtScoreDetails: metadata.gtScoreDetails,
+        holders: metadata.holders,
+        twitterHandle: metadata.twitterHandle,
+        telegramHandle: metadata.telegramHandle,
+        discordUrl: metadata.discordUrl,
+        websites: metadata.websites,
+        categories: metadata.categories,
+        mintAuthority: metadata.mintAuthority,
+        freezeAuthority: metadata.freezeAuthority,
+        isHoneypot: metadata.isHoneypot,
+        geckoTerminal: metadata
+      })
+    });
+    
+    res.json({
+      success: true,
+      message: 'Token data refreshed successfully',
+      updated: {
+        price_usd: metadata.priceUsd,
+        current_mcap: metadata.fdvUsd,
+        gt_score: metadata.gtScore
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Wipe unreliable historical market cap data (keep current price/mcap and launchpad details)
 app.post('/api/tokens/wipe-mcap-data', async (_req, res) => {
   try {
