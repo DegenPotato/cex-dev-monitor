@@ -45,11 +45,17 @@ export class PumpFunMonitor extends EventEmitter {
 
     console.log(`🚀 [PumpFun] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
 
-    // Get wallet configuration for PumpFun monitoring type
-    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
+    // Get wallet configuration (supports both 'pumpfun' and 'both' monitoring types)
+    const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
     
     if (!wallet) {
       console.error(`❌ Wallet not found: ${walletAddress}`);
+      return;
+    }
+    
+    // Verify wallet supports pumpfun monitoring
+    if (wallet.monitoring_type !== 'pumpfun' && wallet.monitoring_type !== 'both') {
+      console.error(`❌ Wallet ${walletAddress.slice(0, 8)}... has monitoring_type '${wallet.monitoring_type}', not 'pumpfun' or 'both'`);
       return;
     }
 

@@ -59,20 +59,26 @@ export class TokenMetadataFetcher {
         return await response.json();
       });
       
-      // Call 2: Get social/score data
-      const infoData = await globalGeckoTerminalLimiter.executeRequest(async () => {
-        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}/info`;
-        
-        const response = await fetch(url, {
-          headers: { 'Accept': 'application/json' }
+      // Call 2: Get social/score data (optional - don't fail if this endpoint errors)
+      let infoData = null;
+      try {
+        infoData = await globalGeckoTerminalLimiter.executeRequest(async () => {
+          const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}/info`;
+          
+          const response = await fetch(url, {
+            headers: { 'Accept': 'application/json' }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          return await response.json();
         });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        return await response.json();
-      });
+      } catch (error: any) {
+        console.log(`⚠️ [GeckoTerminal] Info endpoint unavailable for ${mintAddress.slice(0, 8)}...: ${error.message}`);
+        // Continue without info data
+      }
       
       const attributes = marketData?.data?.attributes;
       const infoAttributes = infoData?.data?.attributes;
