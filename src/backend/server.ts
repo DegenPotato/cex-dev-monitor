@@ -659,7 +659,7 @@ app.delete('/api/wallets/:address', async (req, res) => {
 });
 
 // Verify and clean up token mints - remove entries with wrong creator
-app.post('/api/tokens/verify-creators', async (req, res) => {
+app.post('/api/tokens/verify-creators', async (_req, res) => {
   try {
     // Get all monitored wallets
     const wallets = await MonitoredWalletProvider.findAll();
@@ -699,7 +699,7 @@ app.post('/api/tokens/verify-creators', async (req, res) => {
 });
 
 // Delete invalid token mints (not created by monitored wallets)
-app.delete('/api/tokens/cleanup-invalid', async (req, res) => {
+app.delete('/api/tokens/cleanup-invalid', async (_req, res) => {
   try {
     // Get all monitored wallets
     const wallets = await MonitoredWalletProvider.findAll();
