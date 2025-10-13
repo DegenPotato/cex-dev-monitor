@@ -232,11 +232,19 @@ export function TokensTab() {
                 {/* Token Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-bold text-white">
+                    <a 
+                      href={`/token/${token.mint_address}`}
+                      className="text-lg font-bold text-white hover:text-purple-400 transition-colors cursor-pointer"
+                    >
                       {token.name || token.symbol || 'Unknown Token'}
-                    </h3>
+                    </a>
                     {token.symbol && token.name && (
-                      <span className="text-purple-400 font-mono">${token.symbol}</span>
+                      <a 
+                        href={`/token/${token.mint_address}`}
+                        className="text-purple-400 hover:text-purple-300 font-mono cursor-pointer"
+                      >
+                        ${token.symbol}
+                      </a>
                     )}
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       token.platform === 'pumpfun' 

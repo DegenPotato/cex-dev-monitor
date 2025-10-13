@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Square, Activity, Shield, ShieldOff, RefreshCw } from 'lucide-react';
+import { Play, Square, Activity, Shield, ShieldOff, RefreshCw, BarChart3, TrendingUp } from 'lucide-react';
 import { apiUrl } from '../config';
 
 export function MonitoringControls() {
@@ -122,6 +122,46 @@ export function MonitoringControls() {
       if (data.success) {
         alert(data.message);
         fetchRpcRotationStatus();
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleOHLCV = async () => {
+    setLoading(true);
+    try {
+      const endpoint = status?.ohlcvCollector?.isRunning ? '/api/ohlcv/stop' : '/api/ohlcv/start';
+      const response = await fetch(apiUrl(endpoint), { method: 'POST' });
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(data.message);
+        fetchStatus();
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleMetrics = async () => {
+    setLoading(true);
+    try {
+      const endpoint = status?.metricsCalculator?.isRunning ? '/api/metrics/stop' : '/api/metrics/start';
+      const response = await fetch(apiUrl(endpoint), { method: 'POST' });
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(data.message);
+        fetchStatus();
       } else {
         alert(`❌ Error: ${data.error}`);
       }
@@ -295,6 +335,116 @@ export function MonitoringControls() {
                 💡 <strong>Tip:</strong> Server rotation bypasses rate limits without proxies!
               </div>
             )}
+          </div>
+        )}
+
+        {/* OHLCV Collector Controls */}
+        {status?.ohlcvCollector && (
+          <div className="bg-slate-900/50 rounded-lg p-4">
+            <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+              {status.ohlcvCollector.isRunning ? (
+                <BarChart3 className="w-4 h-4 text-blue-400" />
+              ) : (
+                <BarChart3 className="w-4 h-4 text-gray-400" />
+              )}
+              OHLCV Data Collector
+            </h4>
+            
+            <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+              <div>
+                <div className="text-gray-400 mb-1">Status</div>
+                <div className={`font-semibold ${status.ohlcvCollector.isRunning ? 'text-blue-400' : 'text-gray-400'}`}>
+                  {status.ohlcvCollector.isRunning ? '🟢 Running' : '⚫ Stopped'}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-400 mb-1">Interval</div>
+                <div className="font-semibold text-white">
+                  5 min
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleToggleOHLCV}
+              disabled={loading}
+              className={`w-full flex items-center justify-center gap-2 font-medium py-2 px-4 rounded-lg transition-all ${
+                status.ohlcvCollector.isRunning
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+            >
+              {status.ohlcvCollector.isRunning ? (
+                <>
+                  <Square className="w-4 h-4" />
+                  Stop OHLCV Collector
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Start OHLCV Collector
+                </>
+              )}
+            </button>
+
+            <div className="mt-2 text-xs text-blue-300 bg-blue-900/20 rounded p-2">
+              📊 Backfills historical price data for charts
+            </div>
+          </div>
+        )}
+
+        {/* Metrics Calculator Controls */}
+        {status?.metricsCalculator && (
+          <div className="bg-slate-900/50 rounded-lg p-4">
+            <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+              {status.metricsCalculator.isRunning ? (
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <TrendingUp className="w-4 h-4 text-gray-400" />
+              )}
+              Metrics Calculator
+            </h4>
+            
+            <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+              <div>
+                <div className="text-gray-400 mb-1">Status</div>
+                <div className={`font-semibold ${status.metricsCalculator.isRunning ? 'text-emerald-400' : 'text-gray-400'}`}>
+                  {status.metricsCalculator.isRunning ? '🟢 Running' : '⚫ Stopped'}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-400 mb-1">Interval</div>
+                <div className="font-semibold text-white">
+                  1 min
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleToggleMetrics}
+              disabled={loading}
+              className={`w-full flex items-center justify-center gap-2 font-medium py-2 px-4 rounded-lg transition-all ${
+                status.metricsCalculator.isRunning
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+            >
+              {status.metricsCalculator.isRunning ? (
+                <>
+                  <Square className="w-4 h-4" />
+                  Stop Metrics Calculator
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Start Metrics Calculator
+                </>
+              )}
+            </button>
+
+            <div className="mt-2 text-xs text-emerald-300 bg-emerald-900/20 rounded p-2">
+              📈 Calculates RSI, MACD, Bollinger Bands from OHLCV
+            </div>
           </div>
         )}
 

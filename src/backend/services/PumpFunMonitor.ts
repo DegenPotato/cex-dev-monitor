@@ -524,10 +524,66 @@ export class PumpFunMonitor extends EventEmitter {
     if (existing) return;
 
     try {
-      // Note: We already verified tx signer = monitored wallet in analyzeTransactionForMint
-      // That's the definitive proof of creator - no need for additional checks
+      // CRITICAL: Verify on-chain metadata creator matches monitored wallet
+      const mintPubkey = new PublicKey(mintAddress);
       
-      // Try to fetch token metadata
+      // Derive metadata account address (Metaplex standard)
+      const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+      const [metadataAccount] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from('metadata'),
+          TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+          mintPubkey.toBuffer(),
+        ],
+        TOKEN_METADATA_PROGRAM_ID
+      );
+      
+      // Fetch metadata account
+      const metadataInfo = await this.proxiedConnection.withProxy(conn =>
+        conn.getAccountInfo(metadataAccount)
+      );
+      
+      if (metadataInfo && metadataInfo.data) {
+        // Parse creator from metadata (creator is at byte 1 + 32 + 4 + 4 + remaining_data + creators_offset)
+        // Metaplex metadata structure: key(1) + update_authority(32) + mint(32) + name(4+len) + symbol(4+len) + uri(4+len) + seller_fee(2) + creators...
+        // For simplicity, check if monitored wallet appears in the first creator slot
+        const creatorOffset = 1 + 32 + 32; // After key, update_authority, mint
+        
+        // Skip variable length strings (name, symbol, uri)
+        let offset = creatorOffset;
+        // Name length + string
+        const nameLen = metadataInfo.data.readUInt32LE(offset);
+        offset += 4 + nameLen;
+        // Symbol length + string  
+        const symbolLen = metadataInfo.data.readUInt32LE(offset);
+        offset += 4 + symbolLen;
+        // URI length + string
+        const uriLen = metadataInfo.data.readUInt32LE(offset);
+        offset += 4 + uriLen;
+        // Seller fee basis points
+        offset += 2;
+        
+        // Now we're at creators section
+        // has_creator (1 byte)
+        const hasCreator = metadataInfo.data.readUInt8(offset);
+        offset += 1;
+        
+        if (hasCreator) {
+          // Number of creators (4 bytes)
+          offset += 4;
+          // First creator address (32 bytes)
+          const creatorAddress = new PublicKey(metadataInfo.data.slice(offset, offset + 32)).toBase58();
+          
+          if (creatorAddress !== walletAddress) {
+            console.log(`⚠️  [PumpFun] Metadata creator mismatch: ${creatorAddress.slice(0, 8)} != ${walletAddress.slice(0, 8)}`);
+            return; // Skip - not created by monitored wallet
+          }
+          
+          console.log(`✅ [PumpFun] Metadata creator verified: ${creatorAddress.slice(0, 8)}`);
+        }
+      }
+      
+      // Try to fetch token metadata from GeckoTerminal
       const tokenInfo = await this.fetchTokenMetadata(mintAddress);
 
       await TokenMintProvider.create({

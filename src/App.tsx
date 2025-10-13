@@ -1,5 +1,6 @@
 import { Dashboard } from './components/Dashboard';
 import { DevWalletDetail } from './components/DevWalletDetail';
+import { TokenPage } from './components/TokenPage';
 
 function App() {
   // Simple routing based on URL path
@@ -7,6 +8,10 @@ function App() {
   
   if (path.startsWith('/dev/')) {
     return <DevWalletDetail />;
+  }
+  
+  if (path.startsWith('/token/')) {
+    return <TokenPage />;
   }
   
   return <Dashboard />;
