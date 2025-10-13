@@ -453,6 +453,12 @@ export class PumpFunMonitor extends EventEmitter {
 
     const accountKeys = tx.transaction.message.accountKeys;
     
+    // CRITICAL: Verify the transaction signer is the monitored wallet (the dev/creator)
+    const txSigner = accountKeys[0].pubkey.toBase58();
+    if (txSigner !== walletAddress) {
+      return false; // Not created by our monitored wallet - skip
+    }
+    
     // Check if transaction involves pump.fun program
     const involvesPumpFun = accountKeys.some(
       key => key.pubkey.toBase58() === PUMPFUN_PROGRAM_ID
@@ -472,10 +478,8 @@ export class PumpFunMonitor extends EventEmitter {
             // Check for InitializeMint in inner instructions
             if (parsed.type === 'initializeMint' || parsed.type === 'initializeMint2') {
               const mintAddress = parsed.info?.mint;
-              const mintAuthority = parsed.info?.mintAuthority;
               
-              // CRITICAL: Verify that the monitored wallet is the mint authority (creator)
-              if (mintAddress && mintAuthority === walletAddress) {
+              if (mintAddress) {
                 await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
                 mintFound = true;
               }
