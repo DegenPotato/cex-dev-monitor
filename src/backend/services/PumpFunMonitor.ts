@@ -75,7 +75,7 @@ export class PumpFunMonitor extends EventEmitter {
         console.log(`🔄 [Resume] Wallet ${walletAddress.slice(0, 8)}... has checkpoint from interrupted backfill, resuming...`);
         await this.catchUpFromCheckpoint(walletAddress, wallet);
         // Mark as backfilled after catching up to current
-        await MonitoredWalletProvider.update(walletAddress, { dev_checked: 1 });
+        await MonitoredWalletProvider.update(walletAddress, { dev_checked: 1 }, 'pumpfun');
       } else {
         // Fully backfilled - check if we need to catch up to current
         const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
@@ -108,7 +108,7 @@ export class PumpFunMonitor extends EventEmitter {
     await MonitoredWalletProvider.update(walletAddress, {
       dev_checked: 0,
       last_processed_signature: ''
-    });
+    }, 'pumpfun');
     
     // Stop monitoring if active
     await this.stopMonitoringWallet(walletAddress);
@@ -402,7 +402,7 @@ export class PumpFunMonitor extends EventEmitter {
           last_processed_signature: lastSigInBatch.signature,
           last_processed_slot: lastSigInBatch.slot,
           last_processed_time: lastSigInBatch.blockTime ? lastSigInBatch.blockTime * 1000 : Date.now()
-        });
+        }, 'pumpfun');
         console.log(`💾 [Checkpoint] Saved after batch ${Math.floor(i / batchSize) + 1} (slot: ${lastSigInBatch.slot})`);
       }
 
@@ -413,7 +413,7 @@ export class PumpFunMonitor extends EventEmitter {
         last_processed_signature: newestSig.signature,
         last_processed_slot: newestSig.slot,
         last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now()
-      });
+      }, 'pumpfun');
 
       console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   Total Transactions: ${totalProcessed}`);
@@ -468,7 +468,7 @@ export class PumpFunMonitor extends EventEmitter {
                 last_processed_signature: logs.signature,
                 last_processed_slot: tx.slot,
                 last_processed_time: tx.blockTime ? tx.blockTime * 1000 : Date.now()
-              });
+              }, 'pumpfun');
             }
           },
           'confirmed'
