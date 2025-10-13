@@ -111,7 +111,8 @@ export class OHLCVCollector {
       
       console.log('📊 [OHLCV] Backfill cycle complete');
     } catch (error: any) {
-      console.error('📊 [OHLCV] Error in backfill cycle:', error.message);
+      console.error('📊 [OHLCV] Error in backfill cycle:', error);
+      console.error('📊 [OHLCV] Stack trace:', error.stack);
     }
   }
   
@@ -120,12 +121,17 @@ export class OHLCVCollector {
    */
   private async processToken(mintAddress: string, creationTimestamp: number) {
     try {
+      console.log(`📊 [OHLCV] Processing token ${mintAddress.slice(0, 8)}...`);
+      
       // Step 1: Ensure we have pool address
       const poolAddress = await this.ensurePoolAddress(mintAddress);
       if (!poolAddress) {
         console.log(`📊 [OHLCV] No pool found for ${mintAddress.slice(0, 8)}...`);
         return;
       }
+      
+      console.log(`📊 [OHLCV] Pool found for ${mintAddress.slice(0, 8)}..., processing timeframes`);
+
       
       // Step 2: Process each timeframe
       for (const timeframe of this.TIMEFRAMES) {
@@ -135,7 +141,8 @@ export class OHLCVCollector {
         await this.delay(this.REQUEST_DELAY); // Rate limiting between timeframes
       }
     } catch (error: any) {
-      console.error(`📊 [OHLCV] Error processing ${mintAddress.slice(0, 8)}...:`, error.message);
+      console.error(`📊 [OHLCV] Error processing ${mintAddress.slice(0, 8)}...:`, error);
+      console.error(`📊 [OHLCV] Stack:`, error.stack);
     }
   }
   
