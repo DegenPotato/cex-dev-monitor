@@ -23,6 +23,7 @@ import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
+import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 
 const app = express();
@@ -996,6 +997,26 @@ app.get('/api/stats', async (_req, res) => {
   };
 
   res.json(stats);
+});
+
+// Get API provider statistics
+app.get('/api/stats/providers', (_req, res) => {
+  const providerStats = apiProviderTracker.getAllStats();
+  const aggregated = apiProviderTracker.getAggregatedMetrics();
+  
+  res.json({
+    aggregated,
+    providers: providerStats
+  });
+});
+
+// Get recent API calls for a provider
+app.get('/api/stats/providers/:provider/recent', (req, res) => {
+  const { provider } = req.params;
+  const limit = parseInt(req.query.limit as string) || 100;
+  
+  const recentCalls = apiProviderTracker.getRecentCalls(provider, limit);
+  res.json(recentCalls);
 });
 
 // Debug: Check actual database contents

@@ -57,7 +57,7 @@ export class TokenMetadataFetcher {
         }
 
         return await response.json();
-      });
+      }, '/tokens/{address}');
       
       // Call 2: Get social/score data (optional - don't fail if this endpoint errors)
       let infoData = null;
@@ -74,7 +74,7 @@ export class TokenMetadataFetcher {
           }
 
           return await response.json();
-        });
+        }, '/tokens/{address}/info');
       } catch (error: any) {
         console.log(`⚠️ [GeckoTerminal] Info endpoint unavailable for ${mintAddress.slice(0, 8)}...: ${error.message}`);
         // Continue without info data
@@ -158,7 +158,7 @@ export class TokenMetadataFetcher {
           }
 
           return await response.json();
-        });
+        }, '/tokens/multi/{addresses}');
         const tokensData = data?.data;
         
         if (!tokensData || !Array.isArray(tokensData)) {

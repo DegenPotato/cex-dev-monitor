@@ -1,4 +1,5 @@
 import { ConfigProvider } from '../providers/ConfigProvider.js';
+import { apiProviderTracker } from './ApiProviderTracker.js';
 
 /**
  * SOL Price Oracle
@@ -54,6 +55,7 @@ export class SolPriceOracle {
    * Fetch and update SOL price
    */
   private async updatePrice() {
+    const startTime = Date.now();
     try {
       const response = await fetch(
         `${this.COINGECKO_API}?ids=solana&vs_currencies=usd`,
@@ -63,10 +65,13 @@ export class SolPriceOracle {
       );
 
       if (!response.ok) {
+        const responseTime = Date.now() - startTime;
+        apiProviderTracker.trackCall('CoinGecko', '/simple/price', false, responseTime, response.status);
         throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
+      const responseTime = Date.now() - startTime;
       const newPrice = data?.solana?.usd;
 
       if (newPrice && typeof newPrice === 'number') {
@@ -76,11 +81,17 @@ export class SolPriceOracle {
         await ConfigProvider.set('sol_price_usd', newPrice.toString());
         await ConfigProvider.set('sol_price_updated_at', Date.now().toString());
         
+        // Track successful call
+        apiProviderTracker.trackCall('CoinGecko', '/simple/price', true, responseTime, 200);
+        
         console.log(`💰 [SOL Oracle] Updated: $${newPrice.toFixed(2)}`);
       } else {
+        apiProviderTracker.trackCall('CoinGecko', '/simple/price', false, responseTime, 200, 'Invalid data structure');
         console.warn('💰 [SOL Oracle] Invalid price data received');
       }
     } catch (error: any) {
+      const responseTime = Date.now() - startTime;
+      apiProviderTracker.trackCall('CoinGecko', '/simple/price', false, responseTime, undefined, error.message);
       console.error('💰 [SOL Oracle] Error fetching price:', error.message);
       // Keep using last known price
     }

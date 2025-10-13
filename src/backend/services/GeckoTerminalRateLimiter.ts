@@ -1,3 +1,5 @@
+import { apiProviderTracker } from './ApiProviderTracker.js';
+
 /**
  * Global Rate Limiter for GeckoTerminal API
  * 
@@ -26,13 +28,32 @@ export class GeckoTerminalRateLimiter {
    * Execute a GeckoTerminal API call with rate limiting
    * Automatically queues if limit reached
    */
-  async executeRequest<T>(requestFn: () => Promise<T>): Promise<T> {
+  async executeRequest<T>(requestFn: () => Promise<T>, endpoint: string = 'unknown'): Promise<T> {
     return new Promise((resolve, reject) => {
       this.requestQueue.push(async () => {
+        const startTime = Date.now();
         try {
           const result = await requestFn();
+          const responseTime = Date.now() - startTime;
+          
+          // Track successful call
+          apiProviderTracker.trackCall('GeckoTerminal', endpoint, true, responseTime);
+          
           resolve(result);
-        } catch (error) {
+        } catch (error: any) {
+          const responseTime = Date.now() - startTime;
+          const statusCode = error?.response?.status || error?.status;
+          
+          // Track failed call
+          apiProviderTracker.trackCall(
+            'GeckoTerminal', 
+            endpoint, 
+            false, 
+            responseTime,
+            statusCode,
+            error?.message
+          );
+          
           reject(error);
         }
       });
