@@ -68,22 +68,27 @@ export class PumpFunMonitor extends EventEmitter {
     console.log(`🎚️  [RateLimit] Initialized for ${walletAddress.slice(0, 8)}... at ${rps} RPS (${enabled ? 'enabled' : 'disabled'})`);
     
     // Check if wallet needs backfill or catch-up
-    if (!wallet.dev_checked) {
-      // First time: Full historical backfill
-      console.log(`📚 [Backfill] First-time setup for ${walletAddress.slice(0, 8)}...`);
-      await this.backfillWalletHistory(walletAddress);
-    } else if (wallet.last_processed_signature) {
-      // Already backfilled: Check if we need to catch up
-      const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
-      if (needsCatchUp) {
-        console.log(`🔄 [Catch-up] Wallet ${walletAddress.slice(0, 8)}... has gap, catching up...`);
+    if (wallet.last_processed_signature) {
+      // Has checkpoint (either from completed or interrupted backfill)
+      if (!wallet.dev_checked) {
+        // Interrupted backfill - resume from checkpoint
+        console.log(`🔄 [Resume] Wallet ${walletAddress.slice(0, 8)}... has checkpoint from interrupted backfill, resuming...`);
         await this.catchUpFromCheckpoint(walletAddress, wallet);
+        // Mark as backfilled after catching up to current
+        await MonitoredWalletProvider.update(walletAddress, { dev_checked: 1 });
       } else {
-        console.log(`✅ [Up-to-date] Wallet ${walletAddress.slice(0, 8)}... is current, no catch-up needed`);
+        // Fully backfilled - check if we need to catch up to current
+        const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
+        if (needsCatchUp) {
+          console.log(`🔄 [Catch-up] Wallet ${walletAddress.slice(0, 8)}... has gap, catching up...`);
+          await this.catchUpFromCheckpoint(walletAddress, wallet);
+        } else {
+          console.log(`✅ [Up-to-date] Wallet ${walletAddress.slice(0, 8)}... is current, no catch-up needed`);
+        }
       }
     } else {
-      // Backfilled but no checkpoint (old data): Re-backfill
-      console.log(`⚠️  [Backfill] Wallet ${walletAddress.slice(0, 8)}... needs checkpoint update...`);
+      // No checkpoint - start fresh backfill
+      console.log(`📚 [Backfill] First-time setup for ${walletAddress.slice(0, 8)}...`);
       await this.backfillWalletHistory(walletAddress);
     }
 
@@ -390,6 +395,15 @@ export class PumpFunMonitor extends EventEmitter {
             totalProcessed++;
           }));
         }
+        
+        // Save incremental checkpoint after each batch (in case of interruption)
+        const lastSigInBatch = batch[batch.length - 1];
+        await MonitoredWalletProvider.update(walletAddress, {
+          last_processed_signature: lastSigInBatch.signature,
+          last_processed_slot: lastSigInBatch.slot,
+          last_processed_time: lastSigInBatch.blockTime ? lastSigInBatch.blockTime * 1000 : Date.now()
+        });
+        console.log(`💾 [Checkpoint] Saved after batch ${Math.floor(i / batchSize) + 1} (slot: ${lastSigInBatch.slot})`);
       }
 
       // Mark wallet as backfilled and save checkpoint (newest signature)
