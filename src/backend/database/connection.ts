@@ -47,6 +47,14 @@ export async function getDb(): Promise<SqlJsDatabase> {
   return db;
 }
 
+// Alias for synchronous access (must be called after initDatabase)
+export function getDatabase(): SqlJsDatabase {
+  if (!db) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return db;
+}
+
 export async function initDatabase() {
   db = await getDb();
   
@@ -359,6 +367,52 @@ export async function initDatabase() {
     // Column already exists, ignore
   }
 
+  // OHLCV Data Tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS token_pools (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mint_address TEXT NOT NULL UNIQUE,
+      pool_address TEXT NOT NULL,
+      pool_name TEXT,
+      dex TEXT DEFAULT 'raydium',
+      discovered_at INTEGER NOT NULL,
+      last_verified INTEGER
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ohlcv_data (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mint_address TEXT NOT NULL,
+      pool_address TEXT NOT NULL,
+      timeframe TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      open REAL NOT NULL,
+      high REAL NOT NULL,
+      low REAL NOT NULL,
+      close REAL NOT NULL,
+      volume REAL NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(mint_address, timeframe, timestamp)
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ohlcv_backfill_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mint_address TEXT NOT NULL,
+      timeframe TEXT NOT NULL,
+      oldest_timestamp INTEGER,
+      newest_timestamp INTEGER,
+      backfill_complete INTEGER DEFAULT 0,
+      last_fetch_at INTEGER,
+      fetch_count INTEGER DEFAULT 0,
+      error_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      UNIQUE(mint_address, timeframe)
+    );
+  `);
+
   db.run(`
 
     CREATE TABLE IF NOT EXISTS config (
@@ -368,6 +422,16 @@ export async function initDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(from_address);
     CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(to_address);
+    
+    CREATE INDEX IF NOT EXISTS idx_token_pools_mint ON token_pools(mint_address);
+    CREATE INDEX IF NOT EXISTS idx_token_pools_pool ON token_pools(pool_address);
+    
+    CREATE INDEX IF NOT EXISTS idx_ohlcv_mint_timeframe ON ohlcv_data(mint_address, timeframe);
+    CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp ON ohlcv_data(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv_data(mint_address, timeframe, timestamp);
+    
+    CREATE INDEX IF NOT EXISTS idx_backfill_progress_mint ON ohlcv_backfill_progress(mint_address);
+    CREATE INDEX IF NOT EXISTS idx_backfill_progress_incomplete ON ohlcv_backfill_progress(backfill_complete);
     CREATE INDEX IF NOT EXISTS idx_token_mints_creator ON token_mints(creator_address);
     CREATE INDEX IF NOT EXISTS idx_monitored_wallets_active ON monitored_wallets(is_active);
     CREATE INDEX IF NOT EXISTS idx_source_wallets_monitoring ON source_wallets(is_monitoring);

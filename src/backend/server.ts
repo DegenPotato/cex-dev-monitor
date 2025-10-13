@@ -20,6 +20,7 @@ import { globalAnalysisQueue } from './services/AnalysisQueue.js';
 import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
+import { OHLCVCollector } from './services/OHLCVCollector.js';
 
 const app = express();
 const server = createServer(app);
@@ -73,6 +74,7 @@ const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
 const tradingActivityMonitor = new TradingActivityMonitor();
 const marketDataTracker = new MarketDataTracker();
+const ohlcvCollector = new OHLCVCollector();
 
 // Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
@@ -945,8 +947,39 @@ app.get('/api/monitoring/status', (_req, res) => {
     pumpFunMonitor: {
       active: pumpFunMonitor.getActiveMonitors().length > 0,
       monitored: pumpFunMonitor.getActiveMonitors().length
-    }
+    },
+    marketDataTracker: marketDataTracker.getStatus(),
+    ohlcvCollector: ohlcvCollector.getStatus()
   });
+});
+
+// OHLCV Collector control endpoints
+app.post('/api/ohlcv/start', (_req, res) => {
+  try {
+    ohlcvCollector.start();
+    res.json({ 
+      success: true, 
+      message: 'OHLCV collector started' 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/ohlcv/stop', (_req, res) => {
+  try {
+    ohlcvCollector.stop();
+    res.json({ 
+      success: true, 
+      message: 'OHLCV collector stopped' 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/ohlcv/status', (_req, res) => {
+  res.json(ohlcvCollector.getStatus());
 });
 
 // Proxy control endpoints
