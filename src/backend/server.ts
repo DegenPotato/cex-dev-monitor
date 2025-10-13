@@ -662,6 +662,7 @@ app.delete('/api/wallets/:address', async (req, res) => {
 app.post('/api/wallets/:address/rebackfill', async (req, res) => {
   try {
     const { address } = req.params;
+    const { rps } = req.body; // Optional: requests per second (default = 10x current)
     
     // Check if wallet exists
     const wallet = await MonitoredWalletProvider.findByAddress(address, 'pumpfun');
@@ -670,12 +671,17 @@ app.post('/api/wallets/:address/rebackfill', async (req, res) => {
       return res.status(404).json({ error: 'Pump.fun wallet not found' });
     }
 
-    console.log(`🔄 [API] Force re-backfill requested for ${address.slice(0, 8)}...`);
+    // Calculate backfill RPS (10x faster than normal monitoring)
+    const currentRps = wallet.rate_limit_rps || 1;
+    const backfillRps = rps || (currentRps * 10);
+
+    console.log(`🔄 [API] Force re-backfill requested for ${address.slice(0, 8)}... at ${backfillRps} RPS (${backfillRps / currentRps}x speed)`);
     
-    // Reset dev_checked flag to force full backfill
+    // Temporarily increase RPS for faster backfill
     await MonitoredWalletProvider.update(address, {
       dev_checked: 0,
-      last_processed_signature: ''
+      last_processed_signature: '',
+      rate_limit_rps: backfillRps
     });
     
     // Stop and restart monitoring (will trigger full backfill)
@@ -685,8 +691,11 @@ app.post('/api/wallets/:address/rebackfill', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Re-backfill started for ${address.slice(0, 8)}...`,
-      note: 'This will fetch ALL historical deployments. Check logs for progress.'
+      message: `Re-backfill started for ${address.slice(0, 8)}... at ${backfillRps} RPS`,
+      backfill_rps: backfillRps,
+      normal_rps: currentRps,
+      speed_multiplier: backfillRps / currentRps,
+      note: 'This will fetch ALL historical deployments. Remember to reduce RPS after backfill completes!'
     });
   } catch (error: any) {
     console.error(`❌ [API] Re-backfill error:`, error);
