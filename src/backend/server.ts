@@ -662,7 +662,13 @@ app.delete('/api/wallets/:address', async (req, res) => {
 app.post('/api/wallets/:address/rebackfill', async (req, res) => {
   try {
     const { address } = req.params;
-    const { minSlot } = req.body; // Optional: minimum slot to start from
+    // Support both body and query parameter
+    const minSlot = req.body?.minSlot || req.query.minSlot ? parseInt(req.query.minSlot as string) : undefined;
+    
+    console.log(`🔄 [API] Re-backfill request received for ${address.slice(0, 8)}...`);
+    console.log(`🔄 [API] Request body:`, req.body);
+    console.log(`🔄 [API] Query params:`, req.query);
+    console.log(`🔄 [API] minSlot parsed:`, minSlot);
     
     // Check if wallet exists
     const wallet = await MonitoredWalletProvider.findByAddress(address, 'pumpfun');
@@ -671,8 +677,8 @@ app.post('/api/wallets/:address/rebackfill', async (req, res) => {
       return res.status(404).json({ error: 'Pump.fun wallet not found' });
     }
 
-    const slotMsg = minSlot ? ` from slot ${minSlot}` : '';
-    console.log(`🔄 [API] Force re-backfill requested for ${address.slice(0, 8)}...${slotMsg} (NO RATE LIMITING - global limiter handles all)`);
+    const slotMsg = minSlot ? ` from slot ${minSlot}` : ' (FULL HISTORY)';
+    console.log(`🔄 [API] Triggering re-backfill${slotMsg}`);
     
     // Trigger re-backfill with optional minSlot
     await pumpFunMonitor.forceRebackfill(address, minSlot);

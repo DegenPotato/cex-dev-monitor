@@ -89,7 +89,9 @@ export class PumpFunMonitor extends EventEmitter {
    * Force re-backfill from a specific slot (for recovering missed deployments)
    */
   async forceRebackfill(walletAddress: string, minSlot?: number): Promise<void> {
-    console.log(`🔄 [Force-Rebackfill] Starting for ${walletAddress.slice(0, 8)}...${minSlot ? ` from slot ${minSlot}` : ''}`);
+    const slotMsg = minSlot ? ` from slot ${minSlot}` : ' (FULL HISTORY)';
+    console.log(`🔄 [Force-Rebackfill] Starting for ${walletAddress.slice(0, 8)}...${slotMsg}`);
+    console.log(`🔄 [Force-Rebackfill] minSlot parameter value:`, minSlot, `(type: ${typeof minSlot})`);
     
     // Reset checkpoint
     await MonitoredWalletProvider.update(walletAddress, {
