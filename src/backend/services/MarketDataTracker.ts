@@ -77,11 +77,9 @@ export class MarketDataTracker {
         const data = marketDataMap.get(token.mint_address);
         
         if (data) {
-          // For bonding curve tokens (not completed), use total reserves as market cap
-          // For graduated tokens, use FDV
-          const marketCap = data.launchpadCompleted 
-            ? (data.fdvUsd || data.totalReserveUsd || null)
-            : (data.totalReserveUsd || data.fdvUsd || null);
+          // Market Cap = Price × Total Supply
+          // GeckoTerminal's fdvUsd is exactly this (Fully Diluted Valuation)
+          const marketCap = data.fdvUsd || null;
           
           const priceUsd = data.priceUsd || null;
           const priceSol = priceUsd ? priceUsd / SOL_PRICE_USD : null;
