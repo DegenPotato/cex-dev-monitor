@@ -1,8 +1,10 @@
 import fetch from 'cross-fetch';
+import { globalGeckoTerminalLimiter } from './GeckoTerminalRateLimiter.js';
 
 /**
  * Token Metadata Fetcher
  * Fetches token metadata and market data from GeckoTerminal API
+ * Uses global rate limiter to prevent 429 errors
  */
 export class TokenMetadataFetcher {
   private readonly GECKOTERMINAL_BASE = 'https://api.geckoterminal.com/api/v2';
@@ -26,18 +28,19 @@ export class TokenMetadataFetcher {
     launchpadCompletedAt?: string | null;
   } | null> {
     try {
-      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}?include_composition=true`;
-      
-      const response = await fetch(url, {
-        headers: { 'Accept': 'application/json' }
+      const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}?include_composition=true`;
+        
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
       });
-
-      if (!response.ok) {
-        console.log(`⚠️ [GeckoTerminal] HTTP ${response.status} for ${mintAddress.slice(0, 8)}...`);
-        return null;
-      }
-
-      const data = await response.json();
       const attributes = data?.data?.attributes;
       
       if (!attributes) {
@@ -63,7 +66,11 @@ export class TokenMetadataFetcher {
       
       return metadata;
     } catch (error: any) {
-      console.error(`❌ [GeckoTerminal] Error fetching data for ${mintAddress.slice(0, 8)}...:`, error.message);
+      if (error.message.startsWith('HTTP')) {
+        console.log(`⚠️ [GeckoTerminal] ${error.message} for ${mintAddress.slice(0, 8)}...`);
+      } else {
+        console.error(`❌ [GeckoTerminal] Error fetching data for ${mintAddress.slice(0, 8)}...:`, error.message);
+      }
       return null;
     }
   }
@@ -81,18 +88,19 @@ export class TokenMetadataFetcher {
       const addresses = batch.join(',');
       
       try {
-        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/multi/${addresses}?include_composition=true`;
-        
-        const response = await fetch(url, {
-          headers: { 'Accept': 'application/json' }
+        const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+          const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/multi/${addresses}?include_composition=true`;
+          
+          const response = await fetch(url, {
+            headers: { 'Accept': 'application/json' }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          return await response.json();
         });
-
-        if (!response.ok) {
-          console.log(`⚠️ [GeckoTerminal] HTTP ${response.status} for batch of ${batch.length} tokens`);
-          continue;
-        }
-
-        const data = await response.json();
         const tokensData = data?.data;
         
         if (!tokensData || !Array.isArray(tokensData)) {
@@ -124,12 +132,13 @@ export class TokenMetadataFetcher {
         
         console.log(`✅ [GeckoTerminal] Fetched ${tokensData.length}/${batch.length} tokens in batch`);
         
-        // Small delay between batches to avoid rate limits
-        if (i + BATCH_SIZE < mintAddresses.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        // No manual delay needed - global rate limiter handles it
       } catch (error: any) {
-        console.error(`❌ [GeckoTerminal] Error fetching batch:`, error.message);
+        if (error.message.startsWith('HTTP')) {
+          console.log(`⚠️ [GeckoTerminal] ${error.message} for batch of ${batch.length} tokens`);
+        } else {
+          console.error(`❌ [GeckoTerminal] Error fetching batch:`, error.message);
+        }
       }
     }
 

@@ -1,6 +1,7 @@
 import fetch from 'cross-fetch';
 import { saveDatabase } from '../database/connection.js';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
+import { globalGeckoTerminalLimiter } from './GeckoTerminalRateLimiter.js';
 
 /**
  * OHLCV Data Collector using GeckoTerminal API
@@ -29,11 +30,12 @@ export class OHLCVCollector {
     { name: '1d', api: 'day', aggregate: 1, intervalMs: 24 * 60 * 60 * 1000 }
   ];
   
-  // Rate limiting
-  private readonly BACKFILL_INTERVAL = 5 * 60 * 1000; // Run backfill every 5 minutes
-  private readonly REQUESTS_PER_MINUTE = 30; // Conservative GeckoTerminal limit
-  private readonly REQUEST_DELAY = Math.ceil((60 * 1000) / this.REQUESTS_PER_MINUTE);
+  // Rate limiting - VERY conservative to avoid 429s
+  private readonly BACKFILL_INTERVAL = 15 * 60 * 1000; // Run backfill every 15 minutes
+  private readonly REQUESTS_PER_MINUTE = 10; // Very conservative GeckoTerminal limit
+  private readonly REQUEST_DELAY = Math.ceil((60 * 1000) / this.REQUESTS_PER_MINUTE); // 6 seconds
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // GeckoTerminal max
+  private readonly MAX_TOKENS_PER_CYCLE = 20; // Process max 20 tokens per cycle to avoid rate limits
   
   constructor() {
     console.log('📊 [OHLCV] Collector initialized (NOT auto-starting)');
@@ -91,10 +93,14 @@ export class OHLCVCollector {
         return;
       }
       
-      console.log(`📊 [OHLCV] Processing ${tokens.length} tokens...`);
+      console.log(`📊 [OHLCV] Found ${tokens.length} tokens in database`);
+      
+      // Limit tokens per cycle to avoid rate limits
+      const tokensToProcess = tokens.slice(0, this.MAX_TOKENS_PER_CYCLE);
+      console.log(`📊 [OHLCV] Processing ${tokensToProcess.length} tokens this cycle (rate limit protection)`);
       
       // Process each token
-      for (const token of tokens) {
+      for (const token of tokensToProcess) {
         if (!this.isRunning) {
           console.log('📊 [OHLCV] Stopped during cycle');
           return;
@@ -147,23 +153,31 @@ export class OHLCVCollector {
       return existing.pool_address;
     }
     
-    // Fetch from GeckoTerminal
+    // Fetch from GeckoTerminal using global rate limiter
     try {
-      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}`;
-      const response = await fetch(url, {
-        headers: { 'Accept': 'application/json' }
+      const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}`;
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        if (response.status === 429) {
+          throw new Error('RATE_LIMITED');
+        }
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        return await response.json();
       });
       
-      if (!response.ok) {
-        return null;
-      }
-      
-      const data = await response.json();
       const relationships = data?.data?.relationships;
       
       // Get the top pool
       const topPoolData = relationships?.top_pools?.data;
       if (!topPoolData || topPoolData.length === 0) {
+        console.warn(`⚠️ [OHLCV] Token ${mintAddress.slice(0, 8)}... has no pools on GeckoTerminal`);
         return null;
       }
       
@@ -187,7 +201,13 @@ export class OHLCVCollector {
       
       return poolAddress;
     } catch (error: any) {
-      console.error(`❌ [OHLCV] Error fetching pool for ${mintAddress.slice(0, 8)}...:`, error.message);
+      if (error.message === 'RATE_LIMITED') {
+        console.warn(`⚠️ [OHLCV] Rate limited discovering pool for ${mintAddress.slice(0, 8)}...`);
+      } else if (error.message.startsWith('HTTP')) {
+        console.warn(`⚠️ [OHLCV] No pool data for ${mintAddress.slice(0, 8)}... (${error.message})`);
+      } else {
+        console.error(`❌ [OHLCV] Error fetching pool for ${mintAddress.slice(0, 8)}...:`, error.message);
+      }
       return null;
     }
   }
@@ -420,24 +440,27 @@ export class OHLCVCollector {
     close: number;
     volume: number;
   }>> {
-    const url = `${this.GECKOTERMINAL_BASE}/networks/solana/pools/${poolAddress}/ohlcv/${timeframe.api}`;
-    
-    const params = new URLSearchParams({
-      aggregate: timeframe.aggregate.toString(),
-      before_timestamp: beforeTimestamp.toString(),
-      limit: this.MAX_CANDLES_PER_REQUEST.toString(),
-      currency: 'usd'
+    // Use global rate limiter
+    const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/pools/${poolAddress}/ohlcv/${timeframe.api}`;
+      
+      const params = new URLSearchParams({
+        aggregate: timeframe.aggregate.toString(),
+        before_timestamp: beforeTimestamp.toString(),
+        limit: this.MAX_CANDLES_PER_REQUEST.toString(),
+        currency: 'usd'
+      });
+      
+      const response = await fetch(`${url}?${params}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      return await response.json();
     });
-    
-    const response = await fetch(`${url}?${params}`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
     const ohlcvArray = data?.data?.attributes?.ohlcv_list;
     
     if (!ohlcvArray || !Array.isArray(ohlcvArray)) {
