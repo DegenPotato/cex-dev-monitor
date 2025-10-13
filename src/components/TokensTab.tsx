@@ -15,6 +15,12 @@ interface Token {
   current_mcap?: number;
   ath_mcap?: number;
   last_updated?: number;
+  price_usd?: number;
+  price_sol?: number;
+  graduation_percentage?: number;
+  launchpad_completed?: number;
+  launchpad_completed_at?: number;
+  migrated_pool_address?: string;
 }
 
 type SortBy = 'newest' | 'mcap' | 'gain' | 'ath';
@@ -242,7 +248,7 @@ export function TokensTab() {
                   </div>
 
                   {/* Market Data Grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
                     <div>
                       <div className="text-xs text-gray-400 mb-1">Launch MCap</div>
                       <div className="text-sm font-semibold text-white">
@@ -262,6 +268,12 @@ export function TokensTab() {
                       </div>
                     </div>
                     <div>
+                      <div className="text-xs text-gray-400 mb-1">Price (SOL)</div>
+                      <div className="text-sm font-semibold text-purple-400">
+                        {token.price_sol ? `◎${token.price_sol.toFixed(6)}` : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
                       <div className="text-xs text-gray-400 mb-1">Gain/Loss</div>
                       <div className={`text-sm font-semibold flex items-center gap-1 ${gainColor}`}>
                         {gain !== null ? (
@@ -275,6 +287,51 @@ export function TokensTab() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Bonding Curve / Launchpad Status */}
+                  {token.graduation_percentage !== undefined && (
+                    <div className="mb-3">
+                      {token.launchpad_completed ? (
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-lg">
+                            <Flame className="w-4 h-4 text-green-400" />
+                            <span className="text-sm font-semibold text-green-400">GRADUATED</span>
+                          </div>
+                          {token.launchpad_completed_at && (
+                            <span className="text-xs text-gray-400">
+                              {new Date(token.launchpad_completed_at).toLocaleString()}
+                            </span>
+                          )}
+                          {token.migrated_pool_address && (
+                            <a
+                              href={`https://dexscreener.com/solana/${token.migrated_pool_address}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                            >
+                              View Raydium Pool
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs text-gray-400">Bonding Curve Progress</span>
+                            <span className="text-xs font-semibold text-orange-400">
+                              {token.graduation_percentage.toFixed(2)}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-orange-500 to-green-500 transition-all duration-500"
+                              style={{ width: `${Math.min(token.graduation_percentage, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Creator & Timestamp */}
                   <div className="flex items-center gap-4 text-xs text-gray-400">
