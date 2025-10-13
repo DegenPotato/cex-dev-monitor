@@ -19,6 +19,11 @@ interface TokenData {
   launchpad_completed: number;
   launchpad_completed_at: number | null;
   migrated_pool_address: string | null;
+  total_supply?: string;
+  market_cap_usd?: number;
+  coingecko_coin_id?: string;
+  gt_score?: number;
+  description?: string;
   last_updated: number;
   metadata: string;
 }

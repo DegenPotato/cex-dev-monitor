@@ -11,6 +11,12 @@ interface TokenMint {
   name?: string;
   symbol?: string;
   uri?: string;
+  total_supply?: string;
+  market_cap_usd?: number;
+  coingecko_coin_id?: string;
+  gt_score?: number;
+  description?: string;
+  metadata?: string;
 }
 
 export function RecentTokenMints() {

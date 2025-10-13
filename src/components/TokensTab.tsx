@@ -21,6 +21,12 @@ interface Token {
   launchpad_completed?: number;
   launchpad_completed_at?: number;
   migrated_pool_address?: string;
+  total_supply?: string;
+  market_cap_usd?: number;
+  coingecko_coin_id?: string;
+  gt_score?: number;
+  description?: string;
+  metadata?: string;
 }
 
 type SortBy = 'newest' | 'mcap' | 'gain' | 'ath';
