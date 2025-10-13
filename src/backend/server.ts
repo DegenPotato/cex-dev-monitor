@@ -658,6 +658,77 @@ app.delete('/api/wallets/:address', async (req, res) => {
   }
 });
 
+// Verify and clean up token mints - remove entries with wrong creator
+app.post('/api/tokens/verify-creators', async (req, res) => {
+  try {
+    // Get all monitored wallets
+    const wallets = await MonitoredWalletProvider.findAll();
+    const monitoredAddresses = new Set(wallets.map(w => w.address));
+    
+    // Get all token mints
+    const allTokens = await TokenMintProvider.findAll();
+    
+    // Separate valid and invalid
+    const valid: any[] = [];
+    const invalid: any[] = [];
+    
+    for (const token of allTokens) {
+      if (monitoredAddresses.has(token.creator_address)) {
+        valid.push(token);
+      } else {
+        invalid.push({
+          mint_address: token.mint_address,
+          creator_address: token.creator_address,
+          name: token.name,
+          symbol: token.symbol
+        });
+      }
+    }
+    
+    res.json({
+      total: allTokens.length,
+      valid: valid.length,
+      invalid: invalid.length,
+      monitored_wallets: Array.from(monitoredAddresses),
+      invalid_tokens: invalid
+    });
+  } catch (error: any) {
+    console.error(`❌ [API] Token verification error:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete invalid token mints (not created by monitored wallets)
+app.delete('/api/tokens/cleanup-invalid', async (req, res) => {
+  try {
+    // Get all monitored wallets
+    const wallets = await MonitoredWalletProvider.findAll();
+    const monitoredAddresses = new Set(wallets.map(w => w.address));
+    
+    // Get all token mints
+    const allTokens = await TokenMintProvider.findAll();
+    
+    // Delete invalid entries
+    let deleted = 0;
+    for (const token of allTokens) {
+      if (!monitoredAddresses.has(token.creator_address)) {
+        await TokenMintProvider.delete(token.mint_address);
+        deleted++;
+        console.log(`🗑️  Deleted invalid token: ${token.symbol || token.mint_address.slice(0, 8)} (creator: ${token.creator_address.slice(0, 8)})`);
+      }
+    }
+    
+    res.json({
+      success: true,
+      deleted_count: deleted,
+      remaining_count: allTokens.length - deleted
+    });
+  } catch (error: any) {
+    console.error(`❌ [API] Cleanup error:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Force re-backfill a wallet (catches missed deployments)
 // Usage: POST /api/wallets/:address/rebackfill OR /api/wallets/:address/rebackfill/:minSlot
 app.post('/api/wallets/:address/rebackfill/:minSlot?', async (req, res) => {

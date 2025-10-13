@@ -472,8 +472,10 @@ export class PumpFunMonitor extends EventEmitter {
             // Check for InitializeMint in inner instructions
             if (parsed.type === 'initializeMint' || parsed.type === 'initializeMint2') {
               const mintAddress = parsed.info?.mint;
+              const mintAuthority = parsed.info?.mintAuthority;
               
-              if (mintAddress) {
+              // CRITICAL: Verify that the monitored wallet is the mint authority (creator)
+              if (mintAddress && mintAuthority === walletAddress) {
                 await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
                 mintFound = true;
               }
@@ -516,9 +518,20 @@ export class PumpFunMonitor extends EventEmitter {
         timestamp: launchTimestamp, // Actual blockchain launch time
         platform: 'pumpfun',
         signature: signature, // Store transaction signature
+        // Save initial market data from GeckoTerminal
+        starting_mcap: tokenInfo.fdvUsd,
+        current_mcap: tokenInfo.fdvUsd,
+        price_usd: tokenInfo.priceUsd,
+        graduation_percentage: tokenInfo.launchpadGraduationPercentage,
+        launchpad_completed: tokenInfo.launchpadCompleted ? 1 : 0,
+        launchpad_completed_at: tokenInfo.launchpadCompletedAt ? new Date(tokenInfo.launchpadCompletedAt).getTime() : undefined,
+        last_updated: Date.now(),
         metadata: JSON.stringify({
           launchTime: new Date(launchTimestamp).toISOString(),
-          ...tokenInfo
+          decimals: tokenInfo.decimals,
+          image: tokenInfo.image,
+          totalReserveUsd: tokenInfo.totalReserveUsd,
+          volumeUsd24h: tokenInfo.volumeUsd24h
         })
       });
 
@@ -563,17 +576,27 @@ export class PumpFunMonitor extends EventEmitter {
     }
   }
 
-  private async fetchTokenMetadata(mintAddress: string): Promise<{ name?: string; symbol?: string }> {
+  private async fetchTokenMetadata(mintAddress: string): Promise<{
+    name?: string;
+    symbol?: string;
+    decimals?: number;
+    image?: string;
+    priceUsd?: number;
+    fdvUsd?: number;
+    totalReserveUsd?: number;
+    volumeUsd24h?: number;
+    launchpadGraduationPercentage?: number;
+    launchpadCompleted?: boolean;
+    launchpadCompletedAt?: string | null;
+  }> {
     try {
       console.log(`🔍 [PumpFun] Fetching metadata for ${mintAddress.slice(0, 8)}...`);
       const metadata = await this.metadataFetcher.fetchMetadata(mintAddress);
       
       if (metadata) {
         console.log(`✅ [PumpFun] Metadata found: ${metadata.name || 'N/A'} (${metadata.symbol || 'N/A'})`);
-        return {
-          name: metadata.name,
-          symbol: metadata.symbol
-        };
+        // Return ALL fields from GeckoTerminal
+        return metadata;
       }
       
       console.log(`⚠️ [PumpFun] No metadata found for ${mintAddress.slice(0, 8)}...`);

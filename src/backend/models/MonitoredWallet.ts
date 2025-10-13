@@ -46,6 +46,12 @@ export interface TokenMint {
   starting_mcap?: number;
   current_mcap?: number;
   ath_mcap?: number;
+  price_usd?: number;
+  price_sol?: number;
+  graduation_percentage?: number;
+  launchpad_completed?: number; // 0 or 1 (SQLite boolean)
+  launchpad_completed_at?: number; // Timestamp
+  migrated_pool_address?: string;
   last_updated?: number;
   metadata?: string;
 }
