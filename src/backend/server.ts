@@ -1795,8 +1795,11 @@ app.get('/api/market-data/analyze-mint/:mintAddress', async (req, res) => {
   }
 });
 
-app.post('/api/market-data/start', (_req, res) => {
+app.post('/api/market-data/start', async (_req, res) => {
   try {
+    // Start SOL price oracle (needed for price calculations)
+    await solPriceOracle.start();
+    
     marketDataTracker.start();
     res.json({ 
       success: true, 
@@ -1811,10 +1814,43 @@ app.post('/api/market-data/start', (_req, res) => {
 app.post('/api/market-data/stop', (_req, res) => {
   try {
     marketDataTracker.stop();
+    
+    // Stop SOL price oracle too (unless main monitoring is running)
+    if (pumpFunMonitor.getActiveMonitors().length === 0) {
+      solPriceOracle.stop();
+    }
+    
     res.json({ 
       success: true, 
       message: 'Market data tracker stopped',
       status: marketDataTracker.getStatus()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SOL Price Oracle control
+app.post('/api/sol-oracle/start', async (_req, res) => {
+  try {
+    await solPriceOracle.start();
+    res.json({
+      success: true,
+      message: 'SOL price oracle started',
+      status: solPriceOracle.getStatus()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/sol-oracle/stop', (_req, res) => {
+  try {
+    solPriceOracle.stop();
+    res.json({
+      success: true,
+      message: 'SOL price oracle stopped',
+      status: solPriceOracle.getStatus()
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
