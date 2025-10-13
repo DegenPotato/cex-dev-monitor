@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
+import { initDatabase, getDb } from './database/connection.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
-import { initDatabase } from './database/connection.js';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
 import { PumpFunMonitor } from './services/PumpFunMonitor.js';
 import { TradingActivityMonitor } from './services/TradingActivityMonitor.js';
@@ -980,6 +980,75 @@ app.post('/api/ohlcv/stop', (_req, res) => {
 
 app.get('/api/ohlcv/status', (_req, res) => {
   res.json(ohlcvCollector.getStatus());
+});
+
+// One-time migration to create OHLCV tables (if they don't exist)
+app.post('/api/ohlcv/init-tables', async (_req, res) => {
+  try {
+    const db = await getDb();
+    
+    // Create tables (IF NOT EXISTS so safe to run multiple times)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS token_pools (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mint_address TEXT NOT NULL UNIQUE,
+        pool_address TEXT NOT NULL,
+        pool_name TEXT,
+        dex TEXT DEFAULT 'raydium',
+        discovered_at INTEGER NOT NULL,
+        last_verified INTEGER
+      );
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS ohlcv_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mint_address TEXT NOT NULL,
+        pool_address TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(mint_address, timeframe, timestamp)
+      );
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS ohlcv_backfill_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mint_address TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        oldest_timestamp INTEGER,
+        newest_timestamp INTEGER,
+        backfill_complete INTEGER DEFAULT 0,
+        last_fetch_at INTEGER,
+        fetch_count INTEGER DEFAULT 0,
+        error_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        UNIQUE(mint_address, timeframe)
+      );
+    `);
+
+    // Create indexes
+    db.run(`CREATE INDEX IF NOT EXISTS idx_token_pools_mint ON token_pools(mint_address);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_token_pools_pool ON token_pools(pool_address);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_ohlcv_mint_timeframe ON ohlcv_data(mint_address, timeframe);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp ON ohlcv_data(timestamp);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv_data(mint_address, timeframe, timestamp);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_backfill_progress_mint ON ohlcv_backfill_progress(mint_address);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_backfill_progress_incomplete ON ohlcv_backfill_progress(backfill_complete);`);
+
+    res.json({
+      success: true,
+      message: 'OHLCV tables created successfully'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Proxy control endpoints
