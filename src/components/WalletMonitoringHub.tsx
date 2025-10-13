@@ -19,6 +19,7 @@ interface MonitoredWallet {
   is_dev?: number;
   dev_tokens_count?: number;
   monitoring_type?: string;
+  monitoring_state?: 'catching-up' | 'realtime' | 'idle';
 }
 
 type SortBy = 'date' | 'activity' | 'status' | 'label';
@@ -636,10 +637,21 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                     </td>
                     <td className="px-4 py-3">
                       {wallet.is_active === 1 ? (
-                        <span className="inline-flex items-center gap-1 bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
-                          <Activity className="w-3 h-3" />
-                          Active
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1 bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded w-fit">
+                            <Activity className="w-3 h-3" />
+                            Active
+                          </span>
+                          {wallet.monitoring_state && wallet.monitoring_state !== 'idle' && (
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded w-fit ${
+                              wallet.monitoring_state === 'catching-up' 
+                                ? 'bg-amber-500/20 text-amber-400' 
+                                : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {wallet.monitoring_state === 'catching-up' ? '⏳ Catching up' : '🔴 Real-time'}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="inline-flex items-center gap-1 bg-gray-500/20 text-gray-400 text-xs px-2 py-1 rounded">
                           <Pause className="w-3 h-3" />

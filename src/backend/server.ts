@@ -246,12 +246,15 @@ app.post('/api/monitor/stop', async (_req, res) => {
 // Get monitored wallets
 app.get('/api/wallets', async (_req, res) => {
   const wallets = await MonitoredWalletProvider.findAll();
+  const monitoringStates = pumpFunMonitor.getAllMonitoringStates();
+  
   // Map backend fields to frontend expectations
   const mappedWallets = wallets.map(w => ({
     ...w,
     is_dev: w.is_dev_wallet,
     dev_tokens_count: w.tokens_deployed,
-    transaction_count: w.previous_tx_count || 0
+    transaction_count: w.previous_tx_count || 0,
+    monitoring_state: monitoringStates[w.address] || 'idle'
   }));
   res.json(mappedWallets);
 });

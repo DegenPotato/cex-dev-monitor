@@ -13,6 +13,7 @@ export class PumpFunMonitor extends EventEmitter {
   private proxiedConnection: ProxiedSolanaConnection;
   private activeSubscriptions: Map<string, number> = new Map();
   private isBackfilling: Map<string, boolean> = new Map();
+  private monitoringState: Map<string, 'catching-up' | 'realtime' | 'idle'> = new Map();
   private rateLimiters: Map<string, WalletRateLimiter> = new Map();
   private metadataFetcher: TokenMetadataFetcher;
 
@@ -141,18 +142,35 @@ export class PumpFunMonitor extends EventEmitter {
   }
 
   async stopMonitoringWallet(walletAddress: string): Promise<void> {
-    const subscriptionId = this.activeSubscriptions.get(walletAddress);
-    if (subscriptionId !== undefined) {
-      await this.proxiedConnection.withProxy(async conn => {
-        await conn.removeAccountChangeListener(subscriptionId);
-      });
+    const intervalId = this.activeSubscriptions.get(walletAddress);
+    if (intervalId !== undefined) {
+      clearInterval(intervalId as any); // Stop HTTP polling
       this.activeSubscriptions.delete(walletAddress);
       console.log(`⛔ [PumpFun] Stopped monitoring ${walletAddress.slice(0, 8)}...`);
     }
     
-    // Clean up backfill and rate limiter state
+    // Clean up backfill, state, and rate limiter
     this.isBackfilling.delete(walletAddress);
+    this.monitoringState.delete(walletAddress);
     this.rateLimiters.delete(walletAddress);
+  }
+
+  /**
+   * Get monitoring state for a wallet
+   */
+  getMonitoringState(walletAddress: string): 'catching-up' | 'realtime' | 'idle' {
+    return this.monitoringState.get(walletAddress) || 'idle';
+  }
+
+  /**
+   * Get all monitoring states
+   */
+  getAllMonitoringStates(): Record<string, 'catching-up' | 'realtime' | 'idle'> {
+    const states: Record<string, 'catching-up' | 'realtime' | 'idle'> = {};
+    this.monitoringState.forEach((state, address) => {
+      states[address] = state;
+    });
+    return states;
   }
 
   /**
@@ -240,12 +258,14 @@ export class PumpFunMonitor extends EventEmitter {
 
       if (newSignatures.length === 0) {
         console.log(`✅ [Catch-up] No new transactions for ${walletAddress.slice(0, 8)}...`);
+        this.monitoringState.set(walletAddress, 'realtime');
         return;
       }
 
       // Reverse to process chronologically (oldest → newest)
       newSignatures.reverse();
 
+      this.monitoringState.set(walletAddress, 'catching-up');
       console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions...`);
       
       let mintsFound = 0;
@@ -296,6 +316,7 @@ export class PumpFunMonitor extends EventEmitter {
         last_history_check: Date.now()
       }, 'pumpfun');
 
+      this.monitoringState.set(walletAddress, 'realtime');
       console.log(`✅ [Catch-up] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   New transactions processed: ${newSignatures.length}`);
       console.log(`   New mints found: ${mintsFound}`);
@@ -451,6 +472,7 @@ export class PumpFunMonitor extends EventEmitter {
    * Uses HTTP polling (same as catch-up) to check for new transactions every 10 seconds
    */
   private async startRealtimeMonitoring(walletAddress: string): Promise<void> {
+    this.monitoringState.set(walletAddress, 'realtime');
     console.log(`🔴 [Live] Starting real-time monitoring (HTTP polling) for ${walletAddress.slice(0, 8)}...`);
     
     // Poll every 10 seconds for new transactions
