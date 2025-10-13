@@ -12,7 +12,7 @@ export class TokenMetadataFetcher {
   constructor() {}
 
   /**
-   * Fetch token metadata and market data from GeckoTerminal
+   * Fetch token metadata and market data from GeckoTerminal (both endpoints)
    */
   async fetchMetadata(mintAddress: string): Promise<{
     name?: string;
@@ -29,9 +29,23 @@ export class TokenMetadataFetcher {
     totalSupply?: string;
     marketCapUsd?: number;
     coingeckoCoinId?: string | null;
+    gtScore?: number;
+    description?: string;
+    // Additional data stored in metadata JSON
+    gtScoreDetails?: any;
+    holders?: any;
+    twitterHandle?: string;
+    telegramHandle?: string;
+    discordUrl?: string;
+    websites?: string[];
+    categories?: string[];
+    mintAuthority?: string;
+    freezeAuthority?: string;
+    isHoneypot?: string;
   } | null> {
     try {
-      const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+      // Call 1: Get market data (price, volume, supply)
+      const marketData = await globalGeckoTerminalLimiter.executeRequest(async () => {
         const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}?include_composition=true`;
         
         const response = await fetch(url, {
@@ -44,7 +58,24 @@ export class TokenMetadataFetcher {
 
         return await response.json();
       });
-      const attributes = data?.data?.attributes;
+      
+      // Call 2: Get social/score data
+      const infoData = await globalGeckoTerminalLimiter.executeRequest(async () => {
+        const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}/info`;
+        
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json();
+      });
+      
+      const attributes = marketData?.data?.attributes;
+      const infoAttributes = infoData?.data?.attributes;
       
       if (!attributes) {
         console.log(`⚠️ [GeckoTerminal] No data for ${mintAddress.slice(0, 8)}...`);
@@ -52,6 +83,7 @@ export class TokenMetadataFetcher {
       }
 
       const metadata = {
+        // Market data from first call
         name: attributes.name || undefined,
         symbol: attributes.symbol || undefined,
         decimals: attributes.decimals || undefined,
@@ -65,7 +97,21 @@ export class TokenMetadataFetcher {
         launchpadCompletedAt: attributes.launchpad_details?.completed_at || null,
         totalSupply: attributes.normalized_total_supply || attributes.total_supply || undefined,
         marketCapUsd: attributes.market_cap_usd ? parseFloat(attributes.market_cap_usd) : undefined,
-        coingeckoCoinId: attributes.coingecko_coin_id || null
+        coingeckoCoinId: attributes.coingecko_coin_id || null,
+        
+        // Social/score data from /info call
+        gtScore: infoAttributes?.gt_score || undefined,
+        description: infoAttributes?.description || undefined,
+        gtScoreDetails: infoAttributes?.gt_score_details || undefined,
+        holders: infoAttributes?.holders || undefined,
+        twitterHandle: infoAttributes?.twitter_handle || undefined,
+        telegramHandle: infoAttributes?.telegram_handle || undefined,
+        discordUrl: infoAttributes?.discord_url || undefined,
+        websites: infoAttributes?.websites || undefined,
+        categories: infoAttributes?.categories || undefined,
+        mintAuthority: infoAttributes?.mint_authority || undefined,
+        freezeAuthority: infoAttributes?.freeze_authority || undefined,
+        isHoneypot: infoAttributes?.is_honeypot || undefined
       };
 
       console.log(`✅ [GeckoTerminal] ${attributes.name} (${attributes.symbol}) - FDV: $${metadata.fdvUsd?.toFixed(2) || 'N/A'}, Progress: ${metadata.launchpadGraduationPercentage}%`);

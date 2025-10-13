@@ -55,8 +55,10 @@ export interface TokenMint {
   total_supply?: string;
   market_cap_usd?: number;
   coingecko_coin_id?: string;
+  gt_score?: number;
+  description?: string;
   last_updated?: number;
-  metadata?: string;
+  metadata?: string; // JSON with additional data
 }
 
 export interface Config {

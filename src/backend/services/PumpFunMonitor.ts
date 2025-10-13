@@ -594,6 +594,8 @@ export class PumpFunMonitor extends EventEmitter {
         total_supply: tokenInfo.totalSupply,
         market_cap_usd: tokenInfo.marketCapUsd,
         coingecko_coin_id: tokenInfo.coingeckoCoinId || undefined,
+        gt_score: tokenInfo.gtScore,
+        description: tokenInfo.description,
         last_updated: Date.now(),
         metadata: JSON.stringify({
           launchTime: new Date(launchTimestamp).toISOString(),
@@ -601,6 +603,17 @@ export class PumpFunMonitor extends EventEmitter {
           image: tokenInfo.image,
           totalReserveUsd: tokenInfo.totalReserveUsd,
           volumeUsd24h: tokenInfo.volumeUsd24h,
+          // Social/Score data from /info endpoint
+          gtScoreDetails: tokenInfo.gtScoreDetails,
+          holders: tokenInfo.holders,
+          twitterHandle: tokenInfo.twitterHandle,
+          telegramHandle: tokenInfo.telegramHandle,
+          discordUrl: tokenInfo.discordUrl,
+          websites: tokenInfo.websites,
+          categories: tokenInfo.categories,
+          mintAuthority: tokenInfo.mintAuthority,
+          freezeAuthority: tokenInfo.freezeAuthority,
+          isHoneypot: tokenInfo.isHoneypot,
           // Store complete metadata for future use
           geckoTerminal: {
             ...tokenInfo
@@ -664,6 +677,18 @@ export class PumpFunMonitor extends EventEmitter {
     totalSupply?: string;
     marketCapUsd?: number;
     coingeckoCoinId?: string | null;
+    gtScore?: number;
+    description?: string;
+    gtScoreDetails?: any;
+    holders?: any;
+    twitterHandle?: string;
+    telegramHandle?: string;
+    discordUrl?: string;
+    websites?: string[];
+    categories?: string[];
+    mintAuthority?: string;
+    freezeAuthority?: string;
+    isHoneypot?: string;
   }> {
     try {
       console.log(`🔍 [PumpFun] Fetching metadata for ${mintAddress.slice(0, 8)}...`);

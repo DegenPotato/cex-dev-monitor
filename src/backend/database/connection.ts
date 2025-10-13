@@ -387,6 +387,20 @@ export async function initDatabase() {
   } catch (e) {
     // Column already exists, ignore
   }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN gt_score REAL;`);
+    console.log('✅ Added gt_score column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+  
+  try {
+    db.run(`ALTER TABLE token_mints ADD COLUMN description TEXT;`);
+    console.log('✅ Added description column');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   // OHLCV Data Tables
   db.run(`

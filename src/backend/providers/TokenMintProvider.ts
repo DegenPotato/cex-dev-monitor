@@ -9,9 +9,9 @@ export class TokenMintProvider {
         mint_address, creator_address, name, symbol, timestamp, platform, signature, 
         starting_mcap, current_mcap, ath_mcap, price_usd, price_sol, 
         graduation_percentage, launchpad_completed, launchpad_completed_at, 
-        total_supply, market_cap_usd, coingecko_coin_id,
+        total_supply, market_cap_usd, coingecko_coin_id, gt_score, description,
         last_updated, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         mint.mint_address,
         mint.creator_address,
@@ -31,6 +31,8 @@ export class TokenMintProvider {
         mint.total_supply,
         mint.market_cap_usd,
         mint.coingecko_coin_id,
+        mint.gt_score,
+        mint.description,
         mint.last_updated,
         mint.metadata
       ]
