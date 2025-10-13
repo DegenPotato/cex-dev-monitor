@@ -1,5 +1,5 @@
 import express from 'express';
-import { query, queryOne, queryAll, execute } from '../database/helpers.js';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
 
 const router = express.Router();
 
