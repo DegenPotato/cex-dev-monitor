@@ -195,6 +195,7 @@ export class OHLCVCollector {
   /**
    * Backfill a specific timeframe for a token
    * Fetches oldest data first and works forward
+   * Once backfill is complete, fetches latest candles to maintain real-time data
    */
   private async backfillTimeframe(
     mintAddress: string,
@@ -214,8 +215,9 @@ export class OHLCVCollector {
         [mintAddress, timeframe.name]
       );
       
-      // If backfill complete, skip
+      // If backfill complete, fetch LATEST candles (real-time updates)
       if (progress?.backfill_complete) {
+        await this.fetchLatestCandles(mintAddress, poolAddress, timeframe, progress.newest_timestamp || 0);
         return;
       }
       
@@ -324,6 +326,82 @@ export class OHLCVCollector {
         [errorCount, error.message, mintAddress, timeframe.name]
       );
       saveDatabase();
+    }
+  }
+  
+  /**
+   * Fetch latest candles for a completed token (real-time updates)
+   */
+  private async fetchLatestCandles(
+    mintAddress: string,
+    poolAddress: string,
+    timeframe: typeof this.TIMEFRAMES[0],
+    lastTimestamp: number
+  ) {
+    try {
+      // Fetch candles that occurred AFTER our last stored timestamp
+      const nowUnix = Math.floor(Date.now() / 1000);
+      
+      const candles = await this.fetchOHLCV(
+        poolAddress,
+        timeframe,
+        nowUnix // Fetch up to now
+      );
+      
+      if (candles.length === 0) {
+        return;
+      }
+      
+      // Only store candles newer than what we have
+      const newCandles = candles.filter(c => c.timestamp > lastTimestamp);
+      
+      if (newCandles.length === 0) {
+        return; // No new data
+      }
+      
+      // Store new candles
+      let stored = 0;
+      for (const candle of newCandles) {
+        try {
+          await execute(
+            `INSERT OR IGNORE INTO ohlcv_data 
+             (mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              mintAddress,
+              poolAddress,
+              timeframe.name,
+              candle.timestamp,
+              candle.open,
+              candle.high,
+              candle.low,
+              candle.close,
+              candle.volume,
+              Date.now()
+            ]
+          );
+          stored++;
+        } catch (e) {
+          // Duplicate, skip
+        }
+      }
+      
+      if (stored > 0) {
+        // Update newest timestamp
+        const newestTimestamp = Math.max(...newCandles.map(c => c.timestamp));
+        
+        await execute(
+          `UPDATE ohlcv_backfill_progress 
+           SET newest_timestamp = ?, last_fetch_at = ?
+           WHERE mint_address = ? AND timeframe = ?`,
+          [newestTimestamp, Date.now(), mintAddress, timeframe.name]
+        );
+        
+        saveDatabase();
+        console.log(`🔄 [OHLCV] ${mintAddress.slice(0, 8)}... ${timeframe.name}: ${stored} new candles`);
+      }
+    } catch (error: any) {
+      console.error(`❌ [OHLCV] Error fetching latest for ${mintAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
     }
   }
   

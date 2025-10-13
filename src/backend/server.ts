@@ -21,6 +21,7 @@ import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
+import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 
 const app = express();
 const server = createServer(app);
@@ -75,6 +76,7 @@ const pumpFunMonitor = new PumpFunMonitor();
 const tradingActivityMonitor = new TradingActivityMonitor();
 const marketDataTracker = new MarketDataTracker();
 const ohlcvCollector = new OHLCVCollector();
+const metricsCalculator = new OHLCVMetricsCalculator();
 
 // Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
@@ -950,7 +952,8 @@ app.get('/api/monitoring/status', async (_req, res) => {
       monitored: pumpFunMonitor.getActiveMonitors().length
     },
     marketDataTracker: marketDataTracker.getStatus(),
-    ohlcvCollector: ohlcvStatus
+    ohlcvCollector: ohlcvStatus,
+    metricsCalculator: metricsCalculator.getStatus()
   });
 });
 
@@ -982,6 +985,35 @@ app.post('/api/ohlcv/stop', (_req, res) => {
 app.get('/api/ohlcv/status', async (_req, res) => {
   const status = await ohlcvCollector.getStatus();
   res.json(status);
+});
+
+// OHLCV Metrics Calculator control endpoints
+app.post('/api/metrics/start', (_req, res) => {
+  try {
+    metricsCalculator.start();
+    res.json({ 
+      success: true, 
+      message: 'Metrics calculator started' 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/metrics/stop', (_req, res) => {
+  try {
+    metricsCalculator.stop();
+    res.json({ 
+      success: true, 
+      message: 'Metrics calculator stopped' 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/metrics/status', (_req, res) => {
+  res.json(metricsCalculator.getStatus());
 });
 
 // One-time migration to create OHLCV tables (if they don't exist)
