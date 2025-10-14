@@ -146,13 +146,13 @@ export function Dashboard() {
         {/* Main Content */}
         {activeTab === 'wallets' ? (
           <div className="space-y-6">
-            {/* Recent Token Mints */}
-            <RecentTokenMints />
-            
             {/* Wallet Monitoring Hub */}
             <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
               <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
             </div>
+            
+            {/* Recent Token Mints */}
+            <RecentTokenMints />
           </div>
         ) : activeTab === 'tokens' ? (
           <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
