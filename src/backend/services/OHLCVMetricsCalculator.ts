@@ -4,20 +4,18 @@ import { saveDatabase } from '../database/connection.js';
 /**
  * OHLCV Metrics Calculator
  * 
- * Calculates token metrics from internal OHLCV data:
- * - starting_mcap: Price at first candle × total supply
- * - ath_mcap: Highest price across all candles × total supply
- * - current_mcap: Latest candle close price × total supply
+ * Calculates token market cap metrics from internal OHLCV data:
+ * - starting_mcap: Price at first candle × total supply (from DB)
+ * - ath_mcap: Highest price across all candles × total supply (from DB)
+ * - current_mcap: Latest candle close price × total supply (from DB)
  * 
- * This provides accurate, internally-sourced metrics without relying on external APIs
+ * Uses total_supply from database (fetched by MarketDataTracker from GeckoTerminal)
+ * Provides accurate, internally-sourced price metrics without additional API calls
  */
 export class OHLCVMetricsCalculator {
   private isRunning = false;
   private intervalId: NodeJS.Timeout | null = null;
   private readonly UPDATE_INTERVAL = 60 * 1000; // Update every 1 minute
-  
-  // Pump.fun tokens have fixed total supply of 1 billion
-  private readonly PUMPFUN_TOTAL_SUPPLY = 1_000_000_000;
   
   constructor() {
     console.log('📈 [Metrics] Calculator initialized (NOT auto-starting)');
@@ -135,9 +133,15 @@ export class OHLCVMetricsCalculator {
         return null;
       }
       
-      // For Pump.fun tokens, use fixed supply
-      // For graduated tokens, we could fetch on-chain supply, but for now use same
-      const totalSupply = this.PUMPFUN_TOTAL_SUPPLY;
+      // Fetch total supply from database (provided by GeckoTerminal)
+      const tokenData = await queryOne<{ total_supply: number | null }>(`
+        SELECT total_supply
+        FROM token_mints
+        WHERE mint_address = ?
+      `, [mintAddress]);
+      
+      // Default to 1B if not available (Pump.fun standard)
+      const totalSupply = tokenData?.total_supply || 1_000_000_000;
       
       const starting_mcap = oldestCandle.open * totalSupply;
       const ath_mcap = athData.max_high * totalSupply;
