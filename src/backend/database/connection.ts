@@ -453,6 +453,137 @@ export async function initDatabase() {
     // Column already exists, ignore
   }
 
+  // CRITICAL FIX: Rebuild token_pools table with correct UNIQUE constraint
+  // Old: UNIQUE(mint_address) - only 1 pool per token
+  // New: UNIQUE(mint_address, pool_address) - multiple pools per token
+  try {
+    // Check if old constraint exists
+    const tableInfo = db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='token_pools'");
+    const tableSql = tableInfo[0]?.values[0]?.[0] as string || '';
+    
+    // If table has old single-column UNIQUE constraint, rebuild it
+    if (tableSql.includes('mint_address TEXT NOT NULL UNIQUE') || 
+        (tableSql.includes('UNIQUE(mint_address)') && !tableSql.includes('pool_address'))) {
+      console.log('⚠️  Rebuilding token_pools table with multi-pool support...');
+      
+      // Backup existing data
+      db.run(`CREATE TABLE token_pools_backup AS SELECT * FROM token_pools`);
+      
+      // Drop old table
+      db.run(`DROP TABLE token_pools`);
+      
+      // Recreate with correct schema
+      db.run(`
+        CREATE TABLE token_pools (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mint_address TEXT NOT NULL,
+          pool_address TEXT NOT NULL,
+          pool_name TEXT,
+          dex TEXT,
+          base_token TEXT,
+          quote_token TEXT,
+          volume_24h_usd REAL,
+          liquidity_usd REAL,
+          price_usd REAL,
+          is_primary INTEGER DEFAULT 0,
+          discovered_at INTEGER NOT NULL,
+          last_verified INTEGER,
+          UNIQUE(mint_address, pool_address)
+        )
+      `);
+      
+      // Restore data (keeping only first pool per token for now)
+      db.run(`
+        INSERT OR IGNORE INTO token_pools 
+        SELECT * FROM token_pools_backup
+      `);
+      
+      // Drop backup
+      db.run(`DROP TABLE token_pools_backup`);
+      
+      console.log('✅ token_pools table rebuilt with multi-pool support');
+    }
+  } catch (e) {
+    console.log('⚠️  Could not rebuild token_pools (may already be correct):', e);
+  }
+
+  // CRITICAL FIX: Rebuild ohlcv_backfill_progress with pool-based tracking
+  // Old: UNIQUE(mint_address, timeframe) - per-token tracking
+  // New: UNIQUE(pool_address, timeframe) - per-pool tracking
+  try {
+    const progressInfo = db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='ohlcv_backfill_progress'");
+    const progressSql = progressInfo[0]?.values[0]?.[0] as string || '';
+    
+    // If table has old mint-based UNIQUE constraint, rebuild it
+    if (progressSql.includes('UNIQUE(mint_address, timeframe)') && 
+        !progressSql.includes('UNIQUE(pool_address, timeframe)')) {
+      console.log('⚠️  Rebuilding ohlcv_backfill_progress for per-pool tracking...');
+      
+      // Clear old progress data (incompatible structure)
+      db.run(`DROP TABLE IF EXISTS ohlcv_backfill_progress`);
+      
+      // Recreate with correct schema
+      db.run(`
+        CREATE TABLE ohlcv_backfill_progress (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mint_address TEXT NOT NULL,
+          pool_address TEXT NOT NULL,
+          timeframe TEXT NOT NULL,
+          oldest_timestamp INTEGER,
+          newest_timestamp INTEGER,
+          backfill_complete INTEGER DEFAULT 0,
+          last_fetch_at INTEGER,
+          fetch_count INTEGER DEFAULT 0,
+          error_count INTEGER DEFAULT 0,
+          last_error TEXT,
+          UNIQUE(pool_address, timeframe)
+        )
+      `);
+      
+      console.log('✅ ohlcv_backfill_progress table rebuilt for per-pool tracking');
+    }
+  } catch (e) {
+    console.log('⚠️  Could not rebuild ohlcv_backfill_progress (may already be correct):', e);
+  }
+
+  // CRITICAL FIX: Rebuild ohlcv_data with pool-based UNIQUE constraint
+  // Old: UNIQUE(mint_address, timeframe, timestamp) - per-token dedup
+  // New: UNIQUE(pool_address, timeframe, timestamp) - per-pool dedup
+  try {
+    const ohlcvInfo = db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='ohlcv_data'");
+    const ohlcvSql = ohlcvInfo[0]?.values[0]?.[0] as string || '';
+    
+    // If table has old mint-based UNIQUE constraint, rebuild it
+    if (ohlcvSql.includes('UNIQUE(mint_address, timeframe, timestamp)')) {
+      console.log('⚠️  Rebuilding ohlcv_data for per-pool storage...');
+      
+      // Clear old OHLCV data (incompatible with multi-pool)
+      db.run(`DROP TABLE IF EXISTS ohlcv_data`);
+      
+      // Recreate with correct schema
+      db.run(`
+        CREATE TABLE ohlcv_data (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mint_address TEXT NOT NULL,
+          pool_address TEXT NOT NULL,
+          timeframe TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          open REAL NOT NULL,
+          high REAL NOT NULL,
+          low REAL NOT NULL,
+          close REAL NOT NULL,
+          volume REAL NOT NULL,
+          created_at INTEGER NOT NULL,
+          UNIQUE(pool_address, timeframe, timestamp)
+        )
+      `);
+      
+      console.log('✅ ohlcv_data table rebuilt for per-pool storage');
+    }
+  } catch (e) {
+    console.log('⚠️  Could not rebuild ohlcv_data (may already be correct):', e);
+  }
+
   // OHLCV Data Tables
   db.run(`
     CREATE TABLE IF NOT EXISTS token_pools (
