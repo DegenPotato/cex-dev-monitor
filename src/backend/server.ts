@@ -1433,17 +1433,31 @@ app.get('/api/stats/requests', (_req, res) => {
     mergedByEndpoint[displayName] = (providerData as any).totalCalls || 0;
   }
   
-  // Merge service rates
+  // Merge service rates AND totals
   const mergedServiceRates = { ...rpcStats.serviceRates };
+  const mergedByService = { ...rpcStats.byService };
   for (const [provider, providerData] of Object.entries(apiProviderStats)) {
     mergedServiceRates[provider] = (providerData as any).callsLastMinute || 0;
+    mergedByService[provider] = (providerData as any).totalCalls || 0; // FIX: Add total calls
   }
+  
+  // Calculate merged overview stats
+  const apiTotalCalls = apiAggregated.totalCalls || 0;
+  const apiCallsLastMinute = apiAggregated.callsLastMinute || 0;
+  
+  const mergedOverview = {
+    ...rpcStats.overview,
+    totalRequests: rpcStats.overview.totalRequests + apiTotalCalls,
+    requestsPerMinute: rpcStats.overview.requestsPerMinute + apiCallsLastMinute
+  };
   
   // Return merged stats
   res.json({
     ...rpcStats,
+    overview: mergedOverview, // FIX: Use merged overview
     endpointRates: mergedEndpointRates,
     byEndpoint: mergedByEndpoint,
+    byService: mergedByService, // FIX: Use merged service totals
     serviceRates: mergedServiceRates,
     apiProviders: {
       providers: apiProviderStats,
