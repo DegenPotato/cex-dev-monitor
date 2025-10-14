@@ -120,9 +120,11 @@ const VortexMaterial = shaderMaterial(
   vortexVertexShader,
   vortexFragmentShader,
   (material) => {
-    material.blending = THREE.AdditiveBlending;
-    material.depthWrite = false;
-    material.transparent = true;
+    if (material) {
+      material.blending = THREE.AdditiveBlending;
+      material.depthWrite = false;
+      material.transparent = true;
+    }
   }
 );
 extend({ VortexMaterial });
@@ -162,7 +164,7 @@ const Particles = () => {
         return pos;
     }, [count]);
     
-    useFrame((state) => {
+    useFrame(() => {
         if (!pointsRef.current) return;
         const positions = pointsRef.current.geometry.attributes.position.array;
         for (let i = 0; i < count; i++) {
@@ -199,10 +201,11 @@ const Experience: React.FC<{ isEntering: boolean }> = ({ isEntering }) => {
     // Animate camera position
     state.camera.position.lerp(targetPos, 0.02);
     
-    if(isEntering) {
-      // Animate FOV for tunnel-vision effect
-      state.camera.fov = THREE.MathUtils.lerp(state.camera.fov, 100, 0.025);
-      state.camera.updateProjectionMatrix();
+    if(isEntering && 'fov' in state.camera) {
+      // Animate FOV for tunnel-vision effect (PerspectiveCamera only)
+      const camera = state.camera as THREE.PerspectiveCamera;
+      camera.fov = THREE.MathUtils.lerp(camera.fov, 100, 0.025);
+      camera.updateProjectionMatrix();
     }
   });
 
