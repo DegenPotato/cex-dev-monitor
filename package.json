@@ -7,7 +7,7 @@
     "dev:backend": "tsx watch src/backend/server.ts",
     "dev:frontend": "vite",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "build": "tsc && vite build",
+    "build": "NODE_OPTIONS='--max-old-space-size=2048' tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
