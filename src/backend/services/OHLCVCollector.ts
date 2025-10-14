@@ -29,8 +29,8 @@ export class OHLCVCollector {
     timeframe: string;
   }> = new Map();
   
-  // Deduplication cache (per pool+timeframe)
-  private processedPools: Set<string> = new Set();
+  // Deduplication cache (per pool+timeframe) - reserved for future use
+  // private processedPools: Set<string> = new Set();
   
   // Timeframe configurations
   private readonly TIMEFRAMES = [
@@ -483,10 +483,16 @@ export class OHLCVCollector {
     } catch (error: any) {
       console.error(`❌ [OHLCV] Error backfilling ${poolAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
       
+      // Get current progress to determine error state
+      const errorProgress = await queryOne<{ oldest_timestamp: number | null }>(
+        `SELECT oldest_timestamp FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
+        [poolAddress, timeframe.name]
+      );
+      
       // Update error state (PRESERVE CHECKPOINT!)
       this.poolStates.set(stateKey, {
         state: 'error',
-        progress: progress?.oldest_timestamp ? 50 : 0,
+        progress: errorProgress?.oldest_timestamp ? 50 : 0,
         lastUpdate: Date.now(),
         timeframe: timeframe.name
       });
