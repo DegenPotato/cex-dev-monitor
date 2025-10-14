@@ -230,7 +230,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
       const magentaColor = new THREE.Color(0xff00ff);
 
       for (let i = 0; i < particleCount; i++) {
-        const i3 = i * 3;
         const p = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         
         if (isTransitioning) {
