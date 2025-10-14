@@ -25,15 +25,18 @@ export class ProxiedSolanaConnection {
     this.serviceName = serviceName;
     this.statsTracker = RequestStatsTracker.getInstance();
 
-    // Check if proxies are available
-    this.useProxies = this.proxyManager.hasProxies();
+    // Default to RPC rotation mode (proxies can be manually enabled if needed)
+    this.useProxies = false;
     
-    if (this.useProxies) {
-      console.log(`✅ [${serviceName}] Initialized with ${this.proxyManager.getStats().totalProxies} proxies`);
-    } else if (globalRPCServerRotator.isEnabled()) {
-      console.log(`🔄 [${serviceName}] Initialized with RPC server rotation (20 servers)`);
+    // Enable RPC rotation by default
+    if (!globalRPCServerRotator.isEnabled()) {
+      globalRPCServerRotator.enable();
+    }
+    
+    if (this.proxyManager.hasProxies()) {
+      console.log(`🔄 [${serviceName}] Initialized with RPC server rotation (20 servers) - ${this.proxyManager.getStats().totalProxies} proxies available`);
     } else {
-      console.log(`⚠️  [${serviceName}] Initialized with rate limiting (no proxies or rotation)`);
+      console.log(`🔄 [${serviceName}] Initialized with RPC server rotation (20 servers)`);
     }
   }
 

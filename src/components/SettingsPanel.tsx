@@ -151,6 +151,9 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       {/* Live Stats & Metrics */}
       <RequestStatsPanel />
 
+      {/* Monitoring Controls */}
+      <MonitoringControls />
+
       {/* Settings Section */}
       <div className="max-w-2xl">
         <h2 className="text-2xl font-bold text-white mb-6">Settings & Configuration</h2>
@@ -347,9 +350,6 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
           </div>
         </div>
       </div>
-
-      {/* Monitoring Controls */}
-      <MonitoringControls />
     </div>
   );
 }
