@@ -8,8 +8,9 @@ export class RequestStatsTracker {
   // Request counters
   private totalRequests: number = 0;
   private requestsByService: Map<string, number> = new Map();
+  private requestsByEndpoint: Map<string, number> = new Map(); // Track per RPC endpoint
   private requestsByMinute: Map<string, number> = new Map(); // timestamp -> count
-  private recentRequests: Array<{ service: string; timestamp: number; success: boolean }> = [];
+  private recentRequests: Array<{ service: string; endpoint?: string; timestamp: number; success: boolean }> = [];
   
   // Performance tracking
   private successCount: number = 0;
@@ -46,12 +47,18 @@ export class RequestStatsTracker {
   /**
    * Track a new request
    */
-  trackRequest(service: string, success: boolean = true, responseTime?: number, usedProxy: boolean = true): void {
+  trackRequest(service: string, success: boolean = true, responseTime?: number, usedProxy: boolean = true, endpoint?: string): void {
     this.totalRequests++;
     
     // Service tracking
     const serviceCount = this.requestsByService.get(service) || 0;
     this.requestsByService.set(service, serviceCount + 1);
+    
+    // Endpoint tracking (for RPC servers)
+    if (endpoint) {
+      const endpointCount = this.requestsByEndpoint.get(endpoint) || 0;
+      this.requestsByEndpoint.set(endpoint, endpointCount + 1);
+    }
     
     // Success/failure tracking
     if (success) {
@@ -84,6 +91,7 @@ export class RequestStatsTracker {
     // Recent requests
     this.recentRequests.push({
       service,
+      endpoint,
       timestamp: Date.now(),
       success
     });
@@ -141,6 +149,15 @@ export class RequestStatsTracker {
       serviceRates[service] = serviceRecent;
     }
     
+    // Calculate per-endpoint rates (last minute)
+    const endpointRates: Record<string, number> = {};
+    for (const [endpoint, _] of this.requestsByEndpoint) {
+      const endpointRecent = this.recentRequests.filter(
+        req => req.endpoint === endpoint && req.timestamp >= oneMinuteAgo
+      ).length;
+      endpointRates[endpoint] = endpointRecent;
+    }
+    
     // Success rates
     const totalAttempts = this.successCount + this.failureCount;
     const successRate = totalAttempts > 0 ? (this.successCount / totalAttempts) * 100 : 100;
@@ -158,7 +175,9 @@ export class RequestStatsTracker {
         uptime: process.uptime()
       },
       byService: Object.fromEntries(this.requestsByService),
+      byEndpoint: Object.fromEntries(this.requestsByEndpoint),
       serviceRates,
+      endpointRates,
       proxyUsage: {
         proxyRequests: this.proxyRequests,
         directRequests: this.directRequests,
@@ -207,6 +226,7 @@ export class RequestStatsTracker {
   reset(): void {
     this.totalRequests = 0;
     this.requestsByService.clear();
+    this.requestsByEndpoint.clear();
     this.requestsByMinute.clear();
     this.recentRequests = [];
     this.successCount = 0;

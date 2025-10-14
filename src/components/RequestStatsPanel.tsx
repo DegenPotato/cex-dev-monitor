@@ -124,6 +124,46 @@ export function RequestStatsPanel() {
           </div>
         )}
 
+        {/* Per-Endpoint Breakdown */}
+        {stats.byEndpoint && Object.keys(stats.byEndpoint).length > 0 && (
+          <div className="bg-slate-900/50 rounded-lg p-4 mb-4">
+            <h4 className="text-white font-semibold mb-3">🌐 Endpoint Traffic (Requests/Min)</h4>
+            <div className="space-y-2">
+              {Object.entries(stats.endpointRates || {})
+                .sort((a: any, b: any) => b[1] - a[1]) // Sort by rate (highest first)
+                .map(([endpoint, rate]: [string, any]) => {
+                  // Shorten endpoint for display
+                  const displayEndpoint = endpoint.includes('http') 
+                    ? new URL(endpoint).hostname 
+                    : endpoint;
+                  
+                  return (
+                    <div key={endpoint} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          rate > 0 ? 'bg-blue-400' : 'bg-gray-400'
+                        }`}></div>
+                        <span className="text-sm text-gray-300 truncate" title={endpoint}>
+                          {displayEndpoint}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <span className="text-xs text-gray-400">
+                          Total: {stats.byEndpoint[endpoint]?.toLocaleString() || 0}
+                        </span>
+                        <span className={`text-sm font-semibold ${
+                          rate > 0 ? 'text-blue-400' : 'text-gray-400'
+                        }`}>
+                          {rate}/min
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
         {/* Per-Service Breakdown */}
         <div className="bg-slate-900/50 rounded-lg p-4 mb-4">
           <h4 className="text-white font-semibold mb-3">Service Breakdown (Requests/Min)</h4>
@@ -215,23 +255,39 @@ export function RequestStatsPanel() {
 
         {/* Live Activity Feed */}
         <div className="mt-4 bg-slate-900/50 rounded-lg p-4">
-          <h4 className="text-white font-semibold mb-3">Live Activity (Last 50)</h4>
+          <h4 className="text-white font-semibold mb-3">Live Activity (Last 20)</h4>
           <div className="max-h-48 overflow-y-auto space-y-1">
-            {stats.recentActivity.slice(0, 20).map((activity: any, idx: number) => (
-              <div key={idx} className="text-xs flex items-center justify-between py-1 border-b border-slate-700/50">
-                <span className="text-gray-400">{activity.service}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">
-                    {new Date(activity.timestamp).toLocaleTimeString()}
-                  </span>
-                  {activity.success ? (
-                    <CheckCircle className="w-3 h-3 text-green-400" />
-                  ) : (
-                    <XCircle className="w-3 h-3 text-red-400" />
-                  )}
+            {stats.recentActivity.slice(0, 20).map((activity: any, idx: number) => {
+              // Shorten endpoint for display
+              const displayEndpoint = activity.endpoint 
+                ? (activity.endpoint.includes('http') 
+                    ? new URL(activity.endpoint).hostname 
+                    : activity.endpoint)
+                : null;
+              
+              return (
+                <div key={idx} className="text-xs flex items-center justify-between py-1 border-b border-slate-700/50">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <span className="text-gray-400">{activity.service}</span>
+                    {displayEndpoint && (
+                      <span className="text-gray-600 text-[10px] truncate" title={activity.endpoint}>
+                        → {displayEndpoint}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-gray-500">
+                      {new Date(activity.timestamp).toLocaleTimeString()}
+                    </span>
+                    {activity.success ? (
+                      <CheckCircle className="w-3 h-3 text-green-400" />
+                    ) : (
+                      <XCircle className="w-3 h-3 text-red-400" />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

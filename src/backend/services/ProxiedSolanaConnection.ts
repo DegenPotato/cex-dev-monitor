@@ -131,16 +131,26 @@ export class ProxiedSolanaConnection {
     const executeRequest = async () => {
       let lastError: any;
       let retryCount = 0;
+      let endpoint: string | undefined;
       const startTime = Date.now();
       
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
+          // Get endpoint being used (for tracking)
+          if (usingRPCRotation) {
+            endpoint = await globalRPCServerRotator.getNextServer();
+          } else if (usingProxies) {
+            endpoint = `proxy-${this.endpoint}`;
+          } else {
+            endpoint = this.endpoint;
+          }
+          
           const connection = await this.getProxiedConnection();
           const result = await fn(connection);
           
-          // Track successful request
+          // Track successful request with endpoint info
           const responseTime = Date.now() - startTime;
-          this.statsTracker.trackRequest(this.serviceName, true, responseTime, usingProxies);
+          this.statsTracker.trackRequest(this.serviceName, true, responseTime, usingProxies, endpoint);
           
           // Track eventual outcome
           this.statsTracker.trackEventualOutcome(this.serviceName, true, retryCount);
@@ -167,9 +177,9 @@ export class ProxiedSolanaConnection {
         }
       }
       
-      // Track failed request
+      // Track failed request with endpoint info
       const responseTime = Date.now() - startTime;
-      this.statsTracker.trackRequest(this.serviceName, false, responseTime, usingProxies);
+      this.statsTracker.trackRequest(this.serviceName, false, responseTime, usingProxies, endpoint);
       
       // Track eventual failure
       this.statsTracker.trackEventualOutcome(this.serviceName, false, retryCount);
