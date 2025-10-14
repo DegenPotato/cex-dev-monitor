@@ -237,12 +237,17 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const sound = new THREE.PositionalAudio(listener);
         soundRef.current = sound;
         const audioLoader = new THREE.AudioLoader();
-        audioLoader.load('https://assets.codepen.io/217233/blackHole.mp3', function(buffer) {
+        let audioLoaded = false;
+        audioLoader.load('/blackHole.mp3', function(buffer) {
             sound.setBuffer(buffer);
             sound.setLoop(true);
             sound.setVolume(1.0);
             sound.setRefDistance(10);
             sound.setRolloffFactor(2.0);
+            audioLoaded = true;
+            console.log('🎵 Audio loaded successfully - click anywhere to start');
+        }, undefined, function(error) {
+            console.error('❌ Error loading audio:', error);
         });
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -597,8 +602,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         if (isTransitioning) {
             controls.enabled = false;
             
-            // Animate the particle trail uniform directly for smoother control
-            gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 2.5, duration: 2, ease: 'power2.in' });
+            // Animate the particle trail uniform for dramatic stretching
+            gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 3.5, duration: 2.5, ease: 'power4.in' });
             
             if (soundRef.current && soundRef.current.context.state === 'running') {
                 // Create and connect filter for sound distortion
@@ -606,67 +611,111 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 soundRef.current.setFilter(filter);
                 filter.type = 'lowpass';
                 filter.frequency.value = 4000; // Start with a high frequency (little effect)
-                gsap.to(filter.frequency, { value: 200, duration: 2.5, ease: 'power3.in' });
+                gsap.to(filter.frequency, { value: 100, duration: 2.8, ease: 'power4.in' });
             }
 
             const targetColor = new THREE.Color(0xff00ff); // Aggressive magenta for the flash
+            const whiteColor = new THREE.Color(0xffffff);
 
             gsap.timeline({ onComplete: onEnter })
+              // Camera position: accelerate exponentially into the singularity
               .to(camera.position, { 
-                  z: 0.5, // Go even closer
-                  duration: 2.5, 
-                  ease: 'power3.in' 
+                  z: 0.1, // Much closer to the event horizon
+                  duration: 3.0, 
+                  ease: 'power4.in' // Exponential acceleration
               }, 0)
+              
+              // Multi-axis rotation: tumbling through spacetime
               .to(camera.rotation, { 
-                  z: Math.PI * 0.5, // Add a 90-degree barrel roll
-                  duration: 2.5, 
+                  z: Math.PI * 4, // Multiple barrel rolls (4 full rotations)
+                  duration: 3.0, 
                   ease: 'power2.inOut' 
               }, 0)
-              // --- DYNAMIC LIGHTING TWEENS START ---
+              .to(camera.rotation, { 
+                  x: Math.PI * 0.3, // Pitch forward
+                  duration: 2.0, 
+                  ease: 'power3.in' 
+              }, 0.5)
+              .to(camera.rotation, { 
+                  y: Math.PI * 0.15, // Slight yaw for chaotic feel
+                  duration: 1.5, 
+                  ease: 'sine.inOut' 
+              }, 0.8)
+              
+              // Camera shake: intense vibration near event horizon
+              .to(camera.position, {
+                  x: "+=0.3",
+                  y: "+=0.2",
+                  duration: 0.08,
+                  repeat: 15,
+                  yoyo: true,
+                  ease: 'none'
+              }, 1.5)
+              
+              // --- DYNAMIC LIGHTING: Color shift through dimensions ---
               .to(ambientLight, {
-                  intensity: 4.0, // Bright flash
+                  intensity: 6.0, // Intense flash
                   duration: 1.0,
                   ease: 'power2.in'
-              }, 0.25)
+              }, 0.5)
               .to(ambientLight.color, {
                   r: targetColor.r,
                   g: targetColor.g,
                   b: targetColor.b,
-                  duration: 1.0,
-                  ease: 'power2.in'
-              }, 0.25)
-              .to(ambientLight, {
-                  intensity: 0.0, // Fade out completely
-                  duration: 1.0,
-                  ease: 'power2.out'
-              }, 1.25)
-              // --- DYNAMIC LIGHTING TWEENS END ---
-              .to(bloomPass, { 
-                  strength: 25, // White out!
-                  duration: 1.5, 
-                  ease: 'power2.in' 
-              }, "-=1.5")
-              .to(lensingPass.uniforms.uStrength, { 
-                  value: 0.8, // Much stronger pull
-                  duration: 2.5, 
-                  ease: 'power3.in' 
-              }, 0)
-              .to(lensingPass.uniforms.uRadius, { 
-                  value: 1.0, // Engulf the screen
-                  duration: 2.5, 
-                  ease: 'power4.in' 
-              }, 0)
-              .to(chromaticAberrationPass.uniforms.uAberrationAmount, {
-                  value: 0.015, // Ramp up the effect
-                  duration: 2.0,
+                  duration: 0.8,
                   ease: 'power2.in'
               }, 0.5)
-              .to(camera, { 
-                  fov: 140, // More extreme FOV
+              .to(ambientLight.color, {
+                  r: whiteColor.r,
+                  g: whiteColor.g,
+                  b: whiteColor.b,
+                  duration: 0.7,
+                  ease: 'power3.in'
+              }, 1.5)
+              .to(ambientLight, {
+                  intensity: 0.0, // Complete darkness
+                  duration: 0.8,
+                  ease: 'power4.in'
+              }, 2.0)
+              
+              // Bloom: Build to complete whiteout
+              .to(bloomPass, { 
+                  strength: 35, // Near total whiteout
                   duration: 2.0, 
-                  ease: 'power3.in', 
+                  ease: 'power3.in' 
+              }, 0.5)
+              .to(bloomPass, { 
+                  strength: 50, // Total light engulfment
+                  duration: 1.0, 
+                  ease: 'power4.in' 
+              }, 2.0)
+              
+              // Gravitational lensing: Extreme warping
+              .to(lensingPass.uniforms.uStrength, { 
+                  value: 1.5, // Extreme spacetime distortion
+                  duration: 3.0, 
+                  ease: 'power4.in' 
+              }, 0)
+              .to(lensingPass.uniforms.uRadius, { 
+                  value: 1.5, // Full screen engulfment
+                  duration: 3.0, 
+                  ease: 'expo.in' 
+              }, 0)
+              
+              // Chromatic aberration: Reality tears apart
+              .to(chromaticAberrationPass.uniforms.uAberrationAmount, {
+                  value: 0.035, // Extreme color separation
+                  duration: 2.5,
+                  ease: 'power4.in'
+              }, 0.5)
+              
+              // FOV: Insane fish-eye warp
+              .to(camera, { 
+                  fov: 175, // Nearly 180° - reality bending
+                  duration: 2.5, 
+                  ease: 'expo.in', 
                   onUpdate: () => camera.updateProjectionMatrix() 
-              }, "-=2.2");
+              }, 0.5);
 
         } else if (isReturning) {
             gsap.timeline({ onComplete: () => { controls.enabled = true; isReversingRef.current = false; }})
@@ -676,14 +725,26 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
               .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, "<");
         }
         
+        let audioStarted = false;
         const playAudio = () => {
-            if (soundRef.current && !soundRef.current.isPlaying && listener.context.state === 'suspended') {
-                listener.context.resume();
+            if (audioStarted) return; // Only play once
+            
+            // Resume audio context if suspended (browser autoplay policy)
+            if (listener.context.state === 'suspended') {
+                listener.context.resume().then(() => {
+                    console.log('🔊 Audio context resumed');
+                });
             }
-            if (soundRef.current && !soundRef.current.isPlaying) {
+            
+            // Play audio if loaded and not already playing
+            if (soundRef.current && audioLoaded && !soundRef.current.isPlaying) {
                 soundRef.current.play();
+                audioStarted = true;
+                console.log('▶️ Audio playback started');
+                window.removeEventListener('pointerdown', playAudio);
+            } else if (!audioLoaded) {
+                console.log('⏳ Audio still loading, please wait...');
             }
-            window.removeEventListener('pointerdown', playAudio);
         };
         window.addEventListener('pointerdown', playAudio);
 
