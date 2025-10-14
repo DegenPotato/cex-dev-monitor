@@ -403,8 +403,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     colors[i3 + 1] = brightColor.g * 1.5;
                     colors[i3 + 2] = brightColor.b * 1.5;
                 } else {
-                    // The vast majority of stars will be much dimmer and fall below the bloom threshold.
-                    // Increased minimum brightness to ensure visibility with ACESFilmicToneMapping.
+                    // The vast majority of stars will be dimmer and fall below the bloom threshold.
                     const brightness = Math.random() * 0.8 + 0.6; // Range from 0.6 to 1.4
                     const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.3);
                     colors[i3] = mixedColor.r * brightness;
@@ -710,17 +709,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     return (
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
-            <div className={`absolute inset-0 flex flex-col items-center justify-center p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversingRef.current ? '!opacity-0' : ''} pointer-events-none`}>
+            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversingRef.current ? '!opacity-0' : ''} pointer-events-none`}>
+                {/* Top: Title */}
                 <div className="text-center pointer-events-auto w-full">
-                    <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
                         SNIFF AGENCY
                     </h1>
                 </div>
 
-                <div className="mt-auto mb-16 flex flex-col items-center gap-6 pointer-events-auto text-center">
-                    <p className="text-lg md:text-xl text-cyan-200 font-light tracking-wider opacity-90" style={{ textShadow: '0 0 10px rgba(0, 255, 255, 0.7)' }}>
-                        Follow the Money.
-                    </p>
+                {/* Center: Button */}
+                <div className="pointer-events-auto">
                     <button
                         onClick={handleEnterClick}
                         className="px-10 py-4 border-2 border-cyan-300 text-cyan-300 rounded-full text-xl font-bold uppercase tracking-widest
@@ -728,6 +726,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     >
                         ENTER
                     </button>
+                </div>
+
+                {/* Bottom: Tagline + Instructions */}
+                <div className="text-center pointer-events-auto w-full">
+                    <p className="text-xl md:text-2xl mb-2 text-cyan-300" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 5px #0ff' }}>
+                        Follow the Money.
+                    </p>
+                    <div className="text-gray-400 text-sm">
+                        <p>Click & drag to orbit. Scroll to zoom.</p>
+                    </div>
                 </div>
             </div>
         </div>
