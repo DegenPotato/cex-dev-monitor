@@ -24,7 +24,7 @@ const Overlay: React.FC<OverlayProps> = ({ isEntering, onEnter }) => {
               animate={{ y: 0, opacity: 1 }}
               transition={{ duration: 1.5, delay: 0.5 }}
             >
-              CEX Dev Monitor
+              SNIFF AGENCY
             </motion.h1>
             <motion.p
               className="mt-4 text-lg md:text-xl text-magenta-500 font-light tracking-wider"

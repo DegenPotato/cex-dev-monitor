@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@react-three/drei": "^10.7.6",
-    "@react-three/fiber": "^9.4.0",
+    "@react-three/drei": "^9.88.0",
+    "@react-three/fiber": "^8.15.0",
     "@solana/web3.js": "^1.87.6",
     "@types/sql.js": "^1.4.9",
     "@types/three": "^0.180.0",
