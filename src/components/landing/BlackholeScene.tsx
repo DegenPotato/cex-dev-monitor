@@ -353,9 +353,39 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const flareLight = new THREE.PointLight(0xffffff, 1.5, 200);
         scene.add(flareLight);
-        const textureLoader = new THREE.TextureLoader();
-        const textureFlare0 = textureLoader.load("https://unpkg.com/three@0.164.1/examples/textures/lensflare/lensflare0.png");
-        const textureFlare3 = textureLoader.load("https://unpkg.com/three@0.164.1/examples/textures/lensflare/lensflare3.png");
+        
+        // Create lensflare textures programmatically (avoids CORS issues)
+        const createLensflareTexture0 = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d')!;
+            const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.1, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.5, 'rgba(100,150,255,0.3)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 512, 512);
+            return new THREE.CanvasTexture(canvas);
+        };
+        
+        const createLensflareTexture3 = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d')!;
+            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0, 'rgba(200,220,255,0.8)');
+            gradient.addColorStop(0.5, 'rgba(100,150,255,0.3)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 128);
+            return new THREE.CanvasTexture(canvas);
+        };
+        
+        const textureFlare0 = createLensflareTexture0();
+        const textureFlare3 = createLensflareTexture3();
         const lensflare = new Lensflare();
         lensflare.addElement(new LensflareElement(textureFlare0, 512, 0, new THREE.Color(0x3399ff)));
         lensflare.addElement(new LensflareElement(textureFlare3, 60, 0.6));
