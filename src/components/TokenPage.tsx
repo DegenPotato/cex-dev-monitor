@@ -355,13 +355,64 @@ export function TokenPage() {
             </div>
           </div>
           
-          <div className="h-96 bg-slate-900/50 rounded-lg flex items-center justify-center">
+          <div className="bg-slate-900/50 rounded-lg">
             {ohlcv.length > 0 ? (
-              <div className="text-white">
-                {ohlcv.length} candles loaded - Chart rendering coming soon!
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-slate-700">
+                    <tr className="text-gray-400">
+                      <th className="px-4 py-3 text-left">Time</th>
+                      <th className="px-4 py-3 text-right">Open ($)</th>
+                      <th className="px-4 py-3 text-right">High ($)</th>
+                      <th className="px-4 py-3 text-right">Low ($)</th>
+                      <th className="px-4 py-3 text-right">Close ($)</th>
+                      <th className="px-4 py-3 text-right">Volume</th>
+                      <th className="px-4 py-3 text-right">MCap (Open)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {ohlcv.slice(-50).reverse().map((candle, i) => {
+                      const totalSupply = token?.total_supply ? parseFloat(token.total_supply) : 1_000_000_000;
+                      const openMcap = candle.open * totalSupply;
+                      const change = ((candle.close - candle.open) / candle.open) * 100;
+                      const isGreen = change >= 0;
+                      
+                      return (
+                        <tr key={i} className="hover:bg-slate-800/50">
+                          <td className="px-4 py-2 text-gray-300">
+                            {new Date(candle.timestamp * 1000).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-right text-white font-mono">
+                            ${candle.open.toFixed(8)}
+                          </td>
+                          <td className="px-4 py-2 text-right text-green-400 font-mono">
+                            ${candle.high.toFixed(8)}
+                          </td>
+                          <td className="px-4 py-2 text-right text-red-400 font-mono">
+                            ${candle.low.toFixed(8)}
+                          </td>
+                          <td className={`px-4 py-2 text-right font-mono ${isGreen ? 'text-green-400' : 'text-red-400'}`}>
+                            ${candle.close.toFixed(8)}
+                          </td>
+                          <td className="px-4 py-2 text-right text-gray-400 font-mono">
+                            ${candle.volume.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-right text-blue-400 font-mono">
+                            ${openMcap.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-4 py-3 text-center text-gray-500 text-xs border-t border-slate-800">
+                  Showing last 50 of {ohlcv.length} candles • First candle: {new Date(ohlcv[0]?.timestamp * 1000).toLocaleString()}
+                </div>
               </div>
             ) : (
-              <div className="text-gray-400">No OHLCV data available. Start OHLCV Collector in Settings.</div>
+              <div className="h-96 flex items-center justify-center text-gray-400">
+                No OHLCV data available. Start OHLCV Collector in Settings.
+              </div>
             )}
           </div>
         </div>

@@ -1220,10 +1220,15 @@ app.post('/api/ohlcv/clear-all', async (_req, res) => {
 app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
   try {
     const { address, timeframe } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
     
     const candles = await queryAll(
-      `SELECT * FROM ohlcv_${timeframe} WHERE mint_address = ? ORDER BY timestamp ASC`,
-      [address]
+      `SELECT timestamp, open, high, low, close, volume 
+       FROM ohlcv_data 
+       WHERE mint_address = ? AND timeframe = ? 
+       ORDER BY timestamp ASC
+       LIMIT ?`,
+      [address, timeframe, limit]
     );
     
     res.json(candles || []);
