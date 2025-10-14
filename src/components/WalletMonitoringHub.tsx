@@ -673,7 +673,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                           {wallet.is_active === 1 ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                         </button>
                         <a
-                          href={`/dev/${wallet.address}`}
+                          href={`/dashboard/dev/${wallet.address}`}
                           className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                           title="View details"
                         >

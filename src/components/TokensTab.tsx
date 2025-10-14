@@ -272,14 +272,14 @@ export function TokensTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <a 
-                      href={`/token/${token.mint_address}`}
+                      href={`/dashboard/token/${token.mint_address}`}
                       className="text-lg font-bold text-white hover:text-purple-400 transition-colors cursor-pointer"
                     >
                       {token.name || token.symbol || 'Unknown Token'}
                     </a>
                     {token.symbol && token.name && (
                       <a 
-                        href={`/token/${token.mint_address}`}
+                        href={`/dashboard/token/${token.mint_address}`}
                         className="text-purple-400 hover:text-purple-300 font-mono cursor-pointer"
                       >
                         ${token.symbol}

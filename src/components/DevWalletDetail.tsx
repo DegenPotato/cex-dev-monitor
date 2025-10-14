@@ -17,8 +17,8 @@ interface DevWalletData {
 }
 
 export function DevWalletDetail() {
-  // Get address from URL path
-  const address = window.location.pathname.split('/dev/')[1];
+  // Get address from URL path (/dashboard/dev/:address)
+  const address = window.location.pathname.split('/dashboard/dev/')[1] || window.location.pathname.split('/dev/')[1];
   const [data, setData] = useState<DevWalletData | null>(null);
   const [loading, setLoading] = useState(true);
 
