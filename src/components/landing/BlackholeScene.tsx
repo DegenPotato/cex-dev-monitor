@@ -513,7 +513,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const elapsedTime = clock.getElapsedTime();
             diskMaterial.uniforms.uTime.value = elapsedTime;
 
-            // Audio reactivity
+            // Audio reactivity - Enhanced responsiveness
             let bass = 0, mid = 0, treble = 0;
             if (soundRef.current?.isPlaying) {
                 const frequencyData = audioAnalyzer.getFrequencyData();
@@ -529,13 +529,26 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 treble = frequencyData.slice(128, 256).reduce((a, b) => a + b, 0) / (128 * 255);
             }
 
-            // Disk responds to bass (pulsing intensity)
-            const bassPulse = 1.0 + bass * 1.5; // 1.0 to 2.5 multiplier
+            // ENHANCED DISK RESPONSIVENESS
+            
+            // 1. Bass -> Lens flare intensity (more dramatic)
+            const bassPulse = 1.0 + bass * 3.5; // 1.0 to 4.5 multiplier (was 1.5)
             flareLight.intensity = (1.5 + Math.sin(elapsedTime * 2.5) * 0.5) * bassPulse;
             
-            // Disk rotation speed varies with mid frequencies
-            const rotationSpeed = 0.005 + mid * 0.01; // Faster rotation with music
+            // 2. Bass -> Disk scale pulsing (physical growth)
+            const scaleBoost = 1.0 + bass * 0.35; // Grows up to 35% larger with bass
+            accretionDisk.scale.setScalar(scaleBoost);
+            
+            // 3. Mid -> Disk rotation speed (more dramatic)
+            const rotationSpeed = 0.008 + mid * 0.025; // Much faster with music (was 0.01)
             accretionDisk.rotation.z += rotationSpeed;
+            
+            // 4. Treble -> Disk glow/brightness via material opacity modulation
+            diskMaterial.opacity = 0.8 + treble * 0.2; // Brighter with treble
+            
+            // 5. Mid + Treble -> Color temperature shift (warmer with energy)
+            const colorShift = (mid + treble) / 2;
+            ambientLight.color.setHSL(0.55 - colorShift * 0.15, 1.0, 0.5); // Shifts from cyan to magenta
 
             const screenPosition = blackHole.position.clone().project(camera);
             lensingPass.uniforms.uCenter.value.set((screenPosition.x + 1) / 2, (screenPosition.y + 1) / 2);
@@ -638,10 +651,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 controls.update();
             }
 
-            // Bloom responds to overall audio energy
+            // Bloom responds to overall audio energy (more dramatic)
             if (soundRef.current?.isPlaying) {
                 const avgEnergy = (bass + mid + treble) / 3;
-                bloomPass.strength = 1.0 + avgEnergy * 2.0; // Subtle bloom boost with music
+                bloomPass.strength = 1.0 + avgEnergy * 4.0; // Strong bloom boost: 1.0-5.0 (was 2.0)
             }
 
             composer.render();
