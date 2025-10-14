@@ -402,6 +402,57 @@ export async function initDatabase() {
     // Column already exists, ignore
   }
 
+  // Migrate token_pools table for multi-pool support
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN base_token TEXT;`);
+    console.log('✅ Added base_token column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN quote_token TEXT;`);
+    console.log('✅ Added quote_token column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN volume_24h_usd REAL;`);
+    console.log('✅ Added volume_24h_usd column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN liquidity_usd REAL;`);
+    console.log('✅ Added liquidity_usd column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN price_usd REAL;`);
+    console.log('✅ Added price_usd column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE token_pools ADD COLUMN is_primary INTEGER DEFAULT 0;`);
+    console.log('✅ Added is_primary column to token_pools');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Migrate ohlcv_backfill_progress for per-pool tracking
+  try {
+    db.run(`ALTER TABLE ohlcv_backfill_progress ADD COLUMN pool_address TEXT;`);
+    console.log('✅ Added pool_address column to ohlcv_backfill_progress');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
   // OHLCV Data Tables
   db.run(`
     CREATE TABLE IF NOT EXISTS token_pools (
