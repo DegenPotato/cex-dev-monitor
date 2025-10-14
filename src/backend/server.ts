@@ -1371,10 +1371,43 @@ app.post('/api/proxy/disable', (_req, res) => {
   }
 });
 
-// Request statistics endpoints
+// Request statistics endpoints (ENHANCED: includes both RPC and API provider traffic)
 app.get('/api/stats/requests', (_req, res) => {
   const statsTracker = RequestStatsTracker.getInstance();
-  res.json(statsTracker.getStats());
+  const rpcStats = statsTracker.getStats();
+  
+  // Get API provider stats (GeckoTerminal, Price Oracle, etc.)
+  const apiProviderStats = apiProviderTracker.getAllStats();
+  const apiAggregated = apiProviderTracker.getAggregatedMetrics();
+  
+  // Merge endpoint rates from both sources
+  const mergedEndpointRates = { ...rpcStats.endpointRates };
+  const mergedByEndpoint = { ...rpcStats.byEndpoint };
+  
+  // Add API providers as "endpoints" for unified display
+  for (const [provider, providerData] of Object.entries(apiProviderStats)) {
+    const displayName = `${provider} API`;
+    mergedEndpointRates[displayName] = (providerData as any).callsLastMinute || 0;
+    mergedByEndpoint[displayName] = (providerData as any).totalCalls || 0;
+  }
+  
+  // Merge service rates
+  const mergedServiceRates = { ...rpcStats.serviceRates };
+  for (const [provider, providerData] of Object.entries(apiProviderStats)) {
+    mergedServiceRates[provider] = (providerData as any).callsLastMinute || 0;
+  }
+  
+  // Return merged stats
+  res.json({
+    ...rpcStats,
+    endpointRates: mergedEndpointRates,
+    byEndpoint: mergedByEndpoint,
+    serviceRates: mergedServiceRates,
+    apiProviders: {
+      providers: apiProviderStats,
+      aggregated: apiAggregated
+    }
+  });
 });
 
 app.get('/api/stats/requests/timeseries', (req, res) => {

@@ -21,6 +21,17 @@ export class OHLCVCollector {
   private intervalId: NodeJS.Timeout | null = null;
   private readonly GECKOTERMINAL_BASE = 'https://api.geckoterminal.com/api/v2';
   
+  // State tracking for monitoring visibility
+  private poolStates: Map<string, {
+    state: 'backfilling' | 'realtime' | 'idle' | 'error';
+    progress: number; // Percentage complete
+    lastUpdate: number;
+    timeframe: string;
+  }> = new Map();
+  
+  // Deduplication cache (per pool+timeframe)
+  private processedPools: Set<string> = new Set();
+  
   // Timeframe configurations
   private readonly TIMEFRAMES = [
     { name: '1m', api: 'minute', aggregate: 1, intervalMs: 60 * 1000 },
@@ -34,6 +45,7 @@ export class OHLCVCollector {
   private readonly BACKFILL_INTERVAL = 5 * 60 * 1000; // Run backfill every 5 minutes
   private readonly REQUESTS_PER_MINUTE = 10; // Very conservative GeckoTerminal limit (for display only)
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // GeckoTerminal max
+  private readonly CANDLE_BATCH_SIZE = 100; // Incremental checkpoint interval
   // NOTE: We process ALL tokens every cycle - global rate limiter queues and paces ALL requests automatically
   
   constructor() {
@@ -149,6 +161,7 @@ export class OHLCVCollector {
   /**
    * Ensure token has pool addresses (fetch if needed)
    * Returns array of pools sorted by preference (primary/volume)
+   * Enhanced with deduplication guarantees
    */
   private async ensurePoolAddresses(mintAddress: string): Promise<Array<{
     pool_address: string;
@@ -156,7 +169,7 @@ export class OHLCVCollector {
     volume_24h_usd: number | null;
     is_primary: number;
   }>> {
-    // Check if we already have pools
+    // Check if we already have pools (DEDUPLICATION CHECK)
     const existing = await queryAll<{ 
       pool_address: string;
       dex: string | null;
@@ -171,6 +184,7 @@ export class OHLCVCollector {
     );
     
     if (existing.length > 0) {
+      console.log(`♻️  [Dedup] Using ${existing.length} cached pool(s) for ${mintAddress.slice(0, 8)}...`);
       return existing;
     }
     
@@ -244,17 +258,36 @@ export class OHLCVCollector {
         return b.volume_24h_usd - a.volume_24h_usd;
       });
       
-      // Store all pools, mark first as primary
+      // Store all pools, mark first as primary (ENHANCED DEDUPLICATION)
       for (let i = 0; i < pools.length; i++) {
         const pool = pools[i];
         const isPrimary = i === 0 ? 1 : 0;
         
-        await execute(
-          `INSERT OR REPLACE INTO token_pools 
-           (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [mintAddress, pool.pool_address, pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now()]
+        // Pre-check to avoid overwriting existing pool data (DEDUPLICATION GUARANTEE)
+        const existingPool = await queryOne<{ id: number }>(
+          `SELECT id FROM token_pools WHERE mint_address = ? AND pool_address = ?`,
+          [mintAddress, pool.pool_address]
         );
+        
+        if (existingPool) {
+          // Pool exists - UPDATE metadata only (preserve discovered_at)
+          await execute(
+            `UPDATE token_pools 
+             SET dex = ?, volume_24h_usd = ?, liquidity_usd = ?, price_usd = ?, is_primary = ?, last_verified = ?
+             WHERE mint_address = ? AND pool_address = ?`,
+            [pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now(), mintAddress, pool.pool_address]
+          );
+          console.log(`♻️  [Dedup] Updated pool ${pool.pool_address.slice(0, 8)}... metadata`);
+        } else {
+          // New pool - INSERT
+          await execute(
+            `INSERT INTO token_pools 
+             (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [mintAddress, pool.pool_address, pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now(), Date.now()]
+          );
+          console.log(`✅ [New] Inserted pool ${pool.pool_address.slice(0, 8)}...`);
+        }
       }
       saveDatabase();
       
@@ -282,6 +315,7 @@ export class OHLCVCollector {
    * Backfill a specific timeframe for a token
    * Fetches oldest data first and works forward
    * Once backfill is complete, fetches latest candles to maintain real-time data
+   * Enhanced with incremental checkpointing and state tracking
    */
   private async backfillTimeframe(
     mintAddress: string,
@@ -289,20 +323,36 @@ export class OHLCVCollector {
     timeframe: typeof this.TIMEFRAMES[0],
     creationTimestamp: number
   ) {
+    const stateKey = `${poolAddress}_${timeframe.name}`;
+    
     try {
-      // Get progress (per-pool tracking)
+      // Update state: backfilling
+      this.poolStates.set(stateKey, {
+        state: 'backfilling',
+        progress: 0,
+        lastUpdate: Date.now(),
+        timeframe: timeframe.name
+      });
+      // Get progress (per-pool tracking) - DEDUPLICATION CHECK
       const progress = await queryOne<{
         oldest_timestamp: number | null;
         newest_timestamp: number | null;
         backfill_complete: number;
       }>(
-        `SELECT * FROM ohlcv_backfill_progress 
+        `SELECT oldest_timestamp, newest_timestamp, backfill_complete 
+         FROM ohlcv_backfill_progress 
          WHERE pool_address = ? AND timeframe = ?`,
         [poolAddress, timeframe.name]
       );
       
-      // If backfill complete, fetch LATEST candles (real-time updates)
+      // If backfill complete, switch to real-time mode
       if (progress?.backfill_complete) {
+        this.poolStates.set(stateKey, {
+          state: 'realtime',
+          progress: 100,
+          lastUpdate: Date.now(),
+          timeframe: timeframe.name
+        });
         await this.fetchLatestCandles(mintAddress, poolAddress, timeframe, progress.newest_timestamp || 0);
         return;
       }
@@ -333,73 +383,115 @@ export class OHLCVCollector {
         return;
       }
       
-      // Store candles (deduplication handled by UNIQUE constraint)
+      // ENHANCED: Store candles with incremental checkpointing
       let stored = 0;
-      for (const candle of candles) {
-        try {
-          await execute(
-            `INSERT OR IGNORE INTO ohlcv_data 
-             (mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              mintAddress,
-              poolAddress,
-              timeframe.name,
-              candle.timestamp,
-              candle.open,
-              candle.high,
-              candle.low,
-              candle.close,
-              candle.volume,
-              Date.now()
-            ]
-          );
-          stored++;
-        } catch (e) {
-          // Duplicate, skip
+      let duplicates = 0;
+      
+      // Process in batches for incremental checkpoints
+      for (let i = 0; i < candles.length; i += this.CANDLE_BATCH_SIZE) {
+        const batch = candles.slice(i, Math.min(i + this.CANDLE_BATCH_SIZE, candles.length));
+        
+        // Store batch with deduplication
+        for (const candle of batch) {
+          try {
+            const result = await execute(
+              `INSERT OR IGNORE INTO ohlcv_data 
+               (mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                mintAddress,
+                poolAddress,
+                timeframe.name,
+                candle.timestamp,
+                candle.open,
+                candle.high,
+                candle.low,
+                candle.close,
+                candle.volume,
+                Date.now()
+              ]
+            );
+            // Check if row was inserted (changes > 0 means new row)
+            if ((result as any)?.changes > 0) {
+              stored++;
+            } else {
+              duplicates++;
+            }
+          } catch (e) {
+            duplicates++; // Count duplicates for reporting
+          }
+        }
+        
+        // INCREMENTAL CHECKPOINT: Save progress after each batch
+        if (stored > 0) {
+          const batchTimestamps = batch.map(c => c.timestamp);
+          const batchOldest = Math.min(...batchTimestamps);
+          const batchNewest = Math.max(...batchTimestamps);
+          
+          await this.updateProgress(poolAddress, timeframe.name, mintAddress, {
+            oldest: progress?.oldest_timestamp ? Math.min(progress.oldest_timestamp, batchOldest) : batchOldest,
+            newest: progress?.newest_timestamp ? Math.max(progress.newest_timestamp, batchNewest) : batchNewest,
+            complete: false
+          });
+          
+          saveDatabase();
+          
+          // Update state progress
+          const progressPct = Math.floor(((i + batch.length) / candles.length) * 100);
+          this.poolStates.set(stateKey, {
+            state: 'backfilling',
+            progress: progressPct,
+            lastUpdate: Date.now(),
+            timeframe: timeframe.name
+          });
+          
+          console.log(`💾 [Checkpoint] ${poolAddress.slice(0, 8)}... ${timeframe.name}: Batch ${Math.floor(i / this.CANDLE_BATCH_SIZE) + 1} saved (${stored} stored, ${duplicates} duplicates)`);
         }
       }
-      if (stored > 0) {
-        saveDatabase();
+      
+      if (duplicates > 0) {
+        console.log(`♻️  [Dedup] Skipped ${duplicates} duplicate candles for ${poolAddress.slice(0, 8)}... ${timeframe.name}`);
       }
       
-      // Update progress
+      // Final progress update
       const timestamps = candles.map(c => c.timestamp);
       const oldestFetched = Math.min(...timestamps);
       const newestFetched = Math.max(...timestamps);
       
       const isComplete = oldestFetched <= creationUnix;
       
-      // Get current fetch count
-      const currentProgress = await queryOne<{ fetch_count: number }>(
-        `SELECT fetch_count FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
-        [poolAddress, timeframe.name]
-      );
-      const fetchCount = (currentProgress?.fetch_count || 0) + 1;
-      
-      await execute(
-        `INSERT OR REPLACE INTO ohlcv_backfill_progress 
-         (mint_address, pool_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          mintAddress,
-          poolAddress,
-          timeframe.name,
-          progress?.oldest_timestamp ? Math.min(progress.oldest_timestamp, oldestFetched) : oldestFetched,
-          progress?.newest_timestamp ? Math.max(progress.newest_timestamp, newestFetched) : newestFetched,
-          isComplete ? 1 : 0,
-          Date.now(),
-          fetchCount
-        ]
-      );
+      // Update final progress with completion status
+      await this.updateProgress(poolAddress, timeframe.name, mintAddress, {
+        oldest: progress?.oldest_timestamp ? Math.min(progress.oldest_timestamp, oldestFetched) : oldestFetched,
+        newest: progress?.newest_timestamp ? Math.max(progress.newest_timestamp, newestFetched) : newestFetched,
+        complete: isComplete
+      });
       saveDatabase();
       
-      console.log(`✅ [OHLCV] ${poolAddress.slice(0, 8)}... ${timeframe.name}: ${stored} candles (${isComplete ? 'COMPLETE' : 'continuing'})`);
+      // Update state
+      if (isComplete) {
+        this.poolStates.set(stateKey, {
+          state: 'realtime',
+          progress: 100,
+          lastUpdate: Date.now(),
+          timeframe: timeframe.name
+        });
+      }
+      
+      console.log(`✅ [OHLCV] ${poolAddress.slice(0, 8)}... ${timeframe.name}: ${stored} candles stored, ${duplicates} duplicates (${isComplete ? 'COMPLETE' : 'continuing'})`);
       
     } catch (error: any) {
       console.error(`❌ [OHLCV] Error backfilling ${poolAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
       
-      // Track error
+      // Update error state (PRESERVE CHECKPOINT!)
+      this.poolStates.set(stateKey, {
+        state: 'error',
+        progress: progress?.oldest_timestamp ? 50 : 0,
+        lastUpdate: Date.now(),
+        timeframe: timeframe.name
+      });
+      
+      // Track error WITHOUT destroying progress
       const currentProgress = await queryOne<{ error_count: number }>(
         `SELECT error_count FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
         [poolAddress, timeframe.name]
@@ -408,11 +500,47 @@ export class OHLCVCollector {
       
       await execute(
         `UPDATE ohlcv_backfill_progress 
-         SET error_count = ?, last_error = ?
+         SET error_count = ?, last_error = ?, last_fetch_at = ?
          WHERE pool_address = ? AND timeframe = ?`,
-        [errorCount, error.message, poolAddress, timeframe.name]
+        [errorCount, error.message, Date.now(), poolAddress, timeframe.name]
       );
       saveDatabase();
+      
+      console.log(`💾 [Error] Checkpoint preserved for ${poolAddress.slice(0, 8)}... ${timeframe.name}`);
+    }
+  }
+  
+  /**
+   * Helper: Update progress with UPSERT logic (deduplication safe)
+   */
+  private async updateProgress(
+    poolAddress: string,
+    timeframe: string,
+    mintAddress: string,
+    data: { oldest: number; newest: number; complete: boolean }
+  ): Promise<void> {
+    // Check if progress exists (DEDUPLICATION CHECK)
+    const existing = await queryOne<{ id: number; fetch_count: number }>(
+      `SELECT id, fetch_count FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
+      [poolAddress, timeframe]
+    );
+    
+    if (existing) {
+      // UPDATE existing progress (preserve fetch_count)
+      await execute(
+        `UPDATE ohlcv_backfill_progress 
+         SET oldest_timestamp = ?, newest_timestamp = ?, backfill_complete = ?, last_fetch_at = ?, fetch_count = ?
+         WHERE pool_address = ? AND timeframe = ?`,
+        [data.oldest, data.newest, data.complete ? 1 : 0, Date.now(), existing.fetch_count + 1, poolAddress, timeframe]
+      );
+    } else {
+      // INSERT new progress
+      await execute(
+        `INSERT INTO ohlcv_backfill_progress 
+         (mint_address, pool_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [mintAddress, poolAddress, timeframe, data.oldest, data.newest, data.complete ? 1 : 0, Date.now(), 1]
+      );
     }
   }
   
@@ -561,7 +689,32 @@ export class OHLCVCollector {
   }
   
   /**
-   * Get collector status
+   * Get monitoring state for a pool+timeframe
+   */
+  getPoolState(poolAddress: string, timeframe: string): {
+    state: 'backfilling' | 'realtime' | 'idle' | 'error';
+    progress: number;
+    lastUpdate: number;
+    timeframe: string;
+  } | null {
+    const stateKey = `${poolAddress}_${timeframe}`;
+    return this.poolStates.get(stateKey) || null;
+  }
+  
+  /**
+   * Get all pool states
+   */
+  getAllPoolStates(): Map<string, {
+    state: 'backfilling' | 'realtime' | 'idle' | 'error';
+    progress: number;
+    lastUpdate: number;
+    timeframe: string;
+  }> {
+    return this.poolStates;
+  }
+  
+  /**
+   * Get collector status with deduplication stats
    */
   async getStatus() {
     try {
@@ -585,11 +738,27 @@ export class OHLCVCollector {
         FROM ohlcv_backfill_progress
       `);
       
+      // Get deduplication stats
+      const dedupStats = await queryOne<any>(`
+        SELECT 
+          COUNT(*) as total_pools,
+          COUNT(CASE WHEN last_verified IS NOT NULL THEN 1 END) as verified_pools
+        FROM token_pools
+      `);
+      
       return {
         isRunning: this.isRunning,
         backfillInterval: this.BACKFILL_INTERVAL,
         ...stats,
-        ...progress
+        ...progress,
+        ...dedupStats,
+        activeStates: this.poolStates.size,
+        stateBreakdown: {
+          backfilling: Array.from(this.poolStates.values()).filter(s => s.state === 'backfilling').length,
+          realtime: Array.from(this.poolStates.values()).filter(s => s.state === 'realtime').length,
+          error: Array.from(this.poolStates.values()).filter(s => s.state === 'error').length,
+          idle: Array.from(this.poolStates.values()).filter(s => s.state === 'idle').length
+        }
       };
     } catch (error) {
       return {

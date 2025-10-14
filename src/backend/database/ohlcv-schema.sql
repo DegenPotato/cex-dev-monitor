@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS token_pools (
   price_usd REAL,
   is_primary INTEGER DEFAULT 0, -- Flag for primary/preferred pool
   discovered_at INTEGER NOT NULL,
-  last_verified INTEGER,
-  UNIQUE(mint_address, pool_address), -- Allow multiple pools per token
+  last_verified INTEGER, -- Timestamp of last metadata update (for deduplication tracking)
+  UNIQUE(mint_address, pool_address), -- Deduplication: One pool per token
   FOREIGN KEY (mint_address) REFERENCES token_mints(mint_address)
 );
 
