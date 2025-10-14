@@ -2039,6 +2039,23 @@ app.get('/api/wallets/dev/:address', async (req, res) => {
   });
 });
 
+// Root endpoint - API info
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'Sniff Agency API',
+    version: '1.0.0',
+    status: 'online',
+    endpoints: {
+      monitoring: '/api/monitoring/*',
+      stats: '/api/stats/*',
+      tokens: '/api/tokens',
+      wallets: '/api/wallets/*',
+      websocket: 'ws://alpha.sniff.agency/ws'
+    },
+    frontend: 'https://cex-dev-monitor.vercel.app'
+  });
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, async () => {
