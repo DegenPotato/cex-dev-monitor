@@ -265,8 +265,15 @@ export class PumpFunMonitor extends EventEmitter {
       // Reverse to process chronologically (oldest → newest)
       newSignatures.reverse();
 
-      this.monitoringState.set(walletAddress, 'catching-up');
-      console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions...`);
+      // Only set to "catching-up" if there's a significant backlog (>10 txs)
+      // Otherwise keep "realtime" status for normal activity
+      if (newSignatures.length > 10) {
+        this.monitoringState.set(walletAddress, 'catching-up');
+        console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions (backlog)...`);
+      } else {
+        // Keep realtime status for small batches
+        console.log(`🔄 [Live] Processing ${newSignatures.length} new transaction(s)...`);
+      }
       
       let mintsFound = 0;
       const batchSize = 100; // Save checkpoint every 100 transactions
@@ -316,8 +323,11 @@ export class PumpFunMonitor extends EventEmitter {
         last_history_check: Date.now()
       }, 'pumpfun');
 
+      // Always return to realtime after processing
       this.monitoringState.set(walletAddress, 'realtime');
-      console.log(`✅ [Catch-up] Complete for ${walletAddress.slice(0, 8)}...`);
+      
+      const statusLabel = newSignatures.length > 10 ? 'Catch-up' : 'Live';
+      console.log(`✅ [${statusLabel}] Complete for ${walletAddress.slice(0, 8)}...`);
       console.log(`   New transactions processed: ${newSignatures.length}`);
       console.log(`   New mints found: ${mintsFound}`);
       console.log(`   Checkpoint updated to: ${newestSig.signature.slice(0, 8)}... (${new Date(newestSig.blockTime! * 1000).toLocaleString()})`);
@@ -489,7 +499,7 @@ export class PumpFunMonitor extends EventEmitter {
         // Check if there are new transactions (same logic as catch-up check)
         const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
         if (needsCatchUp) {
-          console.log(`🔄 [Live] New transactions detected, running catch-up for ${walletAddress.slice(0, 8)}...`);
+          console.log(`🔄 [Live] New activity detected for ${walletAddress.slice(0, 8)}..., processing...`);
           await this.catchUpFromCheckpoint(walletAddress, wallet);
         }
       } catch (error) {
