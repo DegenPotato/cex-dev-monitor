@@ -406,12 +406,19 @@ export async function initDatabase() {
   db.run(`
     CREATE TABLE IF NOT EXISTS token_pools (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      mint_address TEXT NOT NULL UNIQUE,
+      mint_address TEXT NOT NULL,
       pool_address TEXT NOT NULL,
       pool_name TEXT,
-      dex TEXT DEFAULT 'raydium',
+      dex TEXT,
+      base_token TEXT,
+      quote_token TEXT,
+      volume_24h_usd REAL,
+      liquidity_usd REAL,
+      price_usd REAL,
+      is_primary INTEGER DEFAULT 0,
       discovered_at INTEGER NOT NULL,
-      last_verified INTEGER
+      last_verified INTEGER,
+      UNIQUE(mint_address, pool_address)
     );
   `);
 
@@ -428,7 +435,7 @@ export async function initDatabase() {
       close REAL NOT NULL,
       volume REAL NOT NULL,
       created_at INTEGER NOT NULL,
-      UNIQUE(mint_address, timeframe, timestamp)
+      UNIQUE(pool_address, timeframe, timestamp)
     );
   `);
 
@@ -436,6 +443,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS ohlcv_backfill_progress (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       mint_address TEXT NOT NULL,
+      pool_address TEXT NOT NULL,
       timeframe TEXT NOT NULL,
       oldest_timestamp INTEGER,
       newest_timestamp INTEGER,
@@ -444,7 +452,7 @@ export async function initDatabase() {
       fetch_count INTEGER DEFAULT 0,
       error_count INTEGER DEFAULT 0,
       last_error TEXT,
-      UNIQUE(mint_address, timeframe)
+      UNIQUE(pool_address, timeframe)
     );
   `);
 
@@ -460,10 +468,14 @@ export async function initDatabase() {
     
     CREATE INDEX IF NOT EXISTS idx_token_pools_mint ON token_pools(mint_address);
     CREATE INDEX IF NOT EXISTS idx_token_pools_pool ON token_pools(pool_address);
+    CREATE INDEX IF NOT EXISTS idx_token_pools_primary ON token_pools(mint_address, is_primary);
+    
+    CREATE INDEX IF NOT EXISTS idx_ohlcv_pool_timeframe ON ohlcv_data(pool_address, timeframe);
+    CREATE INDEX IF NOT EXISTS idx_backfill_progress_pool ON ohlcv_backfill_progress(pool_address);
     
     CREATE INDEX IF NOT EXISTS idx_ohlcv_mint_timeframe ON ohlcv_data(mint_address, timeframe);
     CREATE INDEX IF NOT EXISTS idx_ohlcv_timestamp ON ohlcv_data(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv_data(mint_address, timeframe, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv_data(pool_address, timeframe, timestamp);
     
     CREATE INDEX IF NOT EXISTS idx_backfill_progress_mint ON ohlcv_backfill_progress(mint_address);
     CREATE INDEX IF NOT EXISTS idx_backfill_progress_incomplete ON ohlcv_backfill_progress(backfill_complete);

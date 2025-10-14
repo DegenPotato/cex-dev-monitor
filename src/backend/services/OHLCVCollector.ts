@@ -112,27 +112,33 @@ export class OHLCVCollector {
   }
   
   /**
-   * Process a single token - fetch pool and backfill all timeframes
+   * Process a single token - fetch pools and backfill all timeframes for each pool
    */
   private async processToken(mintAddress: string, creationTimestamp: number) {
     try {
       console.log(`📊 [OHLCV] Processing token ${mintAddress.slice(0, 8)}...`);
       
-      // Step 1: Ensure we have pool address
-      const poolAddress = await this.ensurePoolAddress(mintAddress);
-      if (!poolAddress) {
-        console.log(`📊 [OHLCV] No pool found for ${mintAddress.slice(0, 8)}...`);
+      // Step 1: Ensure we have pool addresses (may return multiple)
+      const pools = await this.ensurePoolAddresses(mintAddress);
+      if (pools.length === 0) {
+        console.log(`📊 [OHLCV] No pools found for ${mintAddress.slice(0, 8)}...`);
         return;
       }
       
-      console.log(`📊 [OHLCV] Pool found for ${mintAddress.slice(0, 8)}..., processing timeframes`);
+      console.log(`📊 [OHLCV] Found ${pools.length} pool(s) for ${mintAddress.slice(0, 8)}..., processing timeframes`);
 
-      
-      // Step 2: Process each timeframe (global rate limiter handles delays)
-      for (const timeframe of this.TIMEFRAMES) {
+      // Step 2: Process each pool
+      for (const pool of pools) {
         if (!this.isRunning) return;
         
-        await this.backfillTimeframe(mintAddress, poolAddress, timeframe, creationTimestamp);
+        console.log(`📊 [OHLCV] Processing pool ${pool.pool_address.slice(0, 8)}... (${pool.dex || 'unknown'})`);
+        
+        // Step 3: Process each timeframe for this pool
+        for (const timeframe of this.TIMEFRAMES) {
+          if (!this.isRunning) return;
+          
+          await this.backfillTimeframe(mintAddress, pool.pool_address, timeframe, creationTimestamp);
+        }
       }
     } catch (error: any) {
       console.error(`📊 [OHLCV] Error processing ${mintAddress.slice(0, 8)}...:`, error);
@@ -141,20 +147,34 @@ export class OHLCVCollector {
   }
   
   /**
-   * Ensure token has pool address (fetch if needed)
+   * Ensure token has pool addresses (fetch if needed)
+   * Returns array of pools sorted by preference (primary/volume)
    */
-  private async ensurePoolAddress(mintAddress: string): Promise<string | null> {
-    // Check if we already have it
-    const existing = await queryOne<{ pool_address: string }>(
-      `SELECT pool_address FROM token_pools WHERE mint_address = ?`,
+  private async ensurePoolAddresses(mintAddress: string): Promise<Array<{
+    pool_address: string;
+    dex: string | null;
+    volume_24h_usd: number | null;
+    is_primary: number;
+  }>> {
+    // Check if we already have pools
+    const existing = await queryAll<{ 
+      pool_address: string;
+      dex: string | null;
+      volume_24h_usd: number | null;
+      is_primary: number;
+    }>(
+      `SELECT pool_address, dex, volume_24h_usd, is_primary 
+       FROM token_pools 
+       WHERE mint_address = ?
+       ORDER BY is_primary DESC, volume_24h_usd DESC`,
       [mintAddress]
     );
     
-    if (existing) {
-      return existing.pool_address;
+    if (existing.length > 0) {
+      return existing;
     }
     
-    // Fetch from GeckoTerminal using global rate limiter
+    // Fetch ALL pools from GeckoTerminal using global rate limiter
     try {
       const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
         const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}`;
@@ -174,42 +194,87 @@ export class OHLCVCollector {
       });
       
       const relationships = data?.data?.relationships;
+      const included = data?.included || [];
       
-      // Get the top pool
+      // Get ALL top pools
       const topPoolData = relationships?.top_pools?.data;
       if (!topPoolData || topPoolData.length === 0) {
         console.warn(`⚠️ [OHLCV] Token ${mintAddress.slice(0, 8)}... has no pools on GeckoTerminal`);
-        return null;
+        return [];
       }
       
-      const poolId = topPoolData[0]?.id; // Format: "solana_POOL_ADDRESS"
-      if (!poolId) {
-        return null;
+      // Process each pool and extract metadata
+      const pools: Array<{
+        pool_address: string;
+        dex: string;
+        volume_24h_usd: number;
+        liquidity_usd: number;
+        price_usd: number;
+      }> = [];
+      
+      for (const poolRef of topPoolData) {
+        const poolId = poolRef.id; // Format: "solana_POOL_ADDRESS"
+        if (!poolId) continue;
+        
+        const poolAddress = poolId.replace('solana_', '');
+        
+        // Find pool details in included data
+        const poolDetails = included.find((item: any) => item.id === poolId);
+        const attributes = poolDetails?.attributes || {};
+        
+        pools.push({
+          pool_address: poolAddress,
+          dex: attributes.dex_id || 'unknown',
+          volume_24h_usd: parseFloat(attributes.volume_usd?.h24 || '0'),
+          liquidity_usd: parseFloat(attributes.reserve_in_usd || '0'),
+          price_usd: parseFloat(attributes.base_token_price_usd || '0')
+        });
       }
       
-      const poolAddress = poolId.replace('solana_', '');
+      if (pools.length === 0) {
+        return [];
+      }
       
-      // Store it
-      await execute(
-        `INSERT OR REPLACE INTO token_pools 
-         (mint_address, pool_address, discovered_at) 
-         VALUES (?, ?, ?)`,
-        [mintAddress, poolAddress, Date.now()]
-      );
+      // Sort pools by preference: Raydium first, then by volume
+      pools.sort((a, b) => {
+        // Prefer Raydium
+        if (a.dex === 'raydium' && b.dex !== 'raydium') return -1;
+        if (b.dex === 'raydium' && a.dex !== 'raydium') return 1;
+        // Then by volume
+        return b.volume_24h_usd - a.volume_24h_usd;
+      });
+      
+      // Store all pools, mark first as primary
+      for (let i = 0; i < pools.length; i++) {
+        const pool = pools[i];
+        const isPrimary = i === 0 ? 1 : 0;
+        
+        await execute(
+          `INSERT OR REPLACE INTO token_pools 
+           (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [mintAddress, pool.pool_address, pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now()]
+        );
+      }
       saveDatabase();
       
-      console.log(`✅ [OHLCV] Found pool for ${mintAddress.slice(0, 8)}...: ${poolAddress.slice(0, 8)}...`);
+      console.log(`✅ [OHLCV] Found ${pools.length} pool(s) for ${mintAddress.slice(0, 8)}..., primary: ${pools[0].pool_address.slice(0, 8)}... (${pools[0].dex})`);
       
-      return poolAddress;
+      return pools.map((p, i) => ({
+        pool_address: p.pool_address,
+        dex: p.dex,
+        volume_24h_usd: p.volume_24h_usd,
+        is_primary: i === 0 ? 1 : 0
+      }));
     } catch (error: any) {
       if (error.message === 'RATE_LIMITED') {
-        console.warn(`⚠️ [OHLCV] Rate limited discovering pool for ${mintAddress.slice(0, 8)}...`);
+        console.warn(`⚠️ [OHLCV] Rate limited discovering pools for ${mintAddress.slice(0, 8)}...`);
       } else if (error.message.startsWith('HTTP')) {
         console.warn(`⚠️ [OHLCV] No pool data for ${mintAddress.slice(0, 8)}... (${error.message})`);
       } else {
-        console.error(`❌ [OHLCV] Error fetching pool for ${mintAddress.slice(0, 8)}...:`, error.message);
+        console.error(`❌ [OHLCV] Error fetching pools for ${mintAddress.slice(0, 8)}...:`, error.message);
       }
-      return null;
+      return [];
     }
   }
   
@@ -225,15 +290,15 @@ export class OHLCVCollector {
     creationTimestamp: number
   ) {
     try {
-      // Get progress
+      // Get progress (per-pool tracking)
       const progress = await queryOne<{
         oldest_timestamp: number | null;
         newest_timestamp: number | null;
         backfill_complete: number;
       }>(
         `SELECT * FROM ohlcv_backfill_progress 
-         WHERE mint_address = ? AND timeframe = ?`,
-        [mintAddress, timeframe.name]
+         WHERE pool_address = ? AND timeframe = ?`,
+        [poolAddress, timeframe.name]
       );
       
       // If backfill complete, fetch LATEST candles (real-time updates)
@@ -252,7 +317,7 @@ export class OHLCVCollector {
       
       // Don't fetch before token creation
       if (targetTimestamp <= creationUnix) {
-        this.markBackfillComplete(mintAddress, timeframe.name);
+        await this.markBackfillComplete(poolAddress, timeframe.name);
         return;
       }
       
@@ -307,17 +372,18 @@ export class OHLCVCollector {
       
       // Get current fetch count
       const currentProgress = await queryOne<{ fetch_count: number }>(
-        `SELECT fetch_count FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?`,
-        [mintAddress, timeframe.name]
+        `SELECT fetch_count FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
+        [poolAddress, timeframe.name]
       );
       const fetchCount = (currentProgress?.fetch_count || 0) + 1;
       
       await execute(
         `INSERT OR REPLACE INTO ohlcv_backfill_progress 
-         (mint_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (mint_address, pool_address, timeframe, oldest_timestamp, newest_timestamp, backfill_complete, last_fetch_at, fetch_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mintAddress,
+          poolAddress,
           timeframe.name,
           progress?.oldest_timestamp ? Math.min(progress.oldest_timestamp, oldestFetched) : oldestFetched,
           progress?.newest_timestamp ? Math.max(progress.newest_timestamp, newestFetched) : newestFetched,
@@ -328,23 +394,23 @@ export class OHLCVCollector {
       );
       saveDatabase();
       
-      console.log(`✅ [OHLCV] ${mintAddress.slice(0, 8)}... ${timeframe.name}: ${stored} candles (${isComplete ? 'COMPLETE' : 'continuing'})`);
+      console.log(`✅ [OHLCV] ${poolAddress.slice(0, 8)}... ${timeframe.name}: ${stored} candles (${isComplete ? 'COMPLETE' : 'continuing'})`);
       
     } catch (error: any) {
-      console.error(`❌ [OHLCV] Error backfilling ${mintAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
+      console.error(`❌ [OHLCV] Error backfilling ${poolAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
       
       // Track error
       const currentProgress = await queryOne<{ error_count: number }>(
-        `SELECT error_count FROM ohlcv_backfill_progress WHERE mint_address = ? AND timeframe = ?`,
-        [mintAddress, timeframe.name]
+        `SELECT error_count FROM ohlcv_backfill_progress WHERE pool_address = ? AND timeframe = ?`,
+        [poolAddress, timeframe.name]
       );
       const errorCount = (currentProgress?.error_count || 0) + 1;
       
       await execute(
         `UPDATE ohlcv_backfill_progress 
          SET error_count = ?, last_error = ?
-         WHERE mint_address = ? AND timeframe = ?`,
-        [errorCount, error.message, mintAddress, timeframe.name]
+         WHERE pool_address = ? AND timeframe = ?`,
+        [errorCount, error.message, poolAddress, timeframe.name]
       );
       saveDatabase();
     }
@@ -414,15 +480,15 @@ export class OHLCVCollector {
         await execute(
           `UPDATE ohlcv_backfill_progress 
            SET newest_timestamp = ?, last_fetch_at = ?
-           WHERE mint_address = ? AND timeframe = ?`,
-          [newestTimestamp, Date.now(), mintAddress, timeframe.name]
+           WHERE pool_address = ? AND timeframe = ?`,
+          [newestTimestamp, Date.now(), poolAddress, timeframe.name]
         );
         
         saveDatabase();
-        console.log(`🔄 [OHLCV] ${mintAddress.slice(0, 8)}... ${timeframe.name}: ${stored} new candles`);
+        console.log(`🔄 [OHLCV] ${poolAddress.slice(0, 8)}... ${timeframe.name}: ${stored} new candles`);
       }
     } catch (error: any) {
-      console.error(`❌ [OHLCV] Error fetching latest for ${mintAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
+      console.error(`❌ [OHLCV] Error fetching latest for ${poolAddress.slice(0, 8)}... ${timeframe.name}:`, error.message);
     }
   }
   
@@ -480,18 +546,18 @@ export class OHLCVCollector {
   }
   
   /**
-   * Mark backfill as complete for a token/timeframe
+   * Mark backfill as complete for a pool/timeframe
    */
-  private async markBackfillComplete(mintAddress: string, timeframe: string) {
+  private async markBackfillComplete(poolAddress: string, timeframe: string) {
     await execute(
       `UPDATE ohlcv_backfill_progress 
        SET backfill_complete = 1 
-       WHERE mint_address = ? AND timeframe = ?`,
-      [mintAddress, timeframe]
+       WHERE pool_address = ? AND timeframe = ?`,
+      [poolAddress, timeframe]
     );
     saveDatabase();
     
-    console.log(`✅ [OHLCV] Backfill complete for ${mintAddress.slice(0, 8)}... ${timeframe}`);
+    console.log(`✅ [OHLCV] Backfill complete for pool ${poolAddress.slice(0, 8)}... ${timeframe}`);
   }
   
   /**
