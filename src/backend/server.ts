@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { initDatabase, getDb } from './database/connection.js';
+import { initDatabase, getDb, saveDatabase } from './database/connection.js';
 import { queryAll } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
@@ -1172,6 +1172,48 @@ app.post('/api/ohlcv/stop', (_req, res) => {
 app.get('/api/ohlcv/status', async (_req, res) => {
   const status = await ohlcvCollector.getStatus();
   res.json(status);
+});
+
+// Clear all OHLCV data (for fresh start testing)
+app.post('/api/ohlcv/clear-all', async (_req, res) => {
+  try {
+    const db = await getDb();
+    
+    console.log('🗑️  [OHLCV] Clearing all OHLCV data...');
+    
+    // Delete in order to respect foreign key constraints
+    db.run('DELETE FROM ohlcv_backfill_progress');
+    const progressCount = db.exec('SELECT changes() as deleted')[0].values[0][0];
+    
+    db.run('DELETE FROM ohlcv_data');
+    const candlesCount = db.exec('SELECT changes() as deleted')[0].values[0][0];
+    
+    db.run('DELETE FROM token_pools');
+    const poolsCount = db.exec('SELECT changes() as deleted')[0].values[0][0];
+    
+    saveDatabase();
+    
+    console.log('✅ [OHLCV] Cleanup complete:');
+    console.log(`   - ${progressCount} progress entries deleted`);
+    console.log(`   - ${candlesCount} candles deleted`);
+    console.log(`   - ${poolsCount} pools deleted`);
+    
+    res.json({
+      success: true,
+      message: 'All OHLCV data cleared successfully',
+      deleted: {
+        progress: progressCount,
+        candles: candlesCount,
+        pools: poolsCount
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [OHLCV] Error clearing data:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // Get OHLCV data for a token
