@@ -236,6 +236,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         camera.add(listener);
         const sound = new THREE.PositionalAudio(listener);
         soundRef.current = sound;
+        
+        // Create audio analyzer for frequency data
+        const audioAnalyzer = new THREE.AudioAnalyser(sound, 256);
+        
         const audioLoader = new THREE.AudioLoader();
         let audioLoaded = false;
         audioLoader.load('/blackHole.mp3', function(buffer) {
@@ -509,11 +513,32 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const elapsedTime = clock.getElapsedTime();
             diskMaterial.uniforms.uTime.value = elapsedTime;
 
-            flareLight.intensity = 1.5 + Math.sin(elapsedTime * 2.5) * 0.5;
+            // Audio reactivity
+            let bass = 0, mid = 0, treble = 0;
+            if (soundRef.current?.isPlaying) {
+                const frequencyData = audioAnalyzer.getFrequencyData();
+                
+                // Extract frequency ranges (0-255 values)
+                // Bass: 20-250 Hz (roughly indices 0-32)
+                bass = frequencyData.slice(0, 32).reduce((a, b) => a + b, 0) / (32 * 255);
+                
+                // Mid: 250-2000 Hz (indices 32-128)
+                mid = frequencyData.slice(32, 128).reduce((a, b) => a + b, 0) / (96 * 255);
+                
+                // Treble: 2000+ Hz (indices 128-256)
+                treble = frequencyData.slice(128, 256).reduce((a, b) => a + b, 0) / (128 * 255);
+            }
+
+            // Disk responds to bass (pulsing intensity)
+            const bassPulse = 1.0 + bass * 1.5; // 1.0 to 2.5 multiplier
+            flareLight.intensity = (1.5 + Math.sin(elapsedTime * 2.5) * 0.5) * bassPulse;
+            
+            // Disk rotation speed varies with mid frequencies
+            const rotationSpeed = 0.005 + mid * 0.01; // Faster rotation with music
+            accretionDisk.rotation.z += rotationSpeed;
 
             const screenPosition = blackHole.position.clone().project(camera);
             lensingPass.uniforms.uCenter.value.set((screenPosition.x + 1) / 2, (screenPosition.y + 1) / 2);
-            accretionDisk.rotation.z += 0.005;
 
             const posAttr = particles.geometry.getAttribute('position') as THREE.BufferAttribute;
             const prevPosAttr = particles.geometry.getAttribute('prevPosition') as THREE.BufferAttribute;
@@ -611,6 +636,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
             if (!isTransitioning && !isReversingRef.current) {
                 controls.update();
+            }
+
+            // Bloom responds to overall audio energy
+            if (soundRef.current?.isPlaying) {
+                const avgEnergy = (bass + mid + treble) / 3;
+                bloomPass.strength = 1.0 + avgEnergy * 2.0; // Subtle bloom boost with music
             }
 
             composer.render();
