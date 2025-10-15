@@ -246,8 +246,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         // Option 2: Use CDN (Cloudflare R2, AWS S3, etc)
         // Option 3: Disable for now (will use black background)
         
-        const hdriEnabled = false; // Set to true when HDRI is hosted on server
-        const hdriUrl = 'https://your-server.com/assets/nebula.hdr'; // Update this URL
+        const hdriEnabled = true; // HDRI hosted on alpha.sniff.agency server
+        const hdriUrl = 'https://alpha.sniff.agency/assets/hdri/nebula.hdr'; // Server static assets
         
         if (hdriEnabled) {
             rgbeLoader.load(
