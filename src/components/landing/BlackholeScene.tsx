@@ -218,6 +218,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
     
+    // Audio playlist management
+    const playlistRef = useRef<string[]>([]);
+    const currentTrackIndexRef = useRef(0);
+    
     // Refs to store Three.js objects for reverse animation
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const controlsRef = useRef<any>(null);
@@ -251,6 +255,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             document.documentElement.requestFullscreen().then(() => {
                 setIsFullscreen(true);
                 console.log('🖥️ Entered fullscreen mode');
+                
+                // TRIGGER AUDIO PLAYBACK (Essential for VR!)
+                if (playAudioRef.current) {
+                    playAudioRef.current();
+                    console.log('🔊 Audio triggered via fullscreen button (VR-compatible)');
+                }
             }).catch((err) => {
                 console.error('❌ Failed to enter fullscreen:', err);
             });
@@ -334,29 +344,70 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         // Create audio analyzer for frequency data
         const audioAnalyzer = new THREE.AudioAnalyser(sound, 256);
         
+        // AUDIO PLAYLIST - Randomized on every refresh
+        // Add all your audio files here (make sure they're in /public folder)
+        const audioFiles = [
+            '/blackHole.mp3',
+            '/blackHole2.mp3',  // Replace with actual filenames
+            '/blackHole3.mp3',  // Replace with actual filenames
+            '/blackHole4.mp3',  // Replace with actual filenames
+        ];
+        
+        // Shuffle playlist (Fisher-Yates algorithm)
+        const shufflePlaylist = (arr: string[]) => {
+            const shuffled = [...arr];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        };
+        
+        playlistRef.current = shufflePlaylist(audioFiles);
+        console.log('🎵 Playlist shuffled:', playlistRef.current);
+        
         const audioLoader = new THREE.AudioLoader();
         let audioLoaded = false;
-        audioLoader.load('/blackHole.mp3', function(buffer) {
-            sound.setBuffer(buffer);
-            sound.setLoop(true);
-            sound.setVolume(1.0);
-            sound.setRefDistance(10);
-            sound.setRolloffFactor(2.0);
+        
+        // Load and play a track from the playlist
+        const loadTrack = (trackIndex: number) => {
+            const trackPath = playlistRef.current[trackIndex];
+            console.log(`🎵 Loading track ${trackIndex + 1}/${playlistRef.current.length}: ${trackPath}`);
             
-            // Apply lowpass filter for space/underwater effect (same as billboard scene)
-            if (sound.context.state === 'running' || sound.context.state === 'suspended') {
-                const filter = sound.context.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.value = 100; // Same muffled effect as billboard
-                sound.setFilter(filter);
-                console.log('🎛️ Lowpass filter applied: 100 Hz (space effect)');
-            }
-            
-            audioLoaded = true;
-            console.log('🎵 Audio loaded successfully - click anywhere to start');
-        }, undefined, function(error) {
-            console.error('❌ Error loading audio:', error);
-        });
+            audioLoader.load(trackPath, function(buffer) {
+                sound.setBuffer(buffer);
+                sound.setLoop(false); // No loop - we'll handle playlist advancement
+                sound.setVolume(1.0);
+                sound.setRefDistance(10);
+                sound.setRolloffFactor(2.0);
+                
+                // Apply lowpass filter for space/underwater effect
+                if (sound.context.state === 'running' || sound.context.state === 'suspended') {
+                    const filter = sound.context.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 100;
+                    sound.setFilter(filter);
+                }
+                
+                // Auto-advance to next track when current one ends
+                sound.onEnded = () => {
+                    console.log('🎵 Track ended, advancing to next...');
+                    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
+                    loadTrack(currentTrackIndexRef.current);
+                    
+                    // Auto-play next track if audio was playing
+                    if (listener.context.state === 'running') {
+                        sound.play();
+                    }
+                };
+                
+                audioLoaded = true;
+                console.log('🔊 Audio loaded and ready to play');
+            });
+        };
+        
+        // Load first track
+        loadTrack(0);
 
         // Mascot loading removed - will be re-added later with proper model
 
