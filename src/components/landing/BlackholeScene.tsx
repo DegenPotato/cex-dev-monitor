@@ -305,6 +305,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             sound.setVolume(1.0);
             sound.setRefDistance(10);
             sound.setRolloffFactor(2.0);
+            
+            // Apply lowpass filter for space/underwater effect (same as billboard scene)
+            if (sound.context.state === 'running' || sound.context.state === 'suspended') {
+                const filter = sound.context.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 100; // Same muffled effect as billboard
+                sound.setFilter(filter);
+                console.log('🎛️ Lowpass filter applied: 100 Hz (space effect)');
+            }
+            
             audioLoaded = true;
             console.log('🎵 Audio loaded successfully - click anywhere to start');
         }, undefined, function(error) {
@@ -324,6 +334,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         controls.enabled = true; // Start with controls enabled
         controls.enableDamping = true;
         controls.dampingFactor = 0.03;
+        controls.enableZoom = false; // Disable scroll zoom
         controls.minDistance = 5;
         controls.maxDistance = 40;
         controls.autoRotate = true;
@@ -926,6 +937,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     duration: 0.8,
                     ease: 'power2.out',
                     onComplete: () => {
+                        // Re-enable controls so user can rotate around the vortex
+                        controls.enabled = true;
+                        console.log('🎮 Controls enabled - you can now rotate around the vortex!');
+                        
                         // Show React auth UI overlay after billboard fades in
                         setShowAuthBillboard(true);
                         console.log('✨ Billboard ready! Auth UI should appear.');
@@ -1292,6 +1307,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                 <div className="text-xs text-gray-400">
                                     Phantom • MetaMask • WalletConnect
                                 </div>
+                            </div>
+                            
+                            {/* Interaction hint */}
+                            <div className="text-center pt-2 opacity-50">
+                                <p className="text-xs text-gray-500">
+                                    💡 Drag outside this panel to rotate the view
+                                </p>
                             </div>
                         </div>
                     </div>
