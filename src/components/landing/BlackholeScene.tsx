@@ -215,6 +215,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
+    const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
     
     // Audio playlist management
@@ -277,61 +278,18 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
         };
     }, []);
-
+    
+    // Audio setup - separate effect that only runs ONCE on mount
     useEffect(() => {
-        if (!mountRef.current) return;
+        console.log('🎵 Initializing audio system (runs once)');
         
-        const currentMount = mountRef.current;
-
-        // Scene setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 15; // Start at landing page position
-        cameraRef.current = camera; // Store for reverse animation
-        console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
-
-        // Load Space HDRI Environment (optional - enhances lighting and reflections)
-        // HDRIs are too large for GitHub (50-90MB each), so they should be hosted on your server
-        // TODO: Upload HDRI files to your WebSocket server and update URL below
-        const rgbeLoader = new RGBELoader();
-        
-        // HDRI Configuration
-        // For local testing: Place your .hdr file in /public/nebula.hdr
-        // For production: Upload to server and use full URL
-        
-        const hdriEnabled = true; // Re-enabled for testing
-        const hdriUrl = '/nebula.hdr'; // Local file for testing (change to server URL when ready)
-        // Production URL: 'https://alpha.sniff.agency/assets/hdri/nebula.hdr'
-        
-        if (hdriEnabled) {
-            rgbeLoader.load(
-                hdriUrl,
-                (texture) => {
-                    texture.mapping = THREE.EquirectangularReflectionMapping;
-                    scene.environment = texture; // For reflections/lighting
-                    scene.background = texture; // For visible background
-                    scene.backgroundIntensity = 0.10; // Dimmed for subtle effect
-                    console.log('🌌 Space HDRI environment loaded');
-                },
-                undefined,
-                (error) => {
-                    console.warn('⚠️ HDRI failed to load, using black background:', error);
-                    scene.background = new THREE.Color(0x000000);
-                }
-            );
-        } else {
-            // Use black background with particle starfield
-            scene.background = new THREE.Color(0x000000);
-            console.log('🌌 HDRI disabled - using black background with particle stars');
-        }
-
         const listener = new THREE.AudioListener();
-        camera.add(listener);
         const sound = new THREE.PositionalAudio(listener);
         soundRef.current = sound;
         
         // Create audio analyzer for frequency data
         const audioAnalyzer = new THREE.AudioAnalyser(sound, 256);
+        audioAnalyzerRef.current = audioAnalyzer;
         
         // AUDIO PLAYLIST - Randomized on every refresh
         // Add all your audio files here (make sure they're in /public folder)
@@ -357,11 +315,14 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         
         const audioLoader = new THREE.AudioLoader();
         let audioLoaded = false;
+        let shouldAutoPlay = false; // Track if we should auto-play after loading
         
         // Load and play a track from the playlist
-        const loadTrack = (trackIndex: number) => {
+        const loadTrack = (trackIndex: number, autoPlay = false) => {
             const trackPath = playlistRef.current[trackIndex];
             console.log(`🎵 Loading track ${trackIndex + 1}/${playlistRef.current.length}: ${trackPath}`);
+            
+            shouldAutoPlay = autoPlay;
             
             audioLoader.load(trackPath, function(buffer) {
                 sound.setBuffer(buffer);
@@ -378,27 +339,102 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     sound.setFilter(filter);
                 }
                 
-                // Auto-advance to next track when current one ends
-                sound.onEnded = () => {
-                    console.log('🎵 Track ended, advancing to next...');
-                    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
-                    loadTrack(currentTrackIndexRef.current);
-                    
-                    // Auto-play next track if audio was playing
-                    if (listener.context.state === 'running') {
-                        sound.play();
-                    }
-                };
-                
                 audioLoaded = true;
                 console.log('🔊 Audio loaded and ready to play');
+                
+                // Auto-play if requested (happens when advancing playlist)
+                if (shouldAutoPlay && listener.context.state === 'running') {
+                    console.log('▶️ Auto-playing next track');
+                    sound.play();
+                }
             });
+        };
+        
+        // Setup event listener for track end (advance to next)
+        sound.onEnded = () => {
+            console.log('🎵 Track ended, advancing to next...');
+            currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
+            
+            // If we completed the playlist, reshuffle for variety
+            if (currentTrackIndexRef.current === 0) {
+                console.log('🔄 Playlist complete! Reshuffling...');
+                playlistRef.current = shufflePlaylist(audioFiles);
+            }
+            
+            // Load next track and auto-play it
+            loadTrack(currentTrackIndexRef.current, true);
         };
         
         // Load first track
         loadTrack(0);
+        
+        // Setup audio playback on user interaction
+        const playAudio = () => {
+            if (listener.context.state === 'suspended') {
+                listener.context.resume().then(() => {
+                    console.log('🔊 Audio context resumed');
+                });
+            }
+            
+            if (sound && audioLoaded && !sound.isPlaying) {
+                sound.play();
+                console.log('▶️ Audio playback started');
+                window.removeEventListener('pointerdown', playAudio);
+            }
+        };
+        playAudioRef.current = playAudio;
+        window.addEventListener('pointerdown', playAudio);
+        
+        // Cleanup only removes event listener, does NOT stop audio
+        return () => {
+            window.removeEventListener('pointerdown', playAudio);
+        };
+    }, []); // Only runs once on mount
+    
+    // Main scene setup
+    useEffect(() => {
+        if (!mountRef.current) return;
+        
+        const currentMount = mountRef.current;
 
-        // Mascot loading removed - will be re-added later with proper model
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+        cameraRef.current = camera;
+        console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
+
+        // Load Space HDRI Environment
+        const rgbeLoader = new RGBELoader();
+        const hdriEnabled = true;
+        const hdriUrl = '/nebula.hdr';
+        
+        if (hdriEnabled) {
+            rgbeLoader.load(
+                hdriUrl,
+                (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    scene.environment = texture;
+                    scene.background = texture;
+                    scene.backgroundIntensity = 0.10;
+                    console.log('🌌 Space HDRI environment loaded');
+                },
+                undefined,
+                (error) => {
+                    console.warn('⚠️ HDRI failed to load, using black background:', error);
+                    scene.background = new THREE.Color(0x000000);
+                }
+            );
+        } else {
+            scene.background = new THREE.Color(0x000000);
+            console.log('🌌 HDRI disabled - using black background with particle stars');
+        }
+        
+        // Add audio listener to camera if audio is initialized
+        if (soundRef.current) {
+            const listener = soundRef.current.listener;
+            camera.add(listener);
+        }
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -430,7 +466,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const blackHoleGeometry = new THREE.SphereGeometry(1.5, 64, 64);
         const blackHoleMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const blackHole = new THREE.Mesh(blackHoleGeometry, blackHoleMaterial);
-        blackHole.add(sound);
+        if (soundRef.current) {
+            blackHole.add(soundRef.current);
+        }
         scene.add(blackHole);
         
         const diskVertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -833,18 +871,18 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
             // Audio reactivity - Enhanced responsiveness
             let bass = 0, mid = 0, treble = 0;
-            if (soundRef.current?.isPlaying) {
-                const frequencyData = audioAnalyzer.getFrequencyData();
+            if (soundRef.current?.isPlaying && audioAnalyzerRef.current) {
+                const frequencyData = audioAnalyzerRef.current.getFrequencyData();
                 
                 // Extract frequency ranges (0-255 values)
                 // Bass: 20-250 Hz (roughly indices 0-32)
-                bass = frequencyData.slice(0, 32).reduce((a, b) => a + b, 0) / (32 * 255);
+                bass = frequencyData.slice(0, 32).reduce((a: number, b: number) => a + b, 0) / (32 * 255);
                 
                 // Mid: 250-2000 Hz (indices 32-128)
-                mid = frequencyData.slice(32, 128).reduce((a, b) => a + b, 0) / (96 * 255);
+                mid = frequencyData.slice(32, 128).reduce((a: number, b: number) => a + b, 0) / (96 * 255);
                 
                 // Treble: 2000+ Hz (indices 128-256)
-                treble = frequencyData.slice(128, 256).reduce((a, b) => a + b, 0) / (128 * 255);
+                treble = frequencyData.slice(128, 256).reduce((a: number, b: number) => a + b, 0) / (128 * 255);
             }
 
             // ENHANCED DISK RESPONSIVENESS
@@ -1145,38 +1183,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   ease: 'power4.in'
               }, 0);
         }
-        
-        let audioStarted = false;
-        const playAudio = () => {
-            if (audioStarted) return; // Only play once
-            
-            // Resume audio context if suspended (browser autoplay policy)
-            if (listener.context.state === 'suspended') {
-                listener.context.resume().then(() => {
-                    console.log('🔊 Audio context resumed');
-                });
-            }
-            
-            // Play audio if loaded and not already playing
-            if (soundRef.current && audioLoaded && !soundRef.current.isPlaying) {
-                soundRef.current.play();
-                audioStarted = true;
-                console.log('▶️ Audio playback started');
-                window.removeEventListener('pointerdown', playAudio);
-            } else if (!audioLoaded) {
-                console.log('⏳ Audio still loading, please wait...');
-            }
-        };
-        playAudioRef.current = playAudio; // Store in ref for Connect Wallet button
-        window.addEventListener('pointerdown', playAudio);
 
         setIsLoaded(true);
 
         return () => {
-            window.removeEventListener('pointerdown', playAudio);
             cancelAnimationFrame(animationFrameId);
             window.removeEventListener('resize', handleResize);
-            if (soundRef.current?.isPlaying) soundRef.current.stop();
+            // DO NOT stop audio - it should persist across scenes!
             controls.dispose();
             if(currentMount && renderer.domElement) currentMount.removeChild(renderer.domElement);
             scene.traverse(object => {
