@@ -396,6 +396,99 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         accretionDisk.rotation.x = Math.PI * 0.55;
         scene.add(accretionDisk);
 
+        // SINGULARITY VORTEX - Swirling whirlpool effect
+        const vortexVertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        
+        const vortexFragmentShader = `
+            uniform float uTime;
+            uniform float uIntensity;
+            varying vec2 vUv;
+            
+            // Noise function for organic variation
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            }
+            
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = hash(i);
+                float b = hash(i + vec2(1.0, 0.0));
+                float c = hash(i + vec2(0.0, 1.0));
+                float d = hash(i + vec2(1.0, 1.0));
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+            
+            void main() {
+                vec2 center = vec2(0.5, 0.5);
+                vec2 pos = vUv - center;
+                float dist = length(pos);
+                float angle = atan(pos.y, pos.x);
+                
+                // Create spiral pattern
+                float spiral = angle + dist * 20.0 - uTime * 2.0;
+                float spiralPattern = sin(spiral * 8.0) * 0.5 + 0.5;
+                
+                // Create inward swirl motion
+                float swirl = angle - dist * 15.0 + uTime * 3.0;
+                float swirlPattern = sin(swirl * 12.0) * 0.5 + 0.5;
+                
+                // Combine patterns
+                float pattern = mix(spiralPattern, swirlPattern, 0.5);
+                
+                // Add noise for organic feel
+                float n = noise(vec2(angle * 8.0, dist * 10.0 - uTime * 0.5));
+                pattern = mix(pattern, n, 0.3);
+                
+                // Radial gradient (darker at edges, brighter at center)
+                float radial = 1.0 - smoothstep(0.0, 0.5, dist);
+                
+                // Center singularity glow
+                float centerGlow = exp(-dist * 25.0) * (1.0 + sin(uTime * 4.0) * 0.3);
+                
+                // Colors: deep purple to cyan to white at center
+                vec3 color1 = vec3(0.2, 0.0, 0.4); // Deep purple
+                vec3 color2 = vec3(0.0, 0.8, 1.0); // Cyan
+                vec3 color3 = vec3(1.0, 1.0, 1.0); // White
+                
+                vec3 color = mix(color1, color2, pattern * radial);
+                color = mix(color, color3, centerGlow);
+                
+                // Pulsing intensity
+                float pulse = 0.7 + 0.3 * sin(uTime * 2.5);
+                float alpha = (pattern * radial * 0.6 + centerGlow * 0.8) * pulse * uIntensity;
+                
+                // Discard outer areas
+                if (dist > 0.5) discard;
+                
+                gl_FragColor = vec4(color, alpha);
+            }
+        `;
+        
+        const vortexGeometry = new THREE.PlaneGeometry(6, 6, 1, 1);
+        const vortexMaterial = new THREE.ShaderMaterial({
+            vertexShader: vortexVertexShader,
+            fragmentShader: vortexFragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uIntensity: { value: 0.0 }, // Start invisible
+            },
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        const singularityVortex = new THREE.Mesh(vortexGeometry, vortexMaterial);
+        singularityVortex.rotation.x = Math.PI * 0.5; // Face up
+        singularityVortex.position.y = -0.2; // Slightly below disk
+        scene.add(singularityVortex);
+
         const flareLight = new THREE.PointLight(0xffffff, 1.5, 200);
         scene.add(flareLight);
         
@@ -553,6 +646,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const delta = Math.min(clock.getDelta(), 0.05); // Cap delta to prevent large jumps on lag
             const elapsedTime = clock.getElapsedTime();
             diskMaterial.uniforms.uTime.value = elapsedTime;
+            vortexMaterial.uniforms.uTime.value = elapsedTime;
 
             // Mascot animations removed (mascot temporarily disabled)
 
@@ -737,43 +831,48 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const tl = gsap.timeline({ onComplete: onEnter });
             
             tl
-              // Camera position: accelerate exponentially into the singularity
+              // Camera position: approach the singularity but stop to observe it
               .to(camera.position, { 
-                  z: 0.1, // Much closer to the event horizon
-                  duration: 3.0, 
-                  ease: 'power4.in' // Exponential acceleration
+                  z: 3.0, // Stop at observing distance (not inside!)
+                  y: 2.0, // Slightly above for better viewing angle
+                  duration: 3.5, 
+                  ease: 'power3.inOut' 
               }, 0)
               
-              // Multi-axis rotation: tumbling through spacetime
+              // Multi-axis rotation: tumbling then stabilize to observe
               .to(camera.rotation, { 
-                  z: Math.PI * 4, // Multiple barrel rolls (4 full rotations)
-                  duration: 3.0, 
+                  z: Math.PI * 2, // 2 barrel rolls (reduced from 4)
+                  duration: 2.5, 
                   ease: 'power2.inOut' 
               }, 0)
               .to(camera.rotation, { 
-                  x: Math.PI * 0.3, // Pitch forward
-                  duration: 2.0, 
-                  ease: 'power3.in' 
-              }, 0.5)
-              .to(camera.rotation, { 
-                  y: Math.PI * 0.15, // Slight yaw for chaotic feel
+                  x: -Math.PI * 0.25, // Tilt down to look at singularity
+                  y: 0, // Face forward
+                  z: 0, // No roll at end
                   duration: 1.5, 
-                  ease: 'sine.inOut' 
-              }, 0.8)
+                  ease: 'power3.out' 
+              }, 2.0) // Stabilize at end
               
-              // Camera shake: intense vibration near event horizon
+              // Camera shake: brief vibration during approach
               .to(camera.position, {
-                  x: "+=0.3",
-                  y: "+=0.2",
+                  x: "+=0.2",
+                  y: "+=0.15",
                   duration: 0.08,
-                  repeat: 15,
+                  repeat: 8, // Reduced from 15
                   yoyo: true,
                   ease: 'none'
-              }, 1.5)
+              }, 1.0)
+              
+              // SINGULARITY VORTEX: Fade in the whirlpool
+              .to(vortexMaterial.uniforms.uIntensity, {
+                  value: 1.5, // Full intensity
+                  duration: 2.5,
+                  ease: 'power2.in'
+              }, 1.0)
               
               // --- DYNAMIC LIGHTING: Color shift through dimensions ---
               .to(ambientLight, {
-                  intensity: 6.0, // Intense flash
+                  intensity: 4.0, // Reduced from 6.0 for visibility
                   duration: 1.0,
                   ease: 'power2.in'
               }, 0.5)
@@ -792,47 +891,47 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   ease: 'power3.in'
               }, 1.5)
               .to(ambientLight, {
-                  intensity: 0.0, // Complete darkness
-                  duration: 0.8,
-                  ease: 'power4.in'
-              }, 2.0)
+                  intensity: 0.8, // Dim but visible (not complete darkness)
+                  duration: 1.2,
+                  ease: 'power3.out'
+              }, 2.5)
               
-              // Bloom: Build to complete whiteout
+              // Bloom: Moderate glow to highlight singularity
               .to(bloomPass, { 
-                  strength: 35, // Near total whiteout
+                  strength: 6, // Dramatic but not blinding
                   duration: 2.0, 
-                  ease: 'power3.in' 
+                  ease: 'power2.in' 
               }, 0.5)
               .to(bloomPass, { 
-                  strength: 50, // Total light engulfment
-                  duration: 1.0, 
-                  ease: 'power4.in' 
+                  strength: 8, // Peak glow - singularity visible
+                  duration: 1.5, 
+                  ease: 'power2.out' 
               }, 2.0)
               
-              // Gravitational lensing: Extreme warping
+              // Gravitational lensing: Noticeable but not overwhelming
               .to(lensingPass.uniforms.uStrength, { 
-                  value: 1.5, // Extreme spacetime distortion
-                  duration: 3.0, 
-                  ease: 'power4.in' 
+                  value: 0.4, // Moderate distortion
+                  duration: 3.5, 
+                  ease: 'power3.inOut' 
               }, 0)
               .to(lensingPass.uniforms.uRadius, { 
-                  value: 1.5, // Full screen engulfment
-                  duration: 3.0, 
-                  ease: 'expo.in' 
+                  value: 0.6, // Centered on singularity
+                  duration: 3.5, 
+                  ease: 'power2.inOut' 
               }, 0)
               
-              // Chromatic aberration: Reality tears apart
+              // Chromatic aberration: Subtle reality warping
               .to(chromaticAberrationPass.uniforms.uAberrationAmount, {
-                  value: 0.035, // Extreme color separation
+                  value: 0.015, // Noticeable but not extreme
                   duration: 2.5,
-                  ease: 'power4.in'
+                  ease: 'power3.in'
               }, 0.5)
               
-              // FOV: Insane fish-eye warp
+              // FOV: Moderate fish-eye for immersion
               .to(camera, { 
-                  fov: 175, // Nearly 180° - reality bending
+                  fov: 95, // Wider view but not distorted
                   duration: 2.5, 
-                  ease: 'expo.in', 
+                  ease: 'power2.inOut', 
                   onUpdate: () => camera.updateProjectionMatrix() 
               }, 0.5);
 

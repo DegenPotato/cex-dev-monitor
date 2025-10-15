@@ -1,26 +1,25 @@
-feat: Enable server-hosted HDRI at alpha.sniff.agency
+fix: Disable HDRI temporarily due to format compatibility
 
-SERVER CONFIGURATION:
-- Configured nginx to serve static assets from /var/www/alpha.sniff.agency/assets/
-- Added CORS headers (Access-Control-Allow-Origin: *)
-- Added caching (expires 7d, Cache-Control: public, immutable)
-- Created HDRI directory on server
-- Nginx tested and reloaded successfully
+ISSUE ENCOUNTERED:
+- Uploaded 91MB nebula.hdr file to server successfully
+- RGBELoader throws "Bad File Format: bad initial token" error
+- File header is valid Radiance format (#?RADIANCE)
+- Likely Three.js version compatibility issue
 
-FRONTEND UPDATES:
-- Updated BlackholeScene to load from https://alpha.sniff.agency/assets/hdri/nebula.hdr
-- Set hdriEnabled = true
-- Will fallback to black background until HDRI file is uploaded
+CURRENT STATE:
+- hdriEnabled set to false
+- Using black background with particle starfield
+- Audio-reactive accretion disk working perfectly
+- All other effects functional
 
-DOCUMENTATION:
-- Created HDRI_SERVER_SETUP.md with complete setup guide
-- Included download links for Poly Haven HDRIs
-- Added SCP upload commands
-- Added testing instructions
+BENEFITS OF CURRENT SETUP:
+- Clean deep space aesthetic
+- 20000 particle stars with orbital physics
+- Audio-reactive effects on disk and bloom
+- Fast loading (no 91MB HDRI download)
+- No CORS or caching issues
 
-READY FOR:
-- Download HDRI file from Poly Haven (2K/4K recommended)
-- Upload to server via SCP
-- Deploy and test
-
-Infrastructure complete, waiting for HDRI file upload
+TODO (OPTIONAL):
+- Try different HDR file format or resolution
+- Or keep black background as final design
+- Particle starfield looks great on its own
