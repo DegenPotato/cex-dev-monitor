@@ -1,31 +1,26 @@
-fix: Remove mascot and migrate HDRIs to server hosting
+feat: Enable server-hosted HDRI at alpha.sniff.agency
 
-MASCOT REMOVED:
-- Removed GLTFLoader import
-- Removed mascot loading and animation code
-- Removed all mascot-related refs and animations
-- Cleaned up transition animations
+SERVER CONFIGURATION:
+- Configured nginx to serve static assets from /var/www/alpha.sniff.agency/assets/
+- Added CORS headers (Access-Control-Allow-Origin: *)
+- Added caching (expires 7d, Cache-Control: public, immutable)
+- Created HDRI directory on server
+- Nginx tested and reloaded successfully
 
-HDRI MIGRATION:
-- Removed large HDRI files from git (294MB total)
-  - Nebula+1.hdr (85MB)
-  - Nebula+2.hdr (53MB)
-  - Nebula+3.hdr (65MB)
-  - Nebula+5.hdr (91MB)
-- Updated to server-based HDRI loading
-- Added hdriEnabled flag (disabled by default)
-- Falls back to black background with particle stars
-- Added configuration docs for server setup
+FRONTEND UPDATES:
+- Updated BlackholeScene to load from https://alpha.sniff.agency/assets/hdri/nebula.hdr
+- Set hdriEnabled = true
+- Will fallback to black background until HDRI file is uploaded
 
-TYPESCRIPT FIXES:
-- Fixed unused imports in auth files
-- Fixed implicit any types in ReferralTrackingProvider
-- Fixed User type annotations (undefined vs null)
-- Removed unused constants
+DOCUMENTATION:
+- Created HDRI_SERVER_SETUP.md with complete setup guide
+- Included download links for Poly Haven HDRIs
+- Added SCP upload commands
+- Added testing instructions
 
-BUILD READY:
-- All TypeScript errors resolved
-- Deployment-ready state
-- Clean blackhole scene with audio reactivity
+READY FOR:
+- Download HDRI file from Poly Haven (2K/4K recommended)
+- Upload to server via SCP
+- Deploy and test
 
-Next: Upload HDRIs to server and update hdriUrl
+Infrastructure complete, waiting for HDRI file upload
