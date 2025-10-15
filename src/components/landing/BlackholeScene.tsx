@@ -3,6 +3,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -234,6 +235,34 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(isReturning ? 120 : 75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = isReturning ? 1.5 : 15;
+        console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
+
+        // Load Space HDRI Environment (optional - enhances lighting and reflections)
+        const rgbeLoader = new RGBELoader();
+        
+        // ACTUAL SPACE HDRIs (not Earth landscapes!)
+        const spaceHDRIs = [
+            // Your custom nebula HDRIs (after moving to public/hdri/)
+            '/hdri/uploads_files_4693192_Nebula+5.hdr'
+        ];
+        
+        rgbeLoader.load(
+            spaceHDRIs[0], // Try first nebula
+            (texture) => {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.environment = texture; // For reflections/lighting
+                scene.background = texture; // For visible background
+                // Tone down brightness significantly - nebula HDRIs have very bright spots
+                scene.backgroundIntensity = 0.10; // Much dimmer (was 1.5)
+                console.log('🌌 Space HDRI environment loaded:', spaceHDRIs[0]);
+            },
+            undefined,
+            (error) => {
+                console.warn('⚠️ HDRI failed to load (will use black background):', error);
+                // Fallback: solid black with stars (particle system handles this)
+                scene.background = new THREE.Color(0x000000);
+            }
+        );
 
         const listener = new THREE.AudioListener();
         camera.add(listener);
@@ -257,54 +286,105 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             console.error('❌ Error loading audio:', error);
         });
 
-        // Load Mascot (Astronaut) with enhanced error handling
+        // Load Mascot (Astronaut Pomeranian) with enhanced error handling
         console.log('👾 Loading mascot model...');
         const gltfLoader = new GLTFLoader();
-        gltfLoader.load(
-            'https://cdn.jsdelivr.net/gh/Sean-Bradley/React-Three-Fiber-Boilerplate@glTFLoader/public/models/astronaut.glb',
+        
+        // TODO: Download astronaut Doge/Pepe model from Sketchfab
+        // Instructions in MASCOT_MODEL_GUIDE.md
+        // 
+        // FOUND MODELS (need to download):
+        // 1. Shiba Inu Astronaut: https://sketchfab.com/3d-models/shiba-inu-astronaut-454d8419d60b47c897a99cf508ce0538
+        // 2. Generic Astronaut: https://sketchfab.com/3d-models/astronaut-glb-4d1f078f5461493ba066cf35278ae9e6
+        //
+        // Download → Place in /public/models/ → Update first URL below to '/models/astronaut-doge.glb'
+        const modelUrls = [
+            // Local model (when you download it)
+            '/models/character.glb', // Will fail until you add it
+            // Fallback: Robot (space theme) 
+            'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/RobotExpressive/glTF-Binary/RobotExpressive.glb',
+            // Fallback: Fox (current working placeholder)
+            'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb'
+        ];
+        
+        const tryLoadModel = (urlIndex: number) => {
+            if (urlIndex >= modelUrls.length) {
+                console.error('❌ All model URLs failed. Mascot will not appear.');
+                return;
+            }
+            
+            console.log(`  🔄 Attempt ${urlIndex + 1}/${modelUrls.length}: ${modelUrls[urlIndex].split('/').pop()}`);
+            
+            gltfLoader.load(
+                modelUrls[urlIndex],
             (gltf) => {
                 console.log('✅ Mascot model loaded successfully!');
                 const model = gltf.scene;
                 mascotRef.current = model;
                 
+                // Different scales for different models
+                const modelName = modelUrls[urlIndex].split('/').pop() || '';
+                let scale = 0.8;
+                // Camera is at (0,0,15) looking at origin
+                // Place mascot between camera and blackhole, to the side
+                let posX = 6, posY = 0, posZ = 8; // Default: right side, between camera and blackhole
+                
+                if (modelName.includes('Fox')) {
+                    scale = 0.03; // Much smaller - fox is HUGE
+                    posX = 6; posY = -1; posZ = 8; // Right side, slightly below center
+                    console.log('  🦊 Fox model detected - scaling to 0.03');
+                } else if (modelName.includes('Robot')) {
+                    scale = 0.3; 
+                    posX = 6; posY = 0; posZ = 8;
+                    console.log('  🤖 Robot model detected - scaling to 0.3');
+                } else if (modelName.includes('Dog') || modelName.includes('Shiba') || modelName.includes('Pomeranian')) {
+                    scale = 0.5; // Adjust when we get real dog model
+                    posX = 6; posY = -1; posZ = 8;
+                    console.log('  🐕 Dog model detected - scaling to 0.5');
+                } else {
+                    scale = 0.8;
+                    posX = 6; posY = 0; posZ = 8;
+                    console.log('  📦 Generic model - scaling to 0.8');
+                }
+                
                 // Position and scale
-                model.scale.set(0.8, 0.8, 0.8);
-                model.position.set(5, 1, -2); // To the right of the blackhole
-                model.rotation.y = -Math.PI / 2; // Face the camera
+                model.scale.set(scale, scale, scale);
+                model.position.set(posX, posY, posZ); // In front and to the right
+                model.rotation.y = Math.PI; // Face the camera directly
+                console.log(`  📍 Positioned at (${posX}, ${posY}, ${posZ}) facing camera`)
                 
-                // Create glowing materials
-                const cyanMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0x00ffff, 
-                    emissive: 0x00ffff, 
-                    emissiveIntensity: 3, 
-                    metalness: 0.8, 
-                    roughness: 0.2 
-                });
-                const magentaMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0xff00ff, 
-                    emissive: 0xff00ff, 
-                    emissiveIntensity: 3, 
-                    metalness: 0.8, 
-                    roughness: 0.2 
-                });
-                
-                // Apply materials to model parts
+                // Apply subtle glow to model parts - keep original appearance visible
                 model.traverse((child) => {
                     if (child instanceof THREE.Mesh) {
                         child.castShadow = true;
+                        child.receiveShadow = true;
                         console.log('  📦 Mesh found:', child.name);
                         
-                        // Customize materials based on mesh name
-                        if (child.name.includes('Visor') || child.name.includes('Glass') || child.name.includes('Helmet')) {
-                            child.material = cyanMaterial;
-                            console.log('    🔵 Applied cyan material to:', child.name);
-                        }
-                        if (child.name.includes('Backpack') || child.name.includes('Cylinder') || child.name.includes('Pack')) {
-                            child.material = magentaMaterial;
-                            console.log('    🟣 Applied magenta material to:', child.name);
+                        // Keep original materials but add subtle glow for visibility
+                        const originalMaterial = child.material as THREE.MeshStandardMaterial;
+                        if (originalMaterial) {
+                            // Clone and enhance without destroying original look
+                            const enhancedMaterial = originalMaterial.clone();
+                            
+                            // Only add slight glow if material is too dark
+                            if (enhancedMaterial.color) {
+                                // Add subtle cyan rim light effect instead of full glow
+                                enhancedMaterial.emissive = enhancedMaterial.color.clone().multiplyScalar(0.3);
+                                enhancedMaterial.emissiveIntensity = 0.4; // Much lower!
+                            }
+                            
+                            child.material = enhancedMaterial;
+                            console.log('    ✨ Enhanced material for:', child.name);
                         }
                     }
                 });
+                
+                // Add directional light on mascot for natural lighting
+                const mascotLight = new THREE.DirectionalLight(0xffffff, 2);
+                mascotLight.position.set(posX + 3, posY + 5, posZ + 3);
+                mascotLight.target = model;
+                scene.add(mascotLight);
+                console.log('  💡 Added directional light on mascot');
                 
                 // Add to scene
                 scene.add(model);
@@ -320,19 +400,21 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     console.log('  ⚠️ No animations found in model');
                 }
             },
-            (progress) => {
-                const percent = (progress.loaded / progress.total * 100).toFixed(2);
-                console.log(`  ⏳ Loading mascot: ${percent}%`);
-            },
-            (error) => {
-                console.error('❌ Error loading mascot model:', error);
-                console.error('  URL:', 'https://cdn.jsdelivr.net/gh/Sean-Bradley/React-Three-Fiber-Boilerplate@glTFLoader/public/models/astronaut.glb');
-                console.error('  This could be due to:');
-                console.error('    - CORS policy blocking the CDN');
-                console.error('    - Network issues');
-                console.error('    - Invalid model file');
-            }
-        );
+                (progress) => {
+                    const percent = (progress.loaded / progress.total * 100).toFixed(2);
+                    console.log(`    ⏳ Loading: ${percent}%`);
+                },
+                (error: unknown) => {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.error(`  ❌ Failed to load ${modelUrls[urlIndex].split('/').pop()}:`, errorMessage);
+                    // Try next URL
+                    tryLoadModel(urlIndex + 1);
+                }
+            );
+        };
+        
+        // Start loading with first URL
+        tryLoadModel(0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
