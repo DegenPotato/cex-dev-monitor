@@ -3,6 +3,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
 import { queryAll } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
@@ -29,6 +31,10 @@ import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -45,8 +51,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Serve static files from public directory (for HDRI, audio, etc.)
-app.use('/assets', express.static('public/assets'));
+const publicAssetsPath = path.join(__dirname, '../../public/assets');
+app.use('/assets', express.static(publicAssetsPath));
 console.log('📁 [Server] Serving static files from /assets');
+console.log('📁 [Server] Public assets path:', publicAssetsPath);
 
 // Initialize database
 await initDatabase();
