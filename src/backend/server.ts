@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
@@ -26,6 +27,7 @@ import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
+import authRoutes from './routes/auth/index.js';
 
 const app = express();
 const server = createServer(app);
@@ -40,12 +42,14 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(cookieParser());
 
 // Initialize database
 await initDatabase();
 
-// Register database admin routes
+// Register API routes
 app.use('/api/database', databaseRoutes);
+app.use('/api/auth', authRoutes);
 
 // Load separate concurrency configs for Proxy and RPC rotation
 const proxyMaxConcurrent = await ConfigProvider.get('proxy_max_concurrent');
