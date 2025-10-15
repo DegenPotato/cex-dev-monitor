@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import AuthChallengeProvider from '../../../lib/auth/AuthChallengeProvider.js';
 import SecureAuthService from '../../../lib/auth/SecureAuthService.js';
 import ReferralTrackingProvider from '../../../lib/auth/ReferralTrackingProvider.js';
-import { queryOne, execute, getLastInsertId } from '../../database/helpers.js';
+import { execute, getLastInsertId } from '../../database/helpers.js';
 
 const router = express.Router();
 const authService = new SecureAuthService();
@@ -16,7 +16,7 @@ const referralProvider = new ReferralTrackingProvider();
  */
 router.post('/', async (req, res) => {
   try {
-    const { walletAddress, signature, referralCode } = req.body;
+    const { walletAddress, signature } = req.body;
 
     console.log('[Verify API] Verification requested for:', walletAddress);
 

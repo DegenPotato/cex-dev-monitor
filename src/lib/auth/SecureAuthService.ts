@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { queryOne, queryAll, execute, getLastInsertId } from '../../backend/database/helpers.js';
+import { queryOne, execute } from '../../backend/database/helpers.js';
 import type { Request, Response, NextFunction } from 'express';
 
 interface UserData {
@@ -42,8 +41,6 @@ interface AuthRequest extends Request {
 class SecureAuthService {
   private jwtSecret: string;
   private refreshSecret: string;
-  private ACCESS_TOKEN_EXPIRY = '15m'; // 15 minutes
-  private REFRESH_TOKEN_EXPIRY = '7d'; // 7 days
 
   constructor() {
     this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';

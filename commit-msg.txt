@@ -1,0 +1,41 @@
+feat: Add space HDRI environments and 3D mascot system
+
+SPACE HDRI INTEGRATION:
+- Added RGBELoader for HDR environment maps
+- Integrated 4 custom nebula HDRIs
+- Dynamic HDRI loading with fallback system
+- Background intensity set to 0.10 for subtle effect
+- Environment lighting and reflections from HDRI
+
+MASCOT SYSTEM:
+- 3D model loader with multi-URL fallback
+- Support for GLB/GLTF models
+- Automatic model detection and scaling
+- Smooth camera-tracking rotation
+- Animation mixer for model animations
+- Glowing materials with subtle emissive effects
+- Mascot sucked into blackhole during transition
+
+AUDIO ENHANCEMENTS:
+- Added 3 audio tracks
+- Audio-reactive disk pulsing and rotation
+- Bass effects on lens flare intensity
+- Mid range controls disk rotation speed
+- Bloom strength responds to audio energy
+
+DOCUMENTATION:
+- SPACE_HDRI_GUIDE.md: Complete HDRI setup guide
+- MASCOT_MODEL_GUIDE.md: How to get 3D models
+- DOWNLOAD_DOGE_MODEL.md: Quick astronaut model guide
+
+FILES ADDED:
+- 4 space nebula HDRI files in public/hdri/
+- 3 audio track files in public/
+- Documentation guides
+
+TYPESCRIPT FIXES:
+- Fixed material types for emissive properties
+- Proper error typing with type guards
+- Removed unused variables
+
+Ready for custom character model at /models/character.glb

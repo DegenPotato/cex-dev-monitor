@@ -1,4 +1,4 @@
-import { queryOne, queryAll, execute, getLastInsertId } from '../../backend/database/helpers.js';
+import { queryOne, queryAll, execute } from '../../backend/database/helpers.js';
 
 interface User {
   id: number;
@@ -133,7 +133,7 @@ class ReferralTrackingProvider {
 
       while (currentUserId && level <= maxLevels) {
         // Get user and their referrer
-        const user = await queryOne<User>(
+        const user: User | undefined = await queryOne<User>(
           'SELECT * FROM users WHERE id = ?',
           [currentUserId]
         );
@@ -143,7 +143,7 @@ class ReferralTrackingProvider {
         }
 
         // Get the referrer
-        const referrer = await queryOne<User>(
+        const referrer: User | undefined = await queryOne<User>(
           'SELECT * FROM users WHERE id = ?',
           [user.referred_by]
         );
