@@ -635,58 +635,71 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         lensflare.addElement(new LensflareElement(textureFlare3, 70, 1.0));
         flareLight.add(lensflare);
 
-        // Particle System
+        // Particle System - Realistic Accretion Disk
         const particleCount = 20000;
         const positions = new Float32Array(particleCount * 3);
         const prevPositions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
-        const baseColor = new THREE.Color(0x88ddff);
+        
+        // Color gradient: white (hot, close) -> cyan -> violet (cool, far)
         const whiteColor = new THREE.Color(0xffffff);
+        const cyanColor = new THREE.Color(0x00ffff);
+        const violetColor = new THREE.Color(0x9933ff);
+        const baseColor = new THREE.Color(0x88ddff);
 
         const GRAVITATIONAL_CONSTANT = 0.8;
         const EVENT_HORIZON_RADIUS = 2.0;
+        const DISK_THICKNESS = 2.0; // Thin accretion disk
         velocities.current = [];
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
-            const r = 5 + Math.random() * 20;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos((Math.random() * 2) - 1);
+            
+            // DISK distribution (not spherical)
+            const r = 5 + Math.random() * 20; // Distance from center
+            const theta = Math.random() * Math.PI * 2; // Angle around disk
+            // Thin vertical spread with exponential falloff
+            const z = (Math.random() - 0.5) * DISK_THICKNESS * Math.exp(-r / 15);
+            
             const p = new THREE.Vector3(
-                r * Math.sin(phi) * Math.cos(theta),
-                r * Math.sin(phi) * Math.sin(theta),
-                r * Math.cos(phi)
+                r * Math.cos(theta),
+                r * Math.sin(theta),
+                z
             );
             positions[i3] = p.x;
             positions[i3 + 1] = p.y;
             positions[i3 + 2] = p.z;
             
-            // Make most particles dim to appear as sharp points, with a few bright "hero" stars that will bloom.
-            if (Math.random() > 0.995) { // 0.5% of stars are very bright
-                // Use HDR values (greater than 1.0) to make these stars pop with the bloom effect.
-                const brightColor = baseColor.clone().lerp(whiteColor, 0.5);
-                colors[i3] = brightColor.r * 1.5;
-                colors[i3 + 1] = brightColor.g * 1.5;
-                colors[i3 + 2] = brightColor.b * 1.5;
+            // Color gradient based on distance: white (close) -> cyan -> violet (far)
+            const distanceRatio = (r - 5) / 20; // 0 (close) to 1 (far)
+            let particleColor;
+            if (distanceRatio < 0.3) {
+                // Close to center: white to cyan
+                particleColor = whiteColor.clone().lerp(cyanColor, distanceRatio / 0.3);
             } else {
-                // The vast majority of stars will be dimmer and fall below the bloom threshold.
-                const brightness = Math.random() * 0.8 + 0.6; // Range from 0.6 to 1.4
-                const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.3);
-                colors[i3] = mixedColor.r * brightness;
-                colors[i3 + 1] = mixedColor.g * brightness;
-                colors[i3 + 2] = mixedColor.b * brightness;
+                // Mid to far: cyan to violet
+                particleColor = cyanColor.clone().lerp(violetColor, (distanceRatio - 0.3) / 0.7);
+            }
+            
+            // Make most particles dim with a few bright "hero" stars that will bloom
+            if (Math.random() > 0.995) { // 0.5% are very bright
+                // HDR values (> 1.0) for bloom effect
+                colors[i3] = 1.5;
+                colors[i3 + 1] = 1.5;
+                colors[i3 + 2] = 1.5;
+            } else {
+                const brightness = Math.random() * 0.8 + 0.6;
+                colors[i3] = particleColor.r * brightness;
+                colors[i3 + 1] = particleColor.g * brightness;
+                colors[i3 + 2] = particleColor.b * brightness;
             }
 
-
-            // Initial velocity for a structured, decaying orbit
-            const orbitAxis = new THREE.Vector3(
-                (Math.random() - 0.5) * 0.4, // Small randomness for X
-                1, // Strong bias towards Y-axis orbit (like the disk)
-                (Math.random() - 0.5) * 0.4  // Small randomness for Z
-            ).normalize();
-            const perpendicular = p.clone().cross(orbitAxis).normalize();
-            const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 1.5 / p.length()) * (0.8 + Math.random() * 0.1);
-            const velocity = perpendicular.multiplyScalar(initialSpeed);
+            // ORBITAL velocity (tangential, like a vortex)
+            // Perpendicular to radial direction in XY plane
+            const orbitDirection = new THREE.Vector3(-p.y, p.x, 0).normalize();
+            // Keplerian velocity: v = sqrt(GM/r) - faster closer to center
+            const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 2.5 / r) * (0.9 + Math.random() * 0.2);
+            const velocity = orbitDirection.multiplyScalar(initialSpeed);
             velocities.current.push(velocity);
         }
         prevPositions.set(positions);
@@ -830,45 +843,68 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                    colorAttr.setXYZ(i, finalColor.r, finalColor.g, finalColor.b);
 
                 } else {
+                    // REALISTIC ACCRETION DISK MOTION
                     const v = velocities.current[i];
                     const distSq = p.lengthSq();
+                    const dist = Math.sqrt(distSq);
                     const eventHorizonRadiusSq = EVENT_HORIZON_RADIUS * EVENT_HORIZON_RADIUS;
 
                     if (distSq < eventHorizonRadiusSq) {
-                        // Reset particle to outer edge
+                        // Reset particle to outer edge of disk
                         const r_reset = 20 + Math.random() * 10;
                         const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos((Math.random() * 2) - 1);
-                        p.set(r_reset * Math.sin(phi) * Math.cos(theta), r_reset * Math.sin(phi) * Math.sin(theta), r_reset * Math.cos(phi));
+                        const z = (Math.random() - 0.5) * DISK_THICKNESS * Math.exp(-r_reset / 15);
+                        p.set(r_reset * Math.cos(theta), r_reset * Math.sin(theta), z);
+                        
+                        // Update color based on new distance
+                        const distanceRatio = (r_reset - 5) / 20;
+                        let particleColor;
+                        if (distanceRatio < 0.3) {
+                            particleColor = whiteColor.clone().lerp(cyanColor, distanceRatio / 0.3);
+                        } else {
+                            particleColor = cyanColor.clone().lerp(violetColor, (distanceRatio - 0.3) / 0.7);
+                        }
                         
                         if (Math.random() > 0.995) {
-                            const brightColor = baseColor.clone().lerp(whiteColor, 0.5);
-                            colorAttr.setXYZ(i, brightColor.r * 1.5, brightColor.g * 1.5, brightColor.b * 1.5);
+                            colorAttr.setXYZ(i, 1.5, 1.5, 1.5);
                         } else {
-                            const brightness = Math.random() * 0.8 + 0.6; // Range from 0.6 to 1.4
-                            const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.3);
-                            colorAttr.setXYZ(i, mixedColor.r * brightness, mixedColor.g * brightness, mixedColor.b * brightness);
+                            const brightness = Math.random() * 0.8 + 0.6;
+                            colorAttr.setXYZ(i, particleColor.r * brightness, particleColor.g * brightness, particleColor.b * brightness);
                         }
 
-
-                        const orbitAxis = new THREE.Vector3((Math.random() - 0.5) * 0.4, 1, (Math.random() - 0.5) * 0.4).normalize();
-                        const perpendicular = p.clone().cross(orbitAxis).normalize();
-                        const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 1.5 / p.length()) * (0.8 + Math.random() * 0.1);
-                        v.copy(perpendicular.multiplyScalar(initialSpeed));
+                        // Reset orbital velocity
+                        const orbitDirection = new THREE.Vector3(-p.y, p.x, 0).normalize();
+                        const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 2.5 / r_reset) * (0.9 + Math.random() * 0.2);
+                        v.copy(orbitDirection.multiplyScalar(initialSpeed));
 
                     } else {
+                        // 1. GRAVITATIONAL PULL (inward radial force)
                         const force = GRAVITATIONAL_CONSTANT / (distSq || 1);
-                        const acceleration = p.clone().negate().normalize().multiplyScalar(force);
+                        const radialAcceleration = p.clone().negate().normalize().multiplyScalar(force);
                         
-                        // Update velocity (v = v + a * dt)
-                        v.add(acceleration.multiplyScalar(delta));
-
-                        // Add drag for orbital decay
-                        const dragFactor = 0.1;
+                        // 2. ORBITAL DECAY (drag reduces velocity slightly)
+                        const dragFactor = 0.08; // Gentle decay
                         v.multiplyScalar(1.0 - (dragFactor * delta));
                         
-                        // Update position (p = p + v * dt)
+                        // 3. Apply acceleration to velocity
+                        v.add(radialAcceleration.multiplyScalar(delta));
+                        
+                        // 4. Update position
                         p.add(v.clone().multiplyScalar(delta));
+                        
+                        // 5. UPDATE COLOR as particle gets closer (white -> cyan -> violet)
+                        const distanceRatio = Math.max(0, Math.min(1, (dist - 5) / 20));
+                        let targetColor;
+                        if (distanceRatio < 0.3) {
+                            targetColor = whiteColor.clone().lerp(cyanColor, distanceRatio / 0.3);
+                        } else {
+                            targetColor = cyanColor.clone().lerp(violetColor, (distanceRatio - 0.3) / 0.7);
+                        }
+                        
+                        // Smoothly transition color
+                        const currentColor = new THREE.Color(colorAttr.getX(i), colorAttr.getY(i), colorAttr.getZ(i));
+                        currentColor.lerp(targetColor, 0.02); // Smooth transition
+                        colorAttr.setXYZ(i, currentColor.r, currentColor.g, currentColor.b);
                     }
                 }
                 posAttr.setXYZ(i, p.x, p.y, p.z);
