@@ -52,7 +52,14 @@ app.use(cookieParser());
 
 // Serve static files from public directory (for HDRI, audio, etc.)
 const publicAssetsPath = path.join(__dirname, '../../public/assets');
-app.use('/assets', express.static(publicAssetsPath));
+app.use('/assets', express.static(publicAssetsPath, {
+  setHeaders: (res, filepath) => {
+    // Set correct Content-Type for HDR files
+    if (filepath.endsWith('.hdr')) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+    }
+  }
+}));
 console.log('📁 [Server] Serving static files from /assets');
 console.log('📁 [Server] Public assets path:', publicAssetsPath);
 
