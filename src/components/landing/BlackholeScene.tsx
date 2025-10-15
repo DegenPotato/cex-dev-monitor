@@ -228,6 +228,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const chromaticAberrationPassRef = useRef<any>(null);
     const billboardMeshRef = useRef<THREE.Mesh | null>(null);
     const borderGlowMeshRef = useRef<THREE.Mesh | null>(null);
+    const playAudioRef = useRef<(() => void) | null>(null);
 
 
     const handleEnterClick = useCallback(() => {
@@ -1139,6 +1140,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 console.log('⏳ Audio still loading, please wait...');
             }
         };
+        playAudioRef.current = playAudio; // Store in ref for Connect Wallet button
         window.addEventListener('pointerdown', playAudio);
 
         setIsLoaded(true);
@@ -1265,6 +1267,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     <button
                         onClick={() => {
                             console.log('🔗 Connect Wallet clicked from landing page');
+                            // Trigger audio playback (important for VR)
+                            if (playAudioRef.current) {
+                                playAudioRef.current();
+                            }
                             // TODO: Implement wallet connection
                             // This will trigger audio in VR and start auth flow
                         }}
