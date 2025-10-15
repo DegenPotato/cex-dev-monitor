@@ -998,49 +998,18 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 });
             };
 
-            // Changed: No longer auto-calls onEnter after transition
+            // Timeline for transition to billboard
             const tl = gsap.timeline({ 
                 onComplete: () => {
                     console.log('🌀 Singularity transition complete. Starting billboard animation...');
                     animateBillboardTrace();
                 }
-            });
-            
-            tl
-              // Camera position: center on the scene
-              .to(camera.position, { 
-                  x: 0,
-                  y: 0, // Centered vertically
-                  z: 5.0, // Further back to see both vortex and billboard
-                  duration: 3.5, 
-                  ease: 'power3.inOut' 
-              }, 0)
+            })
+              // Particle stretching
+              .to(particleMaterial.uniforms.uParticleSize, { value: 2.0, duration: 1.5, ease: 'power2.in' }, 0)
+              .to(particleMaterial.uniforms.uStretch, { value: 3.0, duration: 2.0, ease: 'power3.in' }, 0)
               
-              // Multi-axis rotation: tumbling then stabilize to observe
-              .to(camera.rotation, { 
-                  z: Math.PI * 2, // 2 barrel rolls 
-                  duration: 2.5, 
-                  ease: 'power2.inOut' 
-              }, 0)
-              .to(camera.rotation, { 
-                  x: 0, // Face straight ahead (not tilted)
-                  y: 0, // Face forward
-                  z: 0, // No roll at end
-                  duration: 1.5, 
-                  ease: 'power3.out' 
-              }, 2.0) // Stabilize at end
-              
-              // Camera shake: brief vibration during approach
-              .to(camera.position, {
-                  x: "+=0.2",
-                  y: "+=0.15",
-                  duration: 0.08,
-                  repeat: 8, // Reduced from 15
-                  yoyo: true,
-                  ease: 'none'
-              }, 1.0)
-              
-              // SINGULARITY VORTEX: Fade in the whirlpool
+              // Activate vortex glow
               .to(vortexMaterial.uniforms.uIntensity, {
                   value: 1.5, // Full intensity
                   duration: 2.5,
@@ -1110,7 +1079,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   duration: 2.5, 
                   ease: 'power2.inOut', 
                   onUpdate: () => camera.updateProjectionMatrix() 
-              }, 0.5);
+              }, 0.5)
+              
+              // Camera moves toward vortex/billboard (smooth, not a cut)
+              .to(camera.position, {
+                  x: -2,
+                  y: 0,
+                  z: 3, // Close but can still see accretion disk
+                  duration: 3,
+                  ease: 'power4.in'
+              }, 0);
 
         } else if (isReversing) {
             // Reverse animation - return to landing page
@@ -1289,7 +1267,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     return (
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
-            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversing ? '!opacity-0' : ''} pointer-events-none`}>
+            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard ? '!opacity-0' : ''} pointer-events-none`}>
                 {/* Top: Title + Connect Wallet Button */}
                 <div className="flex justify-between items-start w-full">
                     {/* Title - NO pointer events so scroll can pass through */}
