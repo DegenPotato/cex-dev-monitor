@@ -209,19 +209,25 @@ const createParticleTexture = (): THREE.CanvasTexture => {
 };
 
 export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
-    const isReturning = false; // Disabled for our app
     const mountRef = useRef<HTMLDivElement>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isTransitioning, setIsTransitioning] = useState(false);
+    const [isReversing, setIsReversing] = useState(false);
+    const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
-    const isReversingRef = useRef(isReturning);
     const velocities = useRef<THREE.Vector3[]>([]);
 
 
     const handleEnterClick = useCallback(() => {
-        if(isTransitioning || isReversingRef.current) return;
+        if(isTransitioning || isReversing) return;
         setIsTransitioning(true);
-    }, [isTransitioning]);
+    }, [isTransitioning, isReversing]);
+    
+    const handleBackClick = useCallback(() => {
+        if(isReversing) return;
+        setIsReversing(true);
+        setShowAuthBillboard(false); // Hide auth billboard immediately
+    }, [isReversing]);
 
     useEffect(() => {
         if (!mountRef.current) return;
@@ -230,8 +236,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         // Scene setup
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(isReturning ? 120 : 75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = isReturning ? 1.5 : 15;
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15; // Start at landing page position
         console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
 
         // Load Space HDRI Environment (optional - enhances lighting and reflections)
@@ -302,7 +308,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         currentMount.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enabled = !isReturning;
+        controls.enabled = true; // Start with controls enabled
         controls.enableDamping = true;
         controls.dampingFactor = 0.03;
         controls.minDistance = 5;
@@ -472,7 +478,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             }
         `;
         
-        const vortexGeometry = new THREE.PlaneGeometry(6, 6, 1, 1);
+        const vortexGeometry = new THREE.PlaneGeometry(10, 10, 1, 1); // Larger vortex (was 6x6)
         const vortexMaterial = new THREE.ShaderMaterial({
             vertexShader: vortexVertexShader,
             fragmentShader: vortexFragmentShader,
@@ -485,9 +491,70 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             depthWrite: false,
         });
         const singularityVortex = new THREE.Mesh(vortexGeometry, vortexMaterial);
-        singularityVortex.rotation.x = Math.PI * 0.5; // Face up
-        singularityVortex.position.y = -0.2; // Slightly below disk
+        singularityVortex.rotation.x = 0; // Face camera directly (not tilted)
+        singularityVortex.position.set(-1.5, 0, -3); // Left side, behind billboard
         scene.add(singularityVortex);
+
+        // AUTH BILLBOARD - Line-traced frame that emerges from vortex
+        // Create tracing line (will animate from center outward)
+        const linePoints: THREE.Vector3[] = [];
+        const billboardWidth = 5; // Wider (was 4)
+        const billboardHeight = 3; // Taller (was 2.5)
+        const billboardZ = 2; // Closer to camera (was 1.5, camera at z=5)
+        
+        // Start all points at vortex center (0, 0, 0)
+        for (let i = 0; i < 50; i++) {
+            linePoints.push(new THREE.Vector3(0, 0, 0));
+        }
+        
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0x00ffff, // Cyan
+            linewidth: 5, // Thicker line for visibility
+            transparent: true,
+            opacity: 0,
+            visible: false, // Hidden by default to prevent visual bugs
+        });
+        const tracingLine = new THREE.Line(lineGeometry, lineMaterial);
+        tracingLine.visible = false; // Double ensure it's hidden
+        scene.add(tracingLine);
+        
+        // Add a glowing particle trail effect for the line
+        const trailMaterial = new THREE.PointsMaterial({
+            color: 0x00ffff,
+            size: 0.1,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            visible: false, // Hidden by default
+        });
+        const trailParticles = new THREE.Points(lineGeometry, trailMaterial);
+        trailParticles.visible = false; // Double ensure it's hidden
+        scene.add(trailParticles);
+        
+        // Billboard panel (starts invisible)
+        const billboardGeometry = new THREE.PlaneGeometry(billboardWidth, billboardHeight);
+        const billboardMaterial = new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+        });
+        const billboard = new THREE.Mesh(billboardGeometry, billboardMaterial);
+        billboard.position.set(0, 0, billboardZ);
+        scene.add(billboard);
+        
+        // Billboard border glow
+        const borderGlowGeometry = new THREE.PlaneGeometry(billboardWidth + 0.1, billboardHeight + 0.1);
+        const borderGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+        });
+        const borderGlow = new THREE.Mesh(borderGlowGeometry, borderGlowMaterial);
+        borderGlow.position.set(0, 0, billboardZ - 0.01);
+        scene.add(borderGlow);
 
         const flareLight = new THREE.PointLight(0xffffff, 1.5, 200);
         scene.add(flareLight);
@@ -546,56 +613,45 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
-            if (isReturning) {
-                const z = Math.random() * 5;
-                const angle = Math.random() * Math.PI * 2;
-                const radius = Math.random() * 0.2;
-                positions[i3] = Math.cos(angle) * radius;
-                positions[i3 + 1] = Math.sin(angle) * radius;
-                positions[i3 + 2] = z;
-                colors[i3] = 1.0; colors[i3 + 1] = 1.0; colors[i3 + 2] = 1.0;
-                velocities.current.push(new THREE.Vector3());
+            const r = 5 + Math.random() * 20;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            const p = new THREE.Vector3(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+            positions[i3] = p.x;
+            positions[i3 + 1] = p.y;
+            positions[i3 + 2] = p.z;
+            
+            // Make most particles dim to appear as sharp points, with a few bright "hero" stars that will bloom.
+            if (Math.random() > 0.995) { // 0.5% of stars are very bright
+                // Use HDR values (greater than 1.0) to make these stars pop with the bloom effect.
+                const brightColor = baseColor.clone().lerp(whiteColor, 0.5);
+                colors[i3] = brightColor.r * 1.5;
+                colors[i3 + 1] = brightColor.g * 1.5;
+                colors[i3 + 2] = brightColor.b * 1.5;
             } else {
-                const r = 5 + Math.random() * 20;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos((Math.random() * 2) - 1);
-                const p = new THREE.Vector3(
-                    r * Math.sin(phi) * Math.cos(theta),
-                    r * Math.sin(phi) * Math.sin(theta),
-                    r * Math.cos(phi)
-                );
-                positions[i3] = p.x;
-                positions[i3 + 1] = p.y;
-                positions[i3 + 2] = p.z;
-                
-                // Make most particles dim to appear as sharp points, with a few bright "hero" stars that will bloom.
-                if (Math.random() > 0.995) { // 0.5% of stars are very bright
-                    // Use HDR values (greater than 1.0) to make these stars pop with the bloom effect.
-                    const brightColor = baseColor.clone().lerp(whiteColor, 0.5);
-                    colors[i3] = brightColor.r * 1.5;
-                    colors[i3 + 1] = brightColor.g * 1.5;
-                    colors[i3 + 2] = brightColor.b * 1.5;
-                } else {
-                    // The vast majority of stars will be dimmer and fall below the bloom threshold.
-                    const brightness = Math.random() * 0.8 + 0.6; // Range from 0.6 to 1.4
-                    const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.3);
-                    colors[i3] = mixedColor.r * brightness;
-                    colors[i3 + 1] = mixedColor.g * brightness;
-                    colors[i3 + 2] = mixedColor.b * brightness;
-                }
-
-
-                // Initial velocity for a structured, decaying orbit
-                 const orbitAxis = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.4, // Small randomness for X
-                    1, // Strong bias towards Y-axis orbit (like the disk)
-                    (Math.random() - 0.5) * 0.4  // Small randomness for Z
-                ).normalize();
-                const perpendicular = p.clone().cross(orbitAxis).normalize();
-                const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 1.5 / p.length()) * (0.8 + Math.random() * 0.1);
-                const velocity = perpendicular.multiplyScalar(initialSpeed);
-                velocities.current.push(velocity);
+                // The vast majority of stars will be dimmer and fall below the bloom threshold.
+                const brightness = Math.random() * 0.8 + 0.6; // Range from 0.6 to 1.4
+                const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.3);
+                colors[i3] = mixedColor.r * brightness;
+                colors[i3 + 1] = mixedColor.g * brightness;
+                colors[i3 + 2] = mixedColor.b * brightness;
             }
+
+
+            // Initial velocity for a structured, decaying orbit
+            const orbitAxis = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.4, // Small randomness for X
+                1, // Strong bias towards Y-axis orbit (like the disk)
+                (Math.random() - 0.5) * 0.4  // Small randomness for Z
+            ).normalize();
+            const perpendicular = p.clone().cross(orbitAxis).normalize();
+            const initialSpeed = Math.sqrt(GRAVITATIONAL_CONSTANT * 1.5 / p.length()) * (0.8 + Math.random() * 0.1);
+            const velocity = perpendicular.multiplyScalar(initialSpeed);
+            velocities.current.push(velocity);
         }
         prevPositions.set(positions);
 
@@ -625,14 +681,14 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
         const lensingPass = new ShaderPass(LensingShader);
-        lensingPass.uniforms.uStrength.value = isReturning ? 0.5 : 0.05;
+        lensingPass.uniforms.uStrength.value = 0.05; // Start with subtle lensing
         composer.addPass(lensingPass);
         
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         // A high threshold ensures only the brightest parts of the scene (accretion disk, hero stars) will glow,
         // preventing the entire starfield from becoming a blurry haze.
         bloomPass.threshold = 0.85; 
-        bloomPass.strength = isReturning ? 10 : 1.0; // Reduced strength for a more subtle, less overwhelming glow.
+        bloomPass.strength = 1.0; // Reduced strength for a more subtle, less overwhelming glow.
         bloomPass.radius = 0.3; // A smaller radius creates a tighter, more defined glow.
         composer.addPass(bloomPass);
         
@@ -702,7 +758,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             for (let i = 0; i < particleCount; i++) {
                 const p = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
                 
-                if(isReversingRef.current) {
+                if(isReversing) {
                     const speed = 0.2 + p.length() * 0.02;
                     p.z += speed;
                     p.x *= 1.03;
@@ -780,11 +836,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             }
             posAttr.needsUpdate = true;
             prevPosAttr.needsUpdate = true;
-            if (isTransitioning || isReversingRef.current || elapsedTime < 2) {
+            if (isTransitioning || isReversing || elapsedTime < 2) {
                 colorAttr.needsUpdate = true;
             }
 
-            if (!isTransitioning && !isReversingRef.current) {
+            if (!isTransitioning && !isReversing) {
                 controls.update();
             }
 
@@ -811,7 +867,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         window.addEventListener('resize', handleResize);
 
         if (isTransitioning) {
-            controls.enabled = false;
+            controls.enabled = false; // Disable orbit controls during transition
             
             // Animate the particle trail uniform for dramatic stretching
             gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 3.5, duration: 2.5, ease: 'power4.in' });
@@ -828,25 +884,63 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const targetColor = new THREE.Color(0xff00ff); // Aggressive magenta for the flash
             const whiteColor = new THREE.Color(0xffffff);
 
-            const tl = gsap.timeline({ onComplete: onEnter });
+            // Billboard animation - line traces from vortex to form frame
+            const animateBillboardTrace = () => {
+                console.log('🖼️ Animating billboard trace...');
+                
+                // Hide the line for now - it's causing visual issues
+                // We'll just fade in the billboard directly
+                
+                // Skip the line tracing animation for now
+                // Just show the billboard with a nice fade-in effect
+                
+                gsap.to(billboardMaterial, { 
+                    opacity: 0.85, 
+                    duration: 0.8,
+                    ease: 'power2.out'
+                });
+                
+                gsap.to(borderGlowMaterial, { 
+                    opacity: 0.4, 
+                    duration: 0.8,
+                    ease: 'power2.out',
+                    onComplete: () => {
+                        // Show React auth UI overlay after billboard fades in
+                        setShowAuthBillboard(true);
+                        console.log('✨ Billboard ready! Auth UI should appear.');
+                        
+                        // IMPORTANT: Do NOT call onEnter here! 
+                        // User must click "Connect Wallet" button
+                    }
+                });
+            };
+
+            // Changed: No longer auto-calls onEnter after transition
+            const tl = gsap.timeline({ 
+                onComplete: () => {
+                    console.log('🌀 Singularity transition complete. Starting billboard animation...');
+                    animateBillboardTrace();
+                }
+            });
             
             tl
-              // Camera position: approach the singularity but stop to observe it
+              // Camera position: center on the scene
               .to(camera.position, { 
-                  z: 3.0, // Stop at observing distance (not inside!)
-                  y: 2.0, // Slightly above for better viewing angle
+                  x: 0,
+                  y: 0, // Centered vertically
+                  z: 5.0, // Further back to see both vortex and billboard
                   duration: 3.5, 
                   ease: 'power3.inOut' 
               }, 0)
               
               // Multi-axis rotation: tumbling then stabilize to observe
               .to(camera.rotation, { 
-                  z: Math.PI * 2, // 2 barrel rolls (reduced from 4)
+                  z: Math.PI * 2, // 2 barrel rolls 
                   duration: 2.5, 
                   ease: 'power2.inOut' 
               }, 0)
               .to(camera.rotation, { 
-                  x: -Math.PI * 0.25, // Tilt down to look at singularity
+                  x: 0, // Face straight ahead (not tilted)
                   y: 0, // Face forward
                   z: 0, // No roll at end
                   duration: 1.5, 
@@ -935,12 +1029,46 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   onUpdate: () => camera.updateProjectionMatrix() 
               }, 0.5);
 
-        } else if (isReturning) {
-            gsap.timeline({ onComplete: () => { controls.enabled = true; isReversingRef.current = false; }})
-              .to(camera.position, { z: 15, duration: 2.5, ease: 'power3.out' })
-              .to(bloomPass, { strength: 1.0, duration: 2 }, "<")
-              .to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, "<")
-              .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, "<");
+        } else if (isReversing) {
+            // Reverse animation - return to landing page
+            controls.enabled = false;
+            
+            gsap.timeline({ 
+                onComplete: () => { 
+                    controls.enabled = true; 
+                    setIsReversing(false);
+                    setIsTransitioning(false);
+                }
+            })
+              // Hide billboard and vortex
+              .to(billboardMaterial, { opacity: 0, duration: 0.3 }, 0)
+              .to(borderGlowMaterial, { opacity: 0, duration: 0.3 }, 0)
+              .to(vortexMaterial.uniforms.uIntensity, { value: 0, duration: 0.5 }, 0)
+              
+              // Camera returns to starting position
+              .to(camera.position, { 
+                  x: 0,
+                  y: 0,
+                  z: 15, 
+                  duration: 2.5, 
+                  ease: 'power3.out' 
+              }, 0.3)
+              
+              // Reset camera rotation
+              .to(camera.rotation, {
+                  x: 0,
+                  y: 0,
+                  z: 0,
+                  duration: 2.0,
+                  ease: 'power2.out'
+              }, 0.3)
+              
+              // Reset post-processing
+              .to(bloomPass, { strength: 1.0, duration: 2 }, 0.3)
+              .to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, 0.3)
+              .to(lensingPass.uniforms.uRadius, { value: 0.25, duration: 2.5, ease: 'power3.out' }, 0.3)
+              .to(chromaticAberrationPass.uniforms.uAberrationAmount, { value: 0.002, duration: 2.0, ease: 'power2.out' }, 0.3)
+              .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3);
         }
         
         let audioStarted = false;
@@ -983,12 +1111,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 }
             });
         };
-    }, [isTransitioning, onEnter, isReturning]);
+    }, [isTransitioning, isReversing, onEnter]);
 
     return (
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
-            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversingRef.current ? '!opacity-0' : ''} pointer-events-none`}>
+            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversing ? '!opacity-0' : ''} pointer-events-none`}>
                 {/* Top: Title */}
                 <div className="text-center pointer-events-auto w-full">
                     <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
@@ -1017,6 +1145,81 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     </div>
                 </div>
             </div>
+            
+            {/* AUTH BILLBOARD UI - Appears after line trace animation */}
+            {showAuthBillboard && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none auth-billboard-container">
+                    <div 
+                        className="pointer-events-auto bg-black/90 border-2 border-cyan-400 rounded-lg p-8 w-[500px] max-w-[90vw] auth-billboard"
+                        style={{
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 0 30px rgba(0, 255, 255, 0.5)',
+                        }}
+                    >
+                        <div className="text-center space-y-6">
+                            {/* Back Button */}
+                            <button
+                                onClick={handleBackClick}
+                                className="absolute top-4 left-4 text-cyan-400 hover:text-cyan-300 transition-colors duration-200"
+                                title="Go back"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                            </button>
+                            
+                            {/* Title */}
+                            <div>
+                                <h2 className="text-3xl font-bold text-cyan-300 mb-2" style={{ textShadow: '0 0 10px #0ff' }}>
+                                    AUTHENTICATION REQUIRED
+                                </h2>
+                                <div className="h-1 w-20 bg-gradient-to-r from-cyan-500 to-transparent mx-auto" />
+                            </div>
+                            
+                            {/* Message */}
+                            <p className="text-gray-300 text-lg">
+                                The singularity has granted access.<br />
+                                Connect your wallet to proceed.
+                            </p>
+                            
+                            {/* Connect Wallet Button */}
+                            <button
+                                onClick={() => {
+                                    console.log('🔗 Wallet connect clicked');
+                                    // Call the actual onEnter to proceed to dashboard
+                                    onEnter();
+                                }}
+                                className="w-full px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 
+                                           text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                           shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:shadow-[0_0_30px_rgba(0,255,255,0.6)]"
+                            >
+                                CONNECT WALLET
+                            </button>
+                            
+                            {/* Supported Wallets */}
+                            <div className="flex justify-center gap-4 pt-4 opacity-70">
+                                <div className="text-xs text-gray-400">
+                                    Phantom • MetaMask • WalletConnect
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            <style dangerouslySetInnerHTML={{__html: `
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes scaleIn {
+                    from { transform: scale(0.9); }
+                    to { transform: scale(1); }
+                }
+                .auth-billboard {
+                    animation: fadeIn 0.5s ease-out, scaleIn 0.5s ease-out;
+                }
+            `}} />
         </div>
     );
 };

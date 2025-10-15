@@ -1,25 +1,42 @@
-fix: Disable HDRI temporarily due to format compatibility
+feat: Add singularity vortex animation for auth transition
 
-ISSUE ENCOUNTERED:
-- Uploaded 91MB nebula.hdr file to server successfully
-- RGBELoader throws "Bad File Format: bad initial token" error
-- File header is valid Radiance format (#?RADIANCE)
-- Likely Three.js version compatibility issue
+SINGULARITY VORTEX SHADER:
+- Swirling whirlpool effect inspired by water vortex physics
+- Spiral patterns rotating inward toward center
+- Color gradient: Deep purple → Cyan → White at center
+- Pulsing center glow simulating singularity core
+- Organic noise for realistic turbulence
+- Additive blending for ethereal glow effect
 
-CURRENT STATE:
-- hdriEnabled set to false
-- Using black background with particle starfield
-- Audio-reactive accretion disk working perfectly
-- All other effects functional
+ENHANCED TRANSITION ANIMATION:
+- Camera approaches from z=15 to z=3 (observing distance, not inside)
+- Camera rises to y=2 for optimal viewing angle
+- 2 barrel rolls during approach (reduced from 4)
+- Camera stabilizes and tilts down (-45°) to observe singularity
+- Vortex fades in smoothly (uIntensity: 0 → 1.5)
 
-BENEFITS OF CURRENT SETUP:
-- Clean deep space aesthetic
-- 20000 particle stars with orbital physics
-- Audio-reactive effects on disk and bloom
-- Fast loading (no 91MB HDRI download)
-- No CORS or caching issues
+BALANCED POST-PROCESSING:
+- Bloom reduced from 50 to 8 (dramatic but visible)
+- Lensing: 0.4 strength, 0.6 radius (moderate distortion)
+- Chromatic aberration: 0.015 (subtle warping)
+- FOV: 95° (immersive but not distorted)
+- Ambient light: 0.8 (dim but visible)
 
-TODO (OPTIONAL):
-- Try different HDR file format or resolution
-- Or keep black background as final design
-- Particle starfield looks great on its own
+CAMERA FINAL STATE:
+- Position: (0, 2, 3) - Close observation point
+- Rotation: (-45°, 0°, 0°) - Looking down at vortex
+- FOV: 95° - Wide immersive view
+- Duration: 3.5s total animation
+
+AUTH MODAL SETUP:
+- Transition completes at 3.5s
+- User observes mesmerizing swirling vortex
+- Perfect visual context for auth modal
+- Modal will appear to emerge from singularity center
+- Creates narrative: "Access granted from within the blackhole"
+
+DOCUMENTATION:
+- Created SINGULARITY_ANIMATION.md with complete specs
+- Includes visual design, timing, and integration guide
+
+Ready for auth modal integration at 3.5s mark
