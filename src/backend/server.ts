@@ -81,12 +81,14 @@ app.use('/assets', express.static(publicAssetsPath, {
   }
 }));
 
-// Also serve from root for subdomain (assets.alpha.sniff.agency/hdri/nebula.hdr)
-// This MUST come after API routes so /api/* doesn't get intercepted
-app.use('/', express.static(publicAssetsPath, {
+// Serve HDR files from /hdri path (for assets.sniff.agency/hdri/nebula.hdr)
+const hdriPath = path.join(__dirname, '../../public/assets/hdri');
+app.use('/hdri', express.static(hdriPath, {
   setHeaders: (res, filepath) => {
+    console.log(`📁 [HDRI] Serving file: ${filepath}`);
     if (filepath.endsWith('.hdr')) {
       res.setHeader('Content-Type', 'application/octet-stream');
+      console.log(`📁 [HDRI] Set Content-Type to octet-stream for HDR`);
     }
   }
 }));
