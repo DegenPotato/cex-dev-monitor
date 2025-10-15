@@ -2,6 +2,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -215,6 +216,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const isReversingRef = useRef(isReturning);
     const velocities = useRef<THREE.Vector3[]>([]);
+    const mascotRef = useRef<THREE.Group | null>(null);
+    const animationMixer = useRef<THREE.AnimationMixer | null>(null);
 
 
     const handleEnterClick = useCallback(() => {
@@ -253,6 +256,83 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         }, undefined, function(error) {
             console.error('❌ Error loading audio:', error);
         });
+
+        // Load Mascot (Astronaut) with enhanced error handling
+        console.log('👾 Loading mascot model...');
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load(
+            'https://cdn.jsdelivr.net/gh/Sean-Bradley/React-Three-Fiber-Boilerplate@glTFLoader/public/models/astronaut.glb',
+            (gltf) => {
+                console.log('✅ Mascot model loaded successfully!');
+                const model = gltf.scene;
+                mascotRef.current = model;
+                
+                // Position and scale
+                model.scale.set(0.8, 0.8, 0.8);
+                model.position.set(5, 1, -2); // To the right of the blackhole
+                model.rotation.y = -Math.PI / 2; // Face the camera
+                
+                // Create glowing materials
+                const cyanMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0x00ffff, 
+                    emissive: 0x00ffff, 
+                    emissiveIntensity: 3, 
+                    metalness: 0.8, 
+                    roughness: 0.2 
+                });
+                const magentaMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0xff00ff, 
+                    emissive: 0xff00ff, 
+                    emissiveIntensity: 3, 
+                    metalness: 0.8, 
+                    roughness: 0.2 
+                });
+                
+                // Apply materials to model parts
+                model.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        console.log('  📦 Mesh found:', child.name);
+                        
+                        // Customize materials based on mesh name
+                        if (child.name.includes('Visor') || child.name.includes('Glass') || child.name.includes('Helmet')) {
+                            child.material = cyanMaterial;
+                            console.log('    🔵 Applied cyan material to:', child.name);
+                        }
+                        if (child.name.includes('Backpack') || child.name.includes('Cylinder') || child.name.includes('Pack')) {
+                            child.material = magentaMaterial;
+                            console.log('    🟣 Applied magenta material to:', child.name);
+                        }
+                    }
+                });
+                
+                // Add to scene
+                scene.add(model);
+                console.log('  ✅ Mascot added to scene at position:', model.position);
+                
+                // Setup animation if available
+                if (gltf.animations && gltf.animations.length > 0) {
+                    animationMixer.current = new THREE.AnimationMixer(model);
+                    const action = animationMixer.current.clipAction(gltf.animations[0]);
+                    action.play();
+                    console.log('  🎬 Animation started:', gltf.animations[0].name);
+                } else {
+                    console.log('  ⚠️ No animations found in model');
+                }
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total * 100).toFixed(2);
+                console.log(`  ⏳ Loading mascot: ${percent}%`);
+            },
+            (error) => {
+                console.error('❌ Error loading mascot model:', error);
+                console.error('  URL:', 'https://cdn.jsdelivr.net/gh/Sean-Bradley/React-Three-Fiber-Boilerplate@glTFLoader/public/models/astronaut.glb');
+                console.error('  This could be due to:');
+                console.error('    - CORS policy blocking the CDN');
+                console.error('    - Network issues');
+                console.error('    - Invalid model file');
+            }
+        );
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -513,6 +593,19 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const elapsedTime = clock.getElapsedTime();
             diskMaterial.uniforms.uTime.value = elapsedTime;
 
+            // Update mascot animation
+            if (animationMixer.current) {
+                animationMixer.current.update(delta);
+            }
+            
+            // Make mascot look at camera (smooth rotation)
+            if (mascotRef.current && !isTransitioning) {
+                const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(mascotRef.current.position, camera.position, mascotRef.current.up)
+                );
+                mascotRef.current.quaternion.slerp(targetQuaternion, 0.02);
+            }
+
             // Audio reactivity - Enhanced responsiveness
             let bass = 0, mid = 0, treble = 0;
             if (soundRef.current?.isPlaying) {
@@ -691,7 +784,30 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const targetColor = new THREE.Color(0xff00ff); // Aggressive magenta for the flash
             const whiteColor = new THREE.Color(0xffffff);
 
-            gsap.timeline({ onComplete: onEnter })
+            const tl = gsap.timeline({ onComplete: onEnter });
+            
+            // Animate mascot into black hole
+            if (mascotRef.current) {
+                tl.to(mascotRef.current.position, { 
+                    x: 0, y: 0, z: 0, 
+                    duration: 4.5, 
+                    ease: 'power3.in' 
+                }, 0);
+                tl.to(mascotRef.current.rotation, { 
+                    y: Math.PI * 4, 
+                    z: Math.PI * 6, 
+                    duration: 4.5, 
+                    ease: 'power2.in' 
+                }, 0);
+                tl.to(mascotRef.current.scale, { 
+                    x: 0.1, y: 0.1, z: 0.1, 
+                    duration: 4.5, 
+                    ease: 'power3.in' 
+                }, 0);
+                console.log('🌀 Mascot being sucked into blackhole!');
+            }
+            
+            tl
               // Camera position: accelerate exponentially into the singularity
               .to(camera.position, { 
                   z: 0.1, // Much closer to the event horizon
