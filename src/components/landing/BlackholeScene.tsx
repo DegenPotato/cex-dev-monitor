@@ -999,7 +999,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             };
 
             // Timeline for transition to billboard
-            const tl = gsap.timeline({ 
+            gsap.timeline({ 
                 onComplete: () => {
                     console.log('🌀 Singularity transition complete. Starting billboard animation...');
                     animateBillboardTrace();
