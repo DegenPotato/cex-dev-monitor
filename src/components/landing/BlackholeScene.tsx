@@ -716,13 +716,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             }
             
             // Make most particles dim with a few bright "hero" stars that will bloom
-            if (Math.random() > 0.995) { // 0.5% are very bright
-                // HDR values (> 1.0) for bloom effect
-                colors[i3] = 1.5;
-                colors[i3 + 1] = 1.5;
-                colors[i3 + 2] = 1.5;
+            if (Math.random() > 0.998) { // Only 0.2% are very bright (reduced from 0.5%)
+                // Softer HDR values - not too intense
+                colors[i3] = 1.2;
+                colors[i3 + 1] = 1.2;
+                colors[i3 + 2] = 1.2;
             } else {
-                const brightness = Math.random() * 0.8 + 0.6;
+                const brightness = Math.random() * 0.6 + 0.4; // Dimmer: 0.4-1.0 (was 0.6-1.4)
                 colors[i3] = particleColor.r * brightness;
                 colors[i3 + 1] = particleColor.g * brightness;
                 colors[i3 + 2] = particleColor.b * brightness;
@@ -772,7 +772,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         // A high threshold ensures only the brightest parts of the scene (accretion disk, hero stars) will glow,
         // preventing the entire starfield from becoming a blurry haze.
         bloomPass.threshold = 0.85; 
-        bloomPass.strength = 1.0; // Reduced strength for a more subtle, less overwhelming glow.
+        bloomPass.strength = 0.4; // GENTLE bloom - comfortable for eyes, not epilepsy-inducing
         bloomPass.radius = 0.3; // A smaller radius creates a tighter, more defined glow.
         bloomPassRef.current = bloomPass; // Store for reverse animation
         composer.addPass(bloomPass);
@@ -953,10 +953,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 controls.update();
             }
 
-            // Bloom responds to overall audio energy (more dramatic)
+            // Bloom responds to overall audio energy (gentle, not overwhelming)
             if (soundRef.current?.isPlaying) {
                 const avgEnergy = (bass + mid + treble) / 3;
-                bloomPass.strength = 1.0 + avgEnergy * 4.0; // Strong bloom boost: 1.0-5.0 (was 2.0)
+                bloomPass.strength = 0.4 + avgEnergy * 1.2; // Gentle bloom: 0.4-1.6 (eye-friendly!)
             }
 
             composer.render();
@@ -1159,12 +1159,26 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   ease: 'power2.out'
               }, 0.3)
               
-              // Reset post-processing
-              .to(bloomPass, { strength: 1.0, duration: 2 }, 0.3)
+              // Reset post-processing to gentle values
+              .to(bloomPass, { strength: 0.4, duration: 2 }, 0.3)
               .to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, 0.3)
               .to(lensingPass.uniforms.uRadius, { value: 0.25, duration: 2.5, ease: 'power3.out' }, 0.3)
               .to(chromaticAberrationPass.uniforms.uAberrationAmount, { value: 0.002, duration: 2.0, ease: 'power2.out' }, 0.3)
-              .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3);
+              .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3)
+              
+              // Reset ambient light to original starting values (FIXES BLOWN-OUT BRIGHTNESS)
+              .to(ambientLight, { 
+                  intensity: 0.2, // Original starting intensity
+                  duration: 2.0, 
+                  ease: 'power2.out' 
+              }, 0.3)
+              .to(ambientLight.color, {
+                  r: new THREE.Color(0x4c00ff).r,
+                  g: new THREE.Color(0x4c00ff).g,
+                  b: new THREE.Color(0x4c00ff).b,
+                  duration: 2.0,
+                  ease: 'power2.out'
+              }, 0.3);
         }
         
         let audioStarted = false;
