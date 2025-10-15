@@ -226,6 +226,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const bloomPassRef = useRef<any>(null);
     const lensingPassRef = useRef<any>(null);
     const chromaticAberrationPassRef = useRef<any>(null);
+    const billboardMeshRef = useRef<THREE.Mesh | null>(null);
+    const borderGlowMeshRef = useRef<THREE.Mesh | null>(null);
 
 
     const handleEnterClick = useCallback(() => {
@@ -334,7 +336,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         controls.enabled = true; // Start with controls enabled
         controls.enableDamping = true;
         controls.dampingFactor = 0.03;
-        controls.enableZoom = false; // Disable scroll zoom
+        controls.enableZoom = true; // Enable scroll zoom
         controls.minDistance = 5;
         controls.maxDistance = 40;
         controls.autoRotate = true;
@@ -573,6 +575,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         billboardMaterialRef.current = billboardMaterial; // Store for reverse animation
         const billboard = new THREE.Mesh(billboardGeometry, billboardMaterial);
         billboard.position.set(0, 0, billboardZ);
+        billboard.visible = false; // Hide initially to prevent artifact
+        billboardMeshRef.current = billboard; // Store mesh reference
         scene.add(billboard);
         
         // Border glow for billboard
@@ -586,6 +590,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         borderGlowMaterialRef.current = borderGlowMaterial; // Store for reverse animation
         const borderGlow = new THREE.Mesh(borderGlowGeometry, borderGlowMaterial);
         borderGlow.position.set(0, 0, billboardZ - 0.01); // Slightly behind billboard
+        borderGlow.visible = false; // Hide initially to prevent artifact
+        borderGlowMeshRef.current = borderGlow; // Store mesh reference
         scene.add(borderGlow);
         
         // Create lensflare textures programmatically (avoids CORS issues)
@@ -920,6 +926,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             const animateBillboardTrace = () => {
                 console.log('🖼️ Animating billboard trace...');
                 
+                // Make billboards visible first
+                if (billboardMeshRef.current) billboardMeshRef.current.visible = true;
+                if (borderGlowMeshRef.current) borderGlowMeshRef.current.visible = true;
+                
                 // Hide the line for now - it's causing visual issues
                 // We'll just fade in the billboard directly
                 
@@ -1178,10 +1188,24 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         
         // Hide billboard and vortex if they exist
         if (billboardMaterial) {
-            tl.to(billboardMaterial, { opacity: 0, duration: 0.3 }, 0);
+            tl.to(billboardMaterial, { 
+                opacity: 0, 
+                duration: 0.3,
+                onComplete: () => {
+                    // Hide the mesh after fading out to prevent artifact
+                    if (billboardMeshRef.current) billboardMeshRef.current.visible = false;
+                }
+            }, 0);
         }
         if (borderGlowMaterial) {
-            tl.to(borderGlowMaterial, { opacity: 0, duration: 0.3 }, 0);
+            tl.to(borderGlowMaterial, { 
+                opacity: 0, 
+                duration: 0.3,
+                onComplete: () => {
+                    // Hide the mesh after fading out to prevent artifact
+                    if (borderGlowMeshRef.current) borderGlowMeshRef.current.visible = false;
+                }
+            }, 0);
         }
         if (vortexMaterial) {
             tl.to(vortexMaterial.uniforms.uIntensity, { value: 0, duration: 0.5 }, 0);
@@ -1228,14 +1252,32 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
             <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${isTransitioning || isReversing ? '!opacity-0' : ''} pointer-events-none`}>
-                {/* Top: Title */}
-                <div className="text-center pointer-events-auto w-full">
-                    <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
-                        SNIFF AGENCY
-                    </h1>
+                {/* Top: Title + Connect Wallet Button */}
+                <div className="flex justify-between items-start w-full">
+                    {/* Title - NO pointer events so scroll can pass through */}
+                    <div className="text-center flex-1">
+                        <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
+                            SNIFF AGENCY
+                        </h1>
+                    </div>
+                    
+                    {/* Connect Wallet Button - Top Right */}
+                    <button
+                        onClick={() => {
+                            console.log('🔗 Connect Wallet clicked from landing page');
+                            // TODO: Implement wallet connection
+                            // This will trigger audio in VR and start auth flow
+                        }}
+                        className="pointer-events-auto px-6 py-3 border-2 border-cyan-400 text-cyan-400 rounded-lg text-sm font-bold uppercase tracking-wider
+                                   transform hover:scale-105 hover:bg-cyan-400 hover:text-black hover:shadow-[0_0_20px_rgba(0,255,255,0.6)] transition-all duration-300
+                                   whitespace-nowrap"
+                        style={{ textShadow: '0 0 5px #0ff' }}
+                    >
+                        Connect Wallet
+                    </button>
                 </div>
 
-                {/* Center: Button */}
+                {/* Center: Button - ONLY the button has pointer events */}
                 <div className="pointer-events-auto">
                     <button
                         onClick={handleEnterClick}
@@ -1246,8 +1288,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     </button>
                 </div>
 
-                {/* Bottom: Tagline + Instructions */}
-                <div className="text-center pointer-events-auto w-full">
+                {/* Bottom: Tagline + Instructions - NO pointer events so scroll can pass through */}
+                <div className="text-center w-full">
                     <p className="text-xl md:text-2xl mb-2 text-cyan-300" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 5px #0ff' }}>
                         Follow the Money.
                     </p>
@@ -1290,16 +1332,22 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                             {/* Message */}
                             <p className="text-gray-300 text-lg">
                                 The singularity has granted access.<br />
-                                Connect your wallet to proceed.
+                                Sign the message to proceed.
                             </p>
                             
-                            {/* Connect Wallet Button - DISABLED for now */}
+                            {/* Sign Message Button - Second checkpoint */}
                             <button
-                                disabled
-                                className="w-full px-8 py-4 bg-gradient-to-r from-gray-600 to-gray-700 
-                                           text-gray-400 font-bold rounded-lg cursor-not-allowed opacity-60"
+                                onClick={() => {
+                                    console.log('✍️ Sign nonce message clicked');
+                                    // TODO: Implement nonce signature
+                                    // After successful signature, call onEnter() to navigate to dashboard
+                                    // onEnter();
+                                }}
+                                className="w-full px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 
+                                           text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                           shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:shadow-[0_0_30px_rgba(0,255,255,0.6)]"
                             >
-                                CONNECT WALLET (Coming Soon)
+                                SIGN MESSAGE
                             </button>
                             
                             {/* Supported Wallets */}
