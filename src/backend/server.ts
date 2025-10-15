@@ -44,7 +44,8 @@ app.use(cors({
   origin: '*',
   credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Type', 'Content-Length']
 }));
 
 app.use(express.json());
@@ -52,23 +53,46 @@ app.use(cookieParser());
 
 // Serve static files from public directory (for HDRI, audio, etc.)
 const publicAssetsPath = path.join(__dirname, '../../public/assets');
+
+// Add logging middleware for asset requests
+app.use((req, _res, next) => {
+  if (req.path.includes('.hdr') || req.path.includes('/hdri/')) {
+    console.log(`📁 [Assets] Request: ${req.method} ${req.url}`);
+    console.log(`📁 [Assets] Full path will be: ${publicAssetsPath}${req.url}`);
+  }
+  next();
+});
+
+// Initialize database FIRST
+await initDatabase();
+
+// Register API routes BEFORE static files
+app.use('/api/database', databaseRoutes);
+app.use('/api/auth', authRoutes);
+
+// Serve static files AFTER API routes (so /api/* takes priority)
 app.use('/assets', express.static(publicAssetsPath, {
   setHeaders: (res, filepath) => {
-    // Set correct Content-Type for HDR files
+    console.log(`📁 [Assets] Serving file: ${filepath}`);
+    if (filepath.endsWith('.hdr')) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      console.log(`📁 [Assets] Set Content-Type to octet-stream for HDR`);
+    }
+  }
+}));
+
+// Also serve from root for subdomain (assets.alpha.sniff.agency/hdri/nebula.hdr)
+// This MUST come after API routes so /api/* doesn't get intercepted
+app.use('/', express.static(publicAssetsPath, {
+  setHeaders: (res, filepath) => {
     if (filepath.endsWith('.hdr')) {
       res.setHeader('Content-Type', 'application/octet-stream');
     }
   }
 }));
-console.log('📁 [Server] Serving static files from /assets');
+
+console.log('📁 [Server] Serving static files from /assets and root');
 console.log('📁 [Server] Public assets path:', publicAssetsPath);
-
-// Initialize database
-await initDatabase();
-
-// Register API routes
-app.use('/api/database', databaseRoutes);
-app.use('/api/auth', authRoutes);
 
 // Load separate concurrency configs for Proxy and RPC rotation
 const proxyMaxConcurrent = await ConfigProvider.get('proxy_max_concurrent');

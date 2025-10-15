@@ -407,7 +407,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         // Load Space HDRI Environment
         const rgbeLoader = new RGBELoader();
         const hdriEnabled = true;
-        const hdriUrl = 'https://alpha.sniff.agency/assets/hdri/nebula.hdr';
+        const hdriUrl = 'https://assets.alpha.sniff.agency/hdri/nebula.hdr'; // Subdomain for backend assets
         
         if (hdriEnabled) {
             rgbeLoader.load(
