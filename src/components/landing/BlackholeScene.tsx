@@ -214,6 +214,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [isReversing, setIsReversing] = useState(false);
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
     
@@ -239,13 +240,46 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const handleBackClick = useCallback(() => {
         if(isReversing) return;
         console.log('🔙 Back button clicked - starting reverse animation');
+        setShowAuthBillboard(false);
         setIsReversing(true);
-        setShowAuthBillboard(false); // Hide auth billboard immediately
+        setIsTransitioning(false);
     }, [isReversing]);
+
+    const toggleFullscreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+            // Enter fullscreen
+            document.documentElement.requestFullscreen().then(() => {
+                setIsFullscreen(true);
+                console.log('🖥️ Entered fullscreen mode');
+            }).catch((err) => {
+                console.error('❌ Failed to enter fullscreen:', err);
+            });
+        } else {
+            // Exit fullscreen
+            document.exitFullscreen().then(() => {
+                setIsFullscreen(false);
+                console.log('🖥️ Exited fullscreen mode');
+            }).catch((err) => {
+                console.error('❌ Failed to exit fullscreen:', err);
+            });
+        }
+    }, []);
+    
+    // Listen for fullscreen changes (e.g., user presses ESC)
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+        };
+    }, []);
 
     useEffect(() => {
         if (!mountRef.current) return;
-
+        
         const currentMount = mountRef.current;
 
         // Scene setup
@@ -1318,6 +1352,27 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     </div>
                 </div>
             </div>
+            
+            {/* Fullscreen Button - Bottom Right (always visible) */}
+            <button
+                onClick={toggleFullscreen}
+                className="pointer-events-auto absolute bottom-8 right-8 p-3 border-2 border-cyan-400/60 text-cyan-400 rounded-lg
+                           transform hover:scale-110 hover:border-cyan-300 hover:text-cyan-300 hover:shadow-[0_0_15px_rgba(0,255,255,0.4)]
+                           transition-all duration-300 backdrop-blur-sm bg-black/30"
+                title={isFullscreen ? "Exit Fullscreen (Esc)" : "Enter Fullscreen (Required for VR)"}
+            >
+                {isFullscreen ? (
+                    // Exit Fullscreen Icon
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                ) : (
+                    // Enter Fullscreen Icon
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                )}
+            </button>
             
             {/* AUTH BILLBOARD UI - Appears after line trace animation */}
             {showAuthBillboard && (
