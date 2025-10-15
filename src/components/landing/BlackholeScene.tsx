@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -405,12 +405,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
 
         // Load Space HDRI Environment
-        const rgbeLoader = new RGBELoader();
+        const hdrLoader = new HDRLoader();
         const hdriEnabled = true;
         const hdriUrl = 'https://assets.sniff.agency/hdri/nebula.hdr';
         
         if (hdriEnabled) {
-            rgbeLoader.load(
+            hdrLoader.load(
                 hdriUrl,
                 (texture) => {
                     texture.mapping = THREE.EquirectangularReflectionMapping;
