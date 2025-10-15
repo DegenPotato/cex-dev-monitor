@@ -212,7 +212,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const mountRef = useRef<HTMLDivElement>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isTransitioning, setIsTransitioning] = useState(false);
-    const [isReversing, setIsReversing] = useState(false);
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
@@ -237,17 +236,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
 
     const handleEnterClick = useCallback(() => {
-        if(isTransitioning || isReversing) return;
+        if(isTransitioning) return;
         setIsTransitioning(true);
-    }, [isTransitioning, isReversing]);
-    
-    const handleBackClick = useCallback(() => {
-        if(isReversing) return;
-        console.log('🔙 Back button clicked - starting reverse animation');
-        setShowAuthBillboard(false);
-        setIsReversing(true);
-        setIsTransitioning(false);
-    }, [isReversing]);
+    }, [isTransitioning]);
 
     const toggleFullscreen = useCallback(() => {
         if (!document.fullscreenElement) {
@@ -305,14 +296,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const rgbeLoader = new RGBELoader();
         
         // HDRI Configuration
-        // Option 1: Host on your backend server (recommended)
-        //   - Upload HDR files to your server's static assets folder
-        //   - Update URL: 'https://your-server.com/assets/hdri/nebula.hdr'
-        // Option 2: Use CDN (Cloudflare R2, AWS S3, etc)
-        // Option 3: Disable for now (will use black background)
+        // For local testing: Place your .hdr file in /public/nebula.hdr
+        // For production: Upload to server and use full URL
         
-        const hdriEnabled = false; // Disabled temporarily - file format issue
-        const hdriUrl = 'https://alpha.sniff.agency/assets/hdri/nebula.hdr'; // Server static assets
+        const hdriEnabled = true; // Re-enabled for testing
+        const hdriUrl = '/nebula.hdr'; // Local file for testing (change to server URL when ready)
+        // Production URL: 'https://alpha.sniff.agency/assets/hdri/nebula.hdr'
         
         if (hdriEnabled) {
             rgbeLoader.load(
@@ -730,7 +719,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const whiteColor = new THREE.Color(0xffffff);
         const cyanColor = new THREE.Color(0x00ffff);
         const violetColor = new THREE.Color(0x9933ff);
-        const baseColor = new THREE.Color(0x88ddff);
 
         const GRAVITATIONAL_CONSTANT = 0.8;
         const EVENT_HORIZON_RADIUS = 2.0;
@@ -895,25 +883,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             for (let i = 0; i < particleCount; i++) {
                 const p = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
                 
-                if(isReversing) {
-                    const speed = 0.2 + p.length() * 0.02;
-                    p.z += speed;
-                    p.x *= 1.03;
-                    p.y *= 1.03;
-
-                    const r = colorAttr.getX(i), g = colorAttr.getY(i), b = colorAttr.getZ(i);
-                    colorAttr.setXYZ(i, r + (baseColor.r - r) * 0.01, g + (baseColor.g - g) * 0.01, b + (baseColor.b - b) * 0.01);
-                    
-                    if (p.length() > 35) {
-                        const r_reset = 20 + Math.random() * 10;
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos((Math.random() * 2) - 1);
-                        p.set(r_reset * Math.sin(phi) * Math.cos(theta), r_reset * Math.sin(phi) * Math.sin(theta), r_reset * Math.cos(phi));
-                        const mixedColor = baseColor.clone().lerp(whiteColor, Math.random() * 0.5);
-                        colorAttr.setXYZ(i, mixedColor.r, mixedColor.g, mixedColor.b);
-                    }
-
-                } else if(isTransitioning) {
+                if(isTransitioning) {
                    const speed = 1 + p.length() * 0.05;
                    p.z -= speed;
                    p.x *= 0.99;
@@ -996,11 +966,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             }
             posAttr.needsUpdate = true;
             prevPosAttr.needsUpdate = true;
-            if (isTransitioning || isReversing || elapsedTime < 2) {
+            if (isTransitioning || elapsedTime < 2) {
                 colorAttr.needsUpdate = true;
             }
 
-            if (!isTransitioning && !isReversing) {
+            if (!isTransitioning) {
                 controls.update();
             }
 
@@ -1174,62 +1144,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   duration: 3,
                   ease: 'power4.in'
               }, 0);
-
-        } else if (isReversing) {
-            // Reverse animation - return to landing page
-            console.log('🔄 Executing reverse animation to return to landing page');
-            controls.enabled = false;
-            
-            gsap.timeline({ 
-                onComplete: () => { 
-                    controls.enabled = true; 
-                    setIsReversing(false);
-                    setIsTransitioning(false);
-                }
-            })
-              // Hide billboard and vortex
-              .to(billboardMaterial, { opacity: 0, duration: 0.3 }, 0)
-              .to(borderGlowMaterial, { opacity: 0, duration: 0.3 }, 0)
-              .to(vortexMaterial.uniforms.uIntensity, { value: 0, duration: 0.5 }, 0)
-              
-              // Camera returns to starting position
-              .to(camera.position, { 
-                  x: 0,
-                  y: 0,
-                  z: 15, 
-                  duration: 2.5, 
-                  ease: 'power3.out' 
-              }, 0.3)
-              
-              // Reset camera rotation
-              .to(camera.rotation, {
-                  x: 0,
-                  y: 0,
-                  z: 0,
-                  duration: 2.0,
-                  ease: 'power2.out'
-              }, 0.3)
-              
-              // Reset post-processing to gentle values
-              .to(bloomPass, { strength: 0.4, duration: 2 }, 0.3)
-              .to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, 0.3)
-              .to(lensingPass.uniforms.uRadius, { value: 0.25, duration: 2.5, ease: 'power3.out' }, 0.3)
-              .to(chromaticAberrationPass.uniforms.uAberrationAmount, { value: 0.002, duration: 2.0, ease: 'power2.out' }, 0.3)
-              .to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3)
-              
-              // Reset ambient light to original starting values (FIXES BLOWN-OUT BRIGHTNESS)
-              .to(ambientLight, { 
-                  intensity: 0.2, // Original starting intensity
-                  duration: 2.0, 
-                  ease: 'power2.out' 
-              }, 0.3)
-              .to(ambientLight.color, {
-                  r: new THREE.Color(0x4c00ff).r,
-                  g: new THREE.Color(0x4c00ff).g,
-                  b: new THREE.Color(0x4c00ff).b,
-                  duration: 2.0,
-                  ease: 'power2.out'
-              }, 0.3);
         }
         
         let audioStarted = false;
@@ -1273,95 +1187,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 }
             });
         };
-    }, [isTransitioning, onEnter]); // Removed isReversing - it shouldn't recreate the scene
-    
-    // Separate effect to handle reverse animation without recreating the scene
-    useEffect(() => {
-        if (!isReversing || !cameraRef.current || !controlsRef.current) return;
-        
-        console.log('🔄 Executing reverse animation back to landing page');
-        
-        const camera = cameraRef.current;
-        const controls = controlsRef.current;
-        const billboardMaterial = billboardMaterialRef.current;
-        const borderGlowMaterial = borderGlowMaterialRef.current;
-        const vortexMaterial = vortexMaterialRef.current;
-        const bloomPass = bloomPassRef.current;
-        const lensingPass = lensingPassRef.current;
-        const chromaticAberrationPass = chromaticAberrationPassRef.current;
-        
-        controls.enabled = false;
-        
-        const tl = gsap.timeline({ 
-            onComplete: () => { 
-                controls.enabled = true; 
-                setIsReversing(false);
-                setIsTransitioning(false);
-                console.log('✅ Reverse animation complete - back at landing page');
-            }
-        });
-        
-        // Hide billboard and vortex if they exist
-        if (billboardMaterial) {
-            tl.to(billboardMaterial, { 
-                opacity: 0, 
-                duration: 0.3,
-                onComplete: () => {
-                    // Hide the mesh after fading out to prevent artifact
-                    if (billboardMeshRef.current) billboardMeshRef.current.visible = false;
-                }
-            }, 0);
-        }
-        if (borderGlowMaterial) {
-            tl.to(borderGlowMaterial, { 
-                opacity: 0, 
-                duration: 0.3,
-                onComplete: () => {
-                    // Hide the mesh after fading out to prevent artifact
-                    if (borderGlowMeshRef.current) borderGlowMeshRef.current.visible = false;
-                }
-            }, 0);
-        }
-        if (vortexMaterial) {
-            tl.to(vortexMaterial.uniforms.uIntensity, { value: 0, duration: 0.5 }, 0);
-        }
-        
-        // Camera returns to starting position
-        tl.to(camera.position, { 
-            x: 0,
-            y: 0,
-            z: 15, 
-            duration: 2.5, 
-            ease: 'power3.out' 
-        }, 0.3);
-        
-        // Reset camera rotation
-        tl.to(camera.rotation, {
-            x: 0,
-            y: 0,
-            z: 0,
-            duration: 2.0,
-            ease: 'power2.out'
-        }, 0.3);
-        
-        // Reset post-processing if they exist
-        if (bloomPass) {
-            tl.to(bloomPass, { strength: 1.0, duration: 2 }, 0.3);
-        }
-        if (lensingPass) {
-            tl.to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, 0.3);
-            tl.to(lensingPass.uniforms.uRadius, { value: 0.25, duration: 2.5, ease: 'power3.out' }, 0.3);
-        }
-        if (chromaticAberrationPass) {
-            tl.to(chromaticAberrationPass.uniforms.uAberrationAmount, { value: 0.002, duration: 2.0, ease: 'power2.out' }, 0.3);
-        }
-        
-        tl.to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3);
-        
-        return () => {
-            tl.kill(); // Clean up timeline if component unmounts
-        };
-    }, [isReversing]);
+    }, [isTransitioning, onEnter]);
 
     return (
         <div className="relative w-full h-full">
@@ -1450,24 +1276,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         }}
                     >
                         <div className="text-center space-y-6">
-                            {/* Back Button */}
-                            <button
-                                onClick={handleBackClick}
-                                className="absolute top-4 left-4 text-cyan-400 hover:text-cyan-300 transition-colors duration-200"
-                                title="Go back"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                                </svg>
-                            </button>
-                            
-                            {/* Title */}
-                            <div>
-                                <h2 className="text-3xl font-bold text-cyan-300 mb-2" style={{ textShadow: '0 0 10px #0ff' }}>
-                                    AUTHENTICATION REQUIRED
-                                </h2>
-                                <div className="h-1 w-20 bg-gradient-to-r from-cyan-500 to-transparent mx-auto" />
-                            </div>
+                            <h2 className="text-3xl font-bold text-cyan-400" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                                Welcome to the Vortex
+                            </h2>
                             
                             {/* Message */}
                             <p className="text-gray-300 text-lg">
