@@ -1041,12 +1041,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 3.5, duration: 2.5, ease: 'power4.in' });
             
             if (soundRef.current && soundRef.current.context.state === 'running') {
-                // Create and connect filter for sound distortion
+                // Create and connect filter for sound distortion (vortex effect)
                 const filter = soundRef.current.context.createBiquadFilter();
                 soundRef.current.setFilter(filter);
                 filter.type = 'lowpass';
-                filter.frequency.value = 4000; // Start with a high frequency (little effect)
-                gsap.to(filter.frequency, { value: 100, duration: 2.8, ease: 'power4.in' });
+                filter.frequency.value = 100; // Start at current filter level (already muffled)
+                // Animate to even MORE muffled as we enter the vortex
+                gsap.to(filter.frequency, { value: 50, duration: 2.8, ease: 'power4.in' });
+                
+                // Also slightly reduce volume during intense vortex entry
+                gsap.to(soundRef.current, { volume: 0.7, duration: 1.5, ease: 'power2.in' });
             }
 
             const targetColor = new THREE.Color(0xff00ff); // Aggressive magenta for the flash
@@ -1080,6 +1084,19 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         // Re-enable controls so user can rotate around the vortex
                         controls.enabled = true;
                         console.log('🎮 Controls enabled - you can now rotate around the vortex!');
+                        
+                        // Restore audio volume and filter to normal
+                        if (soundRef.current && soundRef.current.context.state === 'running') {
+                            gsap.to(soundRef.current, { volume: 1.0, duration: 1.0, ease: 'power2.out' });
+                            
+                            // Restore filter frequency back to 100 Hz (space ambient)
+                            const currentFilter = soundRef.current.getFilter();
+                            if (currentFilter && currentFilter instanceof BiquadFilterNode) {
+                                gsap.to(currentFilter.frequency, { value: 100, duration: 1.0, ease: 'power2.out' });
+                            }
+                            
+                            console.log('🔊 Audio restored to normal volume and filter');
+                        }
                         
                         // Show React auth UI overlay after billboard fades in
                         setShowAuthBillboard(true);
