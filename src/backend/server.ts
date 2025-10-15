@@ -44,6 +44,10 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Serve static files from public directory (for HDRI, audio, etc.)
+app.use('/assets', express.static('public/assets'));
+console.log('📁 [Server] Serving static files from /assets');
+
 // Initialize database
 await initDatabase();
 
