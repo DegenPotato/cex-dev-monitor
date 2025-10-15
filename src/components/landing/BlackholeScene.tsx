@@ -216,6 +216,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
+    
+    // Refs to store Three.js objects for reverse animation
+    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+    const controlsRef = useRef<any>(null);
+    const billboardMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+    const borderGlowMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+    const vortexMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+    const bloomPassRef = useRef<any>(null);
+    const lensingPassRef = useRef<any>(null);
+    const chromaticAberrationPassRef = useRef<any>(null);
 
 
     const handleEnterClick = useCallback(() => {
@@ -225,6 +235,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     
     const handleBackClick = useCallback(() => {
         if(isReversing) return;
+        console.log('🔙 Back button clicked - starting reverse animation');
         setIsReversing(true);
         setShowAuthBillboard(false); // Hide auth billboard immediately
     }, [isReversing]);
@@ -238,6 +249,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 15; // Start at landing page position
+        cameraRef.current = camera; // Store for reverse animation
         console.log('📷 Camera initialized at:', camera.position, 'FOV:', camera.fov);
 
         // Load Space HDRI Environment (optional - enhances lighting and reflections)
@@ -308,6 +320,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         currentMount.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
+        controlsRef.current = controls; // Store for reverse animation
         controls.enabled = true; // Start with controls enabled
         controls.enableDamping = true;
         controls.dampingFactor = 0.03;
@@ -319,6 +332,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const ambientLight = new THREE.AmbientLight(0x4c00ff, 0.2);
         scene.add(ambientLight);
+        
+        // Point light for lens flare effects
+        const flareLight = new THREE.PointLight(0xffffff, 1.5, 100);
+        flareLight.position.set(0, 0, 0); // At black hole center
+        scene.add(flareLight);
 
         // Black Hole Core - a perfect, non-reflective black sphere
         const blackHoleGeometry = new THREE.SphereGeometry(1.5, 64, 64);
@@ -490,6 +508,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         });
+        vortexMaterialRef.current = vortexMaterial; // Store for reverse animation
         const singularityVortex = new THREE.Mesh(vortexGeometry, vortexMaterial);
         singularityVortex.rotation.x = 0; // Face camera directly (not tilted)
         singularityVortex.position.set(-1.5, 0, -3); // Left side, behind billboard
@@ -540,24 +559,23 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             opacity: 0,
             side: THREE.DoubleSide,
         });
+        billboardMaterialRef.current = billboardMaterial; // Store for reverse animation
         const billboard = new THREE.Mesh(billboardGeometry, billboardMaterial);
         billboard.position.set(0, 0, billboardZ);
         scene.add(billboard);
         
-        // Billboard border glow
+        // Border glow for billboard
         const borderGlowGeometry = new THREE.PlaneGeometry(billboardWidth + 0.1, billboardHeight + 0.1);
         const borderGlowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
+            color: 0x00ffff, // Cyan glow
             transparent: true,
             opacity: 0,
             side: THREE.DoubleSide,
         });
+        borderGlowMaterialRef.current = borderGlowMaterial; // Store for reverse animation
         const borderGlow = new THREE.Mesh(borderGlowGeometry, borderGlowMaterial);
-        borderGlow.position.set(0, 0, billboardZ - 0.01);
+        borderGlow.position.set(0, 0, billboardZ - 0.01); // Slightly behind billboard
         scene.add(borderGlow);
-
-        const flareLight = new THREE.PointLight(0xffffff, 1.5, 200);
-        scene.add(flareLight);
         
         // Create lensflare textures programmatically (avoids CORS issues)
         const createLensflareTexture0 = () => {
@@ -682,6 +700,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         composer.addPass(new RenderPass(scene, camera));
         const lensingPass = new ShaderPass(LensingShader);
         lensingPass.uniforms.uStrength.value = 0.05; // Start with subtle lensing
+        lensingPassRef.current = lensingPass; // Store for reverse animation
         composer.addPass(lensingPass);
         
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
@@ -690,9 +709,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         bloomPass.threshold = 0.85; 
         bloomPass.strength = 1.0; // Reduced strength for a more subtle, less overwhelming glow.
         bloomPass.radius = 0.3; // A smaller radius creates a tighter, more defined glow.
+        bloomPassRef.current = bloomPass; // Store for reverse animation
         composer.addPass(bloomPass);
         
         const chromaticAberrationPass = new ShaderPass(ChromaticAberrationShader);
+        chromaticAberrationPassRef.current = chromaticAberrationPass; // Store for reverse animation
         composer.addPass(chromaticAberrationPass);
 
         const clock = new THREE.Clock();
@@ -1031,6 +1052,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         } else if (isReversing) {
             // Reverse animation - return to landing page
+            console.log('🔄 Executing reverse animation to return to landing page');
             controls.enabled = false;
             
             gsap.timeline({ 
@@ -1111,7 +1133,81 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 }
             });
         };
-    }, [isTransitioning, isReversing, onEnter]);
+    }, [isTransitioning, onEnter]); // Removed isReversing - it shouldn't recreate the scene
+    
+    // Separate effect to handle reverse animation without recreating the scene
+    useEffect(() => {
+        if (!isReversing || !cameraRef.current || !controlsRef.current) return;
+        
+        console.log('🔄 Executing reverse animation back to landing page');
+        
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        const billboardMaterial = billboardMaterialRef.current;
+        const borderGlowMaterial = borderGlowMaterialRef.current;
+        const vortexMaterial = vortexMaterialRef.current;
+        const bloomPass = bloomPassRef.current;
+        const lensingPass = lensingPassRef.current;
+        const chromaticAberrationPass = chromaticAberrationPassRef.current;
+        
+        controls.enabled = false;
+        
+        const tl = gsap.timeline({ 
+            onComplete: () => { 
+                controls.enabled = true; 
+                setIsReversing(false);
+                setIsTransitioning(false);
+                console.log('✅ Reverse animation complete - back at landing page');
+            }
+        });
+        
+        // Hide billboard and vortex if they exist
+        if (billboardMaterial) {
+            tl.to(billboardMaterial, { opacity: 0, duration: 0.3 }, 0);
+        }
+        if (borderGlowMaterial) {
+            tl.to(borderGlowMaterial, { opacity: 0, duration: 0.3 }, 0);
+        }
+        if (vortexMaterial) {
+            tl.to(vortexMaterial.uniforms.uIntensity, { value: 0, duration: 0.5 }, 0);
+        }
+        
+        // Camera returns to starting position
+        tl.to(camera.position, { 
+            x: 0,
+            y: 0,
+            z: 15, 
+            duration: 2.5, 
+            ease: 'power3.out' 
+        }, 0.3);
+        
+        // Reset camera rotation
+        tl.to(camera.rotation, {
+            x: 0,
+            y: 0,
+            z: 0,
+            duration: 2.0,
+            ease: 'power2.out'
+        }, 0.3);
+        
+        // Reset post-processing if they exist
+        if (bloomPass) {
+            tl.to(bloomPass, { strength: 1.0, duration: 2 }, 0.3);
+        }
+        if (lensingPass) {
+            tl.to(lensingPass.uniforms.uStrength, { value: 0.05, duration: 2.5, ease: 'power3.out' }, 0.3);
+            tl.to(lensingPass.uniforms.uRadius, { value: 0.25, duration: 2.5, ease: 'power3.out' }, 0.3);
+        }
+        if (chromaticAberrationPass) {
+            tl.to(chromaticAberrationPass.uniforms.uAberrationAmount, { value: 0.002, duration: 2.0, ease: 'power2.out' }, 0.3);
+        }
+        
+        tl.to(camera, { fov: 75, duration: 2, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 0.3);
+        
+        return () => {
+            tl.kill(); // Clean up timeline if component unmounts
+        };
+    }, [isReversing]);
 
     return (
         <div className="relative w-full h-full">
@@ -1182,18 +1278,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                 Connect your wallet to proceed.
                             </p>
                             
-                            {/* Connect Wallet Button */}
+                            {/* Connect Wallet Button - DISABLED for now */}
                             <button
-                                onClick={() => {
-                                    console.log('🔗 Wallet connect clicked');
-                                    // Call the actual onEnter to proceed to dashboard
-                                    onEnter();
-                                }}
-                                className="w-full px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 
-                                           text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
-                                           shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:shadow-[0_0_30px_rgba(0,255,255,0.6)]"
+                                disabled
+                                className="w-full px-8 py-4 bg-gradient-to-r from-gray-600 to-gray-700 
+                                           text-gray-400 font-bold rounded-lg cursor-not-allowed opacity-60"
                             >
-                                CONNECT WALLET
+                                CONNECT WALLET (Coming Soon)
                             </button>
                             
                             {/* Supported Wallets */}
