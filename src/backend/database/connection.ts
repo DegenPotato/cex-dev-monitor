@@ -287,6 +287,16 @@ export async function initDatabase() {
       metadata TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wallet_address TEXT UNIQUE NOT NULL,
+      referral_code TEXT UNIQUE NOT NULL,
+      referred_by TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_login TEXT,
+      login_count INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS auth_challenges (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       wallet_address TEXT NOT NULL,
@@ -687,6 +697,8 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_monitored_wallets_active ON monitored_wallets(is_active);
     CREATE INDEX IF NOT EXISTS idx_source_wallets_monitoring ON source_wallets(is_monitoring);
     
+    CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
+    CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_wallet ON auth_challenges(wallet_address);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_wallet ON auth_sessions(wallet_address);
