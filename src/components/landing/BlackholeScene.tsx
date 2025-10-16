@@ -9,6 +9,9 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { gsap } from 'gsap';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BlackholeSceneProps {
     onEnter: () => void;
@@ -217,6 +220,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
+    
+    // Wallet & Auth
+    const { connected, publicKey } = useWallet();
+    const { isAuthenticated, isAuthenticating, authenticateWallet } = useAuth();
     
     // Audio playlist management
     const playlistRef = useRef<string[]>([]);
@@ -1301,30 +1308,76 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                             </h2>
                             
                             {/* Message */}
-                            <p className="text-gray-300 text-lg">
-                                The singularity has granted access.<br />
-                                Sign the message to proceed.
+                            <p className="text-gray-300 text-lg mb-6">
+                                {!connected && 'Connect your wallet to enter the vortex.'}
+                                {connected && !isAuthenticated && 'Sign the message to authenticate.'}
+                                {connected && isAuthenticated && 'Authentication complete! Entering...'}
                             </p>
                             
-                            {/* Sign Message Button - Second checkpoint */}
-                            <button
-                                onClick={() => {
-                                    console.log('✍️ Sign nonce message clicked');
-                                    // TODO: Implement nonce signature
-                                    // After successful signature, call onEnter() to navigate to dashboard
-                                    // onEnter();
-                                }}
-                                className="w-full px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 
-                                           text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
-                                           shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:shadow-[0_0_30px_rgba(0,255,255,0.6)]"
-                            >
-                                SIGN MESSAGE
-                            </button>
+                            {/* Connect Wallet / Authenticate Flow */}
+                            {!connected ? (
+                                // Step 1: Connect Wallet
+                                <div className="w-full">
+                                    <WalletMultiButton className="!w-full !px-8 !py-4 !bg-gradient-to-r !from-cyan-600 !to-blue-600 hover:!from-cyan-500 hover:!to-blue-500 
+                                                                   !text-white !font-bold !rounded-lg !transform hover:!scale-105 !transition-all !duration-300
+                                                                   !shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:!shadow-[0_0_30px_rgba(0,255,255,0.6)]
+                                                                   !justify-center !text-base" />
+                                </div>
+                            ) : !isAuthenticated ? (
+                                // Step 2: Authenticate (sign message)
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            console.log('✍️ Starting authentication...');
+                                            await authenticateWallet();
+                                            console.log('✅ Authentication successful!');
+                                            
+                                            // Navigate to dashboard after brief delay
+                                            setTimeout(() => {
+                                                onEnter();
+                                            }, 1500);
+                                        } catch (error) {
+                                            console.error('❌ Authentication failed:', error);
+                                        }
+                                    }}
+                                    disabled={isAuthenticating}
+                                    className="w-full px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 
+                                               text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                               shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:shadow-[0_0_30px_rgba(0,255,255,0.6)]
+                                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                >
+                                    {isAuthenticating ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Authenticating...
+                                        </span>
+                                    ) : 'SIGN MESSAGE & ENTER'}
+                                </button>
+                            ) : (
+                                // Step 3: Authenticated (entering)
+                                <div className="w-full px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 
+                                               text-white font-bold rounded-lg text-center
+                                               shadow-[0_0_20px_rgba(0,255,128,0.3)]">
+                                    ✅ Authenticated - Entering Vortex...
+                                </div>
+                            )}
+                            
+                            {/* Wallet Info */}
+                            {connected && publicKey && (
+                                <div className="flex justify-center gap-2 pt-4 opacity-70">
+                                    <div className="text-xs text-gray-400">
+                                        {publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}
+                                    </div>
+                                </div>
+                            )}
                             
                             {/* Supported Wallets */}
                             <div className="flex justify-center gap-4 pt-4 opacity-70">
                                 <div className="text-xs text-gray-400">
-                                    Phantom • MetaMask • WalletConnect
+                                    Phantom • Solflare • Torus • Ledger
                                 </div>
                             </div>
                             

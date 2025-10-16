@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { AuthChallengeProvider } from './AuthChallengeProvider';
-import { JWTAuthService } from './JWTAuthService';
-import { UserProvider } from './UserProvider';
+import { AuthChallengeProvider } from './AuthChallengeProvider.js';
+import { JWTAuthService } from './JWTAuthService.js';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+import { execute, getLastInsertId } from '../database/helpers.js';
 
 interface AuthResult {
     user: any;
@@ -14,16 +15,17 @@ interface AuthResult {
 /**
  * Solana Wallet Authentication Service
  * Handles nonce-based message signing for Solana wallets
+ * Note: This is a utility service - the main auth flow uses /api/auth/challenge and /api/auth/verify endpoints
  */
 export class SolanaAuthService {
     private challengeProvider: AuthChallengeProvider;
     private jwtService: JWTAuthService;
-    private userProvider: UserProvider;
+    private secureAuthService: SecureAuthService;
 
     constructor() {
         this.challengeProvider = new AuthChallengeProvider();
         this.jwtService = new JWTAuthService();
-        this.userProvider = new UserProvider();
+        this.secureAuthService = new SecureAuthService();
         
         // Initialize challenge provider
         this.initializeProvider();
@@ -78,8 +80,7 @@ export class SolanaAuthService {
     async verifySolanaSignature(
         walletAddress: string, 
         signatureBase58: string, 
-        nonce: string, 
-        referralCode: string | null = null
+        nonce: string
     ): Promise<AuthResult> {
         try {
             console.log('[Solana Auth] 🔐 Verifying signature for wallet:', walletAddress);
@@ -116,12 +117,30 @@ export class SolanaAuthService {
             // Delete used challenge
             await this.challengeProvider.deleteByWallet(walletAddress);
             
-            // Get or create user
-            let user = await this.userProvider.getUserBySolanaWallet(walletAddress);
+            // Get or create user (use SecureAuthService)
+            let user = await this.secureAuthService.getUserByWallet(walletAddress, true);
             
             if (!user) {
                 console.log('[Solana Auth] 🆕 New user - creating account for:', walletAddress);
-                user = await this.userProvider.createUserWithSolanaWallet(walletAddress, referralCode);
+                
+                const username = `user_${walletAddress.substring(0, 8)}`;
+                const referralCode = await this.secureAuthService.generateReferralCode();
+                
+                await execute(
+                    `INSERT INTO users (solana_wallet_address, username, role, status, referral_code) 
+                     VALUES (?, ?, 'user', 'active', ?)`,
+                    [walletAddress, username, referralCode]
+                );
+                
+                const userId = await getLastInsertId();
+                console.log(`[Solana Auth] ✅ Created user ID: ${userId}`);
+                
+                // Fetch newly created user
+                user = await this.secureAuthService.getUserByWallet(walletAddress, false);
+                
+                if (!user) {
+                    throw new Error('Failed to create user');
+                }
             } else {
                 console.log('[Solana Auth] ✅ Existing user found:', user.username);
             }

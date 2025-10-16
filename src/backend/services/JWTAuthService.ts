@@ -26,8 +26,6 @@ interface TokenPayload {
 export class JWTAuthService {
     private jwtSecret: string;
     private refreshSecret: string;
-    private ACCESS_TOKEN_EXPIRY = '15m';
-    private REFRESH_TOKEN_EXPIRY = '7d';
 
     constructor() {
         this.jwtSecret = process.env.JWT_SECRET || 'dev_jwt_secret_change_in_production';

@@ -1,11 +1,10 @@
-import { query } from '../database';
+import { query, execute } from '../database/helpers.js';
 
 /**
  * AuthChallenge Provider for managing authentication nonces and challenges
  * Used for wallet signature verification flow
  */
 export class AuthChallengeProvider {
-    private tableName = 'auth_challenges';
 
     /**
      * Initialize auth_challenges table
