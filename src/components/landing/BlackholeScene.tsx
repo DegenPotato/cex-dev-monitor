@@ -1431,8 +1431,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             onClick={() => {
                                                 setSelectedUniverse('spaces-manager');
                                                 console.log('🌌 Selected: Spaces Manager Universe');
-                                                // TODO: Transition to white hole / spaces manager scene
-                                                setTimeout(() => onEnter(), 1000);
                                             }}
                                             className="group relative p-6 bg-gradient-to-br from-cyan-900/30 to-blue-900/30 
                                                      border border-cyan-400/50 rounded-lg hover:border-cyan-300 
@@ -1456,7 +1454,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <svg className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transform group-hover:translate-x-1 transition-transform" 
+                                                <svg className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transform group-group:translate-x-1 transition-transform" 
                                                      fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                                                           d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -1469,7 +1467,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             onClick={() => {
                                                 setSelectedUniverse('cex-monitor');
                                                 console.log('🎯 Selected: CEX Dev Monitor');
-                                                setTimeout(() => onEnter(), 1000);
                                             }}
                                             className="group relative p-6 bg-gradient-to-br from-purple-900/30 to-pink-900/30 
                                                      border border-purple-400/50 rounded-lg hover:border-purple-300 
