@@ -289,12 +289,18 @@ export async function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wallet_address TEXT UNIQUE NOT NULL,
+      wallet_address TEXT,
+      solana_wallet_address TEXT,
+      username TEXT,
+      role TEXT DEFAULT 'user',
+      status TEXT DEFAULT 'active',
       referral_code TEXT UNIQUE NOT NULL,
-      referred_by TEXT,
+      referred_by INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_login TEXT,
-      login_count INTEGER DEFAULT 0
+      login_count INTEGER DEFAULT 0,
+      UNIQUE(wallet_address),
+      UNIQUE(solana_wallet_address)
     );
 
     CREATE TABLE IF NOT EXISTS auth_challenges (
@@ -698,7 +704,9 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_source_wallets_monitoring ON source_wallets(is_monitoring);
     
     CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
+    CREATE INDEX IF NOT EXISTS idx_users_solana_wallet ON users(solana_wallet_address);
     CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
+    CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_wallet ON auth_challenges(wallet_address);
     CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_wallet ON auth_sessions(wallet_address);
