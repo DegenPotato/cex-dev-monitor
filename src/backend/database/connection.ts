@@ -290,11 +290,11 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS auth_challenges (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       wallet_address TEXT NOT NULL,
-      challenge TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL,
+      nonce TEXT NOT NULL,
+      message TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
       used INTEGER DEFAULT 0,
-      ip_address TEXT
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS auth_sessions (
