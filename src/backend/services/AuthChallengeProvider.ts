@@ -1,4 +1,4 @@
-import { query, execute } from '../database/helpers.js';
+import { queryOne, execute, getLastInsertId } from '../database/helpers.js';
 
 /**
  * AuthChallenge Provider for managing authentication nonces and challenges
@@ -23,11 +23,11 @@ export class AuthChallengeProvider {
                 )
             `;
             
-            await query(createTableQuery);
+            await execute(createTableQuery);
             
             // Create indexes for faster lookups
-            await query(`CREATE INDEX IF NOT EXISTS idx_auth_challenges_wallet ON auth_challenges(wallet_address)`);
-            await query(`CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at)`);
+            await execute(`CREATE INDEX IF NOT EXISTS idx_auth_challenges_wallet ON auth_challenges(wallet_address)`);
+            await execute(`CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires ON auth_challenges(expires_at)`);
             
             console.log('[AuthChallengeProvider] ✅ Table and indexes initialized');
         } catch (error: any) {
@@ -47,13 +47,15 @@ export class AuthChallengeProvider {
             // SQLite: Delete then insert (REPLACE doesn't return id reliably)
             await this.deleteByWallet(walletAddress);
             
-            const result = await query(
+            await execute(
                 `INSERT INTO auth_challenges (wallet_address, nonce, message, expires_at) VALUES (?, ?, ?, ?)`,
                 [walletAddress, nonce, message, expiresAt.toISOString()]
             );
             
+            const id = await getLastInsertId();
+            
             console.log(`[AuthChallengeProvider] ✅ Challenge stored for: ${walletAddress}`);
-            return result.lastID;
+            return id;
         } catch (error) {
             console.error('[AuthChallengeProvider] Error storing challenge:', error);
             throw error;
@@ -67,17 +69,17 @@ export class AuthChallengeProvider {
         try {
             const now = new Date().toISOString();
             
-            const result = await query(
+            const result = await queryOne<any>(
                 `SELECT * FROM auth_challenges WHERE wallet_address = ? AND expires_at > ? LIMIT 1`,
                 [walletAddress, now]
             );
             
-            if (!result || result.length === 0) {
+            if (!result) {
                 console.log(`[AuthChallengeProvider] ⚠️ No valid challenge found for: ${walletAddress}`);
                 return null;
             }
             
-            return result[0];
+            return result;
         } catch (error) {
             console.error('[AuthChallengeProvider] Error getting challenge:', error);
             return null;
@@ -89,7 +91,7 @@ export class AuthChallengeProvider {
      */
     async deleteByWallet(walletAddress: string) {
         try {
-            await query(`DELETE FROM auth_challenges WHERE wallet_address = ?`, [walletAddress]);
+            await execute(`DELETE FROM auth_challenges WHERE wallet_address = ?`, [walletAddress]);
             console.log(`[AuthChallengeProvider] ✅ Challenge deleted for: ${walletAddress}`);
         } catch (error) {
             console.error('[AuthChallengeProvider] Error deleting challenge:', error);
@@ -102,11 +104,9 @@ export class AuthChallengeProvider {
     async cleanupExpired() {
         try {
             const now = new Date().toISOString();
-            const result = await query(`DELETE FROM auth_challenges WHERE expires_at < ?`, [now]);
+            await execute(`DELETE FROM auth_challenges WHERE expires_at < ?`, [now]);
             
-            if (result.changes > 0) {
-                console.log(`[AuthChallengeProvider] 🧹 Cleaned up ${result.changes} expired challenges`);
-            }
+            console.log(`[AuthChallengeProvider] 🧹 Cleaned up expired challenges`);
         } catch (error) {
             console.error('[AuthChallengeProvider] Error cleaning up expired challenges:', error);
         }
