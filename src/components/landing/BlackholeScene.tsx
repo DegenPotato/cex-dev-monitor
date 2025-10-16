@@ -334,6 +334,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isQuantumTunneling, setIsQuantumTunneling] = useState(false);
+    const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
@@ -1341,64 +1342,80 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             {/* Agent Status Indicator - Top Right */}
             {(connected || isAuthenticated) && !showAuthBillboard && (
                 <div className="pointer-events-auto absolute top-8 right-8 bg-black/80 backdrop-blur-md border border-cyan-500/30 
-                               rounded-lg p-4 shadow-[0_0_20px_rgba(0,255,255,0.2)] z-50
+                               rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.2)] z-50
                                transition-all duration-300 hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
-                    {/* Status Header */}
-                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-cyan-500/20">
+                    {/* Status Header - Clickable to toggle minimize */}
+                    <div 
+                        onClick={() => setIsAgentMinimized(!isAgentMinimized)}
+                        className="flex items-center gap-2 p-4 cursor-pointer hover:bg-cyan-500/5 transition-colors"
+                    >
                         <div className={`w-2 h-2 rounded-full ${isAuthenticated ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`}></div>
-                        <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider">
+                        <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex-1">
                             {isAuthenticated ? 'AGENT ACTIVE' : 'WALLET CONNECTED'}
                         </span>
+                        <svg 
+                            className={`w-4 h-4 text-cyan-400 transition-transform duration-300 ${isAgentMinimized ? 'rotate-180' : ''}`}
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                     </div>
                     
-                    {/* Wallet Address */}
-                    {publicKey && (
-                        <div className="mb-2">
-                            <div className="text-xs text-gray-500 mb-1">WALLET</div>
-                            <div className="text-sm font-mono text-cyan-100">
-                                {publicKey.toBase58().slice(0, 6)}...{publicKey.toBase58().slice(-6)}
-                            </div>
+                    {/* Expandable Content */}
+                    {!isAgentMinimized && (
+                        <div className="px-4 pb-4">
+                            {/* Wallet Address */}
+                            {publicKey && (
+                                <div className="mb-2">
+                                    <div className="text-xs text-gray-500 mb-1">WALLET</div>
+                                    <div className="text-sm font-mono text-cyan-100">
+                                        {publicKey.toBase58().slice(0, 6)}...{publicKey.toBase58().slice(-6)}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* User Role (if authenticated) */}
+                            {isAuthenticated && user && (
+                                <div className="mb-3">
+                                    <div className="text-xs text-gray-500 mb-1">CLEARANCE</div>
+                                    <div className={`inline-block px-2 py-1 rounded text-xs font-bold uppercase ${
+                                        user.role === 'super_admin' 
+                                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-[0_0_10px_rgba(168,85,247,0.4)]' 
+                                            : user.role === 'admin'
+                                            ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                                            : 'bg-gray-700 text-gray-300'
+                                    }`}>
+                                        {user.role === 'super_admin' ? '🔮 SUPER ADMIN' : 
+                                         user.role === 'admin' ? '⭐ ADMIN' : 
+                                         '👤 AGENT'}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Disconnect Button */}
+                            <button
+                                onClick={async () => {
+                                    await logout();
+                                }}
+                                className="w-full px-3 py-2 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 hover:border-red-500/60
+                                         text-red-400 hover:text-red-300 rounded text-xs font-bold uppercase tracking-wide
+                                         transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]
+                                         flex items-center justify-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                                DISCONNECT
+                            </button>
                         </div>
                     )}
-                    
-                    {/* User Role (if authenticated) */}
-                    {isAuthenticated && user && (
-                        <div className="mb-3">
-                            <div className="text-xs text-gray-500 mb-1">CLEARANCE</div>
-                            <div className={`inline-block px-2 py-1 rounded text-xs font-bold uppercase ${
-                                user.role === 'super_admin' 
-                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-[0_0_10px_rgba(168,85,247,0.4)]' 
-                                    : user.role === 'admin'
-                                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
-                                    : 'bg-gray-700 text-gray-300'
-                            }`}>
-                                {user.role === 'super_admin' ? '🔮 SUPER ADMIN' : 
-                                 user.role === 'admin' ? '⭐ ADMIN' : 
-                                 '👤 AGENT'}
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Disconnect Button */}
-                    <button
-                        onClick={async () => {
-                            await logout();
-                        }}
-                        className="w-full px-3 py-2 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 hover:border-red-500/60
-                                 text-red-400 hover:text-red-300 rounded text-xs font-bold uppercase tracking-wide
-                                 transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]
-                                 flex items-center justify-center gap-2"
-                    >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        DISCONNECT
-                    </button>
                 </div>
             )}
             
-            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard ? '!opacity-0' : ''} pointer-events-none`}>
+            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard || isAuthenticated || isQuantumTunneling ? '!opacity-0' : ''} pointer-events-none`}>
                 {/* Top: Title */}
                 <div className="text-center w-full">
                     <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
