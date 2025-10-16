@@ -102,9 +102,8 @@ await initDatabase();
 app.use('/api/auth', authRoutes); // Auth routes are public (login, verify, etc.)
 app.use('/api/database', databaseRoutes);
 
-// Protect ALL other API routes with super admin middleware
+// Create auth service for protecting specific routes
 const authService = new SecureAuthService();
-app.use('/api/*', authService.requireSuperAdmin());
 
 // Serve static files AFTER API routes (so /api/* takes priority)
 app.use('/assets', express.static(publicAssetsPath, {
@@ -278,8 +277,8 @@ app.get('/api/config', async (_req, res) => {
   res.json(config);
 });
 
-// Update config
-app.post('/api/config', async (req, res) => {
+// Update config - PROTECTED
+app.post('/api/config', authService.requireSuperAdmin(), async (req, res) => {
   const { key, value } = req.body;
   await ConfigProvider.set(key, value);
   
@@ -292,8 +291,8 @@ app.post('/api/config', async (req, res) => {
   res.json({ success: true });
 });
 
-// Start monitoring CEX wallet
-app.post('/api/monitor/start', async (_req, res) => {
+// Start monitoring CEX wallet - PROTECTED
+app.post('/api/monitor/start', authService.requireSuperAdmin(), async (_req, res) => {
   try {
     const cexWallet = await ConfigProvider.get('cex_wallet');
     if (!cexWallet) {
@@ -310,8 +309,8 @@ app.post('/api/monitor/start', async (_req, res) => {
   }
 });
 
-// Stop monitoring
-app.post('/api/monitor/stop', async (_req, res) => {
+// Stop monitoring - PROTECTED
+app.post('/api/monitor/stop', authService.requireSuperAdmin(), async (_req, res) => {
   try {
     const cexWallet = await ConfigProvider.get('cex_wallet');
     if (!cexWallet) {
@@ -522,8 +521,8 @@ app.get('/api/wallets/:address/defi-activities', async (req, res) => {
   }
 });
 
-// Add wallet for monitoring
-app.post('/api/wallets', async (req, res) => {
+// Add wallet for monitoring - PROTECTED
+app.post('/api/wallets', authService.requireSuperAdmin(), async (req, res) => {
   try {
     const { address, label, source, monitoring_type, rate_limit_rps, rate_limit_enabled } = req.body;
     
@@ -681,8 +680,8 @@ app.post('/api/wallets/:address/rate-limit', async (req, res) => {
   }
 });
 
-// Toggle wallet monitoring
-app.post('/api/wallets/:address/toggle', async (req, res) => {
+// Toggle wallet monitoring - PROTECTED
+app.post('/api/wallets/:address/toggle', authService.requireSuperAdmin(), async (req, res) => {
   const { address } = req.params;
   const wallet = await MonitoredWalletProvider.findByAddress(address);
   
@@ -717,8 +716,8 @@ app.post('/api/wallets/:address/toggle', async (req, res) => {
   res.json({ success: true, is_active: newState });
 });
 
-// Delete wallet(s) - stops monitoring and removes from database
-app.delete('/api/wallets/:address', async (req, res) => {
+// Delete wallet(s) - stops monitoring and removes from database - PROTECTED
+app.delete('/api/wallets/:address', authService.requireSuperAdmin(), async (req, res) => {
   try {
     const { address } = req.params;
     
@@ -936,8 +935,8 @@ app.get('/api/source-wallets/:address', async (req, res) => {
   }
 });
 
-// Create new source wallet
-app.post('/api/source-wallets', async (req, res) => {
+// Create new source wallet - PROTECTED
+app.post('/api/source-wallets', authService.requireSuperAdmin(), async (req, res) => {
   try {
     const { address, name, purpose, is_monitoring, notes } = req.body;
     
@@ -973,8 +972,8 @@ app.patch('/api/source-wallets/:address', async (req, res) => {
   }
 });
 
-// Toggle source wallet monitoring
-app.post('/api/source-wallets/:address/toggle', async (req, res) => {
+// Toggle source wallet monitoring - PROTECTED
+app.post('/api/source-wallets/:address/toggle', authService.requireSuperAdmin(), async (req, res) => {
   try {
     const { address } = req.params;
     const wallet = await SourceWalletProvider.findByAddress(address);
@@ -1001,8 +1000,8 @@ app.post('/api/source-wallets/:address/toggle', async (req, res) => {
   }
 });
 
-// Delete source wallet
-app.delete('/api/source-wallets/:address', async (req, res) => {
+// Delete source wallet - PROTECTED
+app.delete('/api/source-wallets/:address', authService.requireSuperAdmin(), async (req, res) => {
   try {
     const { address } = req.params;
     
@@ -1144,8 +1143,8 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Monitoring control endpoints
-app.post('/api/monitoring/start', async (_req, res) => {
+// Monitoring control endpoints - PROTECTED
+app.post('/api/monitoring/start', authService.requireSuperAdmin(), async (_req, res) => {
   try {
     const cexWallet = await ConfigProvider.get('cex_wallet');
     if (!cexWallet) {
@@ -1188,7 +1187,7 @@ app.post('/api/monitoring/start', async (_req, res) => {
   }
 });
 
-app.post('/api/monitoring/stop', async (_req, res) => {
+app.post('/api/monitoring/stop', authService.requireSuperAdmin(), async (_req, res) => {
   try {
     // Stop queue FIRST to prevent new analyses
     globalAnalysisQueue.stop();
@@ -1229,8 +1228,8 @@ app.get('/api/monitoring/status', async (_req, res) => {
   });
 });
 
-// OHLCV Collector control endpoints
-app.post('/api/ohlcv/start', (_req, res) => {
+// OHLCV Collector control endpoints - PROTECTED
+app.post('/api/ohlcv/start', authService.requireSuperAdmin(), (_req, res) => {
   try {
     ohlcvCollector.start();
     res.json({ 
@@ -1242,7 +1241,7 @@ app.post('/api/ohlcv/start', (_req, res) => {
   }
 });
 
-app.post('/api/ohlcv/stop', (_req, res) => {
+app.post('/api/ohlcv/stop', authService.requireSuperAdmin(), (_req, res) => {
   try {
     ohlcvCollector.stop();
     res.json({ 
