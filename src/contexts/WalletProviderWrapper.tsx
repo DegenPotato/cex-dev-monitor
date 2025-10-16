@@ -20,6 +20,7 @@ interface WalletProviderWrapperProps {
 /**
  * Solana Wallet Provider Wrapper
  * Configures wallet adapters for Phantom, Solflare, Torus, and Ledger
+ * Note: Architecture designed for multi-chain expansion (EVM support can be added later)
  */
 export const WalletProviderWrapper: FC<WalletProviderWrapperProps> = ({ children }) => {
     // Use mainnet-beta for production
