@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useWallet } from '@solana/wallet-adapter-react';
 import bs58 from 'bs58';
 
-// VPS Backend URL (HTTPS proxy via assets.sniff.agency)
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://assets.sniff.agency';
+// VPS Backend URL (use existing VITE_API_URL)
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'https://api.sniff.agency';
 
 interface User {
     id: number;

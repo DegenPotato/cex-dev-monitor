@@ -39,13 +39,35 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-// CORS configuration - allow all origins (we're behind Cloudflare)
+// CORS configuration - allow specific origins for cookie-based auth
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://alpha.sniff.agency',
+      'https://cex-dev-monitor.vercel.app',
+      'https://sniff.agency'
+    ];
+
+console.log('🔒 [CORS] Allowed origins:', allowedOrigins);
+
 app.use(cors({
-  origin: '*',
-  credentials: false,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ [CORS] Blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Enable cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Type', 'Content-Length']
+  exposedHeaders: ['Content-Type', 'Content-Length', 'Set-Cookie']
 }));
 
 app.use(express.json());
