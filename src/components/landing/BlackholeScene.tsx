@@ -368,26 +368,49 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         // Load first track
         loadTrack(0);
         
-        // Setup audio playback on user interaction
-        const playAudio = () => {
-            if (listener.context.state === 'suspended') {
-                listener.context.resume().then(() => {
+        // Setup audio playback on user interaction (mobile/VR compatible)
+        const playAudio = async () => {
+            try {
+                // Resume audio context if suspended (required for mobile)
+                if (listener.context.state === 'suspended') {
+                    await listener.context.resume();
                     console.log('🔊 Audio context resumed');
-                });
-            }
-            
-            if (sound && audioLoaded && !sound.isPlaying) {
-                sound.play();
-                console.log('▶️ Audio playback started');
-                window.removeEventListener('pointerdown', playAudio);
+                }
+                
+                // Play audio if loaded and not already playing
+                if (sound && audioLoaded && !sound.isPlaying) {
+                    sound.play();
+                    console.log('▶️ Audio playback started');
+                    
+                    // Remove all event listeners after successful playback
+                    removeAudioEvents();
+                }
+            } catch (error) {
+                console.warn('⚠️ Audio playback failed:', error);
             }
         };
-        playAudioRef.current = playAudio;
-        window.addEventListener('pointerdown', playAudio);
         
-        // Cleanup only removes event listener, does NOT stop audio
-        return () => {
+        // Remove all audio trigger events
+        const removeAudioEvents = () => {
+            window.removeEventListener('click', playAudio);
+            window.removeEventListener('touchstart', playAudio);
             window.removeEventListener('pointerdown', playAudio);
+            window.removeEventListener('keydown', playAudio);
+        };
+        
+        playAudioRef.current = playAudio;
+        
+        // Add multiple event types for better mobile/VR compatibility
+        window.addEventListener('click', playAudio);
+        window.addEventListener('touchstart', playAudio, { passive: true });
+        window.addEventListener('pointerdown', playAudio);
+        window.addEventListener('keydown', playAudio);
+        
+        console.log('🎧 Audio triggers registered (click, touch, pointer, keyboard)');
+        
+        // Cleanup only removes event listeners, does NOT stop audio
+        return () => {
+            removeAudioEvents();
         };
     }, []); // Only runs once on mount
     
@@ -1040,22 +1063,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             // Animate the particle trail uniform for dramatic stretching
             gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 3.5, duration: 2.5, ease: 'power4.in' });
             
-            if (soundRef.current && soundRef.current.context.state === 'running') {
-                // Create and connect filter for sound distortion (vortex effect)
-                const filter = soundRef.current.context.createBiquadFilter();
-                soundRef.current.setFilter(filter);
-                filter.type = 'lowpass';
-                filter.frequency.value = 100; // Start at current filter level (already muffled)
-                // Animate to even MORE muffled as we enter the vortex
-                gsap.to(filter.frequency, { value: 50, duration: 2.8, ease: 'power4.in' });
-                
-                // Also slightly reduce volume during intense vortex entry
-                gsap.to(soundRef.current, { volume: 0.7, duration: 1.5, ease: 'power2.in' });
-            }
-
-            const targetColor = new THREE.Color(0xff00ff); // Aggressive magenta for the flash
-            const whiteColor = new THREE.Color(0xffffff);
-
             // Billboard animation - line traces from vortex to form frame
             const animateBillboardTrace = () => {
                 console.log('🖼️ Animating billboard trace...');
@@ -1087,7 +1094,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         
                         // Restore audio volume and filter to normal
                         if (soundRef.current && soundRef.current.context.state === 'running') {
-                            gsap.to(soundRef.current, { volume: 1.0, duration: 1.0, ease: 'power2.out' });
+                            const volumeObj = { vol: soundRef.current.getVolume() };
+                            gsap.to(volumeObj, { 
+                                vol: 1.0, 
+                                duration: 1.0, 
+                                ease: 'power2.out',
+                                onUpdate: () => { soundRef.current?.setVolume(volumeObj.vol); }
+                            });
                             
                             // Restore filter frequency back to 100 Hz (space ambient)
                             const currentFilter = soundRef.current.getFilter();
@@ -1115,9 +1128,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     animateBillboardTrace();
                 }
             })
-              // Particle stretching
-              .to(particleMaterial.uniforms.uParticleSize, { value: 2.0, duration: 1.5, ease: 'power2.in' }, 0)
-              .to(particleMaterial.uniforms.uStretch, { value: 3.0, duration: 2.0, ease: 'power3.in' }, 0)
+              // Particle size animation (using existing uSize uniform)
+              .to(particleMaterial.uniforms.uSize, { value: 0.4, duration: 1.5, ease: 'power2.in' }, 0)
               
               // Activate vortex glow
               .to(vortexMaterial.uniforms.uIntensity, {
@@ -1133,9 +1145,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                   ease: 'power2.in'
               }, 0.5)
               .to(ambientLight.color, {
-                  r: targetColor.r,
-                  g: targetColor.g,
-                  b: targetColor.b,
+                  r: 1.0,  // Magenta flash for vortex
+                  g: 0.0,
+                  b: 1.0,
                   duration: 0.8,
                   ease: 'power2.in'
               }, 0.5)
