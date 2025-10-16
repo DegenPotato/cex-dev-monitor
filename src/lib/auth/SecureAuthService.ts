@@ -346,6 +346,26 @@ class SecureAuthService {
   }
 
   /**
+   * Middleware to require super_admin role (strictest access)
+   */
+  requireSuperAdmin() {
+    const authMiddleware = this.requireSecureAuth();
+    
+    return async (req: AuthRequest, res: Response, next: NextFunction) => {
+      authMiddleware(req, res, () => {
+        if (req.user && req.user.role === 'super_admin') {
+          next();
+        } else {
+          res.status(403).json({
+            success: false,
+            error: 'Super admin access required',
+          });
+        }
+      });
+    };
+  }
+
+  /**
    * Generate unique referral code
    */
   async generateReferralCode(): Promise<string> {

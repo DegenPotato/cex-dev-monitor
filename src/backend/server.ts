@@ -33,6 +33,7 @@ import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
+import SecureAuthService from '../lib/auth/SecureAuthService.js';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -98,8 +99,12 @@ app.use((req, _res, next) => {
 await initDatabase();
 
 // Register API routes BEFORE static files
+app.use('/api/auth', authRoutes); // Auth routes are public (login, verify, etc.)
 app.use('/api/database', databaseRoutes);
-app.use('/api/auth', authRoutes);
+
+// Protect ALL other API routes with super admin middleware
+const authService = new SecureAuthService();
+app.use('/api/*', authService.requireSuperAdmin());
 
 // Serve static files AFTER API routes (so /api/* takes priority)
 app.use('/assets', express.static(publicAssetsPath, {

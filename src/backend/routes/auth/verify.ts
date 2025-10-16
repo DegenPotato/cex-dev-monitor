@@ -95,17 +95,24 @@ router.post('/', async (req, res) => {
       // Determine if Solana or EVM wallet
       const isSolana = walletAddress.length >= 32 && walletAddress.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(walletAddress);
       
+      // Check if this is a super admin wallet
+      const SUPER_ADMIN_WALLETS = ['CRgb9Y2VS5wMTWTSefm3EBHuzSLMTfRHxoRUdeVBcqkc'];
+      const isSuperAdmin = SUPER_ADMIN_WALLETS.includes(walletAddress);
+      const userRole = isSuperAdmin ? 'super_admin' : 'user';
+      
+      console.log(`[Verify API] Creating user with role: ${userRole}`, walletAddress);
+      
       if (isSolana) {
         await execute(
           `INSERT INTO users (solana_wallet_address, username, role, status, referral_code) 
-           VALUES (?, ?, 'user', 'active', ?)`,
-          [walletAddress, username, referralCode]
+           VALUES (?, ?, ?, 'active', ?)`,
+          [walletAddress, username, userRole, referralCode]
         );
       } else {
         await execute(
           `INSERT INTO users (wallet_address, username, role, status, referral_code) 
-           VALUES (?, ?, 'user', 'active', ?)`,
-          [walletAddress.toLowerCase(), username, referralCode]
+           VALUES (?, ?, ?, 'active', ?)`,
+          [walletAddress.toLowerCase(), username, userRole, referralCode]
         );
       }
 
