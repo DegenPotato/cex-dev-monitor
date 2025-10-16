@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
     // Generate challenge components
     const nonce = crypto.randomBytes(16).toString('hex');
     const timestamp = Date.now();
-    const message = `Welcome to Sniff Agency!\n\nPlease sign this message to authenticate your wallet.\n\nWallet: ${walletAddress}\nNonce: ${nonce}\nTimestamp: ${timestamp}`;
+    const message = `Welcome to CEX Dev Monitor!\n\nPlease sign this message to authenticate your wallet.\n\nWallet: ${walletAddress}\nNonce: ${nonce}\nTimestamp: ${timestamp}`;
 
     // Store in database with 5 minute expiry
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes

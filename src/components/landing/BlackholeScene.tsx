@@ -235,14 +235,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     // Refs to store Three.js objects for reverse animation
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const controlsRef = useRef<any>(null);
-    const billboardMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
-    const borderGlowMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
     const vortexMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
     const bloomPassRef = useRef<any>(null);
     const lensingPassRef = useRef<any>(null);
     const chromaticAberrationPassRef = useRef<any>(null);
-    const billboardMeshRef = useRef<THREE.Mesh | null>(null);
-    const borderGlowMeshRef = useRef<THREE.Mesh | null>(null);
     const playAudioRef = useRef<(() => void) | null>(null);
 
 
@@ -716,181 +712,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         vortexMaterialRef.current = vortexMaterial; // Store for reverse animation
         const singularityVortex = new THREE.Mesh(vortexGeometry, vortexMaterial);
         singularityVortex.rotation.x = 0; // Face camera directly (not tilted)
-        singularityVortex.position.set(-1.5, 0, -3); // Left side, behind billboard
+        singularityVortex.position.set(-1.5, 0, -3); // Left side
         scene.add(singularityVortex);
-
-        // AUTH BILLBOARD - Line-traced frame that emerges from vortex
-        // Create tracing line (will animate from center outward)
-        const linePoints: THREE.Vector3[] = [];
-        const billboardWidth = 5; // Wider (was 4)
-        const billboardHeight = 3; // Taller (was 2.5)
-        const billboardZ = 2; // Closer to camera (was 1.5, camera at z=5)
-        
-        // Start all points at vortex center (0, 0, 0)
-        for (let i = 0; i < 50; i++) {
-            linePoints.push(new THREE.Vector3(0, 0, 0));
-        }
-        
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
-        const lineMaterial = new THREE.LineBasicMaterial({
-            color: 0x00ffff, // Cyan
-            linewidth: 5, // Thicker line for visibility
-            transparent: true,
-            opacity: 0,
-            visible: false, // Hidden by default to prevent visual bugs
-        });
-        const tracingLine = new THREE.Line(lineGeometry, lineMaterial);
-        tracingLine.visible = false; // Double ensure it's hidden
-        scene.add(tracingLine);
-        
-        // Add a glowing particle trail effect for the line
-        const trailMaterial = new THREE.PointsMaterial({
-            color: 0x00ffff,
-            size: 0.1,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            visible: false, // Hidden by default
-        });
-        const trailParticles = new THREE.Points(lineGeometry, trailMaterial);
-        trailParticles.visible = false; // Double ensure it's hidden
-        scene.add(trailParticles);
-        
-        // Create Sniff Agency Billboard Texture
-        const billboardCanvas = document.createElement('canvas');
-        billboardCanvas.width = 2048;
-        billboardCanvas.height = 1024;
-        const ctx = billboardCanvas.getContext('2d')!;
-        
-        // Background - Dark with subtle grid
-        const gradient = ctx.createLinearGradient(0, 0, 0, billboardCanvas.height);
-        gradient.addColorStop(0, '#001a1a');
-        gradient.addColorStop(1, '#000814');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, billboardCanvas.width, billboardCanvas.height);
-        
-        // Cyberpunk Grid Pattern
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < billboardCanvas.width; i += 50) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, billboardCanvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i < billboardCanvas.height; i += 50) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(billboardCanvas.width, i);
-            ctx.stroke();
-        }
-        
-        // Glowing Title
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Glow effect
-        ctx.shadowBlur = 40;
-        ctx.shadowColor = '#00ffff';
-        ctx.fillStyle = '#00ffff';
-        ctx.font = 'bold 180px "Space Grotesk", sans-serif';
-        ctx.fillText('SNIFF AGENCY', billboardCanvas.width / 2, 280);
-        
-        // Reset shadow for tagline
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ff00ff';
-        ctx.fillStyle = '#ff00ff';
-        ctx.font = 'italic 70px "Space Grotesk", sans-serif';
-        ctx.fillText('Follow the Money.', billboardCanvas.width / 2, 480);
-        
-        // Scanning line effect
-        ctx.shadowBlur = 0;
-        const scanLineGradient = ctx.createLinearGradient(0, 600, 0, 650);
-        scanLineGradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
-        scanLineGradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.3)');
-        scanLineGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-        ctx.fillStyle = scanLineGradient;
-        ctx.fillRect(0, 600, billboardCanvas.width, 50);
-        
-        // Data streams (vertical lines with varying opacity)
-        for (let i = 0; i < 20; i++) {
-            const x = Math.random() * billboardCanvas.width;
-            const height = 100 + Math.random() * 200;
-            const dataGradient = ctx.createLinearGradient(x, 700, x, 700 + height);
-            dataGradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
-            dataGradient.addColorStop(0.5, `rgba(0, 255, 255, ${Math.random() * 0.5})`);
-            dataGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-            ctx.fillStyle = dataGradient;
-            ctx.fillRect(x, 700, 2, height);
-        }
-        
-        // Corner accents
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 3;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#00ffff';
-        
-        // Top-left corner
-        ctx.beginPath();
-        ctx.moveTo(100, 150);
-        ctx.lineTo(50, 150);
-        ctx.lineTo(50, 100);
-        ctx.stroke();
-        
-        // Top-right corner
-        ctx.beginPath();
-        ctx.moveTo(billboardCanvas.width - 100, 150);
-        ctx.lineTo(billboardCanvas.width - 50, 150);
-        ctx.lineTo(billboardCanvas.width - 50, 100);
-        ctx.stroke();
-        
-        // Bottom-left corner
-        ctx.beginPath();
-        ctx.moveTo(50, billboardCanvas.height - 100);
-        ctx.lineTo(50, billboardCanvas.height - 50);
-        ctx.lineTo(100, billboardCanvas.height - 50);
-        ctx.stroke();
-        
-        // Bottom-right corner
-        ctx.beginPath();
-        ctx.moveTo(billboardCanvas.width - 50, billboardCanvas.height - 100);
-        ctx.lineTo(billboardCanvas.width - 50, billboardCanvas.height - 50);
-        ctx.lineTo(billboardCanvas.width - 100, billboardCanvas.height - 50);
-        ctx.stroke();
-        
-        // Create texture from canvas
-        const billboardTexture = new THREE.CanvasTexture(billboardCanvas);
-        billboardTexture.needsUpdate = true;
-        
-        // Billboard panel with texture
-        const billboardGeometry = new THREE.PlaneGeometry(billboardWidth, billboardHeight);
-        const billboardMaterial = new THREE.MeshBasicMaterial({
-            map: billboardTexture,
-            transparent: true,
-            opacity: 0,
-            side: THREE.DoubleSide,
-        });
-        billboardMaterialRef.current = billboardMaterial; // Store for reverse animation
-        const billboard = new THREE.Mesh(billboardGeometry, billboardMaterial);
-        billboard.position.set(0, 0, billboardZ);
-        billboard.visible = false; // Hide initially to prevent artifact
-        billboardMeshRef.current = billboard; // Store mesh reference
-        scene.add(billboard);
-        
-        // Border glow for billboard
-        const borderGlowGeometry = new THREE.PlaneGeometry(billboardWidth + 0.1, billboardHeight + 0.1);
-        const borderGlowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff, // Cyan glow
-            transparent: true,
-            opacity: 0,
-            side: THREE.DoubleSide,
-        });
-        borderGlowMaterialRef.current = borderGlowMaterial; // Store for reverse animation
-        const borderGlow = new THREE.Mesh(borderGlowGeometry, borderGlowMaterial);
-        borderGlow.position.set(0, 0, billboardZ - 0.01); // Slightly behind billboard
-        borderGlow.visible = false; // Hide initially to prevent artifact
-        borderGlowMeshRef.current = borderGlow; // Store mesh reference
-        scene.add(borderGlow);
         
         // Create lensflare textures programmatically (avoids CORS issues)
         const createLensflareTexture0 = () => {
@@ -1224,70 +1047,38 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             
             // Animate the particle trail uniform for dramatic stretching
             gsap.to(particleMaterial.uniforms.uIsTransitioning, { value: 3.5, duration: 2.5, ease: 'power4.in' });
-            
-            // Billboard animation - line traces from vortex to form frame
-            const animateBillboardTrace = () => {
-                console.log('🖼️ Animating billboard trace...');
-                
-                // Make billboards visible first
-                if (billboardMeshRef.current) billboardMeshRef.current.visible = true;
-                if (borderGlowMeshRef.current) borderGlowMeshRef.current.visible = true;
-                
-                // Hide the line for now - it's causing visual issues
-                // We'll just fade in the billboard directly
-                
-                // Skip the line tracing animation for now
-                // Just show the billboard with a nice fade-in effect
-                
-                gsap.to(billboardMaterial, { 
-                    opacity: 0.85, 
-                    duration: 0.8,
-                    ease: 'power2.out'
-                });
-                
-                gsap.to(borderGlowMaterial, { 
-                    opacity: 0.4, 
-                    duration: 0.8,
-                    ease: 'power2.out',
-                    onComplete: () => {
-                        // Re-enable controls so user can rotate around the vortex
-                        controls.enabled = true;
-                        console.log('🎮 Controls enabled - you can now rotate around the vortex!');
-                        
-                        // Restore audio volume and filter to normal
-                        if (soundRef.current && soundRef.current.context.state === 'running') {
-                            const volumeObj = { vol: soundRef.current.getVolume() };
-                            gsap.to(volumeObj, { 
-                                vol: 1.0, 
-                                duration: 1.0, 
-                                ease: 'power2.out',
-                                onUpdate: () => { soundRef.current?.setVolume(volumeObj.vol); }
-                            });
-                            
-                            // Restore filter frequency back to 100 Hz (space ambient)
-                            const currentFilter = soundRef.current.getFilter();
-                            if (currentFilter && currentFilter instanceof BiquadFilterNode) {
-                                gsap.to(currentFilter.frequency, { value: 100, duration: 1.0, ease: 'power2.out' });
-                            }
-                            
-                            console.log('🔊 Audio restored to normal volume and filter');
-                        }
-                        
-                        // Show React auth UI overlay after billboard fades in
-                        setShowAuthBillboard(true);
-                        console.log('✨ Billboard ready! Auth UI should appear.');
-                        
-                        // IMPORTANT: Do NOT call onEnter here! 
-                        // User must click "Connect Wallet" button
-                    }
-                });
-            };
 
-            // Timeline for transition to billboard
+            // Timeline for transition - show auth UI directly
             gsap.timeline({ 
                 onComplete: () => {
-                    console.log('🌀 Singularity transition complete. Starting billboard animation...');
-                    animateBillboardTrace();
+                    console.log('🌀 Singularity transition complete. Showing auth UI...');
+                    
+                    // Re-enable controls so user can rotate around the vortex
+                    controls.enabled = true;
+                    console.log('🎮 Controls enabled - you can now rotate around the vortex!');
+                    
+                    // Restore audio volume and filter to normal
+                    if (soundRef.current && soundRef.current.context.state === 'running') {
+                        const volumeObj = { vol: soundRef.current.getVolume() };
+                        gsap.to(volumeObj, { 
+                            vol: 1.0, 
+                            duration: 1.0, 
+                            ease: 'power2.out',
+                            onUpdate: () => { soundRef.current?.setVolume(volumeObj.vol); }
+                        });
+                        
+                        // Restore filter frequency back to 100 Hz (space ambient)
+                        const currentFilter = soundRef.current.getFilter();
+                        if (currentFilter && currentFilter instanceof BiquadFilterNode) {
+                            gsap.to(currentFilter.frequency, { value: 100, duration: 1.0, ease: 'power2.out' });
+                        }
+                        
+                        console.log('🔊 Audio restored to normal volume and filter');
+                    }
+                    
+                    // Show React auth UI overlay
+                    setShowAuthBillboard(true);
+                    console.log('✨ Auth UI shown!');
                 }
             })
               // Particle size animation (using existing uSize uniform)
