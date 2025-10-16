@@ -33,6 +33,7 @@
     "recharts": "^2.10.3",
     "sql.js": "^1.10.3",
     "three": "^0.180.0",
+    "tweetnacl": "^1.0.3",
     "ws": "^8.16.0"
   },
   "devDependencies": {

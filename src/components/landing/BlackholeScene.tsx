@@ -1235,33 +1235,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
             <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard ? '!opacity-0' : ''} pointer-events-none`}>
-                {/* Top: Title + Connect Wallet Button */}
-                <div className="flex justify-between items-start w-full">
-                    {/* Title - NO pointer events so scroll can pass through */}
-                    <div className="text-center flex-1">
-                        <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
-                            SNIFF AGENCY
-                        </h1>
-                    </div>
-                    
-                    {/* Connect Wallet Button - Top Right */}
-                    <button
-                        onClick={() => {
-                            console.log('🔗 Connect Wallet clicked from landing page');
-                            // Trigger audio playback (important for VR)
-                            if (playAudioRef.current) {
-                                playAudioRef.current();
-                            }
-                            // TODO: Implement wallet connection
-                            // This will trigger audio in VR and start auth flow
-                        }}
-                        className="pointer-events-auto px-6 py-3 border-2 border-cyan-400 text-cyan-400 rounded-lg text-sm font-bold uppercase tracking-wider
-                                   transform hover:scale-105 hover:bg-cyan-400 hover:text-black hover:shadow-[0_0_20px_rgba(0,255,255,0.6)] transition-all duration-300
-                                   whitespace-nowrap"
-                        style={{ textShadow: '0 0 5px #0ff' }}
-                    >
-                        Connect Wallet
-                    </button>
+                {/* Top: Title */}
+                <div className="text-center w-full">
+                    <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
+                        SNIFF AGENCY
+                    </h1>
                 </div>
 
                 {/* Center: Button - ONLY the button has pointer events */}

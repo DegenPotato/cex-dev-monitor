@@ -1,5 +1,7 @@
 import express from 'express';
 import { ethers } from 'ethers';
+import nacl from 'tweetnacl';
+import bs58 from 'bs58';
 import AuthChallengeProvider from '../../../lib/auth/AuthChallengeProvider.js';
 import SecureAuthService from '../../../lib/auth/SecureAuthService.js';
 import ReferralTrackingProvider from '../../../lib/auth/ReferralTrackingProvider.js';
@@ -37,12 +39,31 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Verify the signature
+    // Verify the signature (support both EVM and Solana)
     try {
-      const recoveredAddress = ethers.verifyMessage(challenge.message, signature);
+      let isValid = false;
+      
+      // Check if it's a Solana wallet (base58, typically 44 chars)
+      if (walletAddress.length >= 32 && walletAddress.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(walletAddress)) {
+        console.log('[Verify API] Detected Solana wallet, using ed25519 verification');
+        
+        // Solana signature verification
+        const messageBytes = new TextEncoder().encode(challenge.message);
+        const signatureBytes = bs58.decode(signature);
+        const publicKeyBytes = bs58.decode(walletAddress);
+        
+        isValid = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
+        
+      } else {
+        console.log('[Verify API] Detected EVM wallet, using ECDSA verification');
+        
+        // EVM signature verification
+        const recoveredAddress = ethers.verifyMessage(challenge.message, signature);
+        isValid = recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
+      }
 
-      if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        console.log('[Verify API] Signature verification failed');
+      if (!isValid) {
+        console.log('[Verify API] ❌ Signature verification failed');
         return res.status(401).json({
           success: false,
           error: 'Invalid signature',
@@ -71,11 +92,22 @@ router.post('/', async (req, res) => {
       const username = `user_${walletAddress.slice(2, 10)}`;
       const referralCode = await authService.generateReferralCode();
 
-      await execute(
-        `INSERT INTO users (wallet_address, username, role, status, referral_code) 
-         VALUES (?, ?, 'user', 'active', ?)`,
-        [walletAddress.toLowerCase(), username, referralCode]
-      );
+      // Determine if Solana or EVM wallet
+      const isSolana = walletAddress.length >= 32 && walletAddress.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(walletAddress);
+      
+      if (isSolana) {
+        await execute(
+          `INSERT INTO users (solana_wallet_address, username, role, status, referral_code) 
+           VALUES (?, ?, 'user', 'active', ?)`,
+          [walletAddress, username, referralCode]
+        );
+      } else {
+        await execute(
+          `INSERT INTO users (wallet_address, username, role, status, referral_code) 
+           VALUES (?, ?, 'user', 'active', ?)`,
+          [walletAddress.toLowerCase(), username, referralCode]
+        );
+      }
 
       const userId = await getLastInsertId();
 
