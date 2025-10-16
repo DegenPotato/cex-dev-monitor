@@ -225,6 +225,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const { connected, publicKey } = useWallet();
     const { isAuthenticated, isAuthenticating, authenticateWallet } = useAuth();
     
+    // Universe Selection State
+    const [selectedUniverse, setSelectedUniverse] = useState<string | null>(null);
+    
     // Audio playlist management
     const playlistRef = useRef<string[]>([]);
     const currentTrackIndexRef = useRef(0);
@@ -324,17 +327,62 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         let audioLoaded = false;
         let shouldAutoPlay = false; // Track if we should auto-play after loading
         
+        // Reference to track if we're already advancing (prevent double-triggers)
+        let isAdvancingTrack = false;
+        
+        // Function to advance to next track (for playlist looping)
+        const playNextTrack = () => {
+            // Prevent multiple simultaneous track advances
+            if (isAdvancingTrack) {
+                console.log('⚠️ Already advancing track, skipping...');
+                return;
+            }
+            
+            isAdvancingTrack = true;
+            console.log('🎵 Track ended, advancing to next...');
+            
+            // Stop current sound completely
+            if (sound.isPlaying) {
+                sound.stop();
+            }
+            
+            // Clear old source node and its listeners
+            if (sound.source) {
+                sound.source.onended = null;
+                sound.source = null;
+            }
+            
+            currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
+            
+            // If we completed the playlist, reshuffle for variety
+            if (currentTrackIndexRef.current === 0) {
+                console.log('🔄 Playlist complete! Reshuffling and looping...');
+                playlistRef.current = shufflePlaylist(audioFiles);
+            }
+            
+            // Load next track and auto-play it
+            setTimeout(() => {
+                loadTrack(currentTrackIndexRef.current, true);
+                isAdvancingTrack = false;
+            }, 100);
+        };
+        
         // Load and play a track from the playlist
         const loadTrack = (trackIndex: number, autoPlay = false) => {
             const trackPath = playlistRef.current[trackIndex];
             console.log(`🎵 Loading track ${trackIndex + 1}/${playlistRef.current.length}: ${trackPath}`);
+            
+            // Stop any currently playing sound
+            if (sound.isPlaying) {
+                sound.stop();
+            }
             
             shouldAutoPlay = autoPlay;
             
             audioLoader.load(trackPath, function(buffer) {
                 sound.setBuffer(buffer);
                 sound.setLoop(false); // No loop - we'll handle playlist advancement
-                sound.setVolume(1.0);
+                sound.setVolume(2.0);
                 sound.setRefDistance(10);
                 sound.setRolloffFactor(2.0);
                 
@@ -353,23 +401,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 if (shouldAutoPlay && listener.context.state === 'running') {
                     console.log('▶️ Auto-playing next track');
                     sound.play();
+                    
+                    // Attach ended listener AFTER play creates the source node
+                    setTimeout(() => {
+                        if (sound.source) {
+                            sound.source.onended = playNextTrack;
+                            console.log('✅ Track end listener attached to new source');
+                        }
+                    }, 100);
                 }
             });
-        };
-        
-        // Setup event listener for track end (advance to next)
-        sound.onEnded = () => {
-            console.log('🎵 Track ended, advancing to next...');
-            currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
-            
-            // If we completed the playlist, reshuffle for variety
-            if (currentTrackIndexRef.current === 0) {
-                console.log('🔄 Playlist complete! Reshuffling...');
-                playlistRef.current = shufflePlaylist(audioFiles);
-            }
-            
-            // Load next track and auto-play it
-            loadTrack(currentTrackIndexRef.current, true);
         };
         
         // Load first track
@@ -388,6 +429,14 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 if (sound && audioLoaded && !sound.isPlaying) {
                     sound.play();
                     console.log('▶️ Audio playback started');
+                    
+                    // Attach track end listener after first play
+                    setTimeout(() => {
+                        if (sound.source && sound.source.onended !== playNextTrack) {
+                            sound.source.onended = playNextTrack;
+                            console.log('✅ Playlist loop enabled - track end listener active');
+                        }
+                    }, 100);
                     
                     // Remove all event listeners after successful playback
                     removeAudioEvents();
@@ -1303,19 +1352,121 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         }}
                     >
                         <div className="text-center space-y-6">
-                            <h2 className="text-3xl font-bold text-cyan-400" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                                Welcome to the Vortex
+                            <h2 className="text-3xl font-bold text-cyan-400 mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                                {!isAuthenticated ? 'Welcome to the Vortex' : 'Select Your Universe'}
                             </h2>
                             
-                            {/* Message */}
-                            <p className="text-gray-300 text-lg mb-6">
-                                {!connected && 'Connect your wallet to enter the vortex.'}
-                                {connected && !isAuthenticated && 'Sign the message to authenticate.'}
-                                {connected && isAuthenticated && 'Authentication complete! Entering...'}
-                            </p>
-                            
-                            {/* Connect Wallet / Authenticate Flow */}
-                            {!connected ? (
+                            {/* Show Universe Selection after Authentication */}
+                            {isAuthenticated && !selectedUniverse ? (
+                                <div className="space-y-4">
+                                    <p className="text-gray-300 text-base mb-4">
+                                        Choose your destination portal
+                                    </p>
+                                    
+                                    {/* Universe Grid */}
+                                    <div className="grid gap-3">
+                                        {/* Spaces Manager Universe - Active */}
+                                        <button
+                                            onClick={() => {
+                                                setSelectedUniverse('spaces-manager');
+                                                console.log('🌌 Selected: Spaces Manager Universe');
+                                                // TODO: Transition to white hole / spaces manager scene
+                                                setTimeout(() => onEnter(), 1000);
+                                            }}
+                                            className="group relative p-6 bg-gradient-to-br from-cyan-900/30 to-blue-900/30 
+                                                     border border-cyan-400/50 rounded-lg hover:border-cyan-300 
+                                                     hover:shadow-[0_0_30px_rgba(0,255,255,0.3)] transition-all duration-300
+                                                     transform hover:scale-[1.02] cursor-pointer"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-left">
+                                                    <h3 className="text-xl font-bold text-cyan-300 group-hover:text-cyan-200">
+                                                        Spaces Manager Universe
+                                                    </h3>
+                                                    <p className="text-sm text-gray-400 mt-1">
+                                                        Track X Spaces • Analytics • Listener Insights
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <span className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded">
+                                                            ACTIVE
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            Entry: White Hole Portal
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <svg className="w-8 h-8 text-cyan-400 group-hover:text-cyan-300 transform group-hover:translate-x-1 transition-transform" 
+                                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                          d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                        
+                                        {/* CEX Dev Monitor - Current */}
+                                        <button
+                                            onClick={() => {
+                                                setSelectedUniverse('cex-monitor');
+                                                console.log('🎯 Selected: CEX Dev Monitor');
+                                                setTimeout(() => onEnter(), 1000);
+                                            }}
+                                            className="group relative p-6 bg-gradient-to-br from-purple-900/30 to-pink-900/30 
+                                                     border border-purple-400/50 rounded-lg hover:border-purple-300 
+                                                     hover:shadow-[0_0_30px_rgba(147,51,234,0.3)] transition-all duration-300
+                                                     transform hover:scale-[1.02] cursor-pointer"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-left">
+                                                    <h3 className="text-xl font-bold text-purple-300 group-hover:text-purple-200">
+                                                        CEX Dev Monitor
+                                                    </h3>
+                                                    <p className="text-sm text-gray-400 mt-1">
+                                                        Solana Monitoring • Token Analysis • Wallet Tracking
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-400 rounded">
+                                                            CURRENT
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            Entry: Black Hole Vortex
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <svg className="w-8 h-8 text-purple-400 group-hover:text-purple-300 transform group-hover:translate-x-1 transition-transform" 
+                                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                          d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                                </svg>
+                                            </div>
+                                        </button>
+                                        
+                                        {/* Coming Soon Universes */}
+                                        <div className="mt-4 pt-4 border-t border-gray-700">
+                                            <p className="text-xs text-gray-500 mb-3">COMING SOON</p>
+                                            <div className="grid grid-cols-2 gap-2 opacity-50">
+                                                <div className="p-3 bg-gray-800/30 border border-gray-600/30 rounded text-left">
+                                                    <h4 className="text-sm text-gray-400">DeFi Analytics</h4>
+                                                    <p className="text-xs text-gray-500">Q1 2025</p>
+                                                </div>
+                                                <div className="p-3 bg-gray-800/30 border border-gray-600/30 rounded text-left">
+                                                    <h4 className="text-sm text-gray-400">NFT Gallery</h4>
+                                                    <p className="text-xs text-gray-500">Q2 2025</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Message */}
+                                    <p className="text-gray-300 text-lg mb-6">
+                                        {!connected && 'Connect your wallet to enter the multiverse.'}
+                                        {connected && !isAuthenticated && 'Sign the message to authenticate.'}
+                                        {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : 'CEX Monitor'}...`}
+                                    </p>
+                                    
+                                    {/* Connect Wallet / Authenticate Flow */}
+                                    {!connected ? (
                                 // Step 1: Connect Wallet
                                 <div className="w-full">
                                     <WalletMultiButton className="!w-full !px-8 !py-4 !bg-gradient-to-r !from-cyan-600 !to-blue-600 hover:!from-cyan-500 hover:!to-blue-500 
@@ -1387,6 +1538,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                     💡 Drag outside this panel to rotate the view
                                 </p>
                             </div>
+                        </>
+                        )}
                         </div>
                     </div>
                 </div>
