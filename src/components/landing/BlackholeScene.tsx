@@ -887,8 +887,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const violetColor = new THREE.Color(0x9933ff);
 
         const GRAVITATIONAL_CONSTANT = 1.2;
-        const EVENT_HORIZON_RADIUS = 2.0;
-        const DISK_THICKNESS = 4.0; // Thin accretion disk
+        const EVENT_HORIZON_RADIUS = 1.0;
+        const DISK_THICKNESS = 1.0; // Thin accretion disk
         velocities.current = [];
 
         for (let i = 0; i < particleCount; i++) {
