@@ -756,10 +756,116 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         trailParticles.visible = false; // Double ensure it's hidden
         scene.add(trailParticles);
         
-        // Billboard panel (starts invisible)
+        // Create Sniff Agency Billboard Texture
+        const billboardCanvas = document.createElement('canvas');
+        billboardCanvas.width = 2048;
+        billboardCanvas.height = 1024;
+        const ctx = billboardCanvas.getContext('2d')!;
+        
+        // Background - Dark with subtle grid
+        const gradient = ctx.createLinearGradient(0, 0, 0, billboardCanvas.height);
+        gradient.addColorStop(0, '#001a1a');
+        gradient.addColorStop(1, '#000814');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, billboardCanvas.width, billboardCanvas.height);
+        
+        // Cyberpunk Grid Pattern
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < billboardCanvas.width; i += 50) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i, billboardCanvas.height);
+            ctx.stroke();
+        }
+        for (let i = 0; i < billboardCanvas.height; i += 50) {
+            ctx.beginPath();
+            ctx.moveTo(0, i);
+            ctx.lineTo(billboardCanvas.width, i);
+            ctx.stroke();
+        }
+        
+        // Glowing Title
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Glow effect
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = '#00ffff';
+        ctx.fillStyle = '#00ffff';
+        ctx.font = 'bold 180px "Space Grotesk", sans-serif';
+        ctx.fillText('SNIFF AGENCY', billboardCanvas.width / 2, 280);
+        
+        // Reset shadow for tagline
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff00ff';
+        ctx.fillStyle = '#ff00ff';
+        ctx.font = 'italic 70px "Space Grotesk", sans-serif';
+        ctx.fillText('Follow the Money.', billboardCanvas.width / 2, 480);
+        
+        // Scanning line effect
+        ctx.shadowBlur = 0;
+        const scanLineGradient = ctx.createLinearGradient(0, 600, 0, 650);
+        scanLineGradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
+        scanLineGradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.3)');
+        scanLineGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        ctx.fillStyle = scanLineGradient;
+        ctx.fillRect(0, 600, billboardCanvas.width, 50);
+        
+        // Data streams (vertical lines with varying opacity)
+        for (let i = 0; i < 20; i++) {
+            const x = Math.random() * billboardCanvas.width;
+            const height = 100 + Math.random() * 200;
+            const dataGradient = ctx.createLinearGradient(x, 700, x, 700 + height);
+            dataGradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
+            dataGradient.addColorStop(0.5, `rgba(0, 255, 255, ${Math.random() * 0.5})`);
+            dataGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+            ctx.fillStyle = dataGradient;
+            ctx.fillRect(x, 700, 2, height);
+        }
+        
+        // Corner accents
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00ffff';
+        
+        // Top-left corner
+        ctx.beginPath();
+        ctx.moveTo(100, 150);
+        ctx.lineTo(50, 150);
+        ctx.lineTo(50, 100);
+        ctx.stroke();
+        
+        // Top-right corner
+        ctx.beginPath();
+        ctx.moveTo(billboardCanvas.width - 100, 150);
+        ctx.lineTo(billboardCanvas.width - 50, 150);
+        ctx.lineTo(billboardCanvas.width - 50, 100);
+        ctx.stroke();
+        
+        // Bottom-left corner
+        ctx.beginPath();
+        ctx.moveTo(50, billboardCanvas.height - 100);
+        ctx.lineTo(50, billboardCanvas.height - 50);
+        ctx.lineTo(100, billboardCanvas.height - 50);
+        ctx.stroke();
+        
+        // Bottom-right corner
+        ctx.beginPath();
+        ctx.moveTo(billboardCanvas.width - 50, billboardCanvas.height - 100);
+        ctx.lineTo(billboardCanvas.width - 50, billboardCanvas.height - 50);
+        ctx.lineTo(billboardCanvas.width - 100, billboardCanvas.height - 50);
+        ctx.stroke();
+        
+        // Create texture from canvas
+        const billboardTexture = new THREE.CanvasTexture(billboardCanvas);
+        billboardTexture.needsUpdate = true;
+        
+        // Billboard panel with texture
         const billboardGeometry = new THREE.PlaneGeometry(billboardWidth, billboardHeight);
         const billboardMaterial = new THREE.MeshBasicMaterial({
-            color: 0x000000,
+            map: billboardTexture,
             transparent: true,
             opacity: 0,
             side: THREE.DoubleSide,
