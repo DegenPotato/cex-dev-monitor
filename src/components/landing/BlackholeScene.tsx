@@ -1543,11 +1543,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             console.log('✍️ Starting authentication...');
                                             await authenticateWallet();
                                             console.log('✅ Authentication successful!');
-                                            
-                                            // Navigate to dashboard after brief delay
-                                            setTimeout(() => {
-                                                onEnter();
-                                            }, 1500);
+                                            // Don't navigate automatically - check role first
                                         } catch (error) {
                                             console.error('❌ Authentication failed:', error);
                                         }
@@ -1566,14 +1562,52 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             </svg>
                                             Authenticating...
                                         </span>
-                                    ) : 'SIGN MESSAGE & ENTER'}
+                                    ) : 'SIGN MESSAGE & AUTHENTICATE'}
                                 </button>
+                            ) : user?.role === 'super_admin' ? (
+                                // Step 3: Super Admin - Entering
+                                <div className="space-y-4 w-full">
+                                    <div className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 
+                                                   text-white font-bold rounded-lg text-center
+                                                   shadow-[0_0_20px_rgba(0,255,128,0.3)]">
+                                        ✅ Super Admin Access Granted
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            console.log('🎯 Entering dashboard...');
+                                            setTimeout(() => onEnter(), 500);
+                                        }}
+                                        className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 
+                                                   text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                                   shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]"
+                                    >
+                                        ENTER VORTEX →
+                                    </button>
+                                </div>
                             ) : (
-                                // Step 3: Authenticated (entering)
-                                <div className="w-full px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 
-                                               text-white font-bold rounded-lg text-center
-                                               shadow-[0_0_20px_rgba(0,255,128,0.3)]">
-                                    ✅ Authenticated - Entering Vortex...
+                                // Step 3: Access Denied for non-super_admins
+                                <div className="space-y-4 w-full">
+                                    <div className="px-8 py-4 bg-gradient-to-r from-red-600 to-orange-600 
+                                                   text-white font-bold rounded-lg text-center
+                                                   shadow-[0_0_20px_rgba(239,68,68,0.3)]">
+                                        ⛔ ACCESS DENIED
+                                    </div>
+                                    <div className="text-center text-gray-400 text-sm">
+                                        <p className="mb-2">Your agent credentials have been registered.</p>
+                                        <p className="mb-4">This portal requires <span className="text-purple-400 font-bold">SUPER ADMIN</span> clearance.</p>
+                                        <div className="text-xs text-gray-500">
+                                            Current clearance: <span className="text-gray-300">{user?.role?.toUpperCase() || 'AGENT'}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            await logout();
+                                        }}
+                                        className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 
+                                                   text-gray-300 rounded-lg transition-all duration-200"
+                                    >
+                                        DISCONNECT
+                                    </button>
                                 </div>
                             )}
                             
