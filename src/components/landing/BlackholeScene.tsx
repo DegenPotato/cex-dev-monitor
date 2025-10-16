@@ -85,6 +85,122 @@ const ChromaticAberrationShader = {
     `,
 };
 
+// Quantum Tunneling Barrier Shader
+const TunnelingBarrierShader = {
+    uniforms: {
+        'uTime': { value: 0 },
+        'uTransmission': { value: 0.0 }, // 0 = opaque barrier, 1 = fully transparent
+        'uWaveIntensity': { value: 0.5 },
+        'uEnergyLevel': { value: 0.0 }, // Player's energy level for tunneling
+        'uDistortion': { value: 0.0 },
+        'uColorShift': { value: new THREE.Vector3(0, 0, 1) }, // Blue to white shift
+    },
+    vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform float uWaveIntensity;
+        
+        void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vPosition = position;
+            vUv = uv;
+            
+            vec3 pos = position;
+            
+            // Quantum wave fluctuations
+            float wave = sin(position.x * 3.0 + uTime) * cos(position.y * 3.0 + uTime) * uWaveIntensity;
+            pos += normal * wave * 0.1;
+            
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform float uTransmission;
+        uniform float uEnergyLevel;
+        uniform float uDistortion;
+        uniform vec3 uColorShift;
+        
+        void main() {
+            // Wave interference pattern
+            float interference = sin(vPosition.x * 10.0 + uTime * 2.0) * 
+                               cos(vPosition.y * 10.0 - uTime * 2.0) * 
+                               sin(vPosition.z * 10.0 + uTime);
+            
+            // Energy-based color
+            vec3 baseColor = mix(vec3(0.0, 0.5, 1.0), uColorShift, uEnergyLevel);
+            
+            // Probability amplitude visualization
+            float probability = exp(-2.0 * sqrt(2.0 * max(0.0, 1.0 - uEnergyLevel)) * (1.0 - uTransmission));
+            
+            // Fresnel effect for barrier visibility
+            vec3 viewDir = normalize(cameraPosition - vPosition);
+            float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 1.5);
+            
+            // Combine effects
+            vec3 color = baseColor * (0.5 + 0.5 * interference);
+            float opacity = (1.0 - probability) * fresnel * (0.3 + 0.7 * (1.0 - uTransmission));
+            
+            // Add distortion effect as energy increases
+            opacity *= (1.0 + uDistortion * sin(uTime * 3.0) * 0.2);
+            
+            gl_FragColor = vec4(color, opacity);
+        }
+    `,
+};
+
+// White Hole Inversion Shader
+const WhiteHoleShader = {
+    uniforms: {
+        'tDiffuse': { value: null },
+        'uInversion': { value: 0.0 }, // 0 = normal, 1 = fully inverted
+        'uTime': { value: 0 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uInversion;
+        uniform float uTime;
+        varying vec2 vUv;
+        
+        void main() {
+            vec2 uv = vUv;
+            
+            // Radial distortion during inversion
+            vec2 center = vec2(0.5, 0.5);
+            vec2 dir = uv - center;
+            float dist = length(dir);
+            
+            // Spiral distortion for white hole effect
+            float angle = atan(dir.y, dir.x);
+            angle += uInversion * dist * 3.14159 * 2.0;
+            
+            vec2 distortedUV = center + vec2(cos(angle), sin(angle)) * dist;
+            
+            vec4 color = texture2D(tDiffuse, mix(uv, distortedUV, uInversion));
+            
+            // Invert colors for white hole
+            vec3 inverted = vec3(1.0) - color.rgb;
+            
+            // Add bright core effect
+            float coreBrightness = (1.0 - dist) * uInversion;
+            inverted += vec3(coreBrightness);
+            
+            gl_FragColor = vec4(mix(color.rgb, inverted, uInversion), color.a);
+        }
+    `,
+};
 
 // Particle Shaders for Trail Effect
 const particleVertexShader = `
@@ -217,6 +333,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [showAuthBillboard, setShowAuthBillboard] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isQuantumTunneling, setIsQuantumTunneling] = useState(false);
     const soundRef = useRef<THREE.PositionalAudio | null>(null);
     const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
@@ -236,9 +353,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const controlsRef = useRef<any>(null);
     const vortexMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+    const barrierMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+    const quantumBarrierRef = useRef<THREE.Mesh | null>(null);
     const bloomPassRef = useRef<any>(null);
     const lensingPassRef = useRef<any>(null);
     const chromaticAberrationPassRef = useRef<any>(null);
+    const whiteHolePassRef = useRef<any>(null);
     const playAudioRef = useRef<(() => void) | null>(null);
 
 
@@ -756,7 +876,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         flareLight.add(lensflare);
 
         // Particle System - Realistic Accretion Disk
-        const particleCount = 20000;
+        const particleCount = 69000;
         const positions = new Float32Array(particleCount * 3);
         const prevPositions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
@@ -766,9 +886,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const cyanColor = new THREE.Color(0x00ffff);
         const violetColor = new THREE.Color(0x9933ff);
 
-        const GRAVITATIONAL_CONSTANT = 0.8;
+        const GRAVITATIONAL_CONSTANT = 1.2;
         const EVENT_HORIZON_RADIUS = 2.0;
-        const DISK_THICKNESS = 2.0; // Thin accretion disk
+        const DISK_THICKNESS = 4.0; // Thin accretion disk
         velocities.current = [];
 
         for (let i = 0; i < particleCount; i++) {
@@ -834,6 +954,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 uSize: { value: 0.2 },
                 uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
                 uIsTransitioning: { value: 0.0 },
+                uQuantumBarrier: { value: 0.0 },
             },
             vertexShader: particleVertexShader,
             fragmentShader: particleFragmentShader,
@@ -845,6 +966,20 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const particles = new THREE.Points(particleGeometry, particleMaterial);
         scene.add(particles);
+        
+        const barrierGeometry = new THREE.SphereGeometry(6, 64, 64);
+        const barrierMaterial = new THREE.ShaderMaterial({
+            ...TunnelingBarrierShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+        barrierMaterialRef.current = barrierMaterial; // Store ref
+        const quantumBarrier = new THREE.Mesh(barrierGeometry, barrierMaterial);
+        quantumBarrier.position.set(0, 0, 0);
+        quantumBarrier.visible = false; // Start hidden
+        quantumBarrierRef.current = quantumBarrier; // Store ref
+        scene.add(quantumBarrier);
         
         const composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
@@ -865,6 +1000,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const chromaticAberrationPass = new ShaderPass(ChromaticAberrationShader);
         chromaticAberrationPassRef.current = chromaticAberrationPass; // Store for reverse animation
         composer.addPass(chromaticAberrationPass);
+        
+        const whiteHolePass = new ShaderPass(WhiteHoleShader);
+        whiteHolePass.uniforms.uInversion.value = 0; // Start with black hole
+        whiteHolePassRef.current = whiteHolePass; // Store ref
+        composer.addPass(whiteHolePass);
 
         const clock = new THREE.Clock();
         let animationFrameId: number;
@@ -1024,6 +1164,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             if (soundRef.current?.isPlaying) {
                 const avgEnergy = (bass + mid + treble) / 3;
                 bloomPass.strength = 0.4 + avgEnergy * 1.2; // Gentle bloom: 0.4-1.6 (eye-friendly!)
+            }
+            
+            // Update quantum barrier uniforms
+            if (barrierMaterialRef.current && barrierMaterialRef.current.uniforms.uTime) {
+                barrierMaterialRef.current.uniforms.uTime.value = elapsedTime;
+            }
+            
+            // Update white hole pass time
+            if (whiteHolePassRef.current && whiteHolePassRef.current.uniforms.uTime) {
+                whiteHolePassRef.current.uniforms.uTime.value = elapsedTime;
             }
 
             composer.render();
@@ -1468,8 +1618,77 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                     </div>
                                     <button
                                         onClick={() => {
-                                            console.log('🎯 Entering dashboard...');
-                                            setTimeout(() => onEnter(), 500);
+                                            // Prevent multiple tunneling sequences
+                                            if (isQuantumTunneling) return;
+                                            
+                                            console.log('🌀 QUANTUM TUNNELING INITIATED...');
+                                            setIsQuantumTunneling(true);
+                                            setShowAuthBillboard(false); // Hide auth UI
+                                            
+                                            // Start quantum tunneling sequence
+                                            if (quantumBarrierRef.current && barrierMaterialRef.current && whiteHolePassRef.current) {
+                                                quantumBarrierRef.current.visible = true;
+                                                
+                                                // Timeline for quantum tunneling effect
+                                                const tl = gsap.timeline({
+                                                    onComplete: () => {
+                                                        console.log('✨ Quantum tunnel complete! Entering dashboard...');
+                                                        setTimeout(() => onEnter(), 500);
+                                                    }
+                                                });
+                                                
+                                                // Phase 1: Charge up energy
+                                                tl.to(barrierMaterialRef.current.uniforms.uEnergyLevel, {
+                                                    value: 1.0,
+                                                    duration: 2.0,
+                                                    ease: 'power2.in'
+                                                })
+                                                
+                                                // Phase 2: Increase transmission probability
+                                                .to(barrierMaterialRef.current.uniforms.uTransmission, {
+                                                    value: 1.0,
+                                                    duration: 1.5,
+                                                    ease: 'power3.inOut'
+                                                }, '-=1.0')
+                                                
+                                                // Phase 3: Color shift from blue to white
+                                                .to(barrierMaterialRef.current.uniforms.uColorShift.value, {
+                                                    x: 1.0,
+                                                    y: 1.0,
+                                                    z: 1.0,
+                                                    duration: 2.0,
+                                                    ease: 'power2.inOut'
+                                                }, '-=1.5')
+                                                
+                                                // Phase 4: Begin inversion to white hole
+                                                .to(whiteHolePassRef.current.uniforms.uInversion, {
+                                                    value: 1.0,
+                                                    duration: 3.0,
+                                                    ease: 'power3.in'
+                                                }, '-=1.0')
+                                                
+                                                // Phase 5: Camera zoom through barrier
+                                                .to(cameraRef.current ? cameraRef.current.position : {}, {
+                                                    z: -10, // Through the barrier
+                                                    duration: 2.5,
+                                                    ease: 'power2.in'
+                                                }, '-=2.0')
+                                                
+                                                // Phase 6: Extreme bloom for white hole
+                                                .to(bloomPassRef.current, {
+                                                    strength: 5,
+                                                    duration: 2.0,
+                                                    ease: 'power2.in'
+                                                }, '-=2.0')
+                                                
+                                                // Phase 7: Fade to white
+                                                .to({}, {
+                                                    duration: 0.5,
+                                                    onComplete: () => {
+                                                        console.log('🌟 Transitioning through white hole...');
+                                                    }
+                                                });
+                                            }
                                         }}
                                         className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 
                                                    text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
