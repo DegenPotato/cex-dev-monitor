@@ -24,11 +24,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const nodesRef = useRef<THREE.Mesh[]>([]);
   const dataStreamsRef = useRef<THREE.Line[]>([]);
   const composerRef = useRef<EffectComposer>();
-  const matrixRainRef = useRef<THREE.Points>();
   const whiteHoleRef = useRef<THREE.Group>();
+  const currentNodeRef = useRef<number>(0); // Track current focused node
   
   const [isLoading, setIsLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(true);
+  const [currentNodeIndex, setCurrentNodeIndex] = useState(0);
   
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
@@ -77,23 +78,24 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     composer.addPass(bloomPass);
     composerRef.current = composer;
     
-    // OrbitControls for free navigation
+    // OrbitControls - locked to nodes, no free movement
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.minDistance = 5;
-    controls.maxDistance = 50; // Max distance prevents reaching the horizon at radius 80
+    controls.minDistance = 8;  // Can't get too close to a node
+    controls.maxDistance = 25; // Limited zoom out for focused view
+    controls.enablePan = false; // No panning - only rotation around node
     controls.enabled = false; // Disabled during entry animation
     controlsRef.current = controls;
     
     /**
-     * MATRIX DASHBOARD ENVIRONMENT:
-     * - Infinite space aesthetic with subtle cosmic background
-     * - Not a simulation, but a functional 3D UI/dashboard
-     * - Cosmic elements create ambience without being distracting
-     * - Neural network nodes represent different data systems
-     * - Dark theme with soft lighting for extended viewing comfort
-     * - Matrix-inspired green accents throughout the interface
+     * NODE-BASED NAVIGATION SYSTEM:
+     * - Camera locked to orbit around selected nodes
+     * - No free movement - structured navigation only
+     * - Each node represents a different data system
+     * - Navigate between nodes with keyboard or UI controls
+     * - Zoom and rotate around the focused node
+     * - Clean, focused interface for data exploration
      **/
     
     // Create COSMIC BACKGROUND RADIATION FIELD - The infinite Matrix universe
@@ -353,44 +355,56 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const dataStreams: THREE.Line[] = [];
     dataStreamsRef.current = dataStreams;
     
-    // MATRIX DIGITAL RAIN - Falling code effect
-    const createMatrixRain = () => {
-      const rainCount = 1000;
-      const geometry = new THREE.BufferGeometry();
-      const positions = new Float32Array(rainCount * 3);
-      const velocities = new Float32Array(rainCount);
-      const sizes = new Float32Array(rainCount);
+    // NODE NAVIGATION FUNCTIONS
+    const focusOnNode = (nodeIndex: number, duration: number = 1) => {
+      if (!nodesRef.current[nodeIndex] || !controlsRef.current) return;
       
-      for (let i = 0; i < rainCount; i++) {
-        positions[i * 3] = (Math.random() - 0.5) * 100;
-        positions[i * 3 + 1] = Math.random() * 100 - 50;
-        positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
-        
-        velocities[i] = Math.random() * 0.3 + 0.1;
-        sizes[i] = Math.random() * 2 + 1;
-      }
+      const node = nodesRef.current[nodeIndex];
+      currentNodeRef.current = nodeIndex;
       
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 1));
-      geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-      
-      const material = new THREE.PointsMaterial({
-        color: 0x00ff00,
-        size: 0.3,
-        transparent: true,
-        opacity: 0.6,
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true
+      // Update OrbitControls target to the node position
+      gsap.to(controlsRef.current.target, {
+        x: node.position.x,
+        y: node.position.y,
+        z: node.position.z,
+        duration,
+        ease: 'power2.inOut',
+        onUpdate: () => { controlsRef.current?.update(); }
       });
       
-      const rain = new THREE.Points(geometry, material);
-      return rain;
+      // Move camera to a good viewing position relative to the node
+      const cameraOffset = new THREE.Vector3(10, 5, 10);
+      const targetCameraPos = node.position.clone().add(cameraOffset);
+      
+      gsap.to(camera.position, {
+        x: targetCameraPos.x,
+        y: targetCameraPos.y,
+        z: targetCameraPos.z,
+        duration,
+        ease: 'power2.inOut'
+      });
+      
+      // Highlight the focused node
+      nodesRef.current.forEach((n, i) => {
+        const material = n.material as THREE.MeshPhongMaterial;
+        gsap.to(material, {
+          emissiveIntensity: i === nodeIndex ? 0.6 : 0.3,
+          duration: 0.5
+        });
+      });
     };
     
-    const matrixRain = createMatrixRain();
-    matrixRain.visible = false; // Start hidden
-    matrixRainRef.current = matrixRain;
-    scene.add(matrixRain);
+    // Navigate to next/previous node
+    const navigateNode = (direction: 'next' | 'prev') => {
+      let newIndex = currentNodeRef.current;
+      if (direction === 'next') {
+        newIndex = (newIndex + 1) % nodesRef.current.length;
+      } else {
+        newIndex = (newIndex - 1 + nodesRef.current.length) % nodesRef.current.length;
+      }
+      setCurrentNodeIndex(newIndex);
+      focusOnNode(newIndex);
+    };
     
     // ENTRY ANIMATION - Dashboard initialization sequence
     const runEmergenceAnimation = () => {
@@ -401,10 +415,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           console.log('✨ Dashboard ready!');
           setIsTransitioning(false);
           
-          // Enable controls for free navigation
+          // Enable controls and focus on first node
           if (controlsRef.current) {
             controlsRef.current.enabled = true;
-            console.log('🎮 Dashboard navigation enabled!');
+            console.log('🎮 Node navigation enabled!');
+            // Focus on the first node after transition
+            setTimeout(() => focusOnNode(0, 1.5), 500);
           }
           
           // Create data streams after nodes are in position
@@ -492,17 +508,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         });
       }, '-=2')
       
-      // Phase 5: Fade in matrix rain
-      .to(matrixRain, {
-        visible: true,
-        duration: 0.1
-      }, '-=0.5')
-      .to(matrixRain.material, {
-        opacity: 0.1,
-        duration: 2
-      }, '-=0.5')
-      
-      // Phase 6: Dashboard fully operational
+      // Phase 5: Dashboard fully operational
       .to({}, {
         duration: 1,
         onStart: () => {
@@ -538,23 +544,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         }
       }
       
-      // Animate MATRIX DIGITAL RAIN
-      if (matrixRainRef.current && matrixRainRef.current.visible) {
-        const positions = matrixRainRef.current.geometry.attributes.position.array as Float32Array;
-        const velocities = matrixRainRef.current.geometry.attributes.velocity.array as Float32Array;
-        
-        for (let i = 0; i < positions.length; i += 3) {
-          // Move particles down
-          positions[i + 1] -= velocities[i / 3] * 2;
-          
-          // Reset to top when reaching bottom
-          if (positions[i + 1] < -50) {
-            positions[i + 1] = 50;
-            positions[i] = (Math.random() - 0.5) * 100;
-            positions[i + 2] = (Math.random() - 0.5) * 100;
-          }
-        }
-        matrixRainRef.current.geometry.attributes.position.needsUpdate = true;
+      // Update focused node glow effect
+      if (nodesRef.current[currentNodeRef.current]) {
+        const focusedNode = nodesRef.current[currentNodeRef.current];
+        const glowIntensity = 0.5 + Math.sin(elapsedTime * 2) * 0.1;
+        const material = focusedNode.material as THREE.MeshPhongMaterial;
+        material.emissiveIntensity = glowIntensity;
       }
       
       // Rotate singularity
@@ -613,9 +608,33 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     window.addEventListener('resize', handleResize);
     
+    // Keyboard navigation
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!controlsRef.current?.enabled || isTransitioning) return;
+      
+      switch(e.key) {
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          navigateNode('next');
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          navigateNode('prev');
+          break;
+        case ' ': // Spacebar to reset camera position for current node
+          focusOnNode(currentNodeRef.current, 1);
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
       
       if (animationIdRef.current) {
         cancelAnimationFrame(animationIdRef.current);
@@ -723,13 +742,31 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           <div className="absolute bottom-8 right-8 bg-black/80 border border-green-500/30 rounded p-4
                           animate-in fade-in slide-in-from-bottom duration-500 delay-300">
             <div className="text-green-400 font-mono text-sm space-y-1">
-              <div className="text-green-500 mb-2">🎮 NAVIGATION</div>
-              <div>• LEFT CLICK + DRAG: Rotate</div>
-              <div>• RIGHT CLICK + DRAG: Pan</div>
-              <div>• SCROLL: Zoom in/out</div>
-              <div className="text-green-500/60 text-xs mt-3 border-t border-green-500/20 pt-2">
-                📊 Navigate to explore<br/>
-                data connections
+              <div className="text-green-500 mb-2">🎮 NODE NAVIGATION</div>
+              <div>• A/←: Previous Node</div>
+              <div>• D/→: Next Node</div>
+              <div>• SPACE: Reset View</div>
+              <div className="mt-2 pt-2 border-t border-green-500/20">
+                <div className="text-green-500 mb-1">🔄 ORBIT CONTROLS</div>
+                <div>• DRAG: Rotate around node</div>
+                <div>• SCROLL: Zoom in/out</div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Current Node Display */}
+        {!isTransitioning && (
+          <div className="absolute top-24 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
+                          animate-in fade-in slide-in-from-left duration-500">
+            <div className="text-green-400 font-mono">
+              <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
+              <div className="text-2xl font-bold text-green-300">
+                {['WALLET TRACKER', 'TOKEN MONITOR', 'TRANSACTION FLOW', 
+                  'ANALYTICS CORE', 'ALERT SYSTEM', 'AI PROCESSOR'][currentNodeIndex]}
+              </div>
+              <div className="text-xs text-green-500/60 mt-2">
+                Node {currentNodeIndex + 1} of 6
               </div>
             </div>
           </div>
@@ -791,36 +828,41 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Data Flow Info */}
-        <div className="absolute top-24 right-8 bg-black/80 border border-green-500/30 rounded p-4 max-w-xs pointer-events-auto">
-          <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
-          <div className="space-y-2 text-sm font-mono">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500"></div>
-              <span className="text-green-400">Wallet Tracker</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-500"></div>
-              <span className="text-green-400">Token Monitor</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-purple-500"></div>
-              <span className="text-green-400">Transaction Flow</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-white"></div>
-              <span className="text-green-400">Analytics Core</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500"></div>
-              <span className="text-green-400">Alert System</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-purple-700"></div>
-              <span className="text-green-400">AI Processor</span>
+        {/* Node List - Show all nodes with current highlighted */}
+        {!isTransitioning && (
+          <div className="absolute top-24 right-8 bg-black/80 border border-green-500/30 rounded p-4 max-w-xs pointer-events-auto
+                          animate-in fade-in slide-in-from-right duration-500">
+            <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
+            <div className="space-y-2 text-sm font-mono">
+              {[
+                { color: 'bg-green-500', name: 'Wallet Tracker' },
+                { color: 'bg-blue-500', name: 'Token Monitor' },
+                { color: 'bg-purple-500', name: 'Transaction Flow' },
+                { color: 'bg-white', name: 'Analytics Core' },
+                { color: 'bg-red-500', name: 'Alert System' },
+                { color: 'bg-purple-700', name: 'AI Processor' }
+              ].map((node, index) => (
+                <div 
+                  key={index}
+                  className={`flex items-center gap-2 transition-all ${
+                    index === currentNodeIndex ? 'scale-110 ml-2' : ''
+                  }`}
+                >
+                  <div className={`w-3 h-3 ${node.color} ${
+                    index === currentNodeIndex ? 'animate-pulse' : ''
+                  }`}></div>
+                  <span className={`${
+                    index === currentNodeIndex 
+                      ? 'text-green-300 font-bold' 
+                      : 'text-green-400'
+                  }`}>
+                    {node.name}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
       </div>
       
       {/* Matrix Animation Styles */}
