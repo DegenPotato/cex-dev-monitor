@@ -107,45 +107,65 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
           </div>
         )}
         
-        {/* Wallet Info (if enabled) */}
-        {walletData && (
-          <div className="glass-dark rounded-lg px-4 py-3 border border-cyan-500/30">
-            <div className="text-cyan-400 font-mono text-sm space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs">WALLET:</span>
-                <span className="text-cyan-300 font-bold text-xs">
-                  {walletData.address.slice(0, 4)}...{walletData.address.slice(-4)}
-                </span>
+        {/* Primary Wallet Indicator with Dropdown */}
+        <div className="relative">
+          {walletData ? (
+            <>
+              {/* Wallet Display - Main Button */}
+              <div className="glass-dark rounded-lg border border-cyan-500/30 overflow-hidden">
+                <div className="px-4 py-3 space-y-2">
+                  {/* Wallet Address */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">👛</span>
+                      <div>
+                        <div className="text-xs text-gray-400 font-mono">CONNECTED</div>
+                        <div className="text-cyan-300 font-mono text-sm font-bold">
+                          {walletData.address.slice(0, 6)}...{walletData.address.slice(-4)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsExpanded(!isExpanded)}
+                      className="text-cyan-400 hover:text-cyan-300 transition-colors p-1"
+                      aria-label="Toggle settings"
+                    >
+                      <span className="text-lg">{isExpanded ? '▼' : '▶'}</span>
+                    </button>
+                  </div>
+                  
+                  {/* Disconnect Button */}
+                  {walletData.onDisconnect && (
+                    <button
+                      onClick={walletData.onDisconnect}
+                      className="w-full text-xs bg-red-500/20 text-red-400 px-3 py-1.5 rounded hover:bg-red-500/30 transition-colors font-mono border border-red-500/30"
+                    >
+                      🔌 DISCONNECT WALLET
+                    </button>
+                  )}
+                </div>
               </div>
-              {walletData.onDisconnect && (
-                <button
-                  onClick={walletData.onDisconnect}
-                  className="w-full text-xs bg-red-500/20 text-red-400 px-3 py-1.5 rounded hover:bg-red-500/30 transition-colors font-mono"
-                >
-                  DISCONNECT
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+            </>
+          ) : (
+            /* Fallback: Show experience mode button if no wallet */
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className={`
+                glass-dark rounded-lg px-4 py-3 transition-all duration-300
+                hover:shadow-glow-md hover:scale-105 flex items-center gap-2
+                ${getModeColor()} border focus:outline-none focus:ring-2 focus:ring-cyber-cyan
+              `}
+              aria-label="Experience mode settings"
+            >
+              <span className="text-xl">{getModeIcon()}</span>
+              <span className="font-mono text-sm">{getModeName()}</span>
+            </button>
+          )}
+        </div>
         
-        {/* Main Toggle Button */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={`
-            glass-dark rounded-lg px-4 py-3 transition-all duration-300
-            hover:shadow-glow-md hover:scale-105 flex items-center gap-2
-            ${getModeColor()} border focus:outline-none focus:ring-2 focus:ring-cyber-cyan
-          `}
-          aria-label="Experience mode settings"
-        >
-          <span className="text-xl">{getModeIcon()}</span>
-          <span className="font-mono text-sm">{getModeName()}</span>
-        </button>
-        
-        {/* Expanded Settings Panel */}
+        {/* Expanded Settings Dropdown Panel */}
         {isExpanded && (
-          <div className="absolute bottom-full mb-2 right-0 glass-dark rounded-lg p-4 min-w-[280px] animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="absolute top-full mt-2 right-0 glass-dark rounded-lg p-4 min-w-[320px] max-h-[70vh] overflow-y-auto animate-in fade-in slide-in-from-top-5 duration-300 border border-cyan-500/20 shadow-xl">
             <h3 className="font-display text-lg text-cyber-cyan mb-3">Experience Settings</h3>
             
             {/* Quick Modes */}
