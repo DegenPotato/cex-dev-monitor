@@ -83,23 +83,25 @@ export class YouTubeAccountProvider {
    * Get YouTube account for a user
    */
   static async getAccountByUserId(userId: number): Promise<YouTubeAccount | null> {
-    return await queryOne<YouTubeAccount>(`
+    const result = await queryOne<YouTubeAccount>(`
       SELECT * FROM user_youtube_accounts 
       WHERE user_id = ? AND is_active = 1
       ORDER BY is_primary DESC, last_used_at DESC
       LIMIT 1
     `, [userId]);
+    return result || null;
   }
 
   /**
    * Get account by Google user ID
    */
   static async getAccountByGoogleId(googleUserId: string): Promise<YouTubeAccount | null> {
-    return await queryOne<YouTubeAccount>(`
+    const result = await queryOne<YouTubeAccount>(`
       SELECT * FROM user_youtube_accounts 
       WHERE google_user_id = ? AND is_active = 1
       LIMIT 1
     `, [googleUserId]);
+    return result || null;
   }
 
   /**

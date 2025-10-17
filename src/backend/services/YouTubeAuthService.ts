@@ -35,7 +35,7 @@ router.post('/account/save', authenticateToken, async (req: Request, res: Respon
     // Calculate expiry timestamp
     const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
 
-    const account = YouTubeAccountProvider.saveAccount({
+    const account = await YouTubeAccountProvider.saveAccount({
       user_id: userId,
       google_user_id,
       email,
@@ -76,7 +76,7 @@ router.get('/account', authenticateToken, async (req: Request, res: Response) =>
   try {
     const userId = (req as any).user.id;
 
-    const account = YouTubeAccountProvider.getAccountByUserId(userId);
+    const account = await YouTubeAccountProvider.getAccountByUserId(userId);
 
     if (!account) {
       return res.json({
@@ -129,7 +129,7 @@ router.post('/account/refresh', authenticateToken, async (req: Request, res: Res
       });
     }
 
-    const account = YouTubeAccountProvider.getAccountByUserId(userId);
+    const account = await YouTubeAccountProvider.getAccountByUserId(userId);
 
     if (!account) {
       return res.status(404).json({
@@ -140,7 +140,7 @@ router.post('/account/refresh', authenticateToken, async (req: Request, res: Res
 
     const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
 
-    YouTubeAccountProvider.updateToken(account.id!, access_token, expiresAt);
+    await YouTubeAccountProvider.updateToken(account.id!, access_token, expiresAt);
 
     console.log(`✅ Token refreshed for user ${userId}`);
 
@@ -167,7 +167,7 @@ router.post('/account/revoke', authenticateToken, async (req: Request, res: Resp
   try {
     const userId = (req as any).user.id;
 
-    const account = YouTubeAccountProvider.getAccountByUserId(userId);
+    const account = await YouTubeAccountProvider.getAccountByUserId(userId);
 
     if (!account) {
       return res.json({
@@ -176,7 +176,7 @@ router.post('/account/revoke', authenticateToken, async (req: Request, res: Resp
       });
     }
 
-    YouTubeAccountProvider.revokeAccount(account.id!);
+    await YouTubeAccountProvider.revokeAccount(account.id!);
 
     console.log(`✅ YouTube account revoked for user ${userId}`);
 
@@ -210,7 +210,7 @@ router.post('/playlists/cache', authenticateToken, async (req: Request, res: Res
       });
     }
 
-    const account = YouTubeAccountProvider.getAccountByUserId(userId);
+    const account = await YouTubeAccountProvider.getAccountByUserId(userId);
 
     if (!account) {
       return res.status(404).json({
@@ -220,11 +220,11 @@ router.post('/playlists/cache', authenticateToken, async (req: Request, res: Res
     }
 
     // Clear old cache
-    YouTubeAccountProvider.clearPlaylists(account.id!);
+    await YouTubeAccountProvider.clearPlaylists(account.id!);
 
     // Save new playlists
     for (const playlist of playlists) {
-      YouTubeAccountProvider.savePlaylist({
+      await YouTubeAccountProvider.savePlaylist({
         youtube_account_id: account.id!,
         playlist_id: playlist.id,
         title: playlist.title,
@@ -255,7 +255,7 @@ router.get('/playlists/cache', authenticateToken, async (req: Request, res: Resp
   try {
     const userId = (req as any).user.id;
 
-    const account = YouTubeAccountProvider.getAccountByUserId(userId);
+    const account = await YouTubeAccountProvider.getAccountByUserId(userId);
 
     if (!account) {
       return res.json({
@@ -264,7 +264,7 @@ router.get('/playlists/cache', authenticateToken, async (req: Request, res: Resp
       });
     }
 
-    const playlists = YouTubeAccountProvider.getPlaylists(account.id!);
+    const playlists = await YouTubeAccountProvider.getPlaylists(account.id!);
 
     res.json({
       success: true,
