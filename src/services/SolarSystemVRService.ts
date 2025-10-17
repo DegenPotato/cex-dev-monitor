@@ -73,7 +73,7 @@ export class VRSolarSystem {
   private raycaster = new THREE.Raycaster();
   private tempMatrix = new THREE.Matrix4();
   private teleportMarker?: THREE.Mesh;
-  private _selectedObject: THREE.Object3D | null = null; // Stored for future use
+  private selectedObject: THREE.Object3D | null = null;
   private vrButton?: HTMLElement;
   
   constructor(
@@ -200,7 +200,6 @@ export class VRSolarSystem {
   }
   
   private onControllerConnected(event: any) {
-    const _controller = event.target; // Will be used for future enhancements
     const gamepad = event.data.gamepad;
     
     console.log('🎮 Controller connected:', gamepad?.id);
@@ -224,7 +223,7 @@ export class VRSolarSystem {
       
       // Check if it's a planet
       if (intersected.object.userData.type === 'planet') {
-        this._selectedObject = intersected.object;
+        this.selectedObject = intersected.object;
         this.onPlanetSelected(intersected.object);
       }
       // Check if it's teleportable ground
@@ -238,7 +237,7 @@ export class VRSolarSystem {
   }
   
   private onSelectEnd(_event: any) {
-    this._selectedObject = null;
+    this.selectedObject = null;
   }
   
   private onSqueeze(event: any) {
@@ -357,6 +356,10 @@ export class VRSolarSystem {
   
   isPresenting(): boolean {
     return this.renderer.xr.isPresenting;
+  }
+  
+  getSelectedObject(): THREE.Object3D | null {
+    return this.selectedObject;
   }
   
   dispose() {
