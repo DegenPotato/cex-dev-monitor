@@ -207,8 +207,8 @@ const WormholeTunnelShader = {
     uniforms: {
         'uTime': { value: 0 },
         'uProgress': { value: 0.0 }, // 0 = at entrance, 1 = exited
-        'uRadius': { value: 3.0 },
-        'uLength': { value: 30.0 },
+        'uRadius': { value: 4.0 },
+        'uLength': { value: 50.0 },
     },
     vertexShader: `
         varying vec2 vUv;
@@ -899,7 +899,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             fragmentShader: vortexFragmentShader,
             uniforms: {
                 uTime: { value: 0 },
-                uIntensity: { value: 0.0 }, // Start invisible
+                uIntensity: { value: 0.8 }, // Always visible as the singularity
             },
             transparent: true,
             blending: THREE.AdditiveBlending,
@@ -1057,9 +1057,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         quantumBarrierRef.current = quantumBarrier; // Store ref
         scene.add(quantumBarrier);
         
-        // Wormhole Tunnel (cylinder stretching toward camera)
-        const tunnelGeometry = new THREE.CylinderGeometry(3, 3, 30, 32, 20, true);
-        // Rotate to point toward camera (along Z-axis)
+        // Wormhole Tunnel - larger and more dramatic
+        const tunnelGeometry = new THREE.CylinderGeometry(
+            4,    // Top radius - wider entrance
+            2,    // Bottom radius - narrower exit (perspective effect)
+            50,   // Length - longer tunnel
+            32,   // Radial segments
+            30,   // Height segments (more detail)
+            true  // Open ended
+        );
+        // Rotate to point along Z-axis (camera travels through)
         tunnelGeometry.rotateX(Math.PI / 2);
         const wormholeMaterial = new THREE.ShaderMaterial({
             ...WormholeTunnelShader,
@@ -1070,7 +1077,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         });
         wormholeMaterialRef.current = wormholeMaterial;
         const wormholeTunnel = new THREE.Mesh(tunnelGeometry, wormholeMaterial);
-        wormholeTunnel.position.set(0, 0, -15); // Starts behind camera, extends forward
+        wormholeTunnel.position.set(0, 0, 0); // At singularity center
         wormholeTunnel.visible = false; // Start hidden
         wormholeTunnelRef.current = wormholeTunnel;
         scene.add(wormholeTunnel);
@@ -1740,6 +1747,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             setIsQuantumTunneling(true);
                                             setShowAuthBillboard(false); // Hide auth UI
                                             
+                                            // Disable controls during transition
+                                            if (controlsRef.current) {
+                                                controlsRef.current.enabled = false;
+                                            }
+                                            
                                             // Start quantum tunneling sequence
                                             if (quantumBarrierRef.current && barrierMaterialRef.current && whiteHolePassRef.current && wormholeTunnelRef.current && wormholeMaterialRef.current) {
                                                 quantumBarrierRef.current.visible = true;
@@ -1747,7 +1759,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 // Timeline for quantum tunneling effect
                                                 const tl = gsap.timeline({
                                                     onComplete: () => {
-                                                        console.log('✨ Quantum tunnel complete! Entering Solar System Universe...');
+                                                        console.log('✨ Quantum tunnel complete! Emerging in Solar System...');
                                                         setTimeout(() => onEnter(), 500);
                                                     }
                                                 });
@@ -1772,35 +1784,62 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                     }
                                                 }, '-=1.0')
                                                 
-                                                // Phase 2.5: Travel through wormhole tunnel
-                                                .to(wormholeMaterialRef.current.uniforms.uProgress, {
-                                                    value: 1.0,
-                                                    duration: 3.5,
-                                                    ease: 'power2.inOut'
+                                                // Phase 2.5: Camera moves toward singularity CENTER
+                                                .to(cameraRef.current ? cameraRef.current.position : {}, {
+                                                    x: 0,  // Center horizontally
+                                                    y: 0,  // Center vertically
+                                                    z: 5,  // Move closer to singularity
+                                                    duration: 2.0,
+                                                    ease: 'power2.in',
+                                                    onUpdate: () => {
+                                                        // Make camera look at singularity
+                                                        if (cameraRef.current) {
+                                                            cameraRef.current.lookAt(0, 0, 0);
+                                                        }
+                                                    }
                                                 }, '-=0.5')
                                                 
-                                                // Phase 3: Color shift from blue to white
+                                                // Phase 3: Enter the singularity - wormhole tunnel appears
+                                                .to(cameraRef.current ? cameraRef.current.position : {}, {
+                                                    z: 0, // INTO the singularity
+                                                    duration: 1.5,
+                                                    ease: 'power3.in',
+                                                    onStart: () => {
+                                                        // Position tunnel at singularity
+                                                        if (wormholeTunnelRef.current) {
+                                                            wormholeTunnelRef.current.position.set(0, 0, 0);
+                                                            wormholeTunnelRef.current.scale.set(1, 1, 3); // Stretch tunnel
+                                                        }
+                                                    }
+                                                }, '-=0.5')
+                                                
+                                                // Phase 4: Travel THROUGH wormhole tunnel
+                                                .to(wormholeMaterialRef.current.uniforms.uProgress, {
+                                                    value: 1.0,
+                                                    duration: 3.0,
+                                                    ease: 'power2.inOut'
+                                                })
+                                                .to(cameraRef.current ? cameraRef.current.position : {}, {
+                                                    z: -50, // Through the entire tunnel length
+                                                    duration: 3.0,
+                                                    ease: 'linear'
+                                                }, '-=3.0')
+                                                
+                                                // Phase 5: Color shift as traveling
                                                 .to(barrierMaterialRef.current.uniforms.uColorShift.value, {
                                                     x: 1.0,
                                                     y: 1.0,
                                                     z: 1.0,
                                                     duration: 2.0,
                                                     ease: 'power2.inOut'
-                                                }, '-=1.5')
+                                                }, '-=2.0')
                                                 
-                                                // Phase 4: Begin inversion to white hole
+                                                // Phase 6: Begin inversion to white hole (exit)
                                                 .to(whiteHolePassRef.current.uniforms.uInversion, {
                                                     value: 1.0,
-                                                    duration: 3.0,
+                                                    duration: 2.0,
                                                     ease: 'power3.in'
                                                 }, '-=1.0')
-                                                
-                                                // Phase 5: Camera zoom through barrier
-                                                .to(cameraRef.current ? cameraRef.current.position : {}, {
-                                                    z: -10, // Through the barrier
-                                                    duration: 2.5,
-                                                    ease: 'power2.in'
-                                                }, '-=2.0')
                                                 
                                                 // Phase 6: Extreme bloom for white hole
                                                 .to(bloomPassRef.current, {
