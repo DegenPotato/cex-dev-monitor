@@ -1747,7 +1747,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 // Timeline for quantum tunneling effect
                                                 const tl = gsap.timeline({
                                                     onComplete: () => {
-                                                        console.log('✨ Quantum tunnel complete! Entering dashboard...');
+                                                        console.log('✨ Quantum tunnel complete! Entering Solar System Universe...');
                                                         setTimeout(() => onEnter(), 500);
                                                     }
                                                 });
