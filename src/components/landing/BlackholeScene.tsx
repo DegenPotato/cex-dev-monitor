@@ -1593,6 +1593,24 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                         Choose your destination portal
                                     </p>
                                     
+                                    {/* Back Button */}
+                                    <button
+                                        onClick={async () => {
+                                            console.log('🔙 Returning to wallet selection...');
+                                            await logout();
+                                        }}
+                                        className="w-full px-4 py-2 mb-4 bg-gray-800/50 hover:bg-gray-700/50 
+                                                   border border-gray-600/30 rounded-lg text-gray-400 hover:text-gray-300 
+                                                   transition-all duration-300 hover:scale-[1.02]
+                                                   flex items-center justify-center gap-2"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                  d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                        </svg>
+                                        Back to Wallet Selection
+                                    </button>
+                                    
                                     {/* Universe Grid */}
                                     <div className="grid gap-3">
                                         {/* Spaces Manager Universe - Active */}
