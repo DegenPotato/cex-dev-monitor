@@ -1513,7 +1513,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 </div>
             )}
             
-            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard || isAuthenticated || isQuantumTunneling ? '!opacity-0' : ''} pointer-events-none`}>
+            <div className={`absolute inset-0 flex flex-col items-center justify-between p-8 md:p-12 transition-opacity duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${showAuthBillboard || isTransitioning || isQuantumTunneling ? '!opacity-0' : ''} pointer-events-none`}>
                 {/* Top: Title */}
                 <div className="text-center w-full">
                     <h1 className="text-5xl md:text-7xl font-bold uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 10px #fff, 0 0 20px #0ff, 0 0 30px #0ff' }}>
