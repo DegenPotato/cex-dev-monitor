@@ -282,10 +282,13 @@ const particleVertexShader = `
     // Three.js automatically adds it when vertexColors is true.
     uniform float uSize;
     uniform float uIsTransitioning;
+    uniform vec3 uMouse; // Mouse position in 3D space
+    uniform float uMouseInfluence; // Mouse effect strength
 
     varying vec3 vColor;
     varying vec2 vScreenDelta;
     varying float vSpeed;
+    varying float vMouseDist; // Distance to mouse for fragment shader
 
     void main() {
         vColor = color;
@@ -304,10 +307,35 @@ const particleVertexShader = `
         
         vSpeed = length(position - prevPosition);
 
-        // Calculate point size, making it larger for faster particles
-        float pointSize = uSize * (1.0 + vSpeed * 150.0 + uIsTransitioning * 2.0);
+        // Mouse Interaction - Create ripple effect
+        vec3 toMouse = position - uMouse;
+        float mouseDist = length(toMouse);
+        vMouseDist = mouseDist;
+        
+        // Displacement effect - stars move away from cursor
+        vec3 displacement = vec3(0.0);
+        float influenceRadius = 15.0; // Radius of mouse influence
+        
+        if (mouseDist < influenceRadius) {
+            float influence = (1.0 - mouseDist / influenceRadius);
+            influence = pow(influence, 2.0); // Smooth falloff
+            
+            // Push particles away from mouse with quantum ripple
+            displacement = normalize(toMouse) * influence * uMouseInfluence * 2.5;
+            
+            // Add wave-like motion
+            float wave = sin(mouseDist * 0.5 + uMouseInfluence * 10.0) * 0.3;
+            displacement += displacement * wave;
+        }
+        
+        // Apply displacement to model-view position
+        mvPosition.xyz += displacement;
+
+        // Calculate point size, making it larger for faster particles and near mouse
+        float mouseSize = (mouseDist < influenceRadius) ? (1.0 + (1.0 - mouseDist / influenceRadius) * 0.5) : 1.0;
+        float pointSize = uSize * (1.0 + vSpeed * 150.0 + uIsTransitioning * 2.0) * mouseSize;
         gl_PointSize = pointSize * (1.0 / -mvPosition.z);
-        gl_Position = currentScreenPos;
+        gl_Position = projectionMatrix * mvPosition;
     }
 `;
 
@@ -319,13 +347,31 @@ const particleFragmentShader = `
     varying vec3 vColor;
     varying vec2 vScreenDelta;
     varying float vSpeed;
+    varying float vMouseDist;
 
     void main() {
         // For the static scene, draw a simple, consistently visible particle.
         if (uIsTransitioning < 0.1) {
             float alpha = texture2D(uMap, gl_PointCoord).a;
             if (alpha < 0.05) discard; // Discard fully transparent edges
-            gl_FragColor = vec4(vColor, alpha);
+            
+            // Add glow effect near mouse
+            vec3 finalColor = vColor;
+            float mouseGlow = 0.0;
+            float influenceRadius = 15.0;
+            
+            if (vMouseDist < influenceRadius) {
+                float glowStrength = (1.0 - vMouseDist / influenceRadius);
+                glowStrength = pow(glowStrength, 1.5); // Sharper falloff
+                mouseGlow = glowStrength * 0.8;
+                
+                // Add cyan quantum glow
+                vec3 glowColor = vec3(0.0, 1.0, 1.0); // Cyan
+                finalColor = mix(vColor, glowColor, mouseGlow * 0.6);
+                alpha = alpha * (1.0 + mouseGlow * 0.5); // Brighter alpha
+            }
+            
+            gl_FragColor = vec4(finalColor, alpha);
             return;
         }
 
@@ -1031,6 +1077,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
                 uIsTransitioning: { value: 0.0 },
                 uQuantumBarrier: { value: 0.0 },
+                uMouse: { value: new THREE.Vector3(9999, 9999, 9999) }, // Start off-screen
+                uMouseInfluence: { value: 0.0 }, // Animated influence value
             },
             vertexShader: particleVertexShader,
             fragmentShader: particleFragmentShader,
@@ -1109,12 +1157,46 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const clock = new THREE.Clock();
         let animationFrameId: number;
+        
+        // Mouse tracking for star field interaction
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        const mousePos3D = new THREE.Vector3();
+        let targetMouseInfluence = 0;
+        let currentMouseInfluence = 0;
+        
+        const onMouseMove = (event: MouseEvent) => {
+            // Normalize mouse coordinates to -1 to 1
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Use raycaster to project mouse to a plane in 3D space
+            raycaster.setFromCamera(mouse, camera);
+            const distance = 20; // Distance from camera
+            mousePos3D.copy(raycaster.ray.direction).multiplyScalar(distance).add(camera.position);
+            
+            // Activate mouse influence
+            targetMouseInfluence = 1.0;
+        };
+        
+        const onMouseLeave = () => {
+            // Fade out mouse influence when cursor leaves
+            targetMouseInfluence = 0;
+        };
+        
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseleave', onMouseLeave);
 
         const animate = () => {
             const delta = Math.min(clock.getDelta(), 0.05); // Cap delta to prevent large jumps on lag
             const elapsedTime = clock.getElapsedTime();
             diskMaterial.uniforms.uTime.value = elapsedTime;
             vortexMaterial.uniforms.uTime.value = elapsedTime;
+            
+            // Smooth mouse influence animation
+            currentMouseInfluence += (targetMouseInfluence - currentMouseInfluence) * delta * 8.0;
+            particleMaterial.uniforms.uMouse.value.copy(mousePos3D);
+            particleMaterial.uniforms.uMouseInfluence.value = currentMouseInfluence;
 
             // Mascot animations removed (mascot temporarily disabled)
 
@@ -1427,9 +1509,12 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         return () => {
             cancelAnimationFrame(animationFrameId);
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseleave', onMouseLeave);
             // DO NOT stop audio - it should persist across scenes!
             controls.dispose();
             if(currentMount && renderer.domElement) currentMount.removeChild(renderer.domElement);
+            renderer.dispose();
             scene.traverse(object => {
                 if (object instanceof THREE.Mesh) {
                     object.geometry.dispose();
@@ -1756,6 +1841,25 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                    shadow-[0_0_20px_rgba(0,255,128,0.3)]">
                                         ✅ Access Granted - Welcome to the Universe
                                     </div>
+                                    
+                                    {/* Back to Universe Selection */}
+                                    <button
+                                        onClick={() => {
+                                            console.log('🔙 Returning to universe selection...');
+                                            setSelectedUniverse(null);
+                                        }}
+                                        className="w-full px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 
+                                                   border border-gray-600/30 rounded-lg text-gray-400 hover:text-gray-300 
+                                                   transition-all duration-300 hover:scale-[1.02]
+                                                   flex items-center justify-center gap-2 text-sm"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                  d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                        </svg>
+                                        Change Universe Selection
+                                    </button>
+                                    
                                     <button
                                         onClick={() => {
                                             // Prevent multiple tunneling sequences
