@@ -1575,12 +1575,30 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             {showAuthBillboard && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none auth-billboard-container">
                     <div 
-                        className="pointer-events-auto bg-black/90 border-2 border-cyan-400 rounded-lg p-8 w-[500px] max-w-[90vw] auth-billboard"
+                        className="pointer-events-auto bg-black/90 border-2 border-cyan-400 rounded-lg p-8 w-[500px] max-w-[90vw] auth-billboard relative"
                         style={{
                             backdropFilter: 'blur(10px)',
                             boxShadow: '0 0 30px rgba(0, 255, 255, 0.5)',
                         }}
                     >
+                        {/* Back Button - Top Left */}
+                        {isAuthenticated && (
+                            <button
+                                onClick={async () => {
+                                    console.log('🔙 Returning to wallet selection...');
+                                    await logout();
+                                }}
+                                className="absolute top-4 left-4 p-2 text-gray-400 hover:text-cyan-400
+                                           transition-colors duration-300 hover:bg-cyan-400/10 rounded-lg"
+                                title="Back to Wallet Selection"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                          d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                            </button>
+                        )}
+                        
                         <div className="text-center space-y-6">
                             <h2 className="text-3xl font-bold text-cyan-400 mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                                 {!isAuthenticated ? 'Welcome to the Vortex' : 'Select Your Universe'}
@@ -1592,24 +1610,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                     <p className="text-gray-300 text-base mb-4">
                                         Choose your destination portal
                                     </p>
-                                    
-                                    {/* Back Button */}
-                                    <button
-                                        onClick={async () => {
-                                            console.log('🔙 Returning to wallet selection...');
-                                            await logout();
-                                        }}
-                                        className="w-full px-4 py-2 mb-4 bg-gray-800/50 hover:bg-gray-700/50 
-                                                   border border-gray-600/30 rounded-lg text-gray-400 hover:text-gray-300 
-                                                   transition-all duration-300 hover:scale-[1.02]
-                                                   flex items-center justify-center gap-2"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                                  d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                                        </svg>
-                                        Back to Wallet Selection
-                                    </button>
                                     
                                     {/* Universe Grid */}
                                     <div className="grid gap-3">
@@ -1932,6 +1932,51 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                 </p>
                             </div>
                         </>
+                        )}
+                        
+                        {/* User Info Section - Bottom of Popup */}
+                        {isAuthenticated && user && (
+                            <div className="mt-6 pt-4 border-t border-cyan-400/20">
+                                <div className="flex items-center justify-between gap-3">
+                                    {/* User Info */}
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex flex-col">
+                                            <span className="text-cyan-100 font-medium text-sm">{user.username}</span>
+                                            <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-1 ${
+                                                user.role === 'super_admin' 
+                                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' 
+                                                    : user.role === 'admin'
+                                                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
+                                                    : 'bg-gray-700 text-gray-300'
+                                            }`}>
+                                                {user.role === 'super_admin' ? '🔮 SUPER ADMIN' : 
+                                                 user.role === 'admin' ? '⭐ ADMIN' : 
+                                                 '👤 AGENT'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Disconnect Button */}
+                                    <button
+                                        onClick={async () => {
+                                            console.log('🚪 Disconnecting wallet...');
+                                            await logout();
+                                        }}
+                                        className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 
+                                                   border border-red-500/30 hover:border-red-500/60 rounded
+                                                   text-red-400 hover:text-red-300 text-xs font-medium
+                                                   transition-all duration-200 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]
+                                                   flex items-center gap-1.5"
+                                        title="Disconnect Wallet"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        Disconnect
+                                    </button>
+                                </div>
+                            </div>
                         )}
                         </div>
                     </div>
