@@ -40,12 +40,23 @@ async function runMigration() {
     console.log('✅ Migration file loaded');
 
     // Split into individual statements and execute
-    const statements = migrationSQL
+    // Remove all comment lines first, then split by semicolon
+    const cleanedSQL = migrationSQL
+      .split('\n')
+      .filter(line => !line.trim().startsWith('--'))
+      .join('\n');
+    
+    const statements = cleanedSQL
       .split(';')
       .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+      .filter(s => s.length > 0);
 
     console.log(`📝 Executing ${statements.length} migration statements...`);
+    console.log('Statements found:');
+    statements.forEach((s, i) => {
+      const preview = s.substring(0, 80).replace(/\n/g, ' ');
+      console.log(`  ${i + 1}. ${preview}...`);
+    });
 
     for (let i = 0; i < statements.length; i++) {
       const statement = statements[i];
