@@ -2,16 +2,246 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* CSS Variables for Dynamic Theming */
+@layer base {
+  :root {
+    /* Core Color Tokens */
+    --color-deep-space: 0 2 8;
+    --color-matrix-green: 0 255 102;
+    --color-cyber-cyan: 0 255 255;
+    --color-alert-red: 255 77 77;
+    --color-accent-purple: 139 92 246;
+    --color-quantum-blue: 0 102 255;
+    
+    /* Semantic Colors */
+    --color-background: var(--color-deep-space);
+    --color-foreground: 255 255 255;
+    --color-primary: var(--color-cyber-cyan);
+    --color-secondary: var(--color-matrix-green);
+    --color-accent: var(--color-accent-purple);
+    --color-danger: var(--color-alert-red);
+    
+    /* Typography Scale */
+    --font-scale-ratio: 1.25;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.25rem;
+    --font-size-xl: 1.563rem;
+    --font-size-2xl: 1.953rem;
+    --font-size-3xl: 2.441rem;
+    --font-size-4xl: 3.052rem;
+    --font-size-5xl: 3.815rem;
+    
+    /* Spacing Scale */
+    --space-unit: 0.5rem;
+    
+    /* Animation Speeds */
+    --animation-fast: 150ms;
+    --animation-normal: 300ms;
+    --animation-slow: 500ms;
+    
+    /* Glow Effects */
+    --glow-strength: 1;
+  }
+  
+  /* Reduced Motion Preferences */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --animation-fast: 0ms;
+      --animation-normal: 0ms;
+      --animation-slow: 0ms;
+    }
+    
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+  
+  /* Dark Theme (Default) */
+  [data-theme="dark"], :root {
+    color-scheme: dark;
+  }
+  
+  /* Reduced Effects Theme */
+  [data-theme="reduced"] {
+    --glow-strength: 0.3;
+  }
+  
+  /* Performance Mode Theme */
+  [data-theme="performance"] {
+    --glow-strength: 0;
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+/* Base Styles */
+html {
+  scroll-behavior: smooth;
 }
+
+body {
+  margin: 0;
+  font-family: theme('fontFamily.body');
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Typography Defaults */
+h1, h2, h3, h4, h5, h6 {
+  font-family: theme('fontFamily.display');
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+}
+
+h1 { font-size: var(--font-size-5xl); }
+h2 { font-size: var(--font-size-4xl); }
+h3 { font-size: var(--font-size-3xl); }
+h4 { font-size: var(--font-size-2xl); }
+h5 { font-size: var(--font-size-xl); }
+h6 { font-size: var(--font-size-lg); }
+
+p {
+  line-height: 1.6;
+  max-width: 65ch;
+}
+
+code, pre {
+  font-family: theme('fontFamily.mono');
+  font-size: 0.9em;
+}
+
+/* Focus Styles for Accessibility */
+:focus {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
+  box-shadow: 0 0 20px rgba(var(--color-primary), 0.3);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(var(--color-deep-space), 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--color-cyber-cyan), 0.5);
+  border-radius: 5px;
+  transition: background var(--animation-normal);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--color-cyber-cyan), 0.8);
+}
+
+/* Utility Classes */
+@layer utilities {
+  /* Safe Area for Mobile */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  /* Text Glow Effects */
+  .text-glow {
+    text-shadow: 
+      0 0 10px currentColor,
+      0 0 20px currentColor,
+      0 0 30px currentColor;
+  }
+  
+  .text-glow-sm {
+    text-shadow: 0 0 10px currentColor;
+  }
+  
+  .text-glow-lg {
+    text-shadow: 
+      0 0 20px currentColor,
+      0 0 40px currentColor,
+      0 0 60px currentColor;
+  }
+  
+  /* Glassmorphism */
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .glass-dark {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Matrix Effect Background */
+  .matrix-bg {
+    background-image: 
+      linear-gradient(0deg, transparent 48%, rgba(0, 255, 102, 0.1) 50%, transparent 52%),
+      linear-gradient(90deg, transparent 48%, rgba(0, 255, 102, 0.1) 50%, transparent 52%);
+    background-size: 20px 20px;
+  }
+  
+  /* Noise Texture */
+  .noise-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: 
+      repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255, 255, 255, 0.01) 2px, rgba(255, 255, 255, 0.01) 4px),
+      repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255, 255, 255, 0.01) 2px, rgba(255, 255, 255, 0.01) 4px);
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  
+  /* Transition Classes */
+  .transition-smooth {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: var(--animation-normal);
+  }
+  
+  .transition-bounce {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    transition-duration: var(--animation-normal);
+  }
+}
+
+/* Remove inline animation styles that are now in Tailwind */
+/* Animations are now available as Tailwind classes:
+   - animate-scan
+   - animate-glitch
+   - animate-flicker
+   - animate-pulse-glow
+   - animate-float
+   - animate-matrix-rain
+   - animate-warp
+   - animate-quantum-pulse
+*/

@@ -10,6 +10,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { useAuth } from '../../contexts/AuthContext';
+import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
+import { HudContainer, AudioToggle, ExperienceModeToggle } from '../hud';
+import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
 
 export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
@@ -39,9 +42,21 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   
+  // Experience Settings Integration
+  const { settings, getQualityMultiplier, shouldReduceEffects } = useExperienceSettings();
+  const qualityMultiplier = getQualityMultiplier();
+  const reduceEffects = shouldReduceEffects();
+  
   // Initialize Matrix scene
   useEffect(() => {
     if (!mountRef.current) return;
+    
+    // Get adaptive quality settings
+    const qualitySettings = getAdaptiveQualitySettings(
+      qualityMultiplier,
+      settings.reducedMotion,
+      settings.performanceMode
+    );
     
     // Scene setup
     const scene = new THREE.Scene();
@@ -73,12 +88,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
     
-    // Bloom for digital glow effects
+    // Bloom pass - adaptive based on quality settings
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.2,  // strength - enhanced for digital aesthetic
-      0.5,  // radius
-      0.7   // threshold - bloom digital elements
+      qualitySettings.bloomStrength,  // Strength
+      0.4,  // Radius
+      0.85  // Threshold
     );
     composer.addPass(bloomPass);
     composerRef.current = composer;
@@ -234,7 +249,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       group.add(digitalShell);
       
       // DATA NODES - floating data points throughout cyberspace
-      const particleCount = 3000; // More particles for richer environment
+      const particleCount = getOptimalParticleCount(3000, qualityMultiplier); // Adaptive particles
       const particleGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
@@ -340,8 +355,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         group.add(shell);
       }
       
-      // Particle field
-      const particleCount = 5000;
+      // Particle field - adaptive based on quality settings
+      const particleCount = getOptimalParticleCount(5000, qualityMultiplier);
       const particleGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
@@ -725,32 +740,30 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   }, []);
   
   return (
-    <div ref={mountRef} className="fixed inset-0 w-full h-full">
-      {/* Matrix CRT Scan Line Effect */}
-      <div className="absolute inset-0 pointer-events-none z-[60]">
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{
-            background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 0, 0.03) 2px, rgba(0, 255, 0, 0.03) 4px)',
-            animation: 'scan 8s linear infinite'
-          }}
-        />
-        <div 
-          className="absolute inset-0 opacity-5"
-          style={{
-            background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.3) 100%)',
-          }}
-        />
+    <HudContainer>
+      <div ref={mountRef} className="fixed inset-0 w-full h-full">
+        {/* Matrix CRT Scan Line Effect - Respect reduced motion */}
+        {!reduceEffects && (
+          <div className="absolute inset-0 pointer-events-none z-[60]">
+            <div 
+              className="absolute inset-0 opacity-10 bg-cyber-lines animate-scan"
+              aria-hidden="true"
+            />
+            <div 
+              className="absolute inset-0 opacity-5 bg-gradient-radial from-transparent to-black/30"
+              aria-hidden="true"
+            />
+          </div>
+        )}
+        
+        {/* Glitch Effect Overlay - Disabled in reduced motion */}
+        {!reduceEffects && (
+          <div 
+            className="absolute inset-0 pointer-events-none z-[61] mix-blend-screen opacity-20 bg-gradient-to-r from-transparent via-matrix-green/10 to-transparent animate-glitch"
+            aria-hidden="true"
+          />
+        )}
       </div>
-      
-      {/* Glitch Effect Overlay */}
-      <div 
-        className="absolute inset-0 pointer-events-none z-[61] mix-blend-screen opacity-20"
-        style={{
-          background: 'linear-gradient(90deg, transparent, rgba(0, 255, 0, 0.1), transparent)',
-          animation: 'glitch 5s steps(2, end) infinite'
-        }}
-      />
       
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
@@ -769,24 +782,22 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         {/* Title with Matrix Glitch Effect */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center">
           <div className="relative">
-            <h1 className="text-5xl font-bold text-green-500 font-mono tracking-[0.3em] 
-                           drop-shadow-[0_0_20px_rgba(0,255,0,0.8)]"
-                style={{ animation: 'flicker 3s infinite' }}>
+            <h1 className="font-display text-display-xl text-matrix-green text-glow-lg animate-flicker">
               MATRIX SKYNET
             </h1>
             {/* Glitch shadow layers */}
-            <h1 className="absolute top-0 left-0 text-5xl font-bold text-cyan-400 font-mono tracking-[0.3em] opacity-30"
+            <h1 className="absolute top-0 left-0 font-display text-display-xl text-cyber-cyan opacity-30 animate-glitch"
                 style={{ 
-                  animation: 'glitch 2s infinite',
                   clipPath: 'polygon(0 0, 100% 0, 100% 45%, 0 45%)'
-                }}>
+                }}
+                aria-hidden="true">
               MATRIX SKYNET
             </h1>
-            <h1 className="absolute top-0 left-0 text-5xl font-bold text-red-400 font-mono tracking-[0.3em] opacity-30"
+            <h1 className="absolute top-0 left-0 font-display text-display-xl text-alert-red opacity-30 animate-glitch-alt"
                 style={{ 
-                  animation: 'glitch 1.5s infinite reverse',
                   clipPath: 'polygon(0 55%, 100% 55%, 100% 100%, 0 100%)'
-                }}>
+                }}
+                aria-hidden="true">
               MATRIX SKYNET
             </h1>
           </div>
@@ -908,39 +919,50 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           <div className="absolute top-24 right-8 bg-black/80 border border-green-500/30 rounded p-4 max-w-xs pointer-events-auto
                           animate-in fade-in slide-in-from-right duration-500">
             <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
-            <div className="space-y-2 text-sm font-mono">
+            <ul className="space-y-2 text-sm font-mono" role="list">
               {[
-                { color: 'bg-green-500', name: 'Wallet Tracker' },
-                { color: 'bg-blue-500', name: 'Token Monitor' },
-                { color: 'bg-purple-500', name: 'Transaction Flow' },
+                { color: 'bg-matrix-green', name: 'Wallet Tracker' },
+                { color: 'bg-quantum-blue', name: 'Token Monitor' },
+                { color: 'bg-accent-purple', name: 'Transaction Flow' },
                 { color: 'bg-white', name: 'Analytics Core' },
-                { color: 'bg-red-500', name: 'Alert System' },
+                { color: 'bg-alert-red', name: 'Alert System' },
                 { color: 'bg-purple-700', name: 'AI Processor' },
-                { color: 'bg-cyan-400', name: 'Account Manager', secure: true }
+                { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
               ].map((node, index) => (
-                <div 
-                  key={index}
-                  onClick={() => focusOnNodeRef.current?.(index, 1)}
-                  className={`flex items-center gap-2 transition-all cursor-pointer hover:scale-105 ${
-                    index === currentNodeIndex ? 'scale-110 ml-2' : ''
-                  }`}
-                >
-                  <div className={`w-3 h-3 ${node.color} ${
-                    index === currentNodeIndex ? 'animate-pulse' : ''
-                  }`}></div>
-                  <span className={`${
-                    index === currentNodeIndex 
-                      ? 'text-green-300 font-bold' 
-                      : 'text-green-400 hover:text-green-300'
-                  }`}>
-                    {node.name}
-                  </span>
-                  {node.secure && (
-                    <span className="text-yellow-400 text-xs ml-1">🔒</span>
-                  )}
-                </div>
+                <li key={index}>
+                  <button
+                    onClick={() => focusOnNodeRef.current?.(index, 1)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        focusOnNodeRef.current?.(index, 1);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-2 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyber-cyan rounded px-2 py-1 ${
+                      index === currentNodeIndex ? 'scale-110 ml-2 bg-cyber-cyan/10' : ''
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Navigate to ${node.name} node${node.secure ? ' (secure)' : ''}`}
+                    aria-pressed={index === currentNodeIndex}
+                  >
+                    <div className={`w-3 h-3 ${node.color} rounded-sm ${
+                      index === currentNodeIndex ? 'animate-pulse-glow' : ''
+                    }`}></div>
+                    <span className={`${
+                      index === currentNodeIndex 
+                        ? 'text-matrix-300 font-bold' 
+                        : 'text-matrix-400 hover:text-matrix-300'
+                    }`}>
+                      {node.name}
+                    </span>
+                    {node.secure && (
+                      <span className="text-plasma-yellow text-xs ml-1" aria-label="Secure node">🔒</span>
+                    )}
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
         
@@ -1090,25 +1112,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         )}
       </div>
       
-      {/* Matrix Animation Styles */}
-      <style>{`
-        @keyframes scan {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(100%); }
-        }
-        
-        @keyframes glitch {
-          0%, 90%, 100% { transform: translateX(0); }
-          92% { transform: translateX(-2px); }
-          94% { transform: translateX(2px); }
-          96% { transform: translateX(-1px); }
-        }
-        
-        @keyframes flicker {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.8; }
-        }
-      `}</style>
-    </div>
+      {/* HUD Controls */}
+      <AudioToggle position="top-right" />
+      <ExperienceModeToggle position="bottom-right" />
+    </HudContainer>
   );
 }

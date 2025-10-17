@@ -4,13 +4,16 @@ import App from './App';
 import './index.css';
 import { WalletProviderWrapper } from './contexts/WalletProviderWrapper';
 import { AuthProvider } from './contexts/AuthContext';
+import { ExperienceSettingsProvider } from './contexts/ExperienceSettingsContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <WalletProviderWrapper>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </WalletProviderWrapper>
+    <ExperienceSettingsProvider>
+      <WalletProviderWrapper>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </WalletProviderWrapper>
+    </ExperienceSettingsProvider>
   </React.StrictMode>
 );
