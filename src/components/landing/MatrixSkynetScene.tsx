@@ -40,8 +40,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000511); // Very dark blue-green
-    scene.fog = new THREE.FogExp2(0x000511, 0.008); // Lighter fog for better visibility
+    scene.background = new THREE.Color(0x000208); // Almost black for digital contrast
+    scene.fog = new THREE.FogExp2(0x000511, 0.005); // Very light fog to preserve digital effects
     sceneRef.current = scene;
     
     // Camera - Start near the white hole boundary (just entered the universe)
@@ -68,12 +68,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
     
-    // Subtle bloom for UI elements
+    // Bloom for digital glow effects
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.8,  // strength - reduced for comfort
-      0.4,  // radius
-      0.9   // threshold - higher to only bloom bright elements
+      1.2,  // strength - enhanced for digital aesthetic
+      0.5,  // radius
+      0.7   // threshold - bloom digital elements
     );
     composer.addPass(bloomPass);
     composerRef.current = composer;
@@ -98,13 +98,13 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
      * - Clean, focused interface for data exploration
      **/
     
-    // Create COSMIC BACKGROUND RADIATION FIELD - The infinite Matrix universe
-    // Inspired by CMB (Cosmic Microwave Background) - omnidirectional ancient energy
-    const createCosmicBackground = () => {
+    // Create DIGITAL UNIVERSE SHELL - The cyberspace environment
+    // A vibrant digital world with grid patterns, data streams, and energy flows
+    const createDigitalUniverse = () => {
       const group = new THREE.Group();
       
-      // Custom shader for subtle cosmic radiation glow
-      const whiteHoleShader = {
+      // Custom shader for digital universe with grid and data flows
+      const digitalUniverseShader = {
         uniforms: {
           time: { value: 0 },
           color: { value: new THREE.Color(0xffffff) },
@@ -134,82 +134,132 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           varying vec2 vUv;
           varying vec3 vPosition;
           
-          // Simplex noise for organic fluctuations
-          float noise(vec3 p) {
-            vec3 i = floor(p);
-            vec3 f = fract(p);
+          // Hash function for procedural patterns
+          float hash(vec3 p) {
+            p = fract(p * 0.3183099 + 0.1);
+            p *= 17.0;
+            return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+          }
+          
+          // Noise function
+          float noise(vec3 x) {
+            vec3 p = floor(x);
+            vec3 f = fract(x);
             f = f * f * (3.0 - 2.0 * f);
+            
             return mix(
-              mix(mix(0.0, 1.0, f.x), mix(1.0, 0.0, f.x), f.y),
-              mix(mix(1.0, 0.0, f.x), mix(0.0, 1.0, f.x), f.y),
-              f.z
-            );
+              mix(mix(hash(p + vec3(0,0,0)), hash(p + vec3(1,0,0)), f.x),
+                  mix(hash(p + vec3(0,1,0)), hash(p + vec3(1,1,0)), f.x), f.y),
+              mix(mix(hash(p + vec3(0,0,1)), hash(p + vec3(1,0,1)), f.x),
+                  mix(hash(p + vec3(0,1,1)), hash(p + vec3(1,1,1)), f.x), f.y),
+              f.z);
           }
           
           void main() {
-            // Cosmic noise pattern
-            vec3 noisePos = vPosition * 0.05 + vec3(time * 0.1);
-            float n1 = noise(noisePos);
-            float n2 = noise(noisePos * 2.0 + 100.0);
-            float n3 = noise(noisePos * 4.0 + 200.0);
+            vec3 pos = vPosition * 0.02;
             
-            // Layered cosmic radiation
-            float cosmic = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
+            // HEXAGONAL GRID PATTERN
+            vec2 gridUV = vUv * 30.0;
+            vec2 hexCenter = vec2(
+              floor(gridUV.x) + 0.5,
+              floor(gridUV.y) + 0.5
+            );
+            float hexDist = length(fract(gridUV) - 0.5);
+            float hexGrid = smoothstep(0.45, 0.42, hexDist);
+            hexGrid += smoothstep(0.48, 0.46, hexDist) * 0.3;
             
-            // Very subtle pulsing
-            float pulse = sin(time * 0.5) * 0.05 + 0.95;
+            // VERTICAL DATA STREAMS
+            float stream1 = sin(vUv.y * 50.0 - time * 2.0) * 0.5 + 0.5;
+            float stream2 = sin(vUv.y * 30.0 - time * 3.0 + vUv.x * 10.0) * 0.5 + 0.5;
+            float dataStreams = stream1 * stream2;
+            dataStreams = pow(dataStreams, 3.0) * 0.4;
             
-            // Final color - very subtle green tint on dark background
-            vec3 bgColor = vec3(0.0, 0.01, 0.005); // Near black with hint of green
-            vec3 radiationColor = vec3(0.0, 0.15, 0.1) * cosmic * pulse;
-            vec3 finalColor = bgColor + radiationColor;
+            // CIRCUIT LINES - horizontal and vertical
+            float circuitH = step(0.98, fract(vUv.y * 20.0));
+            float circuitV = step(0.98, fract(vUv.x * 20.0));
+            float circuits = max(circuitH, circuitV) * 0.3;
             
-            // Very low alpha for subtlety
-            float alpha = 0.15 + cosmic * 0.1;
+            // ENERGY PULSES traveling across surface
+            float pulseWave = sin(vUv.x * 5.0 + vUv.y * 5.0 - time * 1.5) * 0.5 + 0.5;
+            pulseWave = pow(pulseWave, 8.0) * 0.6;
+            
+            // DIGITAL NOISE/STATIC
+            float digitalNoise = noise(pos + vec3(time * 0.5));
+            digitalNoise = step(0.97, digitalNoise) * 0.2;
+            
+            // SCAN LINES
+            float scanLine = sin(vUv.y * 100.0 - time * 5.0) * 0.5 + 0.5;
+            scanLine = pow(scanLine, 20.0) * 0.4;
+            
+            // Combine all effects
+            float totalEffect = hexGrid * 0.4 + dataStreams + circuits + pulseWave + digitalNoise + scanLine;
+            
+            // Color gradient - green/cyan Matrix aesthetic
+            vec3 primaryColor = vec3(0.0, 1.0, 0.5);  // Bright cyan-green
+            vec3 secondaryColor = vec3(0.0, 0.5, 1.0); // Blue
+            vec3 accentColor = vec3(0.5, 1.0, 0.8);    // Light cyan
+            
+            // Mix colors based on position and effects
+            vec3 finalColor = mix(primaryColor, secondaryColor, vUv.y);
+            finalColor = mix(finalColor, accentColor, pulseWave);
+            
+            // Apply intensity
+            finalColor *= totalEffect;
+            
+            // Overall brightness and alpha
+            float alpha = totalEffect * 0.6;
             
             gl_FragColor = vec4(finalColor, alpha);
           }
         `
       };
       
-      // Large sphere for cosmic background - very subtle, almost invisible
-      const bgGeometry = new THREE.SphereGeometry(150, 32, 32);
+      // Large sphere for digital universe shell
+      const bgGeometry = new THREE.SphereGeometry(150, 64, 64); // Higher resolution
       const bgMaterial = new THREE.ShaderMaterial({
-        uniforms: whiteHoleShader.uniforms,
-        vertexShader: whiteHoleShader.vertexShader,
-        fragmentShader: whiteHoleShader.fragmentShader,
+        uniforms: digitalUniverseShader.uniforms,
+        vertexShader: digitalUniverseShader.vertexShader,
+        fragmentShader: digitalUniverseShader.fragmentShader,
         transparent: true,
         side: THREE.BackSide,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       });
-      const cosmicBg = new THREE.Mesh(bgGeometry, bgMaterial);
-      group.add(cosmicBg);
+      const digitalShell = new THREE.Mesh(bgGeometry, bgMaterial);
+      group.add(digitalShell);
       
-      // Sparse cosmic dust particles throughout space
-      const particleCount = 2000; // Reduced for subtlety
+      // DATA NODES - floating data points throughout cyberspace
+      const particleCount = 3000; // More particles for richer environment
       const particleGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
       const sizes = new Float32Array(particleCount);
       
       for (let i = 0; i < particleCount; i++) {
-        // Distribute particles throughout the entire space volume
+        // Distribute data nodes throughout cyberspace
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.random() * Math.PI;
-        const radius = Math.random() * 120 + 10; // Random distances from 10 to 130
+        const radius = Math.random() * 120 + 10;
         
         positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
         positions[i * 3 + 2] = radius * Math.cos(phi);
         
-        // Very dim particles - just hints of light
-        const brightness = Math.random() * 0.3 + 0.1; // 0.1 to 0.4
-        colors[i * 3] = brightness * 0.5; // Slightly less red
-        colors[i * 3 + 1] = brightness;
-        colors[i * 3 + 2] = brightness * 0.8; // Slightly less blue
+        // Bright cyan/green data points
+        const colorType = Math.random();
+        if (colorType < 0.5) {
+          // Cyan
+          colors[i * 3] = 0.0;
+          colors[i * 3 + 1] = 0.8 + Math.random() * 0.2;
+          colors[i * 3 + 2] = 0.6 + Math.random() * 0.4;
+        } else {
+          // Green
+          colors[i * 3] = 0.0;
+          colors[i * 3 + 1] = 0.6 + Math.random() * 0.4;
+          colors[i * 3 + 2] = 0.2 + Math.random() * 0.3;
+        }
         
-        sizes[i] = Math.random() * 2 + 0.5; // Smaller particles
+        sizes[i] = Math.random() * 3 + 1;
       }
       
       particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -217,10 +267,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
       
       const particleMaterial = new THREE.PointsMaterial({
-        size: 0.05, // Smaller for distant stars effect
+        size: 0.15, // Larger for visibility
         vertexColors: true,
         transparent: true,
-        opacity: 0.4, // Much dimmer for comfort
+        opacity: 0.8, // Bright data nodes
         blending: THREE.AdditiveBlending,
         sizeAttenuation: true
       });
@@ -231,22 +281,28 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       return group;
     };
     
-    const cosmicBackground = createCosmicBackground();
-    cosmicBackground.position.set(0, 0, 0);
-    whiteHoleRef.current = cosmicBackground;
-    scene.add(cosmicBackground);
+    const digitalUniverse = createDigitalUniverse();
+    digitalUniverse.position.set(0, 0, 0);
+    whiteHoleRef.current = digitalUniverse;
+    scene.add(digitalUniverse);
     
-    // Softer lighting for better user experience
-    const ambientLight = new THREE.AmbientLight(0x001122, 0.3); // Reduced intensity
+    // Dynamic lighting for digital environment
+    const ambientLight = new THREE.AmbientLight(0x002233, 0.4);
     scene.add(ambientLight);
     
-    const pointLight = new THREE.PointLight(0x00ffff, 1, 40); // Softer glow
-    pointLight.position.set(0, 10, 0);
-    scene.add(pointLight);
+    // Primary cyan light from above
+    const primaryLight = new THREE.PointLight(0x00ffff, 2, 50);
+    primaryLight.position.set(0, 15, 0);
+    scene.add(primaryLight);
     
-    // Add subtle fill light to prevent harsh shadows
-    const fillLight = new THREE.PointLight(0x002244, 0.5, 30);
-    fillLight.position.set(-10, -5, 10);
+    // Secondary green accent light
+    const accentLight = new THREE.PointLight(0x00ff66, 1.5, 40);
+    accentLight.position.set(-15, 5, 15);
+    scene.add(accentLight);
+    
+    // Fill light for depth
+    const fillLight = new THREE.PointLight(0x0066ff, 1, 35);
+    fillLight.position.set(10, -8, -10);
     scene.add(fillLight);
     
     // Create singularity core
@@ -528,19 +584,26 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         controls.update();
       }
       
-      // Animate COSMIC BACKGROUND - subtle ambient effects
+      // Animate DIGITAL UNIVERSE SHELL - dynamic cyberspace effects
       if (whiteHoleRef.current) {
-        // Update shader time for subtle fluctuations
-        const cosmicSphere = whiteHoleRef.current.children[0] as THREE.Mesh;
-        if (cosmicSphere && cosmicSphere.material && 'uniforms' in cosmicSphere.material) {
-          (cosmicSphere.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
+        // Update shader time for animated patterns
+        const digitalShell = whiteHoleRef.current.children[0] as THREE.Mesh;
+        if (digitalShell && digitalShell.material && 'uniforms' in digitalShell.material) {
+          (digitalShell.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
         }
         
-        // Very slow rotation for cosmic dust
-        const particles = whiteHoleRef.current.children[1] as THREE.Points;
-        if (particles) {
-          particles.rotation.y = elapsedTime * 0.01; // Very slow drift
-          particles.rotation.x = elapsedTime * 0.005;
+        // Slow rotation of digital shell
+        whiteHoleRef.current.rotation.y = elapsedTime * 0.02;
+        
+        // Animate data nodes - twinkling effect
+        const dataNodes = whiteHoleRef.current.children[1] as THREE.Points;
+        if (dataNodes) {
+          dataNodes.rotation.y = elapsedTime * 0.03;
+          dataNodes.rotation.x = Math.sin(elapsedTime * 0.5) * 0.1;
+          
+          // Pulse effect on particle sizes
+          const material = dataNodes.material as THREE.PointsMaterial;
+          material.size = 0.15 + Math.sin(elapsedTime * 2) * 0.05;
         }
       }
       
