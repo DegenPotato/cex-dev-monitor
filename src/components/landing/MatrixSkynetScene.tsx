@@ -11,6 +11,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { useAuth } from '../../contexts/AuthContext';
 import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
+import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
 import { HudContainer, ExperienceModeToggle } from '../hud';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
@@ -41,6 +42,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
+  const { isAuthenticated: isYouTubeConnected, userEmail: youtubeEmail, signIn: connectGoogle } = useYouTubeAudio();
   
   // Debug logging
   useEffect(() => {
@@ -938,21 +940,20 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         
         
         {/* System Status & Experience Settings - Always visible, top-right */}
-        <div className="absolute top-8 right-8 pointer-events-auto z-50">
-          <ExperienceModeToggle 
-            showSystemStatus={true}
-            statusData={{
-              online: true,
-              latency: Math.floor(Math.random() * 50 + 10),
-              nodes: nodesRef.current.length,
-              totalNodes: nodesRef.current.length
-            }}
-            walletData={user?.wallet_address ? {
-              address: user.wallet_address,
-              onDisconnect: onBack
-            } : undefined}
-          />
-        </div>
+        <ExperienceModeToggle 
+          position="top-right"
+          showSystemStatus={true}
+          statusData={{
+            online: true,
+            latency: Math.floor(Math.random() * 50 + 10),
+            nodes: nodesRef.current.length,
+            totalNodes: nodesRef.current.length
+          }}
+          walletData={user?.wallet_address ? {
+            address: user.wallet_address,
+            onDisconnect: onBack
+          } : undefined}
+        />
         
         {/* Access Denied - Only show if explicitly not super admin AND user is loaded */}
         {!isSuperAdmin && !isLoading && user && (
@@ -1073,20 +1074,45 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                     </div>
                     
                     {/* YouTube/Google Connection - INTEGRATED HERE */}
-                    <div className="bg-black/50 border border-red-500/30 rounded-lg p-4 relative overflow-hidden col-span-2">
-                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-400 to-transparent"></div>
+                    <div className={`bg-black/50 border rounded-lg p-4 relative overflow-hidden col-span-2 ${
+                      isYouTubeConnected ? 'border-green-500/30' : 'border-red-500/30'
+                    }`}>
+                      <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent to-transparent ${
+                        isYouTubeConnected ? 'via-green-400 animate-pulse' : 'via-red-400'
+                      }`}></div>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <span className="text-2xl">📺</span>
-                          <span className="text-red-300 font-mono font-bold">YOUTUBE / GOOGLE</span>
+                          <span className={`font-mono font-bold ${
+                            isYouTubeConnected ? 'text-green-300' : 'text-red-300'
+                          }`}>YOUTUBE / GOOGLE</span>
                         </div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          isYouTubeConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-400'
+                        }`}></div>
                       </div>
                       <div className="space-y-2 text-sm">
-                        <div className="text-gray-400 font-mono">STATUS: <span className="text-gray-300">NOT CONNECTED</span></div>
-                        <div className="text-gray-500 font-mono text-xs">Connect to enable YouTube music playback</div>
-                        <button className="mt-2 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded hover:bg-red-500/30 transition-colors">
-                          CONNECT GOOGLE ACCOUNT
+                        <div className="text-gray-400 font-mono">
+                          STATUS: <span className={isYouTubeConnected ? 'text-green-300' : 'text-gray-300'}>
+                            {isYouTubeConnected ? 'CONNECTED' : 'NOT CONNECTED'}
+                          </span>
+                        </div>
+                        {isYouTubeConnected && youtubeEmail && (
+                          <div className="text-green-400 font-mono text-xs">{youtubeEmail}</div>
+                        )}
+                        {!isYouTubeConnected && (
+                          <div className="text-gray-500 font-mono text-xs">Connect to enable YouTube music playback</div>
+                        )}
+                        <button 
+                          onClick={connectGoogle}
+                          className={`mt-2 text-xs px-3 py-1 rounded transition-colors ${
+                            isYouTubeConnected 
+                              ? 'bg-gray-500/20 text-gray-400 cursor-default' 
+                              : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                          }`}
+                          disabled={isYouTubeConnected}
+                        >
+                          {isYouTubeConnected ? 'CONNECTED' : 'CONNECT GOOGLE ACCOUNT'}
                         </button>
                       </div>
                     </div>
