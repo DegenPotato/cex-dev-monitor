@@ -1659,7 +1659,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 </div>
 
                 {/* Bottom: Tagline + Instructions - NO pointer events so scroll can pass through */}
-                <div className="text-center w-full">
+                <div className="text-center w-full flex flex-col items-center justify-center">
                     <p className="text-xl md:text-2xl mb-2 text-cyan-300" style={{ fontFamily: "'Space Grotesk', sans-serif", textShadow: '0 0 5px #0ff' }}>
                         Follow the Money.
                     </p>
@@ -1865,14 +1865,15 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                 <>
                                     {/* Message */}
                                     <p className="text-gray-300 text-lg mb-6">
-                                        {!connected && 'Connect your wallet to enter the multiverse.'}
+                                        {!connected && !isAuthenticated && 'Connect your wallet or enter access code.'}
                                         {connected && !isAuthenticated && 'Sign the message to authenticate.'}
+                                        {isAuthenticated && !selectedUniverse && 'Select your destination universe.'}
                                         {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : selectedUniverse === 'matrix' ? 'The Matrix' : 'CEX Monitor'}...`}
                                     </p>
                                     
                                     {/* Connect Wallet / Authenticate Flow */}
-                                    {!connected ? (
-                                // Step 1: Connect Wallet OR Code Entry
+                                    {!connected && !isAuthenticated ? (
+                                // Step 1: Connect Wallet OR Code Entry (only if not authenticated)
                                 <div className="w-full space-y-4">
                                     {!showCodeEntry ? (
                                         <>
