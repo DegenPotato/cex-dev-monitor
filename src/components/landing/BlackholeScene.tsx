@@ -1730,13 +1730,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                         </span>
                                     ) : 'SIGN MESSAGE & AUTHENTICATE'}
                                 </button>
-                            ) : user?.role === 'super_admin' ? (
-                                // Step 3: Super Admin - Entering
+                            ) : user ? (
+                                // Step 3: Authenticated User - Entering Solar System
                                 <div className="space-y-4 w-full">
                                     <div className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 
                                                    text-white font-bold rounded-lg text-center
                                                    shadow-[0_0_20px_rgba(0,255,128,0.3)]">
-                                        ✅ Super Admin Access Granted
+                                        ✅ Access Granted - Welcome to the Universe
                                     </div>
                                     <button
                                         onClick={() => {
@@ -1861,22 +1861,22 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                    text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
                                                    shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]"
                                     >
-                                        ENTER VORTEX →
+                                        ENTER SOLAR SYSTEM →
                                     </button>
                                 </div>
                             ) : (
-                                // Step 3: Access Denied for non-super_admins
+                                // Step 3: Should never reach here (fallback)
                                 <div className="space-y-4 w-full">
-                                    <div className="px-8 py-4 bg-gradient-to-r from-red-600 to-orange-600 
+                                    <div className="px-8 py-4 bg-gradient-to-r from-yellow-600 to-orange-600 
                                                    text-white font-bold rounded-lg text-center
-                                                   shadow-[0_0_20px_rgba(239,68,68,0.3)]">
-                                        ⛔ ACCESS DENIED
+                                                   shadow-[0_0_20px_rgba(251,191,36,0.3)]">
+                                        ⚠️ AUTHENTICATION ERROR
                                     </div>
                                     <div className="text-center text-gray-400 text-sm">
-                                        <p className="mb-2">Your agent credentials have been registered.</p>
-                                        <p className="mb-4">This portal requires <span className="text-purple-400 font-bold">SUPER ADMIN</span> clearance.</p>
+                                        <p className="mb-2">Unable to verify credentials.</p>
+                                        <p className="mb-4">Please disconnect and reconnect your wallet.</p>
                                         <div className="text-xs text-gray-500">
-                                            Current clearance: <span className="text-gray-300">{user?.role?.toUpperCase() || 'AGENT'}</span>
+                                            Status: <span className="text-gray-300">UNKNOWN</span>
                                         </div>
                                     </div>
                                     <button
