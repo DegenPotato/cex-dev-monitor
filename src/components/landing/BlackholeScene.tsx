@@ -528,8 +528,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             
             if (success) {
                 console.log('✅ [Auth] Code authentication successful!');
+                console.log('🔍 [Debug] isAuthenticated:', isAuthenticated);
+                console.log('🔍 [Debug] user:', user);
                 setCodeError(false);
                 setAccessCode('');
+                setShowCodeEntry(false); // Close code entry form
                 // User is now authenticated as super_admin
             } else {
                 console.log('❌ [Auth] Invalid code');
@@ -1805,6 +1808,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 onClick={() => {
                                                     setSelectedUniverse('matrix');
                                                     console.log('🔮 Selected: Matrix Command Center');
+                                                    console.log('🔍 [Debug] After selection - isAuthenticated:', isAuthenticated);
+                                                    console.log('🔍 [Debug] After selection - user:', user);
+                                                    console.log('🔍 [Debug] After selection - selectedUniverse:', 'matrix');
                                                 }}
                                                 className="group relative p-6 bg-gradient-to-br from-green-900/30 to-emerald-900/30 
                                                          border border-green-400/50 rounded-lg hover:border-green-300 
@@ -2023,6 +2029,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             if (isQuantumTunneling) return;
                                             
                                             console.log('🌀 QUANTUM TUNNELING INITIATED...');
+                                            console.log('🔍 [Debug] Before tunnel - isAuthenticated:', isAuthenticated);
+                                            console.log('🔍 [Debug] Before tunnel - user:', user);
+                                            console.log('🔍 [Debug] Before tunnel - selectedUniverse:', selectedUniverse);
                                             setIsQuantumTunneling(true);
                                             setShowAuthBillboard(false); // Hide auth UI
                                             

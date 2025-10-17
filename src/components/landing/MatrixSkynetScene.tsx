@@ -129,130 +129,33 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const createDigitalUniverse = () => {
       const group = new THREE.Group();
       
-      // Custom shader for digital universe with grid and data flows
+      // Custom shader for digital universe with grid and data flows - DISABLED (shell removed)
+      // Keeping commented for potential future use
+      /*
       const digitalUniverseShader = {
         uniforms: {
           time: { value: 0 },
           color: { value: new THREE.Color(0xffffff) },
           glowColor: { value: new THREE.Color(0x00ffff) }
         },
-        vertexShader: `
-          varying vec2 vUv;
-          varying vec3 vPosition;
-          uniform float time;
-          
-          void main() {
-            vUv = uv;
-            vPosition = position;
-            
-            // Pulsating effect
-            vec3 pos = position;
-            float pulse = sin(time * 2.0) * 0.1 + 1.0;
-            pos *= pulse;
-            
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform float time;
-          uniform vec3 color;
-          uniform vec3 glowColor;
-          varying vec2 vUv;
-          varying vec3 vPosition;
-          
-          // Hash function for procedural patterns
-          float hash(vec3 p) {
-            p = fract(p * 0.3183099 + 0.1);
-            p *= 17.0;
-            return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-          }
-          
-          // Noise function
-          float noise(vec3 x) {
-            vec3 p = floor(x);
-            vec3 f = fract(x);
-            f = f * f * (3.0 - 2.0 * f);
-            
-            return mix(
-              mix(mix(hash(p + vec3(0,0,0)), hash(p + vec3(1,0,0)), f.x),
-                  mix(hash(p + vec3(0,1,0)), hash(p + vec3(1,1,0)), f.x), f.y),
-              mix(mix(hash(p + vec3(0,0,1)), hash(p + vec3(1,0,1)), f.x),
-                  mix(hash(p + vec3(0,1,1)), hash(p + vec3(1,1,1)), f.x), f.y),
-              f.z);
-          }
-          
-          void main() {
-            vec3 pos = vPosition * 0.02;
-            
-            // HEXAGONAL GRID PATTERN
-            vec2 gridUV = vUv * 30.0;
-            vec2 hexCenter = vec2(
-              floor(gridUV.x) + 0.5,
-              floor(gridUV.y) + 0.5
-            );
-            float hexDist = length(fract(gridUV) - 0.5);
-            float hexGrid = smoothstep(0.45, 0.42, hexDist);
-            hexGrid += smoothstep(0.48, 0.46, hexDist) * 0.3;
-            
-            // VERTICAL DATA STREAMS
-            float stream1 = sin(vUv.y * 50.0 - time * 2.0) * 0.5 + 0.5;
-            float stream2 = sin(vUv.y * 30.0 - time * 3.0 + vUv.x * 10.0) * 0.5 + 0.5;
-            float dataStreams = stream1 * stream2;
-            dataStreams = pow(dataStreams, 3.0) * 0.4;
-            
-            // CIRCUIT LINES - horizontal and vertical
-            float circuitH = step(0.98, fract(vUv.y * 20.0));
-            float circuitV = step(0.98, fract(vUv.x * 20.0));
-            float circuits = max(circuitH, circuitV) * 0.3;
-            
-            // ENERGY PULSES traveling across surface
-            float pulseWave = sin(vUv.x * 5.0 + vUv.y * 5.0 - time * 1.5) * 0.5 + 0.5;
-            pulseWave = pow(pulseWave, 8.0) * 0.6;
-            
-            // DIGITAL NOISE/STATIC
-            float digitalNoise = noise(pos + vec3(time * 0.5));
-            digitalNoise = step(0.97, digitalNoise) * 0.2;
-            
-            // SCAN LINES
-            float scanLine = sin(vUv.y * 100.0 - time * 5.0) * 0.5 + 0.5;
-            scanLine = pow(scanLine, 20.0) * 0.4;
-            
-            // Combine all effects
-            float totalEffect = hexGrid * 0.4 + dataStreams + circuits + pulseWave + digitalNoise + scanLine;
-            
-            // Color gradient - green/cyan Matrix aesthetic
-            vec3 primaryColor = vec3(0.0, 1.0, 0.5);  // Bright cyan-green
-            vec3 secondaryColor = vec3(0.0, 0.5, 1.0); // Blue
-            vec3 accentColor = vec3(0.5, 1.0, 0.8);    // Light cyan
-            
-            // Mix colors based on position and effects
-            vec3 finalColor = mix(primaryColor, secondaryColor, vUv.y);
-            finalColor = mix(finalColor, accentColor, pulseWave);
-            
-            // Apply intensity
-            finalColor *= totalEffect;
-            
-            // Overall brightness and alpha
-            float alpha = totalEffect * 0.6;
-            
-            gl_FragColor = vec4(finalColor, alpha);
-          }
-        `
+        vertexShader: `...`,
+        fragmentShader: `...`
       };
+      */
       
-      // Large sphere for digital universe shell
-      const bgGeometry = new THREE.SphereGeometry(150, 64, 64); // Higher resolution
-      const bgMaterial = new THREE.ShaderMaterial({
-        uniforms: digitalUniverseShader.uniforms,
-        vertexShader: digitalUniverseShader.vertexShader,
-        fragmentShader: digitalUniverseShader.fragmentShader,
-        transparent: true,
-        side: THREE.BackSide,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const digitalShell = new THREE.Mesh(bgGeometry, bgMaterial);
-      group.add(digitalShell);
+      // Large sphere for digital universe shell - DISABLED (too noisy/distracting)
+      // const bgGeometry = new THREE.SphereGeometry(150, 64, 64);
+      // const bgMaterial = new THREE.ShaderMaterial({
+      //   uniforms: digitalUniverseShader.uniforms,
+      //   vertexShader: digitalUniverseShader.vertexShader,
+      //   fragmentShader: digitalUniverseShader.fragmentShader,
+      //   transparent: true,
+      //   side: THREE.BackSide,
+      //   blending: THREE.AdditiveBlending,
+      //   depthWrite: false
+      // });
+      // const digitalShell = new THREE.Mesh(bgGeometry, bgMaterial);
+      // group.add(digitalShell);
       
       // DATA NODES - floating data points throughout cyberspace
       const particleCount = getOptimalParticleCount(3000, qualityMultiplier); // Adaptive particles
@@ -617,19 +520,19 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         controls.update();
       }
       
-      // Animate DIGITAL UNIVERSE SHELL - dynamic cyberspace effects
+      // Animate DIGITAL UNIVERSE SHELL - DISABLED (shell removed)
       if (whiteHoleRef.current) {
-        // Update shader time for animated patterns
-        const digitalShell = whiteHoleRef.current.children[0] as THREE.Mesh;
-        if (digitalShell && digitalShell.material && 'uniforms' in digitalShell.material) {
-          (digitalShell.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
-        }
+        // Digital shell animation disabled
+        // const digitalShell = whiteHoleRef.current.children[0] as THREE.Mesh;
+        // if (digitalShell && digitalShell.material && 'uniforms' in digitalShell.material) {
+        //   (digitalShell.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
+        // }
         
-        // Slow rotation of digital shell
+        // Slow rotation still applied to the group
         whiteHoleRef.current.rotation.y = elapsedTime * 0.02;
         
-        // Animate data nodes - twinkling effect
-        const dataNodes = whiteHoleRef.current.children[1] as THREE.Points;
+        // Animate data nodes - twinkling effect (now children[0] since shell removed)
+        const dataNodes = whiteHoleRef.current.children[0] as THREE.Points;
         if (dataNodes) {
           dataNodes.rotation.y = elapsedTime * 0.03;
           dataNodes.rotation.x = Math.sin(elapsedTime * 0.5) * 0.1;
