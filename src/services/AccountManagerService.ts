@@ -94,9 +94,8 @@ export class AccountManagerService {
     return combined.toString('base64');
   }
 
-  // Decrypt sensitive data (currently unused but needed for token retrieval)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async decryptData(encryptedData: string, userId: string): Promise<string> {
+  // Decrypt sensitive data (will be needed for retrieving OAuth tokens)
+  private async _decryptData(encryptedData: string, userId: string): Promise<string> {
     const combined = Buffer.from(encryptedData, 'base64');
     
     // Extract components
