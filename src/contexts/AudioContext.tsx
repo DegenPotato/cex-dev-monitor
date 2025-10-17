@@ -475,13 +475,6 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   // Get audio analyzer for visualizations
   const getAudioAnalyzer = () => audioAnalyzerRef.current;
 
-  // Format time helper (not used in AudioContext itself, but available)
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${String(secs).padStart(2, '0')}`;
-  };
-
   // Cleanup on unmount (only runs when provider unmounts, not on scene changes)
   useEffect(() => {
     console.log('🎵 AudioProvider mounted');

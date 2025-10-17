@@ -94,7 +94,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
             <div className="text-xs text-cyan-300 font-mono">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="truncate max-w-[200px]">{currentTrack || 'No track'}</span>
+                <span className="truncate max-w-[200px]">{currentTrack?.name || 'No track'}</span>
               </div>
             </div>
 
