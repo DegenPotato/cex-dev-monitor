@@ -95,8 +95,6 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   
   const playerRef = useRef<any>(null);
   const accessTokenRef = useRef<string | null>(null);
-  const refreshTokenRef = useRef<string | null>(null);
-  const googleUserIdRef = useRef<string | null>(null);
   const isLoadingAPIRef = useRef(false);
   // const hasLoadedSavedAccountRef = useRef(false); // Not used currently
   
@@ -112,123 +110,91 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   // OAuth Client ID is used in signIn function via import.meta.env
   // const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
 
-  // Google OAuth Authentication
+  // Enable YouTube for authenticated user
   const signIn = async () => {
-    console.log('🎵 YouTube: Initiating Google sign-in...');
-    
-    // Check if we have the required OAuth client ID
-    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
-    if (!clientId || clientId === 'your_google_client_id.apps.googleusercontent.com') {
-      console.warn('⚠️ Google OAuth Client ID not configured. Using demo mode.');
-      // Demo mode for testing
-      setTimeout(() => {
-        const token = 'demo_token_' + Date.now();
-        setIsAuthenticated(true);
-        accessTokenRef.current = token;
-        setUserEmail('demo@youtube.com');
-        console.log('✅ YouTube: Demo authentication successful');
-      }, 1000);
-      return;
-    }
+    console.log('🎵 YouTube: Enabling YouTube integration...');
     
     try {
-      // Initialize Google Identity Services
-      if (!window.google?.accounts?.oauth2) {
-        throw new Error('Google Identity Services not loaded');
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.error('❌ User not authenticated');
+        return;
       }
-      
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube',
-        callback: (response: any) => {
-          if (response.access_token) {
-            accessTokenRef.current = response.access_token;
-            setIsAuthenticated(true);
-            // Fetch user info
-            fetchUserInfo(response.access_token);
-            console.log('✅ YouTube: Authentication successful');
-          }
-        },
-      });
-      
-      // Request access token
-      tokenClient.requestAccessToken();
-    } catch (error) {
-      console.error('❌ YouTube auth error:', error);
-      // Fallback to demo mode
-      setTimeout(() => {
-        const token = 'demo_token_' + Date.now();
-        setIsAuthenticated(true);
-        accessTokenRef.current = token;
-        setUserEmail('demo@youtube.com');
-        console.log('✅ YouTube: Demo authentication (fallback)');
-      }, 1000);
-    }
-  };
 
-  // Fetch user info from Google
-  const fetchUserInfo = async (token: string) => {
-    try {
-      const response = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
+      // Get user info from auth token
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        console.error('❌ User data not found');
+        return;
+      }
+
+      const user = JSON.parse(userStr);
+      
+      // Enable YouTube for this user
+      const response = await fetch('/api/youtube/preferences', {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          enabled: true,
+          email: user.email || `${user.username}@youtube.local`,
+          preferences: {
+            volume: 75,
+            shuffle: false,
+            repeat: 'off'
+          }
+        })
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setUserEmail(data.email || 'user@youtube.com');
+
+      if (!response.ok) {
+        throw new Error('Failed to enable YouTube');
       }
+
+      setIsAuthenticated(true);
+      setUserEmail(user.email || user.username);
+      console.log('✅ YouTube: Enabled for user', user.username);
+      
+      // Load user's playlists
+      await loadUserPlaylists();
     } catch (error) {
-      console.error('Failed to fetch user info:', error);
+      console.error('❌ YouTube enable error:', error);
     }
   };
 
-  // Initialize Google Auth
-  const initGoogleAuth = () => {
-    if (!window.google) {
-      console.warn('Google Identity Services not loaded');
-      return;
-    }
-    
-    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
-    if (clientId && clientId !== 'your_google_client_id.apps.googleusercontent.com') {
+  // Google OAuth functions removed - we use our own auth system now
+
+  // Check if user is authenticated and load YouTube preferences
+  useEffect(() => {
+    const checkYouTubeAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      const userStr = localStorage.getItem('user');
+      
+      if (!token || !userStr) return;
+
       try {
-        const googleAuth = (window as any).google?.accounts?.id;
-        if (googleAuth) {
-          googleAuth.initialize({
-            client_id: clientId,
-            callback: (response: any) => {
-              console.log('Google ID token received:', response);
-            }
-          });
+        const response = await fetch('/api/youtube/preferences', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.enabled) {
+            setIsAuthenticated(true);
+            setUserEmail(data.email);
+            await loadUserPlaylists();
+          }
         }
       } catch (error) {
-        console.error('Failed to initialize Google Auth:', error);
+        console.error('Failed to check YouTube auth:', error);
       }
-    }
-  };
-  
-  // Load Google API for OAuth
-  const loadGoogleAPI = () => {
-    // Check if already loaded
-    if (window.google) {
-      initGoogleAuth();
-      return;
-    }
-    
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      console.log('✅ Google Identity Services loaded');
-      initGoogleAuth();
     };
-    document.body.appendChild(script);
-  };
 
-  // Load YouTube IFrame API
+    checkYouTubeAuth();
+  }, []);
+
+  // YouTube API loading and initialization
   useEffect(() => {
     console.log('🎬 YouTubeAudioProvider mounted');
     
@@ -261,9 +227,6 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-    
-    // Load Google API for OAuth
-    loadGoogleAPI();
     
     return () => {
       console.log('🎬 YouTubeAudioProvider unmounting');
@@ -307,6 +270,8 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
           rel: 0,
           showinfo: 0,
           iv_load_policy: 3,
+          origin: window.location.origin, // Fix postMessage origin error
+          enablejsapi: 1, // Enable JS API
         },
         events: {
           onReady: onPlayerReady,
@@ -600,41 +565,37 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     }
   };
 
-  // Load user playlists
-  // Load user's YouTube playlists - commented out for now (future feature)
-  /*
+  // Load user's playlists from database
   const loadUserPlaylists = async () => {
-    if (!accessTokenRef.current || !API_KEY) return;
-
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/playlists?` +
-        `part=snippet,contentDetails&mine=true&maxResults=50&key=${API_KEY}`,
-        {
-          headers: { Authorization: `Bearer ${accessTokenRef.current}` }
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const response = await fetch('/api/youtube/playlists', {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-      );
+      });
 
       if (!response.ok) {
-        throw new Error(`Failed to load playlists: ${response.statusText}`);
+        throw new Error('Failed to load playlists');
       }
 
-      const data = await response.json();
+      const playlists = await response.json();
       
-      const playlists: YouTubePlaylist[] = data.items?.map((item: any) => ({
-        id: item.id,
-        title: item.snippet.title,
-        thumbnail: item.snippet.thumbnails.medium.url,
-        itemCount: item.contentDetails.itemCount,
-      })) || [];
+      const formatted: YouTubePlaylist[] = playlists.map((p: any) => ({
+        id: p.id.toString(),
+        title: p.name,
+        thumbnail: p.videos[0]?.thumbnail || '',
+        itemCount: p.videos.length,
+      }));
 
-      setUserPlaylists(playlists);
-      console.log('✅ Loaded user playlists:', playlists.length);
+      setUserPlaylists(formatted);
+      console.log('✅ Loaded user playlists:', formatted.length);
     } catch (error) {
       console.error('❌ Failed to load playlists:', error);
     }
   };
-  */
 
   // Load playlist videos
   const loadPlaylist = async (playlistId: string) => {
@@ -675,19 +636,27 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     }
   };
 
-  // Auth functions using new GIS library
-  const signOut = () => {
-    if (accessTokenRef.current && window.google?.accounts?.oauth2) {
-      window.google.accounts.oauth2.revoke(accessTokenRef.current, () => {
-        console.log('✅ Token revoked');
-      });
+  // Sign out - disable YouTube for user
+  const signOut = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        await fetch('/api/youtube/preferences', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ enabled: false })
+        });
+      }
+    } catch (error) {
+      console.error('Error disabling YouTube:', error);
     }
     
     setIsAuthenticated(false);
     setUserEmail(null);
     accessTokenRef.current = null;
-    refreshTokenRef.current = null;
-    googleUserIdRef.current = null;
     setUserPlaylists([]);
     
     // Backend revocation commented out until backend is ready

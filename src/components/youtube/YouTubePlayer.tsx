@@ -86,7 +86,9 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
             modestbranding: 1,
             rel: 0,
             showinfo: 0,
-            origin: window.location.origin
+            origin: window.location.origin,
+            enablejsapi: 1,
+            playsinline: 1
           },
           events: {
             onReady: onPlayerReady,
