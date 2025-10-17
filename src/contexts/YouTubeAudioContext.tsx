@@ -1,13 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 
-// YouTube IFrame API types
-declare global {
-  interface Window {
-    YT: typeof YT;
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
-
 interface YouTubeVideo {
   id: string;
   title: string;
