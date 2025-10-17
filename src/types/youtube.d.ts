@@ -180,5 +180,5 @@ declare namespace gapi {
 
 interface Window {
   gapi: typeof gapi;
-  onYouTubeIframeAPIReady?: () => void;
+  onYouTubeIframeAPIReady: (() => void) | undefined;
 }
