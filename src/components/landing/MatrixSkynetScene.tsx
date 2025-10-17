@@ -12,7 +12,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAuth } from '../../contexts/AuthContext';
 import { useAudio } from '../../contexts/AudioContext';
 import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
-import { HudContainer, AudioControls, ExperienceModeToggle } from '../hud';
+import { HudContainer, ExperienceModeToggle } from '../hud';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
 
@@ -1059,9 +1059,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         )}
       </div>
       
-      {/* HUD Controls */}
-      <AudioControls position="top-right" showDistortionToggle={true} />
-      <ExperienceModeToggle position="bottom-right" />
+      {/* HUD Controls - Experience Settings with integrated Audio Controls */}
+      <ExperienceModeToggle position="bottom-right" showAudioControls={true} />
     </HudContainer>
   );
 }

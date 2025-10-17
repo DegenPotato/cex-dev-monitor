@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { useExperienceSettings, useReducedMotion } from '../../contexts/ExperienceSettingsContext';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface ExperienceModeToggleProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   className?: string;
+  showAudioControls?: boolean;
 }
 
 export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({ 
   position = 'bottom-right',
-  className = ''
+  className = '',
+  showAudioControls = false
 }) => {
   const { 
     settings, 
@@ -19,6 +22,20 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
   } = useExperienceSettings();
   const systemReducedMotion = useReducedMotion();
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Audio controls
+  const audioContext = showAudioControls ? useAudio() : null;
+  const {
+    isPlaying,
+    volume,
+    distortionEnabled,
+    currentTrack,
+    togglePlayPause,
+    setVolume,
+    toggleDistortion,
+    nextTrack,
+    previousTrack
+  } = audioContext || {};
   
   // Position classes
   const positionClasses = {
@@ -117,6 +134,102 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
                 <div className="text-xs opacity-70">Optimized for speed</div>
               </button>
             </div>
+            
+            {/* Audio Controls Section */}
+            {showAudioControls && (
+              <div className="border-t border-gray-700 pt-3 space-y-3">
+                <h4 className="font-mono text-sm text-cyan-400 mb-2">🎵 Audio</h4>
+                
+                {/* Track Info */}
+                {currentTrack && (
+                  <div className="flex items-center gap-2 mb-2 text-xs text-cyan-300 font-mono">
+                    <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="truncate max-w-[200px]">{currentTrack}</span>
+                  </div>
+                )}
+                
+                {/* Playback Controls */}
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={previousTrack}
+                    className="p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600/30 
+                               hover:border-cyan-400/50 transition-all duration-200"
+                    title="Previous Track"
+                  >
+                    <svg className="w-4 h-4 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                    </svg>
+                  </button>
+
+                  <button
+                    onClick={togglePlayPause}
+                    className="p-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 
+                               hover:border-cyan-400/50 transition-all duration-200"
+                    title={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? (
+                      <svg className="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={nextTrack}
+                    className="p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600/30 
+                               hover:border-cyan-400/50 transition-all duration-200"
+                    title="Next Track"
+                  >
+                    <svg className="w-4 h-4 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Volume Control */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>Volume</span>
+                    <span className="text-cyan-400 font-mono">{Math.round(((volume || 0) / 5) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={volume || 0}
+                    onChange={(e) => setVolume?.(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer
+                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
+                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 
+                               [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-glow-sm
+                               [&::-webkit-slider-thumb]:hover:shadow-glow-md [&::-webkit-slider-thumb]:transition-all"
+                  />
+                </div>
+
+                {/* Distortion Toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs text-gray-400">Cosmic Distortion</span>
+                  <button
+                    onClick={toggleDistortion}
+                    className={`
+                      w-12 h-6 rounded-full relative transition-colors
+                      ${distortionEnabled ? 'bg-cyan-500/50' : 'bg-gray-700'}
+                    `}
+                    aria-label="Toggle distortion effect"
+                  >
+                    <div className={`
+                      absolute top-1 w-4 h-4 bg-white rounded-full transition-transform
+                      ${distortionEnabled ? 'translate-x-6' : 'translate-x-1'}
+                    `} />
+                  </button>
+                </div>
+              </div>
+            )}
             
             {/* Detailed Settings */}
             <div className="border-t border-gray-700 pt-3 space-y-3">
