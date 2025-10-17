@@ -908,7 +908,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         vortexMaterialRef.current = vortexMaterial; // Store for reverse animation
         const singularityVortex = new THREE.Mesh(vortexGeometry, vortexMaterial);
         singularityVortex.rotation.x = 0; // Face camera directly (not tilted)
-        singularityVortex.position.set(-1.5, 0, -3); // Left side
+        singularityVortex.position.set(0, 0, 0); // CENTER - The singularity IS the black hole's center!
         scene.add(singularityVortex);
         
         // Create lensflare textures programmatically (avoids CORS issues)
@@ -964,7 +964,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const GRAVITATIONAL_CONSTANT = 1.0;
         const EVENT_HORIZON_RADIUS = 1.0;
-        const DISK_THICKNESS = 4.0; // Thin accretion disk
+        const DISK_THICKNESS = 2.0; // Thin accretion disk
         velocities.current = [];
 
         for (let i = 0; i < particleCount; i++) {
