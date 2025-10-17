@@ -68,7 +68,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
     }
 
     window.onYouTubeIframeAPIReady = () => {
-      if (playerRef.current && !player) {
+      if (playerRef.current && !player && window.YT) {
         const ytPlayer = new window.YT.Player(playerRef.current, {
           height: '0',
           width: '0',
@@ -121,11 +121,11 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
   };
 
   const onPlayerStateChange = (event: any) => {
-    if (event.data === window.YT.PlayerState.PLAYING) {
+    if (event.data === window.YT?.PlayerState.PLAYING) {
       setIsPlaying(true);
-    } else if (event.data === window.YT.PlayerState.PAUSED) {
+    } else if (event.data === window.YT?.PlayerState.PAUSED) {
       setIsPlaying(false);
-    } else if (event.data === window.YT.PlayerState.ENDED) {
+    } else if (event.data === window.YT?.PlayerState.ENDED) {
       handleVideoEnd();
     }
   };

@@ -139,7 +139,13 @@ declare namespace google {
   }
 }
 
-interface Window {
-  google: typeof google;
-  onYouTubeIframeAPIReady: (() => void) | undefined;
+declare global {
+  interface Window {
+    YT?: typeof YT;
+    google?: typeof google;
+    onYouTubeIframeAPIReady?: () => void;
+  }
 }
+
+// Export empty object to make this a module
+export {};
