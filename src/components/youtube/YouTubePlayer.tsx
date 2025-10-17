@@ -32,6 +32,13 @@ interface YouTubePlayerProps {
 export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
   const { isAuthenticated, userEmail, signIn } = useYouTubeAudio();
   
+  const handleClose = () => {
+    console.log('🔴 Close button clicked!');
+    if (onClose) {
+      onClose();
+    }
+  };
+  
   // Player state
   const [player, setPlayer] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -255,8 +262,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center">
-      <div className="w-full max-w-6xl h-[90vh] bg-gradient-to-br from-purple-900/20 to-pink-900/20 rounded-lg border-2 border-pink-500 p-6 flex flex-col">
+    <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center pointer-events-auto">
+      <div className="w-full max-w-6xl h-[90vh] bg-gradient-to-br from-purple-900/20 to-pink-900/20 rounded-lg border-2 border-pink-500 p-6 flex flex-col pointer-events-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-3xl font-bold text-pink-400 flex items-center gap-3">
@@ -265,9 +272,14 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
               FULL API
             </span>
           </h2>
-          {onClose && (
-            <button onClick={onClose} className="text-red-400 hover:text-red-300 text-2xl">×</button>
-          )}
+          <button 
+            onClick={handleClose} 
+            className="text-red-400 hover:text-red-300 hover:bg-red-500/20 text-3xl font-bold px-3 py-1 rounded transition-all cursor-pointer z-[60] pointer-events-auto"
+            type="button"
+            title="Close Player"
+          >
+            ×
+          </button>
         </div>
 
         {/* Auth Status */}
