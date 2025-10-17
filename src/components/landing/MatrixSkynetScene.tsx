@@ -46,11 +46,47 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   const { isAuthenticated: isYouTubeConnected, userEmail: youtubeEmail, signIn: connectGoogle } = useYouTubeAudio();
-  const { audioSource, setAudioSource, isPlaying, togglePlayPause, nextTrack, previousTrack } = useAudio();
+  const {
+    // Source
+    audioSource,
+    setAudioSource,
+    // Playback state
+    isPlaying,
+    volume,
+    distortionEnabled,
+    currentTrack,
+    currentTime,
+    duration,
+    // Playlist
+    playlist,
+    currentTrackIndex,
+    // Effects
+    bassLevel,
+    trebleLevel,
+    distortionAmount,
+    // Modes
+    shuffleEnabled,
+    repeatMode,
+    // Controls
+    togglePlayPause,
+    setVolume,
+    toggleDistortion,
+    setBassLevel,
+    setTrebleLevel,
+    setDistortionAmount,
+    nextTrack,
+    previousTrack,
+    seekTo,
+    toggleShuffle,
+    setRepeatMode,
+    selectTrack
+  } = useAudio();
   
   // Debug logging
   useEffect(() => {
     console.log('🔮 Matrix Scene - User:', user);
+    console.log('🔮 Matrix Scene - User wallet:', user?.wallet_address);
+    console.log('🔮 Matrix Scene - User username:', user?.username);
     console.log('🔮 Matrix Scene - Is Super Admin:', isSuperAdmin);
   }, [user, isSuperAdmin]);
   
@@ -809,7 +845,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               MATRIX SKYNET
             </h1>
           </div>
-          <p className="text-green-400 font-mono text-xs mt-3 tracking-widest opacity-80">
+          <p className="text-green-400 font-mono text-xs mt-3 tracking-widest opacity-80 text-center">
             ⟨ SUPER ADMIN COMMAND CENTER ⟩
           </p>
           <div className="text-green-500 font-mono text-xs mt-1 opacity-60">
@@ -976,8 +1012,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
             nodes: nodesRef.current.length,
             totalNodes: nodesRef.current.length
           }}
-          walletData={user?.wallet_address ? {
-            address: user.wallet_address,
+          walletData={user ? {
+            address: user.wallet_address || user.username || 'GENESIS-001',
             onDisconnect: onBack
           } : undefined}
         />
@@ -1143,20 +1179,26 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                   {/* Track Info */}
                   <div className="flex-1">
                     <h3 className="text-2xl font-bold text-pink-300 mb-1">
-                      {audioSource === 'youtube' && isYouTubeConnected ? 'YouTube Music' : 'Black Hole Symphony'}
+                      {currentTrack?.name || 'No Track Playing'}
                     </h3>
                     <p className="text-pink-400/60 mb-4">
-                      {audioSource === 'youtube' ? 'Streaming from YouTube' : 'Local Audio Collection'}
+                      {currentTrack?.artist || (audioSource === 'youtube' ? 'YouTube Music' : 'Local Collection')}
                     </p>
                     
                     {/* Progress Bar */}
                     <div className="mb-4">
                       <div className="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>1:23</span>
-                        <span>3:45</span>
+                        <span>{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}</span>
+                        <span>{Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, '0')}</span>
                       </div>
-                      <div className="w-full bg-gray-800 rounded-full h-2">
-                        <div className="bg-gradient-to-r from-pink-500 to-purple-500 h-2 rounded-full" style={{ width: '40%' }}></div>
+                      <div className="w-full bg-gray-800 rounded-full h-2 cursor-pointer"
+                           onClick={(e) => {
+                             const rect = e.currentTarget.getBoundingClientRect();
+                             const percent = (e.clientX - rect.left) / rect.width;
+                             seekTo(duration * percent);
+                           }}>
+                        <div className="bg-gradient-to-r from-pink-500 to-purple-500 h-2 rounded-full pointer-events-none" 
+                             style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}></div>
                       </div>
                     </div>
                     
@@ -1180,11 +1222,24 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                       >
                         ⏭️
                       </button>
-                      <button className="text-pink-400 hover:text-pink-300 transition-colors ml-4">
+                      <button 
+                        onClick={toggleShuffle}
+                        className={`transition-colors ml-4 ${
+                          shuffleEnabled ? 'text-pink-300' : 'text-pink-400 hover:text-pink-300'
+                        }`}
+                      >
                         🔀
                       </button>
-                      <button className="text-pink-400 hover:text-pink-300 transition-colors">
-                        🔁
+                      <button 
+                        onClick={() => {
+                          const modes: ('off' | 'all' | 'one')[] = ['off', 'all', 'one'];
+                          const currentIndex = modes.indexOf(repeatMode);
+                          setRepeatMode(modes[(currentIndex + 1) % 3]);
+                        }}
+                        className="text-pink-400 hover:text-pink-300 transition-colors"
+                        title={`Repeat: ${repeatMode}`}
+                      >
+                        {repeatMode === 'one' ? '🔂' : repeatMode === 'all' ? '🔁' : '↻'}
                       </button>
                     </div>
                   </div>
@@ -1192,18 +1247,24 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                   {/* Volume & Effects */}
                   <div className="space-y-4">
                     <div>
-                      <label className="text-pink-400 text-xs font-mono">VOLUME</label>
-                      <input type="range" min="0" max="100" defaultValue="75" 
+                      <label className="text-pink-400 text-xs font-mono">VOLUME ({Math.round(volume * 100)}%)</label>
+                      <input type="range" min="0" max="100" 
+                             value={volume * 100}
+                             onChange={(e) => setVolume(Number(e.target.value) / 100)}
                              className="w-full accent-pink-500" />
                     </div>
                     <div>
-                      <label className="text-pink-400 text-xs font-mono">BASS</label>
-                      <input type="range" min="0" max="100" defaultValue="50" 
+                      <label className="text-pink-400 text-xs font-mono">BASS ({bassLevel}%)</label>
+                      <input type="range" min="0" max="100" 
+                             value={bassLevel}
+                             onChange={(e) => setBassLevel(Number(e.target.value))}
                              className="w-full accent-purple-500" />
                     </div>
                     <div>
-                      <label className="text-pink-400 text-xs font-mono">TREBLE</label>
-                      <input type="range" min="0" max="100" defaultValue="50" 
+                      <label className="text-pink-400 text-xs font-mono">TREBLE ({trebleLevel}%)</label>
+                      <input type="range" min="0" max="100" 
+                             value={trebleLevel}
+                             onChange={(e) => setTrebleLevel(Number(e.target.value))}
                              className="w-full accent-cyan-500" />
                     </div>
                   </div>
@@ -1256,44 +1317,80 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                 
                 {/* Playlist */}
                 <div className="bg-black/50 border border-pink-500/30 rounded-lg p-4">
-                  <h3 className="text-pink-400 font-mono text-lg mb-3">📝 PLAYLIST</h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-pink-400 font-mono text-lg">📝 PLAYLIST</h3>
+                    {shuffleEnabled && <span className="text-xs text-pink-400 font-mono">🔀 SHUFFLED</span>}
+                  </div>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    <div className="px-3 py-2 bg-pink-500/10 rounded hover:bg-pink-500/20 cursor-pointer transition-colors">
-                      <div className="text-pink-300 font-mono text-sm">Black Hole Theme</div>
-                      <div className="text-pink-400/50 text-xs">3:45</div>
-                    </div>
-                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
-                      <div className="text-gray-400 font-mono text-sm">Quantum Drift</div>
-                      <div className="text-gray-500 text-xs">4:12</div>
-                    </div>
-                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
-                      <div className="text-gray-400 font-mono text-sm">Neural Symphony</div>
-                      <div className="text-gray-500 text-xs">5:23</div>
-                    </div>
-                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
-                      <div className="text-gray-400 font-mono text-sm">Matrix Rain</div>
-                      <div className="text-gray-500 text-xs">3:07</div>
-                    </div>
+                    {playlist.map((track, index) => (
+                      <div key={track.id}
+                           onClick={() => selectTrack(index)}
+                           className={`px-3 py-2 rounded cursor-pointer transition-colors ${
+                             index === currentTrackIndex 
+                               ? 'bg-pink-500/20 border border-pink-500/30' 
+                               : 'hover:bg-pink-500/10'
+                           }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className={`font-mono text-sm ${
+                              index === currentTrackIndex ? 'text-pink-300' : 'text-gray-400'
+                            }`}>
+                              {index === currentTrackIndex && isPlaying && '▶ '}
+                              {track.name}
+                            </div>
+                            <div className="text-xs text-gray-500">{track.artist}</div>
+                          </div>
+                          <div className={`text-xs ${
+                            index === currentTrackIndex ? 'text-pink-400/70' : 'text-gray-500'
+                          }`}>{track.duration}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
               
-              {/* Visualizer Settings */}
+              {/* Visualizer & Effects Settings */}
               <div className="bg-black/50 border border-pink-500/30 rounded-lg p-4 mt-4">
-                <h3 className="text-pink-400 font-mono text-lg mb-3">🌈 VISUALIZER SETTINGS</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <label className="flex items-center gap-2 text-pink-300 text-sm">
-                    <input type="checkbox" checked className="accent-pink-500" />
-                    <span>Black Hole Reactivity</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-pink-300 text-sm">
-                    <input type="checkbox" checked className="accent-pink-500" />
-                    <span>Particle Effects</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-pink-300 text-sm">
-                    <input type="checkbox" className="accent-pink-500" />
-                    <span>Spectrum Analyzer</span>
-                  </label>
+                <h3 className="text-pink-400 font-mono text-lg mb-3">🌈 EFFECTS & VISUALIZER</h3>
+                <div className="space-y-4">
+                  {/* Distortion Controls */}
+                  <div className="border-b border-pink-500/20 pb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="flex items-center gap-2 text-pink-300 text-sm">
+                        <input type="checkbox" 
+                               checked={distortionEnabled}
+                               onChange={toggleDistortion}
+                               className="accent-pink-500" />
+                        <span>🎸 Space Distortion</span>
+                      </label>
+                      {distortionEnabled && (
+                        <span className="text-xs text-pink-400">Amount: {distortionAmount}%</span>
+                      )}
+                    </div>
+                    {distortionEnabled && (
+                      <input type="range" min="0" max="100"
+                             value={distortionAmount}
+                             onChange={(e) => setDistortionAmount(Number(e.target.value))}
+                             className="w-full accent-pink-500" />
+                    )}
+                  </div>
+                  
+                  {/* Visualizer Options */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <label className="flex items-center gap-2 text-pink-300 text-sm">
+                      <input type="checkbox" defaultChecked className="accent-pink-500" />
+                      <span>Black Hole Reactivity</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-pink-300 text-sm">
+                      <input type="checkbox" defaultChecked className="accent-pink-500" />
+                      <span>Particle Effects</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-pink-300 text-sm">
+                      <input type="checkbox" className="accent-pink-500" />
+                      <span>Spectrum Analyzer</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

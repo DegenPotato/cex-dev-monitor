@@ -3,6 +3,16 @@ import * as THREE from 'three';
 
 export type AudioSource = 'local' | 'youtube';
 
+export interface Track {
+  id: string;
+  name: string;
+  path: string;
+  duration: string;
+  artist?: string;
+}
+
+export type RepeatMode = 'off' | 'all' | 'one';
+
 interface AudioContextType {
   // Source selection
   audioSource: AudioSource;
@@ -12,14 +22,36 @@ interface AudioContextType {
   isPlaying: boolean;
   volume: number;
   distortionEnabled: boolean;
-  currentTrack: string;
+  currentTrack: Track | null;
+  currentTime: number;
+  duration: number;
+  
+  // Playlist
+  playlist: Track[];
+  currentTrackIndex: number;
+  
+  // Effects
+  bassLevel: number;
+  trebleLevel: number;
+  distortionAmount: number;
+  
+  // Playback modes
+  shuffleEnabled: boolean;
+  repeatMode: RepeatMode;
   
   // Controls
   togglePlayPause: () => void;
   setVolume: (volume: number) => void;
   toggleDistortion: () => void;
+  setBassLevel: (level: number) => void;
+  setTrebleLevel: (level: number) => void;
+  setDistortionAmount: (amount: number) => void;
   nextTrack: () => void;
   previousTrack: () => void;
+  seekTo: (time: number) => void;
+  toggleShuffle: () => void;
+  setRepeatMode: (mode: RepeatMode) => void;
+  selectTrack: (index: number) => void;
   initializeAudio: () => Promise<void>;
   getAudioAnalyzer: () => THREE.AudioAnalyser | null;
 }
@@ -41,31 +73,71 @@ interface AudioProviderProps {
 export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   const [audioSource, setAudioSource] = useState<AudioSource>('local');
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolumeState] = useState(2.0);
+  const [volume, setVolumeState] = useState(0.75);
   const [distortionEnabled, setDistortionEnabled] = useState(true);
-  const [currentTrack, setCurrentTrack] = useState('');
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [bassLevel, setBassLevelState] = useState(50);
+  const [trebleLevel, setTrebleLevelState] = useState(50);
+  const [distortionAmount, setDistortionAmountState] = useState(30);
+  const [shuffleEnabled, setShuffleEnabled] = useState(false);
+  const [repeatMode, setRepeatModeState] = useState<RepeatMode>('all');
+  const [playlist, setPlaylist] = useState<Track[]>([]);
   
   const listenerRef = useRef<THREE.AudioListener | null>(null);
   const soundRef = useRef<THREE.Audio | null>(null);
   const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
-  const playlistRef = useRef<string[]>([]);
   const currentTrackIndexRef = useRef(0);
   const audioLoaderRef = useRef<THREE.AudioLoader | null>(null);
-  const filterRef = useRef<BiquadFilterNode | null>(null);
+  const bassFilterRef = useRef<BiquadFilterNode | null>(null);
+  const trebleFilterRef = useRef<BiquadFilterNode | null>(null);
   const distortionRef = useRef<WaveShaperNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const isAdvancingTrackRef = useRef(false);
   const isInitializedRef = useRef(false);
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Audio files
-  const audioFiles = [
-    '/blackHole.mp3',
-    '/blackHole2.mp3',
-    '/blackHole3.mp3',
-    '/blackHole4.mp3',
+  // Track metadata
+  const trackDatabase: Track[] = [
+    { id: '1', name: 'Black Hole Symphony', path: '/blackHole.mp3', duration: '3:45', artist: 'Cosmic Audio' },
+    { id: '2', name: 'Quantum Drift', path: '/blackHole2.mp3', duration: '4:12', artist: 'Neural Beats' },
+    { id: '3', name: 'Stellar Evolution', path: '/blackHole3.mp3', duration: '5:23', artist: 'Space Harmonics' },
+    { id: '4', name: 'Event Horizon', path: '/blackHole4.mp3', duration: '3:07', artist: 'Matrix Soundscape' },
   ];
 
+  // Initialize playlist
+  useEffect(() => {
+    setPlaylist(trackDatabase);
+  }, []);
+
+  // Time update interval
+  useEffect(() => {
+    if (isPlaying && soundRef.current) {
+      timeUpdateIntervalRef.current = setInterval(() => {
+        if (soundRef.current?.source) {
+          const context = soundRef.current.source.context;
+          const currentTime = context.currentTime - (soundRef.current as any).startTime || 0;
+          setCurrentTime(Math.min(currentTime, duration));
+        }
+      }, 100);
+    } else {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+      }
+    };
+  }, [isPlaying, duration]);
+
   // Shuffle playlist
-  const shufflePlaylist = (arr: string[]) => {
+  const shufflePlaylist = (arr: Track[]) => {
     const shuffled = [...arr];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -103,12 +175,26 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
       soundRef.current.source = null;
     }
     
-    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
-    
-    if (currentTrackIndexRef.current === 0) {
-      console.log('🔄 Playlist complete! Reshuffling...');
-      playlistRef.current = shufflePlaylist(audioFiles);
+    if (repeatMode === 'one') {
+      // Repeat the same track
+      currentTrackIndexRef.current = currentTrackIndexRef.current;
+    } else if (repeatMode === 'all' || repeatMode === 'off') {
+      currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlist.length;
+      
+      if (currentTrackIndexRef.current === 0) {
+        if (repeatMode === 'off') {
+          console.log('🛑 Playlist complete, stopping.');
+          setIsPlaying(false);
+          isAdvancingTrackRef.current = false;
+          return;
+        } else if (shuffleEnabled) {
+          console.log('🔄 Playlist complete! Reshuffling...');
+          setPlaylist(shufflePlaylist(trackDatabase));
+        }
+      }
     }
+    
+    setCurrentTrackIndex(currentTrackIndexRef.current);
     
     setTimeout(() => {
       loadTrack(currentTrackIndexRef.current, true);
@@ -119,16 +205,23 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   const loadTrack = (trackIndex: number, autoPlay = false) => {
     if (!soundRef.current || !audioLoaderRef.current || !listenerRef.current) return;
     
-    const trackPath = playlistRef.current[trackIndex];
-    console.log(`🎵 Loading track ${trackIndex + 1}/${playlistRef.current.length}: ${trackPath}`);
-    setCurrentTrack(trackPath.split('/').pop() || '');
+    const track = playlist[trackIndex];
+    if (!track) return;
+    
+    console.log(`🎵 Loading track ${trackIndex + 1}/${playlist.length}: ${track.name}`);
+    setCurrentTrack(track);
+    setCurrentTime(0);
+    
+    // Parse duration to seconds
+    const [min, sec] = track.duration.split(':').map(Number);
+    setDuration(min * 60 + sec);
     
     if (soundRef.current.isPlaying) {
       soundRef.current.stop();
     }
     
     audioLoaderRef.current.load(
-      trackPath, 
+      track.path, 
       (buffer) => {
       if (!soundRef.current || !listenerRef.current) return;
       
@@ -139,26 +232,41 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
       // Setup audio chain with effects
       const context = listenerRef.current.context;
       if (context.state === 'running' || context.state === 'suspended') {
-        // Lowpass filter for space effect
-        if (!filterRef.current) {
-          filterRef.current = context.createBiquadFilter();
-          filterRef.current.type = 'lowpass';
-          filterRef.current.frequency.value = distortionEnabled ? 100 : 20000;
+        // Create gain node for volume control
+        if (!gainNodeRef.current) {
+          gainNodeRef.current = context.createGain();
+          gainNodeRef.current.gain.value = volume;
+        }
+        
+        // Bass filter (low shelf)
+        if (!bassFilterRef.current) {
+          bassFilterRef.current = context.createBiquadFilter();
+          bassFilterRef.current.type = 'lowshelf';
+          bassFilterRef.current.frequency.value = 320;
+          bassFilterRef.current.gain.value = (bassLevel - 50) / 5; // -10 to +10 dB
+        }
+        
+        // Treble filter (high shelf)
+        if (!trebleFilterRef.current) {
+          trebleFilterRef.current = context.createBiquadFilter();
+          trebleFilterRef.current.type = 'highshelf';
+          trebleFilterRef.current.frequency.value = 3200;
+          trebleFilterRef.current.gain.value = (trebleLevel - 50) / 5; // -10 to +10 dB
         }
         
         // Distortion for cosmic effect
         if (!distortionRef.current) {
           distortionRef.current = context.createWaveShaper();
-          distortionRef.current.curve = makeDistortionCurve(distortionEnabled ? 50 : 0);
+          distortionRef.current.curve = makeDistortionCurve(distortionEnabled ? distortionAmount : 0);
           distortionRef.current.oversample = '4x';
         }
         
-        // Chain the filters: sound -> filter -> distortion -> destination
-        if (filterRef.current && distortionRef.current) {
-          filterRef.current.connect(distortionRef.current);
-          soundRef.current.setFilter(filterRef.current);
-        } else if (filterRef.current) {
-          soundRef.current.setFilter(filterRef.current);
+        // Chain the effects: sound -> bass -> treble -> distortion -> gain -> destination
+        if (bassFilterRef.current && trebleFilterRef.current && distortionRef.current && gainNodeRef.current) {
+          bassFilterRef.current.connect(trebleFilterRef.current);
+          trebleFilterRef.current.connect(distortionRef.current);
+          distortionRef.current.connect(gainNodeRef.current);
+          soundRef.current.setFilter(bassFilterRef.current);
         }
       }
       
@@ -183,10 +291,10 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
     undefined,
     // Error handler
     (error) => {
-      console.error('❌ Failed to load audio track:', trackPath, error);
+      console.error('❌ Failed to load audio track:', track.name, error);
       isAdvancingTrackRef.current = false;
       // Try next track on error
-      if (playlistRef.current.length > 1) {
+      if (playlist.length > 1) {
         console.log('⏭️ Skipping to next track...');
         playNextTrack();
       }
@@ -203,7 +311,7 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
         isPlaying: soundRef.current?.isPlaying,
         hasListener: !!listenerRef.current,
         hasSound: !!soundRef.current,
-        currentTrack: playlistRef.current[currentTrackIndexRef.current]
+        currentTrack: playlist[currentTrackIndexRef.current]?.name
       });
       return;
     }
@@ -221,8 +329,12 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
     audioAnalyzerRef.current = audioAnalyzer;
     audioLoaderRef.current = new THREE.AudioLoader();
     
-    playlistRef.current = shufflePlaylist(audioFiles);
-    console.log('🎵 Playlist shuffled:', playlistRef.current);
+    if (shuffleEnabled) {
+      setPlaylist(shufflePlaylist(trackDatabase));
+      console.log('🎵 Playlist shuffled');
+    } else {
+      setPlaylist(trackDatabase);
+    }
     
     // Resume audio context if suspended
     if (listener.context.state === 'suspended') {
@@ -263,7 +375,37 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
     setVolumeState(newVolume);
     if (soundRef.current) {
       soundRef.current.setVolume(newVolume);
-      console.log('🔊 Volume set to:', newVolume);
+    }
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = newVolume;
+    }
+    console.log(`🔊 Volume: ${Math.round(newVolume * 100)}%`);
+  };
+
+  // Set bass level
+  const setBassLevel = (level: number) => {
+    setBassLevelState(level);
+    if (bassFilterRef.current) {
+      bassFilterRef.current.gain.value = (level - 50) / 5; // -10 to +10 dB
+      console.log(`🎵 Bass: ${level}%`);
+    }
+  };
+
+  // Set treble level
+  const setTrebleLevel = (level: number) => {
+    setTrebleLevelState(level);
+    if (trebleFilterRef.current) {
+      trebleFilterRef.current.gain.value = (level - 50) / 5; // -10 to +10 dB
+      console.log(`🎵 Treble: ${level}%`);
+    }
+  };
+
+  // Set distortion amount
+  const setDistortionAmount = (amount: number) => {
+    setDistortionAmountState(amount);
+    if (distortionRef.current && distortionEnabled) {
+      distortionRef.current.curve = makeDistortionCurve(amount);
+      console.log(`🎸 Distortion: ${amount}%`);
     }
   };
 
@@ -271,34 +413,74 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   const toggleDistortion = () => {
     const newState = !distortionEnabled;
     setDistortionEnabled(newState);
-    
-    if (filterRef.current) {
-      filterRef.current.frequency.value = newState ? 100 : 20000;
-    }
-    
     if (distortionRef.current) {
-      distortionRef.current.curve = makeDistortionCurve(newState ? 50 : 0);
+      distortionRef.current.curve = makeDistortionCurve(newState ? distortionAmount : 0);
     }
-    
-    console.log('🎛️ Distortion:', newState ? 'ON' : 'OFF');
+    console.log(`🎸 Distortion: ${newState ? 'ON' : 'OFF'}`);
   };
 
   // Next track
   const nextTrack = () => {
-    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
+    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlist.length;
+    setCurrentTrackIndex(currentTrackIndexRef.current);
     loadTrack(currentTrackIndexRef.current, isPlaying);
   };
 
   // Previous track
   const previousTrack = () => {
     currentTrackIndexRef.current = currentTrackIndexRef.current === 0 
-      ? playlistRef.current.length - 1 
+      ? playlist.length - 1 
       : currentTrackIndexRef.current - 1;
+    setCurrentTrackIndex(currentTrackIndexRef.current);
     loadTrack(currentTrackIndexRef.current, isPlaying);
+  };
+
+  // Seek to time
+  const seekTo = (time: number) => {
+    if (!soundRef.current || !soundRef.current.isPlaying) return;
+    
+    const position = Math.max(0, Math.min(time, duration));
+    // Note: Three.js Audio doesn't support seeking easily, would need custom implementation
+    console.log(`⏩ Seek to: ${position}s`);
+    setCurrentTime(position);
+  };
+
+  // Toggle shuffle
+  const toggleShuffle = () => {
+    const newState = !shuffleEnabled;
+    setShuffleEnabled(newState);
+    if (newState) {
+      setPlaylist(shufflePlaylist(trackDatabase));
+      console.log('🔀 Shuffle ON');
+    } else {
+      setPlaylist(trackDatabase);
+      console.log('🔀 Shuffle OFF');
+    }
+  };
+
+  // Set repeat mode
+  const setRepeatMode = (mode: RepeatMode) => {
+    setRepeatModeState(mode);
+    console.log(`🔁 Repeat: ${mode}`);
+  };
+
+  // Select track
+  const selectTrack = (index: number) => {
+    if (index < 0 || index >= playlist.length) return;
+    currentTrackIndexRef.current = index;
+    setCurrentTrackIndex(index);
+    loadTrack(index, isPlaying);
   };
 
   // Get audio analyzer for visualizations
   const getAudioAnalyzer = () => audioAnalyzerRef.current;
+
+  // Format time helper (not used in AudioContext itself, but available)
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
 
   // Cleanup on unmount (only runs when provider unmounts, not on scene changes)
   useEffect(() => {
@@ -315,17 +497,39 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
 
   return (
     <AudioContext.Provider value={{
+      // Source
       audioSource,
       setAudioSource,
+      // Playback state
       isPlaying,
       volume,
       distortionEnabled,
       currentTrack,
+      currentTime,
+      duration,
+      // Playlist
+      playlist,
+      currentTrackIndex,
+      // Effects
+      bassLevel,
+      trebleLevel,
+      distortionAmount,
+      // Modes
+      shuffleEnabled,
+      repeatMode,
+      // Controls
       togglePlayPause,
       setVolume,
       toggleDistortion,
+      setBassLevel,
+      setTrebleLevel,
+      setDistortionAmount,
       nextTrack,
       previousTrack,
+      seekTo,
+      toggleShuffle,
+      setRepeatMode,
+      selectTrack,
       initializeAudio,
       getAudioAnalyzer
     }}>

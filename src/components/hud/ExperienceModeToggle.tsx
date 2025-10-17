@@ -121,7 +121,10 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
                       <div>
                         <div className="text-xs text-gray-400 font-mono">CONNECTED</div>
                         <div className="text-cyan-300 font-mono text-sm font-bold">
-                          {walletData.address.slice(0, 6)}...{walletData.address.slice(-4)}
+                          {walletData.address.length > 10 
+                            ? `${walletData.address.slice(0, 6)}...${walletData.address.slice(-4)}`
+                            : walletData.address
+                          }
                         </div>
                       </div>
                     </div>
@@ -262,7 +265,7 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
                     {currentTrack && (
                   <div className="flex items-center gap-2 mb-2 text-xs text-cyan-300 font-mono">
                     <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                    <span className="truncate max-w-[200px]">{currentTrack}</span>
+                    <span className="truncate max-w-[200px]">{currentTrack.name}</span>
                   </div>
                 )}
                 
