@@ -39,8 +39,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000511);
-    scene.fog = new THREE.FogExp2(0x000511, 0.02);
+    scene.background = new THREE.Color(0x000511); // Very dark blue-green
+    scene.fog = new THREE.FogExp2(0x000511, 0.008); // Lighter fog for better visibility
     sceneRef.current = scene;
     
     // Camera - Start near the white hole boundary (just entered the universe)
@@ -67,12 +67,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
     
-    // Bloom for glowing effects
+    // Subtle bloom for UI elements
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5,  // strength
+      0.8,  // strength - reduced for comfort
       0.4,  // radius
-      0.85  // threshold
+      0.9   // threshold - higher to only bloom bright elements
     );
     composer.addPass(bloomPass);
     composerRef.current = composer;
@@ -87,22 +87,21 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     controlsRef.current = controls;
     
     /**
-     * WHITE HOLE COSMOLOGY:
-     * - The white hole is an 80-unit radius sphere surrounding the entire universe
-     * - It's the "event horizon" boundary that can never be reached
-     * - Camera max distance (50) keeps you confined within the bubble
-     * - Unlike black holes (matter falls in), white holes theoretically emit matter
-     * - But nothing can cross the boundary from inside (hence unreachable)
-     * - This creates a "pocket dimension" or "universe bubble" concept
-     * - The Matrix universe exists INSIDE this white hole boundary
+     * MATRIX DASHBOARD ENVIRONMENT:
+     * - Infinite space aesthetic with subtle cosmic background
+     * - Not a simulation, but a functional 3D UI/dashboard
+     * - Cosmic elements create ambience without being distracting
+     * - Neural network nodes represent different data systems
+     * - Dark theme with soft lighting for extended viewing comfort
+     * - Matrix-inspired green accents throughout the interface
      **/
     
-    // Create WHITE HOLE EVENT HORIZON - The unreachable boundary of the Matrix universe
-    // A distant spherical horizon that nothing can enter
-    const createWhiteHoleHorizon = () => {
+    // Create COSMIC BACKGROUND RADIATION FIELD - The infinite Matrix universe
+    // Inspired by CMB (Cosmic Microwave Background) - omnidirectional ancient energy
+    const createCosmicBackground = () => {
       const group = new THREE.Group();
       
-      // Custom shader for white hole with energy distortion
+      // Custom shader for subtle cosmic radiation glow
       const whiteHoleShader = {
         uniforms: {
           time: { value: 0 },
@@ -133,67 +132,82 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           varying vec2 vUv;
           varying vec3 vPosition;
           
+          // Simplex noise for organic fluctuations
+          float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(
+              mix(mix(0.0, 1.0, f.x), mix(1.0, 0.0, f.x), f.y),
+              mix(mix(1.0, 0.0, f.x), mix(0.0, 1.0, f.x), f.y),
+              f.z
+            );
+          }
+          
           void main() {
-            // Distance from center
-            float dist = length(vUv - 0.5);
+            // Cosmic noise pattern
+            vec3 noisePos = vPosition * 0.05 + vec3(time * 0.1);
+            float n1 = noise(noisePos);
+            float n2 = noise(noisePos * 2.0 + 100.0);
+            float n3 = noise(noisePos * 4.0 + 200.0);
             
-            // Create energy rings
-            float rings = sin(dist * 20.0 - time * 3.0) * 0.5 + 0.5;
+            // Layered cosmic radiation
+            float cosmic = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
             
-            // Radial gradient
-            float radial = 1.0 - dist * 2.0;
-            radial = pow(radial, 2.0);
+            // Very subtle pulsing
+            float pulse = sin(time * 0.5) * 0.05 + 0.95;
             
-            // Swirling effect
-            float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
-            float swirl = sin(angle * 8.0 + time * 2.0) * 0.5 + 0.5;
+            // Final color - very subtle green tint on dark background
+            vec3 bgColor = vec3(0.0, 0.01, 0.005); // Near black with hint of green
+            vec3 radiationColor = vec3(0.0, 0.15, 0.1) * cosmic * pulse;
+            vec3 finalColor = bgColor + radiationColor;
             
-            // Combine effects
-            vec3 finalColor = mix(color, glowColor, swirl * 0.3);
-            float alpha = radial * (0.8 + rings * 0.2);
+            // Very low alpha for subtlety
+            float alpha = 0.15 + cosmic * 0.1;
             
             gl_FragColor = vec4(finalColor, alpha);
           }
         `
       };
       
-      // Massive sphere as the universe boundary - inside-out rendering
-      const coreGeometry = new THREE.SphereGeometry(80, 64, 64);
-      const coreMaterial = new THREE.ShaderMaterial({
+      // Large sphere for cosmic background - very subtle, almost invisible
+      const bgGeometry = new THREE.SphereGeometry(150, 32, 32);
+      const bgMaterial = new THREE.ShaderMaterial({
         uniforms: whiteHoleShader.uniforms,
         vertexShader: whiteHoleShader.vertexShader,
         fragmentShader: whiteHoleShader.fragmentShader,
         transparent: true,
-        side: THREE.BackSide, // Render inside of sphere
-        blending: THREE.AdditiveBlending
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
       });
-      const core = new THREE.Mesh(coreGeometry, coreMaterial);
-      group.add(core);
+      const cosmicBg = new THREE.Mesh(bgGeometry, bgMaterial);
+      group.add(cosmicBg);
       
-      // Particle field at the event horizon boundary
-      const particleCount = 5000;
+      // Sparse cosmic dust particles throughout space
+      const particleCount = 2000; // Reduced for subtlety
       const particleGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
       const sizes = new Float32Array(particleCount);
       
       for (let i = 0; i < particleCount; i++) {
-        // Distribute on inner surface of sphere (event horizon)
+        // Distribute particles throughout the entire space volume
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.random() * Math.PI;
-        const radius = 75 + Math.random() * 3; // Near the boundary
+        const radius = Math.random() * 120 + 10; // Random distances from 10 to 130
         
         positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
         positions[i * 3 + 2] = radius * Math.cos(phi);
         
-        // White to cyan gradient
-        const colorMix = Math.random();
-        colors[i * 3] = colorMix;
-        colors[i * 3 + 1] = 1.0;
-        colors[i * 3 + 2] = 1.0;
+        // Very dim particles - just hints of light
+        const brightness = Math.random() * 0.3 + 0.1; // 0.1 to 0.4
+        colors[i * 3] = brightness * 0.5; // Slightly less red
+        colors[i * 3 + 1] = brightness;
+        colors[i * 3 + 2] = brightness * 0.8; // Slightly less blue
         
-        sizes[i] = Math.random() * 3 + 1;
+        sizes[i] = Math.random() * 2 + 0.5; // Smaller particles
       }
       
       particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -201,10 +215,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
       
       const particleMaterial = new THREE.PointsMaterial({
-        size: 0.1,
+        size: 0.05, // Smaller for distant stars effect
         vertexColors: true,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.4, // Much dimmer for comfort
         blending: THREE.AdditiveBlending,
         sizeAttenuation: true
       });
@@ -215,18 +229,23 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       return group;
     };
     
-    const whiteHoleHorizon = createWhiteHoleHorizon();
-    whiteHoleHorizon.position.set(0, 0, 0); // Centered, but camera is inside
-    whiteHoleRef.current = whiteHoleHorizon;
-    scene.add(whiteHoleHorizon);
+    const cosmicBackground = createCosmicBackground();
+    cosmicBackground.position.set(0, 0, 0);
+    whiteHoleRef.current = cosmicBackground;
+    scene.add(cosmicBackground);
     
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x001122, 0.5);
+    // Softer lighting for better user experience
+    const ambientLight = new THREE.AmbientLight(0x001122, 0.3); // Reduced intensity
     scene.add(ambientLight);
     
-    const pointLight = new THREE.PointLight(0x00ffff, 2, 50);
+    const pointLight = new THREE.PointLight(0x00ffff, 1, 40); // Softer glow
     pointLight.position.set(0, 10, 0);
     scene.add(pointLight);
+    
+    // Add subtle fill light to prevent harsh shadows
+    const fillLight = new THREE.PointLight(0x002244, 0.5, 30);
+    fillLight.position.set(-10, -5, 10);
+    scene.add(fillLight);
     
     // Create singularity core
     const createCore = () => {
@@ -373,19 +392,19 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     matrixRainRef.current = matrixRain;
     scene.add(matrixRain);
     
-    // ENTRY ANIMATION - User enters the Matrix universe bubble, settling at center
+    // ENTRY ANIMATION - Dashboard initialization sequence
     const runEmergenceAnimation = () => {
-      console.log('🌌 Entering Matrix universe boundary...');
+      console.log('📊 Initializing 3D dashboard...');
       
       const tl = gsap.timeline({
         onComplete: () => {
-          console.log('✨ Stabilized at universe center!');
+          console.log('✨ Dashboard ready!');
           setIsTransitioning(false);
           
-          // Enable controls for free navigation (but max distance keeps you from reaching horizon)
+          // Enable controls for free navigation
           if (controlsRef.current) {
             controlsRef.current.enabled = true;
-            console.log('🎮 Free navigation enabled! White hole horizon is unreachable.');
+            console.log('🎮 Dashboard navigation enabled!');
           }
           
           // Create data streams after nodes are in position
@@ -483,11 +502,11 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         duration: 2
       }, '-=0.5')
       
-      // Phase 6: White hole horizon pulses (it's always there as the boundary)
+      // Phase 6: Dashboard fully operational
       .to({}, {
         duration: 1,
         onStart: () => {
-          console.log('🌐 White hole event horizon stabilized - universe boundary active');
+          console.log('🟢 All systems operational - dashboard active');
         }
       }, '-=1');
     };
@@ -503,36 +522,19 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         controls.update();
       }
       
-      // Animate WHITE HOLE HORIZON - the distant unreachable boundary
+      // Animate COSMIC BACKGROUND - subtle ambient effects
       if (whiteHoleRef.current) {
-        // Update shader time uniform for energy ripples
-        const horizon = whiteHoleRef.current.children[0] as THREE.Mesh;
-        if (horizon && horizon.material && 'uniforms' in horizon.material) {
-          (horizon.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
+        // Update shader time for subtle fluctuations
+        const cosmicSphere = whiteHoleRef.current.children[0] as THREE.Mesh;
+        if (cosmicSphere && cosmicSphere.material && 'uniforms' in cosmicSphere.material) {
+          (cosmicSphere.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
         }
         
-        // Slowly rotate the entire horizon sphere
-        whiteHoleRef.current.rotation.y = elapsedTime * 0.02;
-        
-        // Animate particles on the event horizon surface
+        // Very slow rotation for cosmic dust
         const particles = whiteHoleRef.current.children[1] as THREE.Points;
         if (particles) {
-          // Slow rotation to show the boundary is always there
-          particles.rotation.y = elapsedTime * 0.05;
-          
-          // Subtle shimmer effect on horizon particles
-          const positions = particles.geometry.attributes.position.array as Float32Array;
-          for (let i = 0; i < positions.length; i += 3) {
-            const theta = Math.atan2(positions[i + 2], positions[i]);
-            const phi = Math.acos(positions[i + 1] / 75);
-            const shimmer = Math.sin(elapsedTime * 2 + i * 0.1) * 0.2;
-            const radius = 75 + shimmer;
-            
-            positions[i] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i + 2] = radius * Math.cos(phi);
-          }
-          particles.geometry.attributes.position.needsUpdate = true;
+          particles.rotation.y = elapsedTime * 0.01; // Very slow drift
+          particles.rotation.x = elapsedTime * 0.005;
         }
       }
       
@@ -699,7 +701,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </p>
           <div className="text-green-500 font-mono text-xs mt-1 opacity-60">
             [ NEURAL NETWORK ACTIVE ]<br/>
-            <span className="text-green-400/40 text-[10px]">• CONTAINED WITHIN WHITE HOLE UNIVERSE •</span>
+            <span className="text-green-400/40 text-[10px]">• 3D DATA VISUALIZATION DASHBOARD •</span>
           </div>
         </div>
         
@@ -726,8 +728,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               <div>• RIGHT CLICK + DRAG: Pan</div>
               <div>• SCROLL: Zoom in/out</div>
               <div className="text-green-500/60 text-xs mt-3 border-t border-green-500/20 pt-2">
-                ⚠️ White hole event horizon<br/>
-                remains unreachable
+                📊 Navigate to explore<br/>
+                data connections
               </div>
             </div>
           </div>
@@ -738,10 +740,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
               <div className="text-green-400 font-mono text-2xl mb-4 animate-pulse">
-                ENTERING MATRIX UNIVERSE
+                INITIALIZING DASHBOARD
               </div>
               <div className="text-green-300 font-mono text-sm mb-2">
-                <span className="inline-block animate-pulse">STABILIZING WITHIN EVENT HORIZON</span>
+                <span className="inline-block animate-pulse">LOADING DATA VISUALIZATION</span>
                 <span className="inline-block ml-2">
                   <span className="animate-pulse delay-100">.</span>
                   <span className="animate-pulse delay-200">.</span>
@@ -749,9 +751,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                 </span>
               </div>
               <div className="text-green-500/60 font-mono text-xs">
-                [ WHITE HOLE BOUNDARY DETECTED ]<br/>
-                [ DISTANCE: UNREACHABLE ]<br/>
-                [ STATUS: CONFINED TO UNIVERSE BUBBLE ]
+                [ SYSTEMS: ONLINE ]<br/>
+                [ NODES: CONFIGURING ]<br/>
+                [ STATUS: ENTERING COMMAND CENTER ]
               </div>
             </div>
           </div>
