@@ -10,16 +10,16 @@ import { YouTubeAudioProvider } from './contexts/YouTubeAudioContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AudioProvider>
-      <YouTubeAudioProvider>
-        <ExperienceSettingsProvider>
-          <WalletProviderWrapper>
-            <AuthProvider>
+    <WalletProviderWrapper>
+      <AuthProvider>
+        <AudioProvider>
+          <YouTubeAudioProvider>
+            <ExperienceSettingsProvider>
               <App />
-            </AuthProvider>
-          </WalletProviderWrapper>
-        </ExperienceSettingsProvider>
-      </YouTubeAudioProvider>
-    </AudioProvider>
+            </ExperienceSettingsProvider>
+          </YouTubeAudioProvider>
+        </AudioProvider>
+      </AuthProvider>
+    </WalletProviderWrapper>
   </React.StrictMode>
 );
