@@ -5,17 +5,24 @@
 
 import { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { useAuth } from '../../contexts/AuthContext';
+import { gsap } from 'gsap';
 
 export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene>();
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const controlsRef = useRef<OrbitControls>();
   const animationIdRef = useRef<number>();
   const clockRef = useRef<THREE.Clock>(new THREE.Clock());
+  const singularityRef = useRef<THREE.Group>();
+  const nodesRef = useRef<THREE.Mesh[]>([]);
+  const dataStreamsRef = useRef<THREE.Line[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
+  const [isTransitioning, setIsTransitioning] = useState(true);
   
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
@@ -30,15 +37,16 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     scene.fog = new THREE.FogExp2(0x000511, 0.02);
     sceneRef.current = scene;
     
-    // Camera
+    // Camera - Start at white hole exit point
     const camera = new THREE.PerspectiveCamera(
       60,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    camera.position.set(15, 10, 15);
-    camera.lookAt(0, 0, 0);
+    // Start emerging from white hole (0, 0, 0)
+    camera.position.set(0, 0, 1);
+    camera.lookAt(0, 0, 10);
     cameraRef.current = camera;
     
     // Renderer
@@ -47,6 +55,48 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     rendererRef.current = renderer;
     mountRef.current.appendChild(renderer.domElement);
+    
+    // OrbitControls for free navigation
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 5;
+    controls.maxDistance = 50;
+    controls.enabled = false; // Disabled during entry animation
+    controlsRef.current = controls;
+    
+    // Create WHITE HOLE at center (where we emerge from)
+    const createWhiteHole = () => {
+      const group = new THREE.Group();
+      
+      // White hole glow
+      const glowGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9,
+        emissive: 0xffffff,
+        emissiveIntensity: 2
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      group.add(glow);
+      
+      // Outer ring
+      const ringGeometry = new THREE.TorusGeometry(2, 0.2, 16, 100);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.8
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      group.add(ring);
+      
+      return group;
+    };
+    
+    const whiteHole = createWhiteHole();
+    whiteHole.position.set(0, 0, 0);
+    scene.add(whiteHole);
     
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x001122, 0.5);
@@ -124,6 +174,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     };
     
     const singularity = createCore();
+    singularityRef.current = singularity;
+    singularity.scale.set(0, 0, 0); // Start hidden
+    singularity.position.set(0, 0, 0); // At white hole center
     scene.add(singularity);
     
     // Create neural nodes
@@ -147,31 +200,17 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         wireframe: true
       });
       const node = new THREE.Mesh(geometry, material);
-      node.position.copy(nodePositions[index]);
+      node.position.set(0, 0, 0); // Start at center
+      node.scale.set(0, 0, 0); // Start hidden
+      node.userData.targetPosition = nodePositions[index]; // Store target position
       scene.add(node);
       nodes.push(node);
     });
+    nodesRef.current = nodes; // Store reference
     
-    // Create data streams between nodes
-    nodes.forEach((node1, i) => {
-      nodes.forEach((node2, j) => {
-        if (i < j && Math.random() > 0.6) {
-          const points = [];
-          points.push(node1.position);
-          points.push(node2.position);
-          
-          const geometry = new THREE.BufferGeometry().setFromPoints(points);
-          const material = new THREE.LineBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.3
-          });
-          
-          const line = new THREE.Line(geometry, material);
-          scene.add(line);
-        }
-      });
-    });
+    // Data streams will be created after nodes are positioned
+    const dataStreams: THREE.Line[] = [];
+    dataStreamsRef.current = dataStreams;
     
     // Matrix rain background
     const createMatrixRain = () => {
@@ -188,42 +227,176 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     };
     
     const matrixRain = createMatrixRain();
+    matrixRain.visible = false; // Start hidden
     scene.add(matrixRain);
     
-    // Animation
+    // EMERGENCE ANIMATION - User emerges from white hole
+    const runEmergenceAnimation = () => {
+      console.log('🌌 Starting Matrix emergence animation...');
+      
+      const tl = gsap.timeline({
+        onComplete: () => {
+          console.log('✨ Emergence complete!');
+          setIsTransitioning(false);
+          
+          // Enable controls for free navigation
+          if (controlsRef.current) {
+            controlsRef.current.enabled = true;
+            console.log('🎮 Free navigation enabled!');
+          }
+          
+          // Create data streams after nodes are in position
+          nodes.forEach((node1, i) => {
+            nodes.forEach((node2, j) => {
+              if (i < j && Math.random() > 0.6) {
+                const points = [];
+                points.push(node1.userData.targetPosition);
+                points.push(node2.userData.targetPosition);
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({
+                  color: 0x00ffff,
+                  transparent: true,
+                  opacity: 0
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                dataStreams.push(line);
+                
+                // Fade in data streams
+                gsap.to(material, {
+                  opacity: 0.3,
+                  duration: 1,
+                  delay: Math.random() * 0.5
+                });
+              }
+            });
+          });
+        }
+      });
+      
+      // Phase 1: Camera emerges from white hole
+      tl.to(camera.position, {
+        z: 8,
+        duration: 2,
+        ease: 'power2.out',
+        onUpdate: () => camera.lookAt(0, 0, 0)
+      })
+      
+      // Phase 2: Singularity core materializes
+      .to(singularity.scale, {
+        x: 1,
+        y: 1,
+        z: 1,
+        duration: 1.5,
+        ease: 'back.out(1.7)'
+      }, '-=0.5')
+      
+      // Phase 3: Move camera to observation position
+      .to(camera.position, {
+        x: 15,
+        y: 10,
+        z: 15,
+        duration: 3,
+        ease: 'power2.inOut',
+        onUpdate: () => camera.lookAt(0, 0, 0)
+      }, '-=0.5')
+      
+      // Phase 4: Neural nodes shoot out from white hole
+      .add(() => {
+        nodes.forEach((node, i) => {
+          // Scale up
+          gsap.to(node.scale, {
+            x: 1,
+            y: 1,
+            z: 1,
+            duration: 0.5,
+            delay: i * 0.1,
+            ease: 'back.out(2)'
+          });
+          
+          // Move to target position
+          gsap.to(node.position, {
+            x: node.userData.targetPosition.x,
+            y: node.userData.targetPosition.y,
+            z: node.userData.targetPosition.z,
+            duration: 1.5,
+            delay: i * 0.1,
+            ease: 'power2.out'
+          });
+        });
+      }, '-=2')
+      
+      // Phase 5: Fade in matrix rain
+      .to(matrixRain, {
+        visible: true,
+        duration: 0.1
+      }, '-=0.5')
+      .to(matrixRain.material, {
+        opacity: 0.1,
+        duration: 2
+      }, '-=0.5')
+      
+      // Phase 6: Fade out white hole
+      .to(whiteHole.scale, {
+        x: 0.2,
+        y: 0.2,
+        z: 0.2,
+        duration: 2,
+        ease: 'power2.in'
+      }, '-=1');
+    };
+    
+    // Animation loop
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
       
       const elapsedTime = clockRef.current.getElapsedTime();
       
+      // Update controls
+      if (controls.enabled) {
+        controls.update();
+      }
+      
       // Rotate singularity
-      singularity.rotation.y = elapsedTime * 0.1;
-      singularity.children.forEach((child, i) => {
-        if (child instanceof THREE.Mesh) {
-          child.rotation.x = elapsedTime * (0.1 + i * 0.02);
-          child.rotation.y = elapsedTime * (0.15 - i * 0.01);
-        }
-      });
+      if (singularityRef.current) {
+        singularityRef.current.rotation.y = elapsedTime * 0.1;
+        singularityRef.current.children.forEach((child, i) => {
+          if (child instanceof THREE.Mesh) {
+            child.rotation.x = elapsedTime * (0.1 + i * 0.02);
+            child.rotation.y = elapsedTime * (0.15 - i * 0.01);
+          }
+        });
+      }
       
-      // Pulse nodes
-      nodes.forEach((node, i) => {
-        const scale = 1 + Math.sin(elapsedTime * 3 + i * 0.5) * 0.1;
-        node.scale.setScalar(scale);
-        node.rotation.y = elapsedTime * 0.2;
-      });
+      // Pulse nodes only after transition
+      if (!isTransitioning && nodesRef.current) {
+        nodesRef.current.forEach((node, i) => {
+          if (node.scale.x > 0) {
+            const baseScale = node.scale.x;
+            const scale = baseScale * (1 + Math.sin(elapsedTime * 3 + i * 0.5) * 0.1);
+            node.scale.setScalar(scale);
+            node.rotation.y = elapsedTime * 0.2;
+          }
+        });
+      }
       
-      // Camera orbit
-      camera.position.x = Math.sin(elapsedTime * 0.1) * 20;
-      camera.position.z = Math.cos(elapsedTime * 0.1) * 20;
-      camera.lookAt(0, 0, 0);
+      // White hole rotation
+      if (whiteHole) {
+        whiteHole.rotation.z = elapsedTime * 0.5;
+      }
       
       renderer.render(scene, camera);
     };
     
-    // Start animation after a delay
+    // Start emergence animation after a short delay
     setTimeout(() => {
       setIsLoading(false);
       animate();
+      setTimeout(() => {
+        runEmergenceAnimation();
+      }, 500);
     }, 1000);
     
     // Handle resize
@@ -260,15 +433,17 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     <div ref={mountRef} className="fixed inset-0 w-full h-full">
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-        {/* Back Button */}
-        <button
-          onClick={onBack}
-          className="absolute top-8 left-8 px-6 py-3 bg-black/50 border border-green-500 text-green-500 
-                     hover:bg-green-500/20 transition-all duration-300 pointer-events-auto
-                     font-mono text-sm tracking-wider"
-        >
-          ← EXIT MATRIX
-        </button>
+        {/* Back Button - Only show after transition */}
+        {!isTransitioning && (
+          <button
+            onClick={onBack}
+            className="absolute top-8 left-8 px-6 py-3 bg-black/50 border border-green-500 text-green-500 
+                       hover:bg-green-500/20 transition-all duration-300 pointer-events-auto
+                       font-mono text-sm tracking-wider animate-in fade-in slide-in-from-left duration-500"
+          >
+            ← EXIT MATRIX
+          </button>
+        )}
         
         {/* Title */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center">
@@ -281,15 +456,50 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </p>
         </div>
         
-        {/* Status Panel */}
-        <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto">
-          <div className="text-green-400 font-mono text-sm space-y-2">
-            <div>STATUS: <span className="text-green-500">ONLINE</span></div>
-            <div>NODES: <span className="text-green-500">6 ACTIVE</span></div>
-            <div>STREAMS: <span className="text-green-500">CONNECTED</span></div>
-            <div>USER: <span className="text-green-500">{user?.username?.toUpperCase() || 'UNKNOWN'}</span></div>
+        {/* Status Panel - Show after transition */}
+        {!isTransitioning && (
+          <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
+                          animate-in fade-in slide-in-from-bottom duration-500">
+            <div className="text-green-400 font-mono text-sm space-y-2">
+              <div>STATUS: <span className="text-green-500">ONLINE</span></div>
+              <div>NODES: <span className="text-green-500">6 ACTIVE</span></div>
+              <div>STREAMS: <span className="text-green-500">CONNECTED</span></div>
+              <div>USER: <span className="text-green-500">{user?.username?.toUpperCase() || 'UNKNOWN'}</span></div>
+            </div>
           </div>
-        </div>
+        )}
+        
+        {/* Navigation Controls Info - Show after transition */}
+        {!isTransitioning && (
+          <div className="absolute bottom-8 right-8 bg-black/80 border border-green-500/30 rounded p-4
+                          animate-in fade-in slide-in-from-bottom duration-500 delay-300">
+            <div className="text-green-400 font-mono text-sm space-y-1">
+              <div className="text-green-500 mb-2">🎮 NAVIGATION</div>
+              <div>• LEFT CLICK + DRAG: Rotate</div>
+              <div>• RIGHT CLICK + DRAG: Pan</div>
+              <div>• SCROLL: Zoom in/out</div>
+            </div>
+          </div>
+        )}
+        
+        {/* Emergence Transition Screen */}
+        {isTransitioning && !isLoading && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+              <div className="text-green-400 font-mono text-2xl mb-4 animate-pulse">
+                EMERGING FROM WHITE HOLE
+              </div>
+              <div className="text-green-300 font-mono text-sm">
+                <span className="inline-block animate-pulse">MATERIALIZING NEURAL NETWORK</span>
+                <span className="inline-block ml-2">
+                  <span className="animate-pulse delay-100">.</span>
+                  <span className="animate-pulse delay-200">.</span>
+                  <span className="animate-pulse delay-300">.</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Loading Screen */}
         {isLoading && (
