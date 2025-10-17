@@ -202,6 +202,79 @@ const WhiteHoleShader = {
     `,
 };
 
+// Wormhole Tunnel Shader
+const WormholeTunnelShader = {
+    uniforms: {
+        'uTime': { value: 0 },
+        'uProgress': { value: 0.0 }, // 0 = at entrance, 1 = exited
+        'uRadius': { value: 3.0 },
+        'uLength': { value: 30.0 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vPosition;
+        uniform float uTime;
+        uniform float uProgress;
+        
+        void main() {
+            vUv = uv;
+            vPosition = position;
+            
+            vec3 pos = position;
+            
+            // Spiral distortion along tunnel
+            float angle = uTime + pos.z * 0.3;
+            float distortion = sin(angle) * 0.2 * (1.0 - abs(pos.z / 15.0));
+            pos.x += cos(angle) * distortion;
+            pos.y += sin(angle) * distortion;
+            
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vPosition;
+        uniform float uTime;
+        uniform float uProgress;
+        uniform float uLength;
+        
+        void main() {
+            // Distance from center (radial)
+            vec2 center = vec2(0.5, 0.5);
+            float dist = distance(vUv, center) * 2.0;
+            
+            // Traveling light rings
+            float zPos = vPosition.z / uLength;
+            float ringPattern = sin((zPos + uProgress) * 20.0 + uTime * 3.0);
+            float rings = smoothstep(0.7, 1.0, ringPattern);
+            
+            // Spiral energy streams
+            float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+            float spiral = sin(angle * 8.0 - zPos * 10.0 + uTime * 2.0);
+            
+            // Energy vortex color (blue → cyan → white)
+            vec3 color1 = vec3(0.0, 0.5, 1.0); // Blue
+            vec3 color2 = vec3(0.0, 1.0, 1.0); // Cyan
+            vec3 color3 = vec3(1.0, 1.0, 1.0); // White
+            
+            vec3 color = mix(color1, color2, uProgress);
+            color = mix(color, color3, rings);
+            
+            // Add spiral energy
+            color += vec3(spiral * 0.2);
+            
+            // Fade at edges
+            float alpha = (1.0 - dist) * 0.8;
+            alpha *= smoothstep(0.0, 0.3, dist); // Hole in center
+            
+            // Brightness increases with progress
+            color *= (1.0 + uProgress * 2.0);
+            
+            gl_FragColor = vec4(color, alpha);
+        }
+    `,
+};
+
 // Particle Shaders for Trail Effect
 const particleVertexShader = `
     attribute vec3 prevPosition;
@@ -356,6 +429,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const vortexMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
     const barrierMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
     const quantumBarrierRef = useRef<THREE.Mesh | null>(null);
+    const wormholeTunnelRef = useRef<THREE.Mesh | null>(null);
+    const wormholeMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
     const bloomPassRef = useRef<any>(null);
     const lensingPassRef = useRef<any>(null);
     const chromaticAberrationPassRef = useRef<any>(null);
@@ -982,6 +1057,24 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         quantumBarrierRef.current = quantumBarrier; // Store ref
         scene.add(quantumBarrier);
         
+        // Wormhole Tunnel (cylinder stretching toward camera)
+        const tunnelGeometry = new THREE.CylinderGeometry(3, 3, 30, 32, 20, true);
+        // Rotate to point toward camera (along Z-axis)
+        tunnelGeometry.rotateX(Math.PI / 2);
+        const wormholeMaterial = new THREE.ShaderMaterial({
+            ...WormholeTunnelShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+        wormholeMaterialRef.current = wormholeMaterial;
+        const wormholeTunnel = new THREE.Mesh(tunnelGeometry, wormholeMaterial);
+        wormholeTunnel.position.set(0, 0, -15); // Starts behind camera, extends forward
+        wormholeTunnel.visible = false; // Start hidden
+        wormholeTunnelRef.current = wormholeTunnel;
+        scene.add(wormholeTunnel);
+        
         const composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
         const lensingPass = new ShaderPass(LensingShader);
@@ -1170,6 +1263,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             // Update quantum barrier uniforms
             if (barrierMaterialRef.current && barrierMaterialRef.current.uniforms.uTime) {
                 barrierMaterialRef.current.uniforms.uTime.value = elapsedTime;
+            }
+            
+            // Update wormhole tunnel uniforms
+            if (wormholeMaterialRef.current && wormholeMaterialRef.current.uniforms.uTime) {
+                wormholeMaterialRef.current.uniforms.uTime.value = elapsedTime;
             }
             
             // Update white hole pass time
@@ -1643,7 +1741,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             setShowAuthBillboard(false); // Hide auth UI
                                             
                                             // Start quantum tunneling sequence
-                                            if (quantumBarrierRef.current && barrierMaterialRef.current && whiteHolePassRef.current) {
+                                            if (quantumBarrierRef.current && barrierMaterialRef.current && whiteHolePassRef.current && wormholeTunnelRef.current && wormholeMaterialRef.current) {
                                                 quantumBarrierRef.current.visible = true;
                                                 
                                                 // Timeline for quantum tunneling effect
@@ -1665,8 +1763,21 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 .to(barrierMaterialRef.current.uniforms.uTransmission, {
                                                     value: 1.0,
                                                     duration: 1.5,
-                                                    ease: 'power3.inOut'
+                                                    ease: 'power3.inOut',
+                                                    onStart: () => {
+                                                        // Barrier becomes transparent, reveal wormhole tunnel
+                                                        if (wormholeTunnelRef.current) {
+                                                            wormholeTunnelRef.current.visible = true;
+                                                        }
+                                                    }
                                                 }, '-=1.0')
+                                                
+                                                // Phase 2.5: Travel through wormhole tunnel
+                                                .to(wormholeMaterialRef.current.uniforms.uProgress, {
+                                                    value: 1.0,
+                                                    duration: 3.5,
+                                                    ease: 'power2.inOut'
+                                                }, '-=0.5')
                                                 
                                                 // Phase 3: Color shift from blue to white
                                                 .to(barrierMaterialRef.current.uniforms.uColorShift.value, {
