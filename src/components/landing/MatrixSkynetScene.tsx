@@ -71,7 +71,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       
       // White hole glow
       const glowGeometry = new THREE.SphereGeometry(1.5, 32, 32);
-      const glowMaterial = new THREE.MeshBasicMaterial({
+      const glowMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         transparent: true,
         opacity: 0.9,
