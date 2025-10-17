@@ -828,8 +828,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
             <div className="text-green-400 font-mono">
               <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
               <div className="text-2xl font-bold text-green-300">
-                {['WALLET TRACKER', 'TOKEN MONITOR', 'TRANSACTION FLOW', 
-                  'ANALYTICS CORE', 'ALERT SYSTEM', 'AI PROCESSOR', 'ACCOUNT MANAGER'][currentNodeIndex]}
+                {['The Nexus', 'Token Monitor', 'Transaction Flow', 
+                  'Analytics Core', 'Alert System', 'AI Processor', 'Account Manager'][currentNodeIndex]}
               </div>
               <div className="text-xs text-green-500/60 mt-2">
                 Node {currentNodeIndex + 1} of 7
@@ -948,31 +948,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Current Node Display */}
-        {!isTransitioning && (
-          <div className="absolute top-24 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
-                          animate-in fade-in slide-in-from-left duration-500">
-            <div className="text-green-400 font-mono">
-              <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
-              <div className="text-xl">{nodesRef.current[currentNodeIndex]?.userData.name || 'None'}</div>
-            </div>
-          </div>
-        )}
-        
-        {/* Entry Transition Screen */}
-        {isTransitioning && !isLoading && (
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-              <div className="text-green-400 font-mono text-2xl mb-4 animate-pulse">
-                INITIALIZING DASHBOARD
-              </div>
-              <div className="text-green-500 font-mono text-sm">
-                PARSING DATA STREAMS...
-              </div>
-            </div>
-          </div>
-        )}
-        
         {/* Connection Status - Always visible */}
         {!isTransitioning && (
           <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
@@ -981,17 +956,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               <div>STATUS: <span className="text-green-500">ONLINE</span></div>
               <div>LATENCY: <span className="text-plasma-yellow">~{Math.floor(Math.random() * 50 + 10)}ms</span></div>
               <div>NODES: <span className="text-quantum-blue">{nodesRef.current.length}/{nodesRef.current.length}</span></div>
-            </div>
-          </div>
-        )}
-        
-        {/* Loading Screen */}
-        {isLoading && (
-          <div className="absolute inset-0 bg-black/80 flex items-center justify-center pointer-events-auto">
-            <div className="text-center">
-              <div className="text-green-500 text-6xl mb-8 animate-pulse">⟨⟩</div>
-              <div className="text-green-400 font-mono text-xl mb-4">INITIALIZING MATRIX...</div>
-              <div className="text-green-500 font-mono text-sm">Loading data streams</div>
             </div>
           </div>
         )}
