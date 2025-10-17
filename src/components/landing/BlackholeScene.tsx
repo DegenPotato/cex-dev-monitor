@@ -461,7 +461,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     // Wallet & Auth
     const { connected, publicKey } = useWallet();
     const { user, isAuthenticated, authenticateWallet, isAuthenticating, authenticateWithCode, logout } = useAuth();
-    const { initializeAudio } = useAudio();
+    const { initializeAudio, getAudioAnalyzer } = useAudio();
     const [showCodeEntry, setShowCodeEntry] = useState(false);
     const [accessCode, setAccessCode] = useState('');
     const [codeError, setCodeError] = useState(false);
@@ -1046,10 +1046,25 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
             // Mascot animations removed (mascot temporarily disabled)
 
-            // Audio reactivity - Using global AudioContext (no local audio analysis for now)
-            // Visual effects still work without audio (default animations)
+            // Audio reactivity - Using global AudioContext
             let bass = 0, mid = 0, treble = 0;
-            // TODO: Integrate global AudioContext analyzer for visual reactivity if needed
+            const analyzer = getAudioAnalyzer();
+            if (analyzer) {
+                const frequencyData = analyzer.getFrequencyData();
+                
+                // Calculate bass (0-60 Hz range, indices 0-2 approx)
+                bass = (frequencyData[0] + frequencyData[1] + frequencyData[2]) / (255 * 3);
+                
+                // Calculate mid (200-2000 Hz range, indices 7-70 approx)
+                let midSum = 0;
+                for (let i = 7; i < 70; i++) midSum += frequencyData[i];
+                mid = midSum / (255 * 63);
+                
+                // Calculate treble (4000-20000 Hz range, indices 140-700 approx)
+                let trebleSum = 0;
+                for (let i = 140; i < Math.min(700, frequencyData.length); i++) trebleSum += frequencyData[i];
+                treble = trebleSum / (255 * (Math.min(700, frequencyData.length) - 140));
+            }
 
             // ENHANCED DISK RESPONSIVENESS
             

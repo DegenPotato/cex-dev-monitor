@@ -808,19 +808,74 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Current Node Display */}
+        {/* Current Node Display + Neural Nodes Navigation - LEFT SIDE */}
         {!isTransitioning && (
-          <div className="absolute top-24 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
-                          animate-in fade-in slide-in-from-left duration-500">
-            <div className="text-green-400 font-mono">
-              <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
-              <div className="text-2xl font-bold text-green-300">
-                {['The Nexus', 'Token Monitor', 'Transaction Flow', 
-                  'Analytics Core', 'Alert System', 'AI Processor', 'Account Manager'][currentNodeIndex]}
+          <div className="absolute top-24 left-8 space-y-4 pointer-events-auto">
+            {/* Focused Node */}
+            <div className="bg-black/80 border border-green-500/30 rounded p-4
+                            animate-in fade-in slide-in-from-left duration-500">
+              <div className="text-green-400 font-mono">
+                <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
+                <div className="text-2xl font-bold text-green-300">
+                  {['The Nexus', 'Token Monitor', 'Transaction Flow', 
+                    'Analytics Core', 'Alert System', 'AI Processor', 'Account Manager'][currentNodeIndex]}
+                </div>
+                <div className="text-xs text-green-500/60 mt-2">
+                  Node {currentNodeIndex + 1} of 7
+                </div>
               </div>
-              <div className="text-xs text-green-500/60 mt-2">
-                Node {currentNodeIndex + 1} of 7
-              </div>
+            </div>
+            
+            {/* Neural Nodes Navigation */}
+            <div className="bg-black/80 border border-green-500/30 rounded p-4 max-w-xs
+                            animate-in fade-in slide-in-from-left duration-500 delay-150">
+              <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
+              <ul className="space-y-2 text-sm font-mono" role="list">
+                {
+                  [
+                    { color: 'bg-matrix-green', name: 'The Nexus', icon: '⬢' }, // Data source
+                    { color: 'bg-quantum-blue', name: 'Token Monitor' },
+                    { color: 'bg-accent-purple', name: 'Transaction Flow' },
+                    { color: 'bg-white', name: 'Analytics Core' },
+                    { color: 'bg-alert-red', name: 'Alert System' },
+                    { color: 'bg-purple-700', name: 'AI Processor' },
+                    { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
+                  ].map((node, index) => (
+                    <li key={index}>
+                      <button
+                        onClick={() => focusOnNodeRef.current?.(index, 1)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            focusOnNodeRef.current?.(index, 1);
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyber-cyan rounded px-2 py-1 ${
+                          index === currentNodeIndex ? 'scale-110 ml-2 bg-cyber-cyan/10' : ''
+                        }`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Navigate to ${node.name} node${node.secure ? ' (secure)' : ''}`}
+                        aria-pressed={index === currentNodeIndex}
+                      >
+                        <div className={`w-3 h-3 ${node.color} rounded-sm ${
+                          index === currentNodeIndex ? 'animate-pulse-glow' : ''
+                        }`}></div>
+                        <span className={`${
+                          index === currentNodeIndex 
+                            ? 'text-matrix-300 font-bold' 
+                            : 'text-matrix-400 hover:text-matrix-300'
+                        }`}>
+                          {node.name}
+                        </span>
+                        {node.secure && (
+                          <span className="text-plasma-yellow text-xs ml-1" aria-label="Secure node">🔒</span>
+                        )}
+                      </button>
+                    </li>
+                  ))
+                }
+              </ul>
             </div>
           </div>
         )}
@@ -881,59 +936,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Node List - Show all nodes with current highlighted - CLICKABLE */}
-        {!isTransitioning && (
-          <div className="absolute top-24 right-8 bg-black/80 border border-green-500/30 rounded p-4 max-w-xs pointer-events-auto
-                          animate-in fade-in slide-in-from-right duration-500">
-            <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
-            <ul className="space-y-2 text-sm font-mono" role="list">
-              {
-                [
-                  { color: 'bg-matrix-green', name: 'The Nexus', icon: '⬢' }, // Data source
-                  { color: 'bg-quantum-blue', name: 'Token Monitor' },
-                  { color: 'bg-accent-purple', name: 'Transaction Flow' },
-                  { color: 'bg-white', name: 'Analytics Core' },
-                  { color: 'bg-alert-red', name: 'Alert System' },
-                  { color: 'bg-purple-700', name: 'AI Processor' },
-                  { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
-                ].map((node, index) => (
-                  <li key={index}>
-                    <button
-                      onClick={() => focusOnNodeRef.current?.(index, 1)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          focusOnNodeRef.current?.(index, 1);
-                        }
-                      }}
-                      className={`w-full flex items-center gap-2 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyber-cyan rounded px-2 py-1 ${
-                        index === currentNodeIndex ? 'scale-110 ml-2 bg-cyber-cyan/10' : ''
-                      }`}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Navigate to ${node.name} node${node.secure ? ' (secure)' : ''}`}
-                      aria-pressed={index === currentNodeIndex}
-                    >
-                      <div className={`w-3 h-3 ${node.color} rounded-sm ${
-                        index === currentNodeIndex ? 'animate-pulse-glow' : ''
-                      }`}></div>
-                      <span className={`${
-                        index === currentNodeIndex 
-                          ? 'text-matrix-300 font-bold' 
-                          : 'text-matrix-400 hover:text-matrix-300'
-                      }`}>
-                        {node.name}
-                      </span>
-                      {node.secure && (
-                        <span className="text-plasma-yellow text-xs ml-1" aria-label="Secure node">🔒</span>
-                      )}
-                    </button>
-                  </li>
-                ))
-              }
-            </ul>
-          </div>
-        )}
         
         {/* System Status & Experience Settings - Always visible, top-right */}
         <div className="absolute top-8 right-8 pointer-events-auto z-50">
@@ -945,6 +947,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               nodes: nodesRef.current.length,
               totalNodes: nodesRef.current.length
             }}
+            walletData={user?.wallet_address ? {
+              address: user.wallet_address,
+              onDisconnect: onBack
+            } : undefined}
           />
         </div>
         
@@ -1065,6 +1071,25 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                         </button>
                       </div>
                     </div>
+                    
+                    {/* YouTube/Google Connection - INTEGRATED HERE */}
+                    <div className="bg-black/50 border border-red-500/30 rounded-lg p-4 relative overflow-hidden col-span-2">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-400 to-transparent"></div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">📺</span>
+                          <span className="text-red-300 font-mono font-bold">YOUTUBE / GOOGLE</span>
+                        </div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="text-gray-400 font-mono">STATUS: <span className="text-gray-300">NOT CONNECTED</span></div>
+                        <div className="text-gray-500 font-mono text-xs">Connect to enable YouTube music playback</div>
+                        <button className="mt-2 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded hover:bg-red-500/30 transition-colors">
+                          CONNECT GOOGLE ACCOUNT
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -1108,8 +1133,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         )}
       </div>
       
-      {/* HUD Controls - Experience Settings with integrated Audio Controls */}
-      <ExperienceModeToggle position="bottom-right" showAudioControls={true} />
     </HudContainer>
   );
 }

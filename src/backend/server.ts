@@ -33,6 +33,7 @@ import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
+import youtubeAuthRoutes from './services/YouTubeAuthService.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 
 // Get __dirname equivalent for ES modules
@@ -100,6 +101,7 @@ await initDatabase();
 
 // Register API routes BEFORE static files
 app.use('/api/auth', authRoutes); // Auth routes are public (login, verify, etc.)
+app.use('/api/youtube', youtubeAuthRoutes); // YouTube OAuth persistence (requires auth)
 app.use('/api/database', databaseRoutes);
 
 // Create auth service for protecting specific routes

@@ -10,12 +10,18 @@ interface StatusData {
   totalNodes: number;
 }
 
+interface WalletData {
+  address: string;
+  onDisconnect?: () => void;
+}
+
 interface ExperienceModeToggleProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   className?: string;
   showAudioControls?: boolean;
   showSystemStatus?: boolean;
   statusData?: StatusData;
+  walletData?: WalletData;
 }
 
 export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({ 
@@ -23,7 +29,8 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
   className = '',
   showAudioControls = false,
   showSystemStatus = false,
-  statusData
+  statusData,
+  walletData
 }) => {
   const { 
     settings, 
@@ -96,6 +103,28 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
                 <span className="text-xs">NODES:</span>
                 <span className="text-quantum-blue font-mono">{statusData.nodes}/{statusData.totalNodes}</span>
               </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Wallet Info (if enabled) */}
+        {walletData && (
+          <div className="glass-dark rounded-lg px-4 py-3 border border-cyan-500/30">
+            <div className="text-cyan-400 font-mono text-sm space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs">WALLET:</span>
+                <span className="text-cyan-300 font-bold text-xs">
+                  {walletData.address.slice(0, 4)}...{walletData.address.slice(-4)}
+                </span>
+              </div>
+              {walletData.onDisconnect && (
+                <button
+                  onClick={walletData.onDisconnect}
+                  className="w-full text-xs bg-red-500/20 text-red-400 px-3 py-1.5 rounded hover:bg-red-500/30 transition-colors font-mono"
+                >
+                  DISCONNECT
+                </button>
+              )}
             </div>
           </div>
         )}

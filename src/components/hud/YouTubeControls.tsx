@@ -10,7 +10,6 @@ export const YouTubeControls: React.FC = () => {
     volume,
     autoplay,
     loop,
-    distortionEnabled,
     isAuthenticated,
     userEmail,
     play,
@@ -20,7 +19,6 @@ export const YouTubeControls: React.FC = () => {
     setVolume,
     toggleAutoplay,
     toggleLoop,
-    toggleDistortion,
     addToQueue,
     removeFromQueue,
     clearQueue,
@@ -331,27 +329,6 @@ export const YouTubeControls: React.FC = () => {
               </button>
             </div>
 
-            {/* Distortion Toggle */}
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-gray-400">Cosmic Distortion</span>
-              <button
-                onClick={toggleDistortion}
-                className={`
-                  w-12 h-6 rounded-full relative transition-colors
-                  ${distortionEnabled ? 'bg-cyan-500/50' : 'bg-gray-700'}
-                `}
-                aria-label="Toggle distortion effect"
-              >
-                <div className={`
-                  absolute top-1 w-4 h-4 bg-white rounded-full transition-transform
-                  ${distortionEnabled ? 'translate-x-6' : 'translate-x-1'}
-                `} />
-              </button>
-            </div>
-            
-            <p className="text-xs text-gray-500 italic mt-2">
-              Note: Distortion may not work on YouTube due to browser restrictions
-            </p>
           </div>
 
           {/* Queue Section */}

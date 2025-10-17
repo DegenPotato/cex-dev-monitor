@@ -91,7 +91,10 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   
   const playerRef = useRef<YT.Player | null>(null);
   const accessTokenRef = useRef<string | null>(null);
+  const refreshTokenRef = useRef<string | null>(null);
+  const googleUserIdRef = useRef<string | null>(null);
   const isLoadingAPIRef = useRef(false);
+  const hasLoadedSavedAccountRef = useRef(false);
   
   // Web Audio API for distortion
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -152,6 +155,14 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
       }
     };
   }, []);
+
+  // Load saved YouTube account when API is ready
+  useEffect(() => {
+    if (isYouTubeReady && !hasLoadedSavedAccountRef.current) {
+      hasLoadedSavedAccountRef.current = true;
+      loadSavedAccount();
+    }
+  }, [isYouTubeReady]);
 
   // Initialize YouTube player (hidden)
   const initializePlayer = () => {
@@ -594,14 +605,25 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
           accessTokenRef.current = response.access_token;
           setIsAuthenticated(true);
           
-          // Get user info
+          // Get user info and save to backend
           fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
             headers: { Authorization: `Bearer ${response.access_token}` }
           })
           .then(res => res.json())
-          .then(data => {
+          .then(async data => {
             setUserEmail(data.email);
+            googleUserIdRef.current = data.id;
             console.log('✅ Signed in:', data.email);
+            
+            // Save to backend for persistence
+            await saveAccountToBackend({
+              google_user_id: data.id,
+              email: data.email,
+              access_token: response.access_token,
+              expires_in: response.expires_in || 3600,
+              scope: response.scope
+            });
+            
             loadUserPlaylists();
           })
           .catch(err => console.error('❌ Failed to get user info:', err));
@@ -625,9 +647,120 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     setIsAuthenticated(false);
     setUserEmail(null);
     accessTokenRef.current = null;
+    refreshTokenRef.current = null;
+    googleUserIdRef.current = null;
     setUserPlaylists([]);
     
+    // Revoke on backend
+    revokeAccountOnBackend().catch(err => 
+      console.error('❌ Failed to revoke on backend:', err)
+    );
+    
     console.log('✅ Signed out');
+  };
+
+  // Save YouTube account to backend
+  const saveAccountToBackend = async (accountData: {
+    google_user_id: string;
+    email: string;
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+    scope?: string;
+  }) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.warn('⚠️ No auth token, cannot save YouTube account');
+        return;
+      }
+
+      const response = await fetch('/api/youtube/account/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(accountData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save account: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ YouTube account saved to backend:', data);
+    } catch (error) {
+      console.error('❌ Failed to save YouTube account:', error);
+    }
+  };
+
+  // Load saved YouTube account from backend
+  const loadSavedAccount = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.log('ℹ️ No auth token, skipping YouTube account load');
+        return;
+      }
+
+      const response = await fetch('/api/youtube/account', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load account: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.account) {
+        const account = data.account;
+        
+        // Check if token is expired
+        if (account.is_expired) {
+          console.warn('⚠️ Saved token is expired, user needs to re-authenticate');
+          return;
+        }
+
+        // Restore session
+        accessTokenRef.current = account.access_token;
+        refreshTokenRef.current = account.refresh_token;
+        googleUserIdRef.current = account.google_user_id;
+        setUserEmail(account.email);
+        setIsAuthenticated(true);
+        
+        console.log('✅ Restored YouTube session:', account.email);
+        
+        // Load playlists
+        loadUserPlaylists();
+      } else {
+        console.log('ℹ️ No saved YouTube account found');
+      }
+    } catch (error) {
+      console.error('❌ Failed to load saved account:', error);
+    }
+  };
+
+  // Revoke account on backend
+  const revokeAccountOnBackend = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      await fetch('/api/youtube/account/revoke', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log('✅ YouTube account revoked on backend');
+    } catch (error) {
+      console.error('❌ Failed to revoke account:', error);
+    }
   };
 
   // Toggle functions
