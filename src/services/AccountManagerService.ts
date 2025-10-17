@@ -95,7 +95,10 @@ export class AccountManagerService {
   }
 
   // Decrypt sensitive data (will be needed for retrieving OAuth tokens)
-  private async _decryptData(encryptedData: string, userId: string): Promise<string> {
+  // Commented out to avoid unused code warning during build
+  // Uncomment when implementing token retrieval functionality
+  /*
+  private async decryptData(encryptedData: string, userId: string): Promise<string> {
     const combined = Buffer.from(encryptedData, 'base64');
     
     // Extract components
@@ -123,6 +126,7 @@ export class AccountManagerService {
     
     return decrypted.toString('utf8');
   }
+  */
 
   // Connect a new account
   async connectAccount(
