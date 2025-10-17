@@ -1919,7 +1919,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 // Timeline for quantum tunneling effect
                                                 const tl = gsap.timeline({
                                                     onComplete: () => {
-                                                        console.log('✨ Quantum tunnel complete! Emerging in Solar System...');
+                                                        const destination = selectedUniverse === 'matrix' ? 'The Matrix' : 
+                                                                          selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : 
+                                                                          'Solar System';
+                                                        console.log(`✨ Quantum tunnel complete! Emerging in ${destination}...`);
+                                                        console.log('🎯 Passing universe to onEnter:', selectedUniverse);
                                                         setTimeout(() => onEnter(selectedUniverse || undefined), 500);
                                                     }
                                                 });
@@ -1931,7 +1935,30 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                     ease: 'power2.in'
                                                 })
                                                 
-                                                // Phase 2: Increase transmission probability
+                                                // Phase 2: Reorient camera to face singularity directly
+                                                .to({}, {
+                                                    duration: 1.0,
+                                                    ease: 'power2.inOut',
+                                                    onUpdate: () => {
+                                                        if (cameraRef.current) {
+                                                            // Smoothly orient camera to look at center
+                                                            cameraRef.current.lookAt(0, 0, 0);
+                                                            
+                                                            // Calculate direction from camera to singularity
+                                                            const direction = new THREE.Vector3(0, 0, 0).sub(cameraRef.current.position).normalize();
+                                                            
+                                                            // Move camera slightly along this direction to align with entry point
+                                                            const currentDist = cameraRef.current.position.length();
+                                                            const targetDist = 8; // Optimal distance for entry
+                                                            const t = 0.1; // Smooth interpolation
+                                                            const newDist = currentDist + (targetDist - currentDist) * t;
+                                                            
+                                                            cameraRef.current.position.copy(direction.multiplyScalar(-newDist));
+                                                        }
+                                                    }
+                                                })
+                                                
+                                                // Phase 2.5: Increase transmission probability
                                                 .to(barrierMaterialRef.current.uniforms.uTransmission, {
                                                     value: 1.0,
                                                     duration: 1.5,
@@ -1942,17 +1969,17 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                             wormholeTunnelRef.current.visible = true;
                                                         }
                                                     }
-                                                }, '-=1.0')
+                                                }, '-=0.5')
                                                 
-                                                // Phase 2.5: Camera moves toward singularity CENTER
+                                                // Phase 3: Camera moves toward singularity CENTER (straight path)
                                                 .to(cameraRef.current ? cameraRef.current.position : {}, {
                                                     x: 0,  // Center horizontally
                                                     y: 0,  // Center vertically
-                                                    z: 5,  // Move closer to singularity
+                                                    z: 5,  // Move closer to singularity entrance
                                                     duration: 2.0,
                                                     ease: 'power2.in',
                                                     onUpdate: () => {
-                                                        // Make camera look at singularity
+                                                        // Keep camera locked on singularity
                                                         if (cameraRef.current) {
                                                             cameraRef.current.lookAt(0, 0, 0);
                                                         }
