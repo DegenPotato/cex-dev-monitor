@@ -42,6 +42,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   
+  // Debug logging
+  useEffect(() => {
+    console.log('🔮 Matrix Scene - User:', user);
+    console.log('🔮 Matrix Scene - Is Super Admin:', isSuperAdmin);
+  }, [user, isSuperAdmin]);
+  
   // Experience Settings Integration
   const { settings, getQualityMultiplier, shouldReduceEffects } = useExperienceSettings();
   const qualityMultiplier = getQualityMultiplier();
@@ -900,8 +906,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Access Denied */}
-        {!isSuperAdmin && !isLoading && (
+        {/* Access Denied - Only show if explicitly not super admin AND user is loaded */}
+        {!isSuperAdmin && !isLoading && user && (
           <div className="absolute inset-0 bg-black/90 flex items-center justify-center pointer-events-auto">
             <div className="text-center p-8 border-2 border-red-500 bg-black/50">
               <div className="text-red-500 text-6xl mb-4">⚠</div>

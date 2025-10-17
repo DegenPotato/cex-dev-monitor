@@ -233,14 +233,12 @@ function checkDeviceCapabilities(): boolean {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const hasLowMemory = 'deviceMemory' in navigator && (navigator as any).deviceMemory < 4;
   const hasLowCores = 'hardwareConcurrency' in navigator && navigator.hardwareConcurrency < 4;
-  const isLowDPR = window.devicePixelRatio < 2;
-  
   // Check WebGL capabilities
   const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
   let hasWeakGPU = false;
   
-  if (gl) {
+  if (gl && 'getExtension' in gl) {
     const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
     if (debugInfo) {
       const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
