@@ -1449,8 +1449,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     }
                     
                     // Show React auth UI overlay
+                    // Always show the billboard, but content will vary based on auth state
                     setShowAuthBillboard(true);
-                    console.log('✨ Auth UI shown!');
+                    if (isAuthenticated) {
+                        console.log('✅ Already authenticated, showing universe selection');
+                    } else {
+                        console.log('✨ Auth UI shown for authentication');
+                    }
                 }
             })
               // Particle size animation (using existing uSize uniform)
@@ -1557,7 +1562,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 }
             });
         };
-    }, [isTransitioning, onEnter]);
+    }, [isTransitioning, onEnter, isAuthenticated]);
 
     return (
         <div className="relative w-full h-full">

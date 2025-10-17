@@ -114,13 +114,20 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     composer.addPass(bloomPass);
     composerRef.current = composer;
     
-    // OrbitControls - locked to nodes, no free movement
+    // OrbitControls - enhanced navigation
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.minDistance = 8;  // Can't get too close to a node
-    controls.maxDistance = 25; // Limited zoom out for focused view
-    controls.enablePan = false; // No panning - only rotation around node
+    controls.minDistance = 5;   // Allow closer zoom
+    controls.maxDistance = 40;  // Allow more zoom out
+    controls.enablePan = true;  // Enable panning
+    controls.enableRotate = true; // Enable rotation
+    controls.enableZoom = true;  // Enable zoom
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
     controls.enabled = false; // Disabled during entry animation
     controlsRef.current = controls;
     
@@ -421,6 +428,13 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           if (controlsRef.current) {
             controlsRef.current.enabled = true;
             console.log('🎮 Node navigation enabled!');
+            console.log('📷 Controls state:', {
+              enabled: controlsRef.current.enabled,
+              enableRotate: controlsRef.current.enableRotate,
+              enableZoom: controlsRef.current.enableZoom,
+              enablePan: controlsRef.current.enablePan,
+              enableDamping: controlsRef.current.enableDamping
+            });
             // Focus on the first node after transition
             setTimeout(() => focusOnNode(0, 1.5), 500);
           }
@@ -525,10 +539,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       
       const elapsedTime = clockRef.current.getElapsedTime();
       
-      // Update controls
-      if (controls.enabled) {
-        controls.update();
-      }
+      // Always update controls for damping to work
+      controls.update();
       
       // Animate DIGITAL UNIVERSE SHELL - DISABLED (shell removed)
       if (whiteHoleRef.current) {
@@ -619,20 +631,36 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     // Keyboard navigation
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!controlsRef.current?.enabled || isTransitioning) return;
+      console.log('🎮 Key pressed:', e.key, {
+        controlsEnabled: controlsRef.current?.enabled,
+        isTransitioning,
+        navigateNodeRef: !!navigateNodeRef.current,
+        focusOnNodeRef: !!focusOnNodeRef.current
+      });
+      
+      if (!controlsRef.current?.enabled || isTransitioning) {
+        console.log('⚠️ Controls disabled or transitioning, ignoring key');
+        return;
+      }
       
       switch(e.key) {
         case 'ArrowRight':
         case 'd':
         case 'D':
+          e.preventDefault();
+          console.log('➡️ Navigating to next node');
           navigateNodeRef.current?.('next');
           break;
         case 'ArrowLeft':
         case 'a':
         case 'A':
+          e.preventDefault();
+          console.log('⬅️ Navigating to previous node');
           navigateNodeRef.current?.('prev');
           break;
         case ' ': // Spacebar to reset camera position for current node
+          e.preventDefault();
+          console.log('🎯 Resetting camera to current node');
           focusOnNodeRef.current?.(currentNodeRef.current, 1);
           break;
       }

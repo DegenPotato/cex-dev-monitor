@@ -117,7 +117,9 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
       soundRef.current.stop();
     }
     
-    audioLoaderRef.current.load(trackPath, (buffer) => {
+    audioLoaderRef.current.load(
+      trackPath, 
+      (buffer) => {
       if (!soundRef.current || !listenerRef.current) return;
       
       soundRef.current.setBuffer(buffer);
@@ -141,8 +143,13 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
           distortionRef.current.oversample = '4x';
         }
         
-        soundRef.current.setFilter(filterRef.current);
-        soundRef.current.setFilters([filterRef.current, distortionRef.current]);
+        // Chain the filters: sound -> filter -> distortion -> destination
+        if (filterRef.current && distortionRef.current) {
+          filterRef.current.connect(distortionRef.current);
+          soundRef.current.setFilter(filterRef.current);
+        } else if (filterRef.current) {
+          soundRef.current.setFilter(filterRef.current);
+        }
       }
       
       console.log('🔊 Audio loaded and ready');
@@ -161,7 +168,20 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
       } else {
         isAdvancingTrackRef.current = false;
       }
-    });
+    },
+    // Progress handler
+    undefined,
+    // Error handler
+    (error) => {
+      console.error('❌ Failed to load audio track:', trackPath, error);
+      isAdvancingTrackRef.current = false;
+      // Try next track on error
+      if (playlistRef.current.length > 1) {
+        console.log('⏭️ Skipping to next track...');
+        playNextTrack();
+      }
+    }
+  );
   };
 
   // Initialize audio system
@@ -185,26 +205,15 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
     playlistRef.current = shufflePlaylist(audioFiles);
     console.log('🎵 Playlist shuffled:', playlistRef.current);
     
-    loadTrack(0);
-    isInitializedRef.current = true;
-    
     // Resume audio context if suspended
     if (listener.context.state === 'suspended') {
       await listener.context.resume();
       console.log('🔊 Audio context resumed');
     }
     
-    // Start playing
-    if (soundRef.current && !soundRef.current.isPlaying) {
-      soundRef.current.play();
-      setIsPlaying(true);
-      
-      setTimeout(() => {
-        if (soundRef.current?.source) {
-          soundRef.current.source.onended = playNextTrack;
-        }
-      }, 100);
-    }
+    // Load first track and auto-play
+    loadTrack(0, true); // Pass true to auto-play when loaded
+    isInitializedRef.current = true;
   };
 
   // Toggle play/pause
