@@ -12,6 +12,7 @@ import { gsap } from 'gsap';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface BlackholeSceneProps {
     onEnter: (universe?: string) => void;
@@ -461,6 +462,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     // Wallet & Auth
     const { connected, publicKey } = useWallet();
     const { user, isAuthenticated, authenticateWallet, isAuthenticating, authenticateWithCode, logout } = useAuth();
+    const { initializeAudio } = useAudio();
     const [showCodeEntry, setShowCodeEntry] = useState(false);
     const [accessCode, setAccessCode] = useState('');
     const [codeError, setCodeError] = useState(false);
@@ -500,10 +502,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 console.log('🖥️ Entered fullscreen mode');
                 
                 // TRIGGER AUDIO PLAYBACK (Essential for VR!)
-                if (playAudioRef.current) {
-                    playAudioRef.current();
-                    console.log('🔊 Audio triggered via fullscreen button (VR-compatible)');
-                }
+                console.log('🎵 Initializing global audio system...');
+                initializeAudio().catch(err => {
+                    console.error('❌ Failed to initialize audio:', err);
+                });
             }).catch((err) => {
                 console.error('❌ Failed to enter fullscreen:', err);
             });

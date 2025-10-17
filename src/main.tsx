@@ -5,15 +5,18 @@ import './index.css';
 import { WalletProviderWrapper } from './contexts/WalletProviderWrapper';
 import { AuthProvider } from './contexts/AuthContext';
 import { ExperienceSettingsProvider } from './contexts/ExperienceSettingsContext';
+import { AudioProvider } from './contexts/AudioContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ExperienceSettingsProvider>
-      <WalletProviderWrapper>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </WalletProviderWrapper>
-    </ExperienceSettingsProvider>
+    <AudioProvider>
+      <ExperienceSettingsProvider>
+        <WalletProviderWrapper>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </WalletProviderWrapper>
+      </ExperienceSettingsProvider>
+    </AudioProvider>
   </React.StrictMode>
 );

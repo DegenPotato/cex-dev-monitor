@@ -10,8 +10,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAudio } from '../../contexts/AudioContext';
 import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
-import { HudContainer, AudioToggle, ExperienceModeToggle } from '../hud';
+import { HudContainer, AudioControls, ExperienceModeToggle } from '../hud';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
 
@@ -40,6 +41,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const navigateNodeRef = useRef<(direction: 'next' | 'prev') => void>();
   
   const { user } = useAuth();
+  const { initializeAudio } = useAudio();
   const isSuperAdmin = user?.role === 'super_admin';
   
   // Debug logging
@@ -47,6 +49,14 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     console.log('🔮 Matrix Scene - User:', user);
     console.log('🔮 Matrix Scene - Is Super Admin:', isSuperAdmin);
   }, [user, isSuperAdmin]);
+  
+  // Initialize audio on mount
+  useEffect(() => {
+    console.log('🎵 Matrix Scene - Initializing audio...');
+    initializeAudio().catch(err => {
+      console.error('❌ Failed to initialize audio:', err);
+    });
+  }, [initializeAudio]);
   
   // Experience Settings Integration
   const { settings, getQualityMultiplier, shouldReduceEffects } = useExperienceSettings();
@@ -1022,7 +1032,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       </div>
       
       {/* HUD Controls */}
-      <AudioToggle position="top-right" />
+      <AudioControls position="top-right" showDistortionToggle={true} />
       <ExperienceModeToggle position="bottom-right" />
     </HudContainer>
   );
