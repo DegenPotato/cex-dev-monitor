@@ -14,7 +14,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface BlackholeSceneProps {
-    onEnter: () => void;
+    onEnter: (universe?: string) => void;
 }
 
 // Gravitational Lensing Shader
@@ -1770,6 +1770,44 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             </div>
                                         </button>
                                         
+                                        {/* Matrix Universe - SUPER ADMIN ONLY */}
+                                        {user?.role === 'super_admin' && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedUniverse('matrix');
+                                                    console.log('🔮 Selected: Matrix Command Center');
+                                                }}
+                                                className="group relative p-6 bg-gradient-to-br from-green-900/30 to-emerald-900/30 
+                                                         border border-green-400/50 rounded-lg hover:border-green-300 
+                                                         hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all duration-300
+                                                         transform hover:scale-[1.02] cursor-pointer"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-left">
+                                                        <h3 className="text-xl font-bold text-green-400 group-hover:text-green-300">
+                                                            🔮 The Matrix
+                                                        </h3>
+                                                        <p className="text-sm text-gray-400 mt-1">
+                                                            Super Admin Command Center • Neural Network Dashboard
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-2">
+                                                            <span className="text-xs px-2 py-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded font-bold">
+                                                                RESTRICTED
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">
+                                                                Access Level: SUPER ADMIN
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <svg className="w-8 h-8 text-green-400 group-hover:text-green-300 transform group-hover:translate-x-1 transition-transform" 
+                                                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                              d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                                    </svg>
+                                                </div>
+                                            </button>
+                                        )}
+                                        
                                         {/* Coming Soon Universes */}
                                         <div className="mt-4 pt-4 border-t border-gray-700">
                                             <p className="text-xs text-gray-500 mb-3">COMING SOON</p>
@@ -1792,7 +1830,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                     <p className="text-gray-300 text-lg mb-6">
                                         {!connected && 'Connect your wallet to enter the multiverse.'}
                                         {connected && !isAuthenticated && 'Sign the message to authenticate.'}
-                                        {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : 'CEX Monitor'}...`}
+                                        {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : selectedUniverse === 'matrix' ? 'The Matrix' : 'CEX Monitor'}...`}
                                     </p>
                                     
                                     {/* Connect Wallet / Authenticate Flow */}
@@ -1882,7 +1920,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 const tl = gsap.timeline({
                                                     onComplete: () => {
                                                         console.log('✨ Quantum tunnel complete! Emerging in Solar System...');
-                                                        setTimeout(() => onEnter(), 500);
+                                                        setTimeout(() => onEnter(selectedUniverse || undefined), 500);
                                                     }
                                                 });
                                                 
