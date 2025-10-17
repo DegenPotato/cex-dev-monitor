@@ -14,6 +14,7 @@ import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext'
 import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
 import { useAudio } from '../../contexts/AudioContext';
 import { HudContainer, ExperienceModeToggle } from '../hud';
+import { YouTubePlayer } from '../youtube/YouTubePlayer';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
 
@@ -1142,8 +1143,13 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {/* MUSIC PLAYER 3D INTERFACE - Advanced Audio Control */}
+        {/* MUSIC PLAYER 3D INTERFACE - Full YouTube Integration */}
         {showMusicPlayer && !isTransitioning && (
+          <YouTubePlayer onClose={() => setShowMusicPlayer(false)} />
+        )}
+        
+        {/* OLD MUSIC PLAYER - BACKUP (Hidden) */}
+        {false && showMusicPlayer && !isTransitioning && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
             <div className="bg-black/95 border-2 border-pink-500 rounded-lg p-8 max-w-4xl w-full mx-8 pointer-events-auto
                             animate-in fade-in zoom-in duration-300 shadow-[0_0_80px_rgba(255,20,147,0.3)]">

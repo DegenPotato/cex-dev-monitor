@@ -1066,26 +1066,37 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 treble = trebleSum / (255 * (Math.min(700, frequencyData.length) - 140));
             }
 
-            // ENHANCED DISK RESPONSIVENESS
+            // MASSIVELY ENHANCED DISK RESPONSIVENESS - INTENSIFIED!
             
-            // 1. Bass -> Lens flare intensity (more dramatic)
-            const bassPulse = 1.0 + bass * 3.5; // 1.0 to 4.5 multiplier (was 1.5)
-            flareLight.intensity = (1.5 + Math.sin(elapsedTime * 2.5) * 0.5) * bassPulse;
+            // 1. Bass -> Lens flare intensity (EXTREME dramatic effect)
+            const bassPulse = 1.0 + bass * 8.0; // 1.0 to 9.0 multiplier (was 3.5) - DOUBLED!
+            flareLight.intensity = (2.0 + Math.sin(elapsedTime * 2.5) * 0.8) * bassPulse;
             
-            // 2. Bass -> Disk scale pulsing (physical growth)
-            const scaleBoost = 1.0 + bass * 0.35; // Grows up to 35% larger with bass
+            // 2. Bass -> Disk scale pulsing (MASSIVE physical growth)
+            const scaleBoost = 1.0 + bass * 0.65; // Grows up to 65% larger with bass (was 35%) - ALMOST DOUBLED!
             accretionDisk.scale.setScalar(scaleBoost);
             
-            // 3. Mid -> Disk rotation speed (more dramatic)
-            const rotationSpeed = 0.008 + mid * 0.025; // Much faster with music (was 0.01)
+            // 3. Mid -> Disk rotation speed (HYPER dramatic)
+            const rotationSpeed = 0.008 + mid * 0.05; // Super fast with music (was 0.025) - DOUBLED!
             accretionDisk.rotation.z += rotationSpeed;
             
-            // 4. Treble -> Disk glow/brightness via material opacity modulation
-            diskMaterial.opacity = 0.8 + treble * 0.2; // Brighter with treble
+            // 4. Treble -> Disk glow/brightness (BLAZING bright)
+            diskMaterial.opacity = 0.7 + treble * 0.3; // Much brighter with treble (was 0.2)
             
-            // 5. Mid + Treble -> Color temperature shift (warmer with energy)
+            // 5. Mid + Treble -> Color temperature shift (VIVID color changes)
             const colorShift = (mid + treble) / 2;
-            ambientLight.color.setHSL(0.55 - colorShift * 0.15, 1.0, 0.5); // Shifts from cyan to magenta
+            ambientLight.color.setHSL(0.55 - colorShift * 0.25, 1.0, 0.5); // Bigger shifts (was 0.15)
+            
+            // 6. Bass -> Vortex intensity boost (NEW!)
+            if (vortexMaterial.uniforms.uIntensity) {
+                vortexMaterial.uniforms.uIntensity.value = 1.0 + bass * 2.5;
+            }
+            
+            // 7. Overall energy -> Bloom intensity (NEW!)
+            const totalEnergy = (bass + mid + treble) / 3;
+            if (composer.passes[1]) { // Bloom pass
+                (composer.passes[1] as any).strength = 0.5 + totalEnergy * 1.5; // Dynamic bloom
+            }
 
             const screenPosition = blackHole.position.clone().project(camera);
             lensingPass.uniforms.uCenter.value.set((screenPosition.x + 1) / 2, (screenPosition.y + 1) / 2);
