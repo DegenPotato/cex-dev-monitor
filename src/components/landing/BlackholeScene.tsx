@@ -964,7 +964,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
         const GRAVITATIONAL_CONSTANT = 1.0;
         const EVENT_HORIZON_RADIUS = 1.0;
-        const DISK_THICKNESS = 8.0; // Thin accretion disk
+        const DISK_THICKNESS = 4.0; // Thin accretion disk
         velocities.current = [];
 
         for (let i = 0; i < particleCount; i++) {
