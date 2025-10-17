@@ -6,12 +6,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
 
-declare global {
-  interface Window {
-    YT: any;
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
+// YouTube types are already declared in YouTubeAudioContext.tsx
+// No need to redeclare them here
 
 interface YouTubeVideo {
   id: string;
@@ -34,7 +30,7 @@ interface YouTubePlayerProps {
 }
 
 export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ onClose }) => {
-  const { isAuthenticated, userEmail, signIn, signOut } = useYouTubeAudio();
+  const { isAuthenticated, userEmail, signIn } = useYouTubeAudio();
   
   // Player state
   const [player, setPlayer] = useState<any>(null);
