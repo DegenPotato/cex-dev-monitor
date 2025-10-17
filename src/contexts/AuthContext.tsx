@@ -19,6 +19,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     isAuthenticating: boolean;
     authenticateWallet: () => Promise<void>;
+    authenticateWithCode: (code: string) => Promise<boolean>;
     logout: () => Promise<void>;
     checkAuthStatus: () => Promise<void>;
 }
@@ -190,6 +191,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     /**
+     * Authenticate with secret code (for testing/VR access)
+     */
+    const authenticateWithCode = async (code: string): Promise<boolean> => {
+        setIsAuthenticating(true);
+
+        try {
+            const SECRET_CODE = 'J3m03d3rskutj3';
+            
+            if (code !== SECRET_CODE) {
+                console.log('❌ [Auth] Invalid access code');
+                return false;
+            }
+
+            console.log('🔑 [Auth] Secret code verified, granting super_admin access...');
+
+            // Create a temporary super_admin user
+            const superAdminUser: User = {
+                id: 0, // Special ID for code-based auth
+                username: 'SUPER_ADMIN_VR',
+                wallet_address: undefined,
+                solana_wallet_address: undefined,
+                role: 'super_admin',
+                referral_code: 'GENESIS'
+            };
+
+            setUser(superAdminUser);
+            setIsAuthenticated(true);
+            
+            console.log('✅ [Auth] Super admin access granted via code');
+            return true;
+            
+        } catch (error: any) {
+            console.error('❌ [Auth] Code authentication failed:', error);
+            return false;
+        } finally {
+            setIsAuthenticating(false);
+        }
+    };
+
+    /**
      * Logout user
      */
     const logout = async () => {
@@ -216,16 +257,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider
-            value={{
-                user,
-                isAuthenticated,
-                isAuthenticating,
-                authenticateWallet,
-                logout,
-                checkAuthStatus,
-            }}
-        >
+        <AuthContext.Provider value={{ 
+            user, 
+            isAuthenticated, 
+            isAuthenticating,
+            authenticateWallet,
+            authenticateWithCode,
+            logout,
+            checkAuthStatus
+        }}>
             {children}
         </AuthContext.Provider>
     );

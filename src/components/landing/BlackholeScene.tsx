@@ -460,7 +460,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     
     // Wallet & Auth
     const { connected, publicKey } = useWallet();
-    const { user, isAuthenticated, isAuthenticating, authenticateWallet, logout } = useAuth();
+    const { user, isAuthenticated, authenticateWallet, isAuthenticating, authenticateWithCode, logout } = useAuth();
+    const [showCodeEntry, setShowCodeEntry] = useState(false);
+    const [accessCode, setAccessCode] = useState('');
+    const [codeError, setCodeError] = useState(false);
     
     // Universe Selection State
     const [selectedUniverse, setSelectedUniverse] = useState<string | null>(null);
@@ -514,6 +517,32 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             });
         }
     }, []);
+    
+    // Handle secret code submission
+    const handleCodeSubmit = useCallback(async () => {
+        if (!accessCode.trim()) return;
+        
+        try {
+            console.log('🔑 [Auth] Attempting code authentication...');
+            const success = await authenticateWithCode(accessCode);
+            
+            if (success) {
+                console.log('✅ [Auth] Code authentication successful!');
+                setCodeError(false);
+                setAccessCode('');
+                // User is now authenticated as super_admin
+            } else {
+                console.log('❌ [Auth] Invalid code');
+                setCodeError(true);
+                // Shake animation triggered by error state
+                setTimeout(() => setCodeError(false), 2000);
+            }
+        } catch (error) {
+            console.error('❌ [Auth] Code authentication error:', error);
+            setCodeError(true);
+            setTimeout(() => setCodeError(false), 2000);
+        }
+    }, [accessCode, authenticateWithCode]);
     
     // Listen for fullscreen changes (e.g., user presses ESC)
     useEffect(() => {
@@ -1835,12 +1864,102 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                     
                                     {/* Connect Wallet / Authenticate Flow */}
                                     {!connected ? (
-                                // Step 1: Connect Wallet
-                                <div className="w-full">
-                                    <WalletMultiButton className="!w-full !px-8 !py-4 !bg-gradient-to-r !from-cyan-600 !to-blue-600 hover:!from-cyan-500 hover:!to-blue-500 
-                                                                   !text-white !font-bold !rounded-lg !transform hover:!scale-105 !transition-all !duration-300
-                                                                   !shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:!shadow-[0_0_30px_rgba(0,255,255,0.6)]
-                                                                   !justify-center !text-base" />
+                                // Step 1: Connect Wallet OR Code Entry
+                                <div className="w-full space-y-4">
+                                    {!showCodeEntry ? (
+                                        <>
+                                            <WalletMultiButton className="!w-full !px-8 !py-4 !bg-gradient-to-r !from-cyan-600 !to-blue-600 hover:!from-cyan-500 hover:!to-blue-500 
+                                                                           !text-white !font-bold !rounded-lg !transform hover:!scale-105 !transition-all !duration-300
+                                                                           !shadow-[0_0_20px_rgba(0,255,255,0.3)] hover:!shadow-[0_0_30px_rgba(0,255,255,0.6)]
+                                                                           !justify-center !text-base" />
+                                            
+                                            {/* Divider */}
+                                            <div className="relative">
+                                                <div className="absolute inset-0 flex items-center">
+                                                    <div className="w-full border-t border-gray-600/30"></div>
+                                                </div>
+                                                <div className="relative flex justify-center text-xs">
+                                                    <span className="px-2 bg-black text-gray-500">OR</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Access Code Button */}
+                                            <button
+                                                onClick={() => setShowCodeEntry(true)}
+                                                className="w-full px-8 py-4 bg-gradient-to-r from-purple-600/20 to-pink-600/20 hover:from-purple-600/30 hover:to-pink-600/30
+                                                           border border-purple-500/30 hover:border-purple-400/50
+                                                           text-purple-300 font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                                           shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
+                                            >
+                                                🔑 ENTER ACCESS CODE
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {/* Code Entry Form */}
+                                            <div className="space-y-3">
+                                                <input
+                                                    type="password"
+                                                    value={accessCode}
+                                                    onChange={(e) => {
+                                                        setAccessCode(e.target.value);
+                                                        setCodeError(false);
+                                                    }}
+                                                    onKeyPress={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            handleCodeSubmit();
+                                                        }
+                                                    }}
+                                                    placeholder="Enter Super Admin Code"
+                                                    className={`w-full px-4 py-3 bg-black/50 border rounded-lg
+                                                               text-white font-mono text-center text-lg tracking-widest
+                                                               focus:outline-none focus:ring-2 transition-all
+                                                               ${codeError 
+                                                                   ? 'border-red-500 focus:ring-red-500/50 animate-shake' 
+                                                                   : 'border-purple-500/30 focus:border-purple-400 focus:ring-purple-500/50'}`}
+                                                    autoFocus
+                                                />
+                                                
+                                                {codeError && (
+                                                    <p className="text-red-400 text-sm text-center font-mono">
+                                                        ❌ INVALID ACCESS CODE
+                                                    </p>
+                                                )}
+                                                
+                                                <button
+                                                    onClick={handleCodeSubmit}
+                                                    disabled={isAuthenticating || !accessCode}
+                                                    className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500
+                                                               text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
+                                                               shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]
+                                                               disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                                >
+                                                    {isAuthenticating ? (
+                                                        <span className="flex items-center justify-center gap-2">
+                                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            Verifying...
+                                                        </span>
+                                                    ) : '✅ VERIFY & ENTER'}
+                                                </button>
+                                                
+                                                <button
+                                                    onClick={() => {
+                                                        setShowCodeEntry(false);
+                                                        setAccessCode('');
+                                                        setCodeError(false);
+                                                    }}
+                                                    className="w-full px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50
+                                                               border border-gray-600/30 rounded-lg text-gray-400 hover:text-gray-300
+                                                               transition-all duration-300 text-sm"
+                                                >
+                                                    ← Back to Wallet Connect
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             ) : !isAuthenticated ? (
                                 // Step 2: Authenticate (sign message)
@@ -2165,8 +2284,16 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     from { transform: scale(0.9); }
                     to { transform: scale(1); }
                 }
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                    20%, 40%, 60%, 80% { transform: translateX(5px); }
+                }
                 .auth-billboard {
                     animation: fadeIn 0.5s ease-out, scaleIn 0.5s ease-out;
+                }
+                .animate-shake {
+                    animation: shake 0.4s ease-in-out;
                 }
             `}} />
         </div>
