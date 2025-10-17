@@ -239,51 +239,30 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     playNextInQueue();
   };
 
-  // Load Google API for OAuth
+  // Load Google Identity Services (GIS) - NEW API
   const loadGoogleAPI = () => {
     const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
+    script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
     script.onload = () => {
-      console.log('✅ Google API loaded');
+      console.log('✅ Google Identity Services loaded');
       initGoogleAuth();
     };
     document.body.appendChild(script);
   };
 
-  // Initialize Google OAuth
+  // Initialize Google OAuth with new GIS library
   const initGoogleAuth = () => {
     if (!OAUTH_CLIENT_ID) {
       console.warn('⚠️ No OAuth Client ID configured');
       return;
     }
 
-    window.gapi?.load('client:auth2', async () => {
-      try {
-        await window.gapi.client.init({
-          clientId: OAUTH_CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/youtube.readonly',
-        });
-
-        const auth2 = window.gapi.auth2.getAuthInstance();
-        const isSignedIn = auth2.isSignedIn.get();
-        
-        if (isSignedIn) {
-          const user = auth2.currentUser.get();
-          const profile = user.getBasicProfile();
-          setIsAuthenticated(true);
-          setUserEmail(profile.getEmail());
-          accessTokenRef.current = user.getAuthResponse().access_token;
-          console.log('✅ User already signed in:', profile.getEmail());
-          loadUserPlaylists();
-        }
-
-        console.log('✅ Google Auth initialized');
-      } catch (error) {
-        console.error('❌ Failed to initialize Google Auth:', error);
-      }
-    });
+    // Initialize the token client for OAuth 2.0
+    if (window.google?.accounts?.oauth2) {
+      console.log('✅ Google Identity Services initialized');
+    }
   };
 
   // Player controls
@@ -472,36 +451,54 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     }
   };
 
-  // Auth functions
+  // Auth functions using new GIS library
   const signIn = async () => {
-    if (!window.gapi?.auth2) {
-      console.error('❌ Google Auth not initialized');
+    if (!window.google?.accounts?.oauth2) {
+      console.error('❌ Google Identity Services not loaded');
       return;
     }
 
     try {
-      const auth2 = window.gapi.auth2.getAuthInstance();
-      await auth2.signIn();
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: OAUTH_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/youtube.readonly',
+        callback: (response: any) => {
+          if (response.error) {
+            console.error('❌ Sign in failed:', response);
+            return;
+          }
+          
+          // Successfully got access token
+          accessTokenRef.current = response.access_token;
+          setIsAuthenticated(true);
+          
+          // Get user info
+          fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${response.access_token}` }
+          })
+          .then(res => res.json())
+          .then(data => {
+            setUserEmail(data.email);
+            console.log('✅ Signed in:', data.email);
+            loadUserPlaylists();
+          })
+          .catch(err => console.error('❌ Failed to get user info:', err));
+        },
+      });
       
-      const user = auth2.currentUser.get();
-      const profile = user.getBasicProfile();
-      
-      setIsAuthenticated(true);
-      setUserEmail(profile.getEmail());
-      accessTokenRef.current = user.getAuthResponse().access_token;
-      
-      console.log('✅ Signed in:', profile.getEmail());
-      loadUserPlaylists();
+      // Request access token
+      client.requestAccessToken();
     } catch (error) {
       console.error('❌ Sign in failed:', error);
     }
   };
 
   const signOut = () => {
-    if (!window.gapi?.auth2) return;
-
-    const auth2 = window.gapi.auth2.getAuthInstance();
-    auth2.signOut();
+    if (accessTokenRef.current && window.google?.accounts?.oauth2) {
+      window.google.accounts.oauth2.revoke(accessTokenRef.current, () => {
+        console.log('✅ Token revoked');
+      });
+    }
     
     setIsAuthenticated(false);
     setUserEmail(null);

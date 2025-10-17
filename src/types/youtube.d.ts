@@ -101,84 +101,45 @@ declare namespace YT {
   }
 }
 
-// Google API Type Declarations
-declare namespace gapi {
-  namespace client {
-    function init(config: {
-      clientId: string;
-      scope: string;
-      discoveryDocs?: string[];
-    }): Promise<void>;
+// Google Identity Services (GIS) Type Declarations
+declare namespace google {
+  namespace accounts {
+    namespace oauth2 {
+      interface TokenClient {
+        requestAccessToken(overrideConfig?: OverridableTokenClientConfig): void;
+      }
+
+      interface TokenResponse {
+        access_token: string;
+        expires_in: number;
+        scope: string;
+        token_type: string;
+        error?: string;
+        error_description?: string;
+        error_uri?: string;
+      }
+
+      interface OverridableTokenClientConfig {
+        scope?: string;
+        hint?: string;
+        state?: string;
+      }
+
+      interface TokenClientConfig extends OverridableTokenClientConfig {
+        client_id: string;
+        callback: (response: TokenResponse) => void;
+        error_callback?: (error: any) => void;
+      }
+
+      function initTokenClient(config: TokenClientConfig): TokenClient;
+      function revoke(accessToken: string, done?: () => void): void;
+      function hasGrantedAllScopes(tokenResponse: TokenResponse, ...scopes: string[]): boolean;
+      function hasGrantedAnyScope(tokenResponse: TokenResponse, ...scopes: string[]): boolean;
+    }
   }
-
-  namespace auth2 {
-    interface GoogleAuth {
-      isSignedIn: {
-        get(): boolean;
-        listen(callback: (isSignedIn: boolean) => void): void;
-      };
-      currentUser: {
-        get(): GoogleUser;
-        listen(callback: (user: GoogleUser) => void): void;
-      };
-      signIn(options?: SignInOptions): Promise<GoogleUser>;
-      signOut(): Promise<void>;
-      disconnect(): void;
-    }
-
-    interface GoogleUser {
-      getId(): string;
-      isSignedIn(): boolean;
-      getHostedDomain(): string;
-      getGrantedScopes(): string;
-      getBasicProfile(): BasicProfile;
-      getAuthResponse(includeAuthorizationData?: boolean): AuthResponse;
-      reloadAuthResponse(): Promise<AuthResponse>;
-      hasGrantedScopes(scopes: string): boolean;
-      grant(options: { scope: string }): Promise<GoogleUser>;
-      grantOfflineAccess(options: { scope: string }): Promise<{ code: string }>;
-    }
-
-    interface BasicProfile {
-      getId(): string;
-      getName(): string;
-      getGivenName(): string;
-      getFamilyName(): string;
-      getImageUrl(): string;
-      getEmail(): string;
-    }
-
-    interface AuthResponse {
-      access_token: string;
-      id_token: string;
-      scope: string;
-      expires_in: number;
-      first_issued_at: number;
-      expires_at: number;
-    }
-
-    interface SignInOptions {
-      scope?: string;
-      prompt?: 'consent' | 'select_account';
-      ux_mode?: 'popup' | 'redirect';
-      redirect_uri?: string;
-    }
-
-    function getAuthInstance(): GoogleAuth;
-    function init(config: {
-      client_id: string;
-      cookiepolicy?: string;
-      scope?: string;
-      hosted_domain?: string;
-      ux_mode?: 'popup' | 'redirect';
-      redirect_uri?: string;
-    }): void;
-  }
-
-  function load(apiName: string, callback: () => void): void;
 }
 
 interface Window {
-  gapi: typeof gapi;
+  google: typeof google;
   onYouTubeIframeAPIReady: (() => void) | undefined;
 }
