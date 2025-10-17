@@ -12,6 +12,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAuth } from '../../contexts/AuthContext';
 import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
 import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
+import { useAudio } from '../../contexts/AudioContext';
 import { HudContainer, ExperienceModeToggle } from '../hud';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
@@ -35,6 +36,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [currentNodeIndex, setCurrentNodeIndex] = useState(0);
   const [showAccountManager, setShowAccountManager] = useState(false);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
+  const [showNexusInterface, setShowNexusInterface] = useState(false);
   
   // Node navigation functions (moved outside useEffect for accessibility)
   const focusOnNodeRef = useRef<(nodeIndex: number, duration?: number) => void>();
@@ -43,6 +46,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   const { isAuthenticated: isYouTubeConnected, userEmail: youtubeEmail, signIn: connectGoogle } = useYouTubeAudio();
+  const { audioSource, setAudioSource, isPlaying, togglePlayPause, nextTrack, previousTrack } = useAudio();
   
   // Debug logging
   useEffect(() => {
@@ -322,25 +326,29 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       { name: 'Analytics Core', color: 0xffffff, position: new THREE.Vector3(5, -5, 10) },
       { name: 'Alert System', color: 0xff0000, position: new THREE.Vector3(-5, 8, -10) },
       { name: 'AI Processor', color: 0x9900ff, position: new THREE.Vector3(0, -8, 0) },
-      { name: 'Account Manager', color: 0x00ff99, position: new THREE.Vector3(12, 0, 8) } // New secure node
+      { name: 'Account Manager', color: 0x00ff99, position: new THREE.Vector3(12, 0, 8) }, // Secure node
+      { name: 'Music Player', color: 0xff1493, position: new THREE.Vector3(-8, -6, 12), isMusic: true } // Music node - deep pink
     ];
     
     const nodes: THREE.Mesh[] = [];
     
     nodeConfigs.forEach((config) => {
-      // Enhanced design for The Nexus (data source)
+      // Enhanced design for special nodes
       const isNexus = config.isSource;
+      const isMusic = (config as any).isMusic;
       const geometry = isNexus 
         ? new THREE.IcosahedronGeometry(2.5, 2) // Larger, more complex geometry
+        : isMusic
+        ? new THREE.SphereGeometry(1.8, 32, 16) // Smooth sphere for music
         : new THREE.OctahedronGeometry(1.5);
       
       const material = new THREE.MeshPhongMaterial({
         color: config.color,
         emissive: config.color,
-        emissiveIntensity: isNexus ? 0.6 : 0.3, // Brighter emission for data source
-        wireframe: true,
-        opacity: isNexus ? 1.0 : 0.8,
-        transparent: !isNexus
+        emissiveIntensity: isNexus ? 0.6 : isMusic ? 0.5 : 0.3,
+        wireframe: !isMusic, // Music node is solid
+        opacity: isNexus || isMusic ? 1.0 : 0.8,
+        transparent: !isNexus && !isMusic
       });
       
       const node = new THREE.Mesh(geometry, material);
@@ -349,8 +357,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       node.userData.targetPosition = config.position; // Store target position
       node.userData.name = config.name;
       node.userData.isNexus = isNexus;
+      node.userData.isMusic = isMusic;
       
-      // Add pulsing energy ring for The Nexus
+      // Add special effects for unique nodes
       if (isNexus) {
         const ringGeometry = new THREE.TorusGeometry(3.5, 0.2, 16, 100);
         const ringMaterial = new THREE.MeshBasicMaterial({
@@ -363,6 +372,21 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         ring.rotation.x = Math.PI / 2;
         node.add(ring);
         node.userData.energyRing = ring;
+      } else if (isMusic) {
+        // Add sound wave rings for music node
+        for (let i = 0; i < 3; i++) {
+          const waveGeometry = new THREE.TorusGeometry(2.5 + i * 0.5, 0.1, 8, 32);
+          const waveMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff1493,
+            transparent: true,
+            opacity: 0.3 - i * 0.1,
+            blending: THREE.AdditiveBlending
+          });
+          const wave = new THREE.Mesh(waveGeometry, waveMaterial);
+          wave.rotation.x = Math.PI / 2;
+          wave.userData.waveIndex = i;
+          node.add(wave);
+        }
       }
       
       scene.add(node);
@@ -382,8 +406,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       currentNodeRef.current = nodeIndex;
       setCurrentNodeIndex(nodeIndex);
       
-      // Show Account Manager interface when node 6 is selected
-      setShowAccountManager(nodeIndex === 6);
+      // Show appropriate interface based on selected node
+      setShowNexusInterface(nodeIndex === 0);  // The Nexus
+      setShowAccountManager(nodeIndex === 6);  // Account Manager
+      setShowMusicPlayer(nodeIndex === 7);     // Music Player
       
       // Update OrbitControls target to the node position
       gsap.to(controlsRef.current.target, {
@@ -820,10 +846,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                 <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
                 <div className="text-2xl font-bold text-green-300">
                   {['The Nexus', 'Token Monitor', 'Transaction Flow', 
-                    'Analytics Core', 'Alert System', 'AI Processor', 'Account Manager'][currentNodeIndex]}
+                    'Analytics Core', 'Alert System', 'AI Processor', 'Account Manager', 'Music Player'][currentNodeIndex]}
                 </div>
                 <div className="text-xs text-green-500/60 mt-2">
-                  Node {currentNodeIndex + 1} of 7
+                  Node {currentNodeIndex + 1} of 8
                 </div>
               </div>
             </div>
@@ -841,7 +867,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                     { color: 'bg-white', name: 'Analytics Core' },
                     { color: 'bg-alert-red', name: 'Alert System' },
                     { color: 'bg-purple-700', name: 'AI Processor' },
-                    { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
+                    { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true },
+                    { color: 'bg-pink-500', name: 'Music Player', icon: '🎵' }
                   ].map((node, index) => (
                     <li key={index}>
                       <button
@@ -969,6 +996,310 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
+        {/* THE NEXUS 3D INTERFACE - Central Command & Control */}
+        {showNexusInterface && !isTransitioning && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+            <div className="bg-black/95 border-2 border-green-500 rounded-lg p-8 max-w-6xl w-full mx-8 pointer-events-auto
+                            animate-in fade-in zoom-in duration-300 shadow-[0_0_100px_rgba(0,255,0,0.3)]">
+              {/* Header with Matrix-style animation */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-green-400 font-mono text-3xl mb-1 flex items-center gap-3">
+                    ⬢ THE NEXUS
+                    <span className="text-xs text-yellow-400 border border-yellow-400 px-2 py-0.5 rounded animate-pulse">
+                      CORE SYSTEM
+                    </span>
+                  </h2>
+                  <p className="text-green-400/60 text-sm font-mono">
+                    Central Data Hub | Real-time Analytics | System Control
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowNexusInterface(false)}
+                  className="text-red-400 hover:text-red-300 transition-colors text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* Main Dashboard Grid */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {/* System Health */}
+                <div className="bg-black/50 border border-green-500/30 rounded-lg p-4">
+                  <h3 className="text-green-400 font-mono text-lg mb-3">📊 SYSTEM HEALTH</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">CPU Usage</span>
+                      <span className="text-green-300 font-mono">32%</span>
+                    </div>
+                    <div className="w-full bg-gray-800 rounded h-2">
+                      <div className="bg-green-400 h-2 rounded" style={{ width: '32%' }}></div>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Memory</span>
+                      <span className="text-yellow-300 font-mono">67%</span>
+                    </div>
+                    <div className="w-full bg-gray-800 rounded h-2">
+                      <div className="bg-yellow-400 h-2 rounded" style={{ width: '67%' }}></div>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Network</span>
+                      <span className="text-cyan-300 font-mono">1.2GB/s</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Real-time Metrics */}
+                <div className="bg-black/50 border border-green-500/30 rounded-lg p-4">
+                  <h3 className="text-green-400 font-mono text-lg mb-3">⚡ REAL-TIME METRICS</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-gray-400 text-xs mb-1">Transactions/sec</div>
+                      <div className="text-2xl font-mono text-cyan-300">1,247</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400 text-xs mb-1">Active Nodes</div>
+                      <div className="text-2xl font-mono text-green-300">8/8</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400 text-xs mb-1">Data Throughput</div>
+                      <div className="text-2xl font-mono text-yellow-300">42.7TB</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Quick Actions */}
+                <div className="bg-black/50 border border-green-500/30 rounded-lg p-4">
+                  <h3 className="text-green-400 font-mono text-lg mb-3">🎮 QUICK ACTIONS</h3>
+                  <div className="space-y-2">
+                    <button className="w-full text-left px-3 py-2 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors text-sm font-mono">
+                      🔄 Sync All Nodes
+                    </button>
+                    <button className="w-full text-left px-3 py-2 bg-cyan-500/20 text-cyan-400 rounded hover:bg-cyan-500/30 transition-colors text-sm font-mono">
+                      📥 Import Data
+                    </button>
+                    <button className="w-full text-left px-3 py-2 bg-yellow-500/20 text-yellow-400 rounded hover:bg-yellow-500/30 transition-colors text-sm font-mono">
+                      📊 Generate Report
+                    </button>
+                    <button className="w-full text-left px-3 py-2 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors text-sm font-mono">
+                      🚨 Emergency Stop
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Live Data Stream */}
+              <div className="bg-black/50 border border-green-500/30 rounded-lg p-4">
+                <h3 className="text-green-400 font-mono text-lg mb-3">📡 LIVE DATA STREAM</h3>
+                <div className="font-mono text-xs text-green-300 space-y-1 h-32 overflow-y-auto">
+                  <div className="opacity-100">[{new Date().toLocaleTimeString()}] Node 2 processed 127 transactions</div>
+                  <div className="opacity-90">[{new Date().toLocaleTimeString()}] Alert System triggered: High volume detected</div>
+                  <div className="opacity-80">[{new Date().toLocaleTimeString()}] AI Processor analyzing patterns...</div>
+                  <div className="opacity-70">[{new Date().toLocaleTimeString()}] Analytics Core updated dashboard</div>
+                  <div className="opacity-60">[{new Date().toLocaleTimeString()}] Token Monitor scanning new contracts</div>
+                  <div className="opacity-50">[{new Date().toLocaleTimeString()}] Transaction Flow optimized</div>
+                  <div className="opacity-40">[{new Date().toLocaleTimeString()}] Account Manager sync complete</div>
+                  <div className="opacity-30">[{new Date().toLocaleTimeString()}] Music Player loaded playlist</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MUSIC PLAYER 3D INTERFACE - Advanced Audio Control */}
+        {showMusicPlayer && !isTransitioning && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+            <div className="bg-black/95 border-2 border-pink-500 rounded-lg p-8 max-w-4xl w-full mx-8 pointer-events-auto
+                            animate-in fade-in zoom-in duration-300 shadow-[0_0_80px_rgba(255,20,147,0.3)]">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-pink-400 font-mono text-3xl mb-1 flex items-center gap-3">
+                    🎵 MUSIC PLAYER
+                    <span className="text-xs text-cyan-400 border border-cyan-400 px-2 py-0.5 rounded">
+                      AUDIO ENGINE
+                    </span>
+                  </h2>
+                  <p className="text-pink-400/60 text-sm font-mono">
+                    Immersive Audio Experience | Local & Streaming
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowMusicPlayer(false)}
+                  className="text-red-400 hover:text-red-300 transition-colors text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* Now Playing */}
+              <div className="bg-gradient-to-r from-pink-900/20 to-purple-900/20 border border-pink-500/30 rounded-lg p-6 mb-6">
+                <div className="flex items-center gap-6">
+                  {/* Album Art */}
+                  <div className="w-32 h-32 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <span className="text-6xl">🎵</span>
+                  </div>
+                  
+                  {/* Track Info */}
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-bold text-pink-300 mb-1">
+                      {audioSource === 'youtube' && isYouTubeConnected ? 'YouTube Music' : 'Black Hole Symphony'}
+                    </h3>
+                    <p className="text-pink-400/60 mb-4">
+                      {audioSource === 'youtube' ? 'Streaming from YouTube' : 'Local Audio Collection'}
+                    </p>
+                    
+                    {/* Progress Bar */}
+                    <div className="mb-4">
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>1:23</span>
+                        <span>3:45</span>
+                      </div>
+                      <div className="w-full bg-gray-800 rounded-full h-2">
+                        <div className="bg-gradient-to-r from-pink-500 to-purple-500 h-2 rounded-full" style={{ width: '40%' }}></div>
+                      </div>
+                    </div>
+                    
+                    {/* Playback Controls */}
+                    <div className="flex items-center gap-4">
+                      <button 
+                        onClick={previousTrack}
+                        className="text-pink-400 hover:text-pink-300 transition-colors"
+                      >
+                        ⏮️
+                      </button>
+                      <button 
+                        onClick={togglePlayPause}
+                        className="text-pink-400 hover:text-pink-300 transition-colors text-3xl"
+                      >
+                        {isPlaying ? '⏸️' : '▶️'}
+                      </button>
+                      <button 
+                        onClick={nextTrack}
+                        className="text-pink-400 hover:text-pink-300 transition-colors"
+                      >
+                        ⏭️
+                      </button>
+                      <button className="text-pink-400 hover:text-pink-300 transition-colors ml-4">
+                        🔀
+                      </button>
+                      <button className="text-pink-400 hover:text-pink-300 transition-colors">
+                        🔁
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Volume & Effects */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-pink-400 text-xs font-mono">VOLUME</label>
+                      <input type="range" min="0" max="100" defaultValue="75" 
+                             className="w-full accent-pink-500" />
+                    </div>
+                    <div>
+                      <label className="text-pink-400 text-xs font-mono">BASS</label>
+                      <input type="range" min="0" max="100" defaultValue="50" 
+                             className="w-full accent-purple-500" />
+                    </div>
+                    <div>
+                      <label className="text-pink-400 text-xs font-mono">TREBLE</label>
+                      <input type="range" min="0" max="100" defaultValue="50" 
+                             className="w-full accent-cyan-500" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Audio Source & Playlist */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Source Selection */}
+                <div className="bg-black/50 border border-pink-500/30 rounded-lg p-4">
+                  <h3 className="text-pink-400 font-mono text-lg mb-3">🎶 AUDIO SOURCE</h3>
+                  <div className="space-y-2">
+                    <button 
+                      onClick={() => setAudioSource?.('local')}
+                      className={`w-full px-4 py-3 rounded-lg font-mono text-sm transition-all ${
+                        audioSource === 'local' 
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' 
+                          : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      💿 Local MP3 Collection
+                    </button>
+                    <button 
+                      onClick={() => setAudioSource?.('youtube')}
+                      className={`w-full px-4 py-3 rounded-lg font-mono text-sm transition-all ${
+                        audioSource === 'youtube' 
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/50' 
+                          : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      📺 YouTube Music {!isYouTubeConnected && '(Not Connected)'}
+                    </button>
+                  </div>
+                  
+                  {/* YouTube Controls if selected */}
+                  {audioSource === 'youtube' && (
+                    <div className="mt-4 pt-4 border-t border-pink-500/20">
+                      {isYouTubeConnected ? (
+                        <div className="text-green-400 text-sm">
+                          ✅ Connected: {youtubeEmail}
+                        </div>
+                      ) : (
+                        <button onClick={connectGoogle} className="w-full px-3 py-2 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 text-sm font-mono">
+                          Connect Google Account
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Playlist */}
+                <div className="bg-black/50 border border-pink-500/30 rounded-lg p-4">
+                  <h3 className="text-pink-400 font-mono text-lg mb-3">📝 PLAYLIST</h3>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="px-3 py-2 bg-pink-500/10 rounded hover:bg-pink-500/20 cursor-pointer transition-colors">
+                      <div className="text-pink-300 font-mono text-sm">Black Hole Theme</div>
+                      <div className="text-pink-400/50 text-xs">3:45</div>
+                    </div>
+                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
+                      <div className="text-gray-400 font-mono text-sm">Quantum Drift</div>
+                      <div className="text-gray-500 text-xs">4:12</div>
+                    </div>
+                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
+                      <div className="text-gray-400 font-mono text-sm">Neural Symphony</div>
+                      <div className="text-gray-500 text-xs">5:23</div>
+                    </div>
+                    <div className="px-3 py-2 hover:bg-pink-500/10 rounded cursor-pointer transition-colors">
+                      <div className="text-gray-400 font-mono text-sm">Matrix Rain</div>
+                      <div className="text-gray-500 text-xs">3:07</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Visualizer Settings */}
+              <div className="bg-black/50 border border-pink-500/30 rounded-lg p-4 mt-4">
+                <h3 className="text-pink-400 font-mono text-lg mb-3">🌈 VISUALIZER SETTINGS</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <label className="flex items-center gap-2 text-pink-300 text-sm">
+                    <input type="checkbox" checked className="accent-pink-500" />
+                    <span>Black Hole Reactivity</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-pink-300 text-sm">
+                    <input type="checkbox" checked className="accent-pink-500" />
+                    <span>Particle Effects</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-pink-300 text-sm">
+                    <input type="checkbox" className="accent-pink-500" />
+                    <span>Spectrum Analyzer</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ACCOUNT MANAGER 3D INTERFACE - Secure user-specific panel */}
         {showAccountManager && !isTransitioning && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
