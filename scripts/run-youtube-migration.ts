@@ -47,15 +47,22 @@ async function runMigration() {
 
     console.log(`📝 Executing ${statements.length} migration statements...`);
 
-    for (const statement of statements) {
+    for (let i = 0; i < statements.length; i++) {
+      const statement = statements[i];
       try {
+        console.log(`\n  [${i + 1}/${statements.length}] ${statement.substring(0, 60)}...`);
         db.run(statement + ';');
-        console.log('  ✓ Statement executed');
+        console.log('  ✓ Success');
       } catch (error: any) {
         // Ignore "duplicate column" errors - means migration already ran
-        if (error.message.includes('duplicate column') || error.message.includes('already exists')) {
+        if (error.message.includes('duplicate column') || 
+            error.message.includes('already exists') ||
+            error.message.includes('table youtube_playlists already exists') ||
+            error.message.includes('table youtube_history already exists')) {
           console.log('  ⚠ Already exists, skipping');
         } else {
+          console.error(`  ❌ Error: ${error.message}`);
+          console.error(`  Statement: ${statement}`);
           throw error;
         }
       }
