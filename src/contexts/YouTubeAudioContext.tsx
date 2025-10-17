@@ -601,6 +601,8 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   };
 
   // Load user playlists
+  // Load user's YouTube playlists - commented out for now (future feature)
+  /*
   const loadUserPlaylists = async () => {
     if (!accessTokenRef.current || !API_KEY) return;
 
@@ -632,6 +634,7 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
       console.error('❌ Failed to load playlists:', error);
     }
   };
+  */
 
   // Load playlist videos
   const loadPlaylist = async (playlistId: string) => {
