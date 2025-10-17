@@ -187,11 +187,15 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   // Initialize audio system
   const initializeAudio = async () => {
     if (isInitializedRef.current) {
-      console.log('🎵 Audio already initialized');
+      console.log('🎵 Audio already initialized - preventing duplicate');
+      console.log('🎵 Current state:', {
+        isPlaying: soundRef.current?.isPlaying,
+        currentTrack: playlistRef.current[currentTrackIndexRef.current]
+      });
       return;
     }
 
-    console.log('🎵 Initializing global audio system');
+    console.log('🎵 Initializing global audio system (first time)');
     
     const listener = new THREE.AudioListener();
     const sound = new THREE.Audio(listener);
@@ -281,12 +285,16 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
   // Get audio analyzer for visualizations
   const getAudioAnalyzer = () => audioAnalyzerRef.current;
 
-  // Cleanup on unmount
+  // Cleanup on unmount (only runs when provider unmounts, not on scene changes)
   useEffect(() => {
+    console.log('🎵 AudioProvider mounted');
+    
     return () => {
+      console.log('🎵 AudioProvider unmounting - cleaning up audio');
       if (soundRef.current?.isPlaying) {
         soundRef.current.stop();
       }
+      isInitializedRef.current = false;
     };
   }, []);
 

@@ -10,7 +10,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAudio } from '../../contexts/AudioContext';
 import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext';
 import { HudContainer, ExperienceModeToggle } from '../hud';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
@@ -41,7 +40,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const navigateNodeRef = useRef<(direction: 'next' | 'prev') => void>();
   
   const { user } = useAuth();
-  const { initializeAudio } = useAudio();
   const isSuperAdmin = user?.role === 'super_admin';
   
   // Debug logging
@@ -49,14 +47,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     console.log('🔮 Matrix Scene - User:', user);
     console.log('🔮 Matrix Scene - Is Super Admin:', isSuperAdmin);
   }, [user, isSuperAdmin]);
-  
-  // Initialize audio on mount
-  useEffect(() => {
-    console.log('🎵 Matrix Scene - Initializing audio...');
-    initializeAudio().catch(err => {
-      console.error('❌ Failed to initialize audio:', err);
-    });
-  }, [initializeAudio]);
   
   // Experience Settings Integration
   const { settings, getQualityMultiplier, shouldReduceEffects } = useExperienceSettings();
@@ -688,7 +678,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   
   return (
     <HudContainer>
-      <div ref={mountRef} className="fixed inset-0 w-full h-full">
+      <div ref={mountRef} className="fixed inset-0 w-full h-full pointer-events-auto">
         {/* Matrix CRT Scan Line Effect - Respect reduced motion */}
         {!reduceEffects && (
           <div className="absolute inset-0 pointer-events-none z-[60]">
