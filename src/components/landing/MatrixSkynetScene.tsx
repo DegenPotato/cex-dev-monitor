@@ -314,7 +314,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     // Create NEURAL NETWORK NODES
     const nodeConfigs = [
-      { name: 'Wallet Tracker', color: 0x00ff00, position: new THREE.Vector3(0, 0, 0) },
+      { name: 'The Nexus', color: 0x00ff00, position: new THREE.Vector3(0, 0, 0), isSource: true }, // Central data source
       { name: 'Token Monitor', color: 0x00ffff, position: new THREE.Vector3(10, 5, -5) },
       { name: 'Transaction Flow', color: 0xff00ff, position: new THREE.Vector3(-10, 3, 5) },
       { name: 'Analytics Core', color: 0xffffff, position: new THREE.Vector3(5, -5, 10) },
@@ -326,18 +326,43 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const nodes: THREE.Mesh[] = [];
     
     nodeConfigs.forEach((config) => {
-      const geometry = new THREE.OctahedronGeometry(1.5);
+      // Enhanced design for The Nexus (data source)
+      const isNexus = config.isSource;
+      const geometry = isNexus 
+        ? new THREE.IcosahedronGeometry(2.5, 2) // Larger, more complex geometry
+        : new THREE.OctahedronGeometry(1.5);
+      
       const material = new THREE.MeshPhongMaterial({
         color: config.color,
         emissive: config.color,
-        emissiveIntensity: 0.3,
-        wireframe: true
+        emissiveIntensity: isNexus ? 0.6 : 0.3, // Brighter emission for data source
+        wireframe: true,
+        opacity: isNexus ? 1.0 : 0.8,
+        transparent: !isNexus
       });
+      
       const node = new THREE.Mesh(geometry, material);
       node.position.set(0, 0, 0); // Start at center
       node.scale.set(0, 0, 0); // Start hidden
       node.userData.targetPosition = config.position; // Store target position
       node.userData.name = config.name;
+      node.userData.isNexus = isNexus;
+      
+      // Add pulsing energy ring for The Nexus
+      if (isNexus) {
+        const ringGeometry = new THREE.TorusGeometry(3.5, 0.2, 16, 100);
+        const ringMaterial = new THREE.MeshBasicMaterial({
+          color: 0x00ff00,
+          transparent: true,
+          opacity: 0.4,
+          blending: THREE.AdditiveBlending
+        });
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.rotation.x = Math.PI / 2;
+        node.add(ring);
+        node.userData.energyRing = ring;
+      }
+      
       scene.add(node);
       nodes.push(node);
     });
@@ -572,6 +597,24 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
             child.rotation.y = elapsedTime * (0.15 - i * 0.01);
           }
         });
+      }
+      
+      // Animate The Nexus energy ring (data source)
+      if (nodesRef.current[0] && nodesRef.current[0].userData.isNexus) {
+        const nexusNode = nodesRef.current[0];
+        const energyRing = nexusNode.userData.energyRing;
+        
+        if (energyRing) {
+          // Rotate the energy ring
+          energyRing.rotation.z = elapsedTime * 0.5;
+          // Pulse the opacity
+          const ringMaterial = energyRing.material as THREE.MeshBasicMaterial;
+          ringMaterial.opacity = 0.3 + Math.sin(elapsedTime * 3) * 0.2;
+        }
+        
+        // Extra glow pulse for The Nexus
+        const material = nexusNode.material as THREE.MeshPhongMaterial;
+        material.emissiveIntensity = 0.6 + Math.sin(elapsedTime * 1.5) * 0.3;
       }
       
       // Pulse nodes only after transition
@@ -857,49 +900,113 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                           animate-in fade-in slide-in-from-right duration-500">
             <h3 className="text-green-400 font-mono text-lg mb-3">NEURAL NODES</h3>
             <ul className="space-y-2 text-sm font-mono" role="list">
-              {[
-                { color: 'bg-matrix-green', name: 'Wallet Tracker' },
-                { color: 'bg-quantum-blue', name: 'Token Monitor' },
-                { color: 'bg-accent-purple', name: 'Transaction Flow' },
-                { color: 'bg-white', name: 'Analytics Core' },
-                { color: 'bg-alert-red', name: 'Alert System' },
-                { color: 'bg-purple-700', name: 'AI Processor' },
-                { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
-              ].map((node, index) => (
-                <li key={index}>
-                  <button
-                    onClick={() => focusOnNodeRef.current?.(index, 1)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        focusOnNodeRef.current?.(index, 1);
-                      }
-                    }}
-                    className={`w-full flex items-center gap-2 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyber-cyan rounded px-2 py-1 ${
-                      index === currentNodeIndex ? 'scale-110 ml-2 bg-cyber-cyan/10' : ''
-                    }`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Navigate to ${node.name} node${node.secure ? ' (secure)' : ''}`}
-                    aria-pressed={index === currentNodeIndex}
-                  >
-                    <div className={`w-3 h-3 ${node.color} rounded-sm ${
-                      index === currentNodeIndex ? 'animate-pulse-glow' : ''
-                    }`}></div>
-                    <span className={`${
-                      index === currentNodeIndex 
-                        ? 'text-matrix-300 font-bold' 
-                        : 'text-matrix-400 hover:text-matrix-300'
-                    }`}>
-                      {node.name}
-                    </span>
-                    {node.secure && (
-                      <span className="text-plasma-yellow text-xs ml-1" aria-label="Secure node">🔒</span>
-                    )}
-                  </button>
-                </li>
-              ))}
+              {
+                [
+                  { color: 'bg-matrix-green', name: 'The Nexus', icon: '⬢' }, // Data source
+                  { color: 'bg-quantum-blue', name: 'Token Monitor' },
+                  { color: 'bg-accent-purple', name: 'Transaction Flow' },
+                  { color: 'bg-white', name: 'Analytics Core' },
+                  { color: 'bg-alert-red', name: 'Alert System' },
+                  { color: 'bg-purple-700', name: 'AI Processor' },
+                  { color: 'bg-cyber-cyan', name: 'Account Manager', secure: true }
+                ].map((node, index) => (
+                  <li key={index}>
+                    <button
+                      onClick={() => focusOnNodeRef.current?.(index, 1)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          focusOnNodeRef.current?.(index, 1);
+                        }
+                      }}
+                      className={`w-full flex items-center gap-2 transition-all hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyber-cyan rounded px-2 py-1 ${
+                        index === currentNodeIndex ? 'scale-110 ml-2 bg-cyber-cyan/10' : ''
+                      }`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Navigate to ${node.name} node${node.secure ? ' (secure)' : ''}`}
+                      aria-pressed={index === currentNodeIndex}
+                    >
+                      <div className={`w-3 h-3 ${node.color} rounded-sm ${
+                        index === currentNodeIndex ? 'animate-pulse-glow' : ''
+                      }`}></div>
+                      <span className={`${
+                        index === currentNodeIndex 
+                          ? 'text-matrix-300 font-bold' 
+                          : 'text-matrix-400 hover:text-matrix-300'
+                      }`}>
+                        {node.name}
+                      </span>
+                      {node.secure && (
+                        <span className="text-plasma-yellow text-xs ml-1" aria-label="Secure node">🔒</span>
+                      )}
+                    </button>
+                  </li>
+                ))
+              }
             </ul>
+          </div>
+        )}
+        
+        {/* Current Node Display */}
+        {!isTransitioning && (
+          <div className="absolute top-24 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
+                          animate-in fade-in slide-in-from-left duration-500">
+            <div className="text-green-400 font-mono">
+              <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
+              <div className="text-xl">{nodesRef.current[currentNodeIndex]?.userData.name || 'None'}</div>
+            </div>
+          </div>
+        )}
+        
+        {/* Entry Transition Screen */}
+        {isTransitioning && !isLoading && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+              <div className="text-green-400 font-mono text-2xl mb-4 animate-pulse">
+                INITIALIZING DASHBOARD
+              </div>
+              <div className="text-green-500 font-mono text-sm">
+                PARSING DATA STREAMS...
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Connection Status - Always visible */}
+        {!isTransitioning && (
+          <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
+                          animate-in fade-in slide-in-from-bottom duration-500">
+            <div className="text-green-400 font-mono text-sm space-y-2">
+              <div>STATUS: <span className="text-green-500">ONLINE</span></div>
+              <div>LATENCY: <span className="text-plasma-yellow">~{Math.floor(Math.random() * 50 + 10)}ms</span></div>
+              <div>NODES: <span className="text-quantum-blue">{nodesRef.current.length}/{nodesRef.current.length}</span></div>
+            </div>
+          </div>
+        )}
+        
+        {/* Loading Screen */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center pointer-events-auto">
+            <div className="text-center">
+              <div className="text-green-500 text-6xl mb-8 animate-pulse">⟨⟩</div>
+              <div className="text-green-400 font-mono text-xl mb-4">INITIALIZING MATRIX...</div>
+              <div className="text-green-500 font-mono text-sm">Loading data streams</div>
+            </div>
+          </div>
+        )}
+        
+        {/* Access Denied - Only show if explicitly not super admin AND user is loaded */}
+        {!isSuperAdmin && !isLoading && user && (
+          <div className="absolute inset-0 bg-black/90 flex items-center justify-center pointer-events-auto">
+            <div className="text-center p-8 border-2 border-red-500 bg-black/50">
+              <div className="text-red-500 text-6xl mb-4">⚠</div>
+              <h2 className="text-red-500 font-mono text-2xl mb-4">ACCESS DENIED</h2>
+              <p className="text-gray-400 font-mono mb-4">SUPER_ADMIN clearance required</p>
+              <button onClick={onBack} className="px-6 py-2 bg-red-500/20 border border-red-500 text-red-400 font-mono hover:bg-red-500/30 transition-all">
+                EXIT
+              </button>
+            </div>
           </div>
         )}
         
