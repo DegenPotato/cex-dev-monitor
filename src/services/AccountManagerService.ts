@@ -14,7 +14,7 @@ import {
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const PBKDF2_ITERATIONS = 100000;
 const SALT_LENGTH = 32;
-const TAG_LENGTH = 16;
+// const TAG_LENGTH = 16; // Commented out - only used in decryptData (currently unused)
 const IV_LENGTH = 16;
 
 export class AccountManagerService {
