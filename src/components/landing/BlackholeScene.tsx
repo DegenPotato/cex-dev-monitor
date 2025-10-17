@@ -13,6 +13,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAudio } from '../../contexts/AudioContext';
+import { ExperienceModeToggle } from '../hud/ExperienceModeToggle';
 
 interface BlackholeSceneProps {
     onEnter: (universe?: string) => void;
@@ -1348,10 +1349,26 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
             
-            {/* Agent Status Indicator - Top Right */}
+            {/* System Status & Experience Settings - Always visible, top-right */}
+            {!showAuthBillboard && (
+                <div className="absolute top-8 right-8 pointer-events-auto z-50">
+                    <ExperienceModeToggle 
+                        showSystemStatus={true}
+                        showAudioControls={true}
+                        statusData={{
+                            online: true,
+                            latency: Math.floor(Math.random() * 50 + 10),
+                            nodes: 1,
+                            totalNodes: 1
+                        }}
+                    />
+                </div>
+            )}
+            
+            {/* Agent Status Indicator - Below System Status */}
             {(connected || isAuthenticated) && !showAuthBillboard && (
-                <div className="pointer-events-auto absolute top-8 right-8 bg-black/80 backdrop-blur-md border border-cyan-500/30 
-                               rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.2)] z-50
+                <div className="pointer-events-auto absolute top-64 right-8 bg-black/80 backdrop-blur-md border border-cyan-500/30 
+                               rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.2)] z-40
                                transition-all duration-300 hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
                     {/* Status Header - Clickable to toggle minimize */}
                     <div 

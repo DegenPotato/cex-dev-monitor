@@ -8,6 +8,9 @@ export const YouTubeControls: React.FC = () => {
     currentVideo,
     queue,
     volume,
+    autoplay,
+    loop,
+    distortionEnabled,
     isAuthenticated,
     userEmail,
     play,
@@ -15,6 +18,9 @@ export const YouTubeControls: React.FC = () => {
     skip,
     previous,
     setVolume,
+    toggleAutoplay,
+    toggleLoop,
+    toggleDistortion,
     addToQueue,
     removeFromQueue,
     clearQueue,
@@ -283,6 +289,69 @@ export const YouTubeControls: React.FC = () => {
                          [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-glow-sm
                          [&::-webkit-slider-thumb]:hover:shadow-glow-md [&::-webkit-slider-thumb]:transition-all"
             />
+          </div>
+
+          {/* Playback Options */}
+          <div className="space-y-2 border-t border-gray-700 pt-3">
+            <h5 className="text-xs text-gray-400 font-mono mb-2">Playback Settings</h5>
+            
+            {/* Autoplay Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs text-gray-400">Autoplay</span>
+              <button
+                onClick={toggleAutoplay}
+                className={`
+                  w-12 h-6 rounded-full relative transition-colors
+                  ${autoplay ? 'bg-cyan-500/50' : 'bg-gray-700'}
+                `}
+                aria-label="Toggle autoplay"
+              >
+                <div className={`
+                  absolute top-1 w-4 h-4 bg-white rounded-full transition-transform
+                  ${autoplay ? 'translate-x-6' : 'translate-x-1'}
+                `} />
+              </button>
+            </div>
+
+            {/* Loop Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs text-gray-400">Loop Queue</span>
+              <button
+                onClick={toggleLoop}
+                className={`
+                  w-12 h-6 rounded-full relative transition-colors
+                  ${loop ? 'bg-cyan-500/50' : 'bg-gray-700'}
+                `}
+                aria-label="Toggle loop"
+              >
+                <div className={`
+                  absolute top-1 w-4 h-4 bg-white rounded-full transition-transform
+                  ${loop ? 'translate-x-6' : 'translate-x-1'}
+                `} />
+              </button>
+            </div>
+
+            {/* Distortion Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs text-gray-400">Cosmic Distortion</span>
+              <button
+                onClick={toggleDistortion}
+                className={`
+                  w-12 h-6 rounded-full relative transition-colors
+                  ${distortionEnabled ? 'bg-cyan-500/50' : 'bg-gray-700'}
+                `}
+                aria-label="Toggle distortion effect"
+              >
+                <div className={`
+                  absolute top-1 w-4 h-4 bg-white rounded-full transition-transform
+                  ${distortionEnabled ? 'translate-x-6' : 'translate-x-1'}
+                `} />
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-500 italic mt-2">
+              Note: Distortion may not work on YouTube due to browser restrictions
+            </p>
           </div>
 
           {/* Queue Section */}

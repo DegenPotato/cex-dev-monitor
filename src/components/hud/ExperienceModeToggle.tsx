@@ -3,16 +3,27 @@ import { useExperienceSettings, useReducedMotion } from '../../contexts/Experien
 import { useAudio } from '../../contexts/AudioContext';
 import { YouTubeControls } from './YouTubeControls';
 
+interface StatusData {
+  online: boolean;
+  latency: number;
+  nodes: number;
+  totalNodes: number;
+}
+
 interface ExperienceModeToggleProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   className?: string;
   showAudioControls?: boolean;
+  showSystemStatus?: boolean;
+  statusData?: StatusData;
 }
 
 export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({ 
   position = 'bottom-right',
   className = '',
-  showAudioControls = false
+  showAudioControls = false,
+  showSystemStatus = false,
+  statusData
 }) => {
   const { 
     settings, 
@@ -68,7 +79,27 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
   
   return (
     <div className={`absolute ${positionClasses[position]} pointer-events-auto ${className}`}>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col items-end gap-2">
+        {/* System Status (if enabled) */}
+        {showSystemStatus && statusData && (
+          <div className="glass-dark rounded-lg px-4 py-3 border border-green-500/30">
+            <div className="text-green-400 font-mono text-sm space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs">STATUS:</span>
+                <span className="text-green-500 font-bold">{statusData.online ? 'ONLINE' : 'OFFLINE'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">LATENCY:</span>
+                <span className="text-plasma-yellow font-mono">~{statusData.latency}ms</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">NODES:</span>
+                <span className="text-quantum-blue font-mono">{statusData.nodes}/{statusData.totalNodes}</span>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Main Toggle Button */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}

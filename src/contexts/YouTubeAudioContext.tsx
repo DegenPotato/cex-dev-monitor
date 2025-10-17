@@ -22,6 +22,9 @@ interface YouTubeAudioContextType {
   currentVideo: YouTubeVideo | null;
   queue: YouTubeVideo[];
   volume: number;
+  autoplay: boolean;
+  loop: boolean;
+  distortionEnabled: boolean;
   
   // Auth state
   isAuthenticated: boolean;
@@ -34,6 +37,9 @@ interface YouTubeAudioContextType {
   previous: () => void;
   setVolume: (volume: number) => void;
   seekTo: (seconds: number) => void;
+  toggleAutoplay: () => void;
+  toggleLoop: () => void;
+  toggleDistortion: () => void;
   
   // Queue management
   addToQueue: (video: YouTubeVideo) => void;
@@ -76,6 +82,9 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   const [currentVideo, setCurrentVideo] = useState<YouTubeVideo | null>(null);
   const [queue, setQueue] = useState<YouTubeVideo[]>([]);
   const [volume, setVolumeState] = useState(50);
+  const [autoplay, setAutoplay] = useState(true);
+  const [loop, setLoop] = useState(false);
+  const [distortionEnabled, setDistortionEnabled] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userPlaylists, setUserPlaylists] = useState<YouTubePlaylist[]>([]);
@@ -83,6 +92,13 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   const playerRef = useRef<YT.Player | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   const isLoadingAPIRef = useRef(false);
+  
+  // Web Audio API for distortion
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const filterRef = useRef<BiquadFilterNode | null>(null);
+  const distortionNodeRef = useRef<WaveShaperNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   // YouTube API Key (you'll need to replace this with your own)
   const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
@@ -181,10 +197,82 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     }
   };
 
+  // Create distortion curve (same as AudioContext)
+  const makeDistortionCurve = (amount: number) => {
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+    const deg = Math.PI / 180;
+    
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+      curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+    }
+    
+    return curve;
+  };
+
+  // Setup Web Audio API for distortion
+  const setupAudioProcessing = () => {
+    try {
+      // Get the iframe element
+      const iframe = document.querySelector('#youtube-audio-player iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        console.warn('⚠️ YouTube iframe not found for audio processing');
+        return;
+      }
+
+      // Create audio context if it doesn't exist
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        console.log('✅ AudioContext created for YouTube');
+      }
+
+      const context = audioContextRef.current;
+
+      // Try to get the video element from YouTube player
+      // Note: This will likely fail due to CORS restrictions on YouTube iframes
+      const player = playerRef.current as any;
+      const videoElement = player?.getIframe?.()?.contentWindow?.document?.querySelector('video');
+      
+      if (videoElement && !sourceNodeRef.current) {
+        // Create source node from video element
+        sourceNodeRef.current = context.createMediaElementSource(videoElement);
+        
+        // Create filter node (lowpass)
+        filterRef.current = context.createBiquadFilter();
+        filterRef.current.type = 'lowpass';
+        filterRef.current.frequency.value = distortionEnabled ? 100 : 20000;
+        
+        // Create distortion node
+        distortionNodeRef.current = context.createWaveShaper();
+        distortionNodeRef.current.curve = makeDistortionCurve(distortionEnabled ? 50 : 0);
+        distortionNodeRef.current.oversample = '4x';
+        
+        // Create gain node
+        gainNodeRef.current = context.createGain();
+        gainNodeRef.current.gain.value = volume / 100;
+        
+        // Connect nodes: source -> filter -> distortion -> gain -> destination
+        sourceNodeRef.current.connect(filterRef.current);
+        filterRef.current.connect(distortionNodeRef.current);
+        distortionNodeRef.current.connect(gainNodeRef.current);
+        gainNodeRef.current.connect(context.destination);
+        
+        console.log('✅ Web Audio processing chain set up for YouTube');
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not set up audio processing (CORS restriction):', error);
+      // This is expected due to CORS - YouTube iframe doesn't allow direct audio access
+    }
+  };
+
   // Player event handlers
   const onPlayerReady = (event: YT.PlayerEvent) => {
     console.log('✅ YouTube player ready');
     event.target.setVolume(volume);
+    
+    // Try to setup audio processing (may fail due to CORS)
+    setTimeout(() => setupAudioProcessing(), 1000);
   };
 
   const onPlayerStateChange = (event: YT.OnStateChangeEvent) => {
@@ -202,8 +290,8 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
         break;
       case window.YT.PlayerState.ENDED:
         setIsPlaying(false);
-        console.log('⏹️ YouTube video ended - playing next');
-        playNextInQueue();
+        console.log('⏹️ YouTube video ended');
+        handleVideoEnded();
         break;
       case window.YT.PlayerState.BUFFERING:
         console.log('⏳ YouTube video buffering...');
@@ -302,17 +390,51 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     return playerRef.current?.getPlayerState() ?? -1;
   };
 
+  // Handle video ended with autoplay/loop logic
+  const handleVideoEnded = () => {
+    if (!autoplay) {
+      console.log('⏸️ Autoplay disabled, stopping');
+      return;
+    }
+
+    if (loop && currentVideo) {
+      console.log('🔁 Loop enabled, replaying current video');
+      playerRef.current?.seekTo(0, true);
+      playerRef.current?.playVideo();
+      return;
+    }
+
+    console.log('⏭️ Playing next in queue');
+    playNextInQueue();
+  };
+
   // Queue management
   const playNextInQueue = () => {
     if (queue.length === 0) {
       console.log('📭 Queue empty');
+      
+      // If loop is enabled and we have a current video, add it back to queue
+      if (loop && currentVideo) {
+        console.log('🔁 Loop enabled, restarting queue');
+        setQueue([currentVideo]);
+        playVideo(currentVideo);
+        return;
+      }
+      
       setCurrentVideo(null);
       setIsPlaying(false);
       return;
     }
 
     const nextVideo = queue[0];
-    setQueue(prev => prev.slice(1));
+    
+    // If loop is enabled, add current video back to end of queue
+    if (loop && currentVideo) {
+      setQueue(prev => [...prev.slice(1), currentVideo]);
+    } else {
+      setQueue(prev => prev.slice(1));
+    }
+    
     playVideo(nextVideo);
   };
 
@@ -508,12 +630,46 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     console.log('✅ Signed out');
   };
 
+  // Toggle functions
+  const toggleAutoplay = () => {
+    setAutoplay(prev => {
+      console.log('🔄 Autoplay:', !prev ? 'ON' : 'OFF');
+      return !prev;
+    });
+  };
+
+  const toggleLoop = () => {
+    setLoop(prev => {
+      console.log('🔁 Loop:', !prev ? 'ON' : 'OFF');
+      return !prev;
+    });
+  };
+
+  const toggleDistortion = () => {
+    const newState = !distortionEnabled;
+    setDistortionEnabled(newState);
+    
+    // Update filter and distortion nodes if they exist
+    if (filterRef.current) {
+      filterRef.current.frequency.value = newState ? 100 : 20000;
+    }
+    
+    if (distortionNodeRef.current) {
+      distortionNodeRef.current.curve = makeDistortionCurve(newState ? 50 : 0);
+    }
+    
+    console.log('🎛️ YouTube Distortion:', newState ? 'ON' : 'OFF');
+  };
+
   const value: YouTubeAudioContextType = {
     isYouTubeReady,
     isPlaying,
     currentVideo,
     queue,
     volume,
+    autoplay,
+    loop,
+    distortionEnabled,
     isAuthenticated,
     userEmail,
     play,
@@ -522,6 +678,9 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     previous,
     setVolume,
     seekTo,
+    toggleAutoplay,
+    toggleLoop,
+    toggleDistortion,
     addToQueue,
     removeFromQueue,
     clearQueue,

@@ -790,19 +790,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         
-        {/* Status Panel - Show after transition */}
-        {!isTransitioning && (
-          <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
-                          animate-in fade-in slide-in-from-bottom duration-500">
-            <div className="text-green-400 font-mono text-sm space-y-2">
-              <div>STATUS: <span className="text-green-500">ONLINE</span></div>
-              <div>NODES: <span className="text-green-500">6 ACTIVE</span></div>
-              <div>STREAMS: <span className="text-green-500">CONNECTED</span></div>
-              <div>USER: <span className="text-green-500">{user?.username?.toUpperCase() || 'UNKNOWN'}</span></div>
-            </div>
-          </div>
-        )}
-        
         {/* Navigation Controls Info - Show after transition */}
         {!isTransitioning && (
           <div className="absolute bottom-8 right-8 bg-black/80 border border-green-500/30 rounded p-4
@@ -948,17 +935,18 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Connection Status - Always visible */}
-        {!isTransitioning && (
-          <div className="absolute bottom-8 left-8 bg-black/80 border border-green-500/30 rounded p-4 pointer-events-auto
-                          animate-in fade-in slide-in-from-bottom duration-500">
-            <div className="text-green-400 font-mono text-sm space-y-2">
-              <div>STATUS: <span className="text-green-500">ONLINE</span></div>
-              <div>LATENCY: <span className="text-plasma-yellow">~{Math.floor(Math.random() * 50 + 10)}ms</span></div>
-              <div>NODES: <span className="text-quantum-blue">{nodesRef.current.length}/{nodesRef.current.length}</span></div>
-            </div>
-          </div>
-        )}
+        {/* System Status & Experience Settings - Always visible, top-right */}
+        <div className="absolute top-8 right-8 pointer-events-auto z-50">
+          <ExperienceModeToggle 
+            showSystemStatus={true}
+            statusData={{
+              online: true,
+              latency: Math.floor(Math.random() * 50 + 10),
+              nodes: nodesRef.current.length,
+              totalNodes: nodesRef.current.length
+            }}
+          />
+        </div>
         
         {/* Access Denied - Only show if explicitly not super admin AND user is loaded */}
         {!isSuperAdmin && !isLoading && user && (
