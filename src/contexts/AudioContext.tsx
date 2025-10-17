@@ -186,15 +186,20 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
 
   // Initialize audio system
   const initializeAudio = async () => {
-    if (isInitializedRef.current) {
+    // Strong guard - check both flag and actual refs
+    if (isInitializedRef.current || soundRef.current || listenerRef.current) {
       console.log('🎵 Audio already initialized - preventing duplicate');
       console.log('🎵 Current state:', {
         isPlaying: soundRef.current?.isPlaying,
+        hasListener: !!listenerRef.current,
+        hasSound: !!soundRef.current,
         currentTrack: playlistRef.current[currentTrackIndexRef.current]
       });
       return;
     }
 
+    // Set flag immediately to prevent race conditions
+    isInitializedRef.current = true;
     console.log('🎵 Initializing global audio system (first time)');
     
     const listener = new THREE.AudioListener();
@@ -217,7 +222,7 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
     
     // Load first track and auto-play
     loadTrack(0, true); // Pass true to auto-play when loaded
-    isInitializedRef.current = true;
+    // Flag already set at the start of this function to prevent race conditions
   };
 
   // Toggle play/pause

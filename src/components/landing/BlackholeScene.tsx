@@ -491,8 +491,15 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
     const handleEnterClick = useCallback(() => {
         if(isTransitioning) return;
+        
+        // Initialize audio on first user interaction (essential for browser autoplay policies)
+        console.log('🎵 User interaction detected - initializing audio...');
+        initializeAudio().catch(err => {
+            console.error('❌ Failed to initialize audio:', err);
+        });
+        
         setIsTransitioning(true);
-    }, [isTransitioning]);
+    }, [isTransitioning, initializeAudio]);
 
     const toggleFullscreen = useCallback(() => {
         if (!document.fullscreenElement) {
@@ -500,12 +507,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             document.documentElement.requestFullscreen().then(() => {
                 setIsFullscreen(true);
                 console.log('🖥️ Entered fullscreen mode');
-                
-                // TRIGGER AUDIO PLAYBACK (Essential for VR!)
-                console.log('🎵 Initializing global audio system...');
-                initializeAudio().catch(err => {
-                    console.error('❌ Failed to initialize audio:', err);
-                });
+                // Audio is already initialized on ENTER button click
             }).catch((err) => {
                 console.error('❌ Failed to enter fullscreen:', err);
             });
