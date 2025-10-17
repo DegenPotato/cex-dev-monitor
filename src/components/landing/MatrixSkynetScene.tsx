@@ -6,6 +6,9 @@
 import { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { useAuth } from '../../contexts/AuthContext';
 import { gsap } from 'gsap';
 
@@ -20,6 +23,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const singularityRef = useRef<THREE.Group>();
   const nodesRef = useRef<THREE.Mesh[]>([]);
   const dataStreamsRef = useRef<THREE.Line[]>([]);
+  const composerRef = useRef<EffectComposer>();
+  const matrixRainRef = useRef<THREE.Points>();
+  const whiteHoleRef = useRef<THREE.Group>();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(true);
@@ -56,6 +62,21 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     rendererRef.current = renderer;
     mountRef.current.appendChild(renderer.domElement);
     
+    // Post-processing for bloom effect
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // Bloom for glowing effects
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.5,  // strength
+      0.4,  // radius
+      0.85  // threshold
+    );
+    composer.addPass(bloomPass);
+    composerRef.current = composer;
+    
     // OrbitControls for free navigation
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -65,37 +86,142 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     controls.enabled = false; // Disabled during entry animation
     controlsRef.current = controls;
     
-    // Create WHITE HOLE at center (where we emerge from)
+    // Create ENHANCED WHITE HOLE with custom shader
     const createWhiteHole = () => {
       const group = new THREE.Group();
       
-      // White hole glow
-      const glowGeometry = new THREE.SphereGeometry(1.5, 32, 32);
-      const glowMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.9,
-        emissive: 0xffffff,
-        emissiveIntensity: 2
-      });
-      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-      group.add(glow);
+      // Custom shader for white hole with energy distortion
+      const whiteHoleShader = {
+        uniforms: {
+          time: { value: 0 },
+          color: { value: new THREE.Color(0xffffff) },
+          glowColor: { value: new THREE.Color(0x00ffff) }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vPosition;
+          uniform float time;
+          
+          void main() {
+            vUv = uv;
+            vPosition = position;
+            
+            // Pulsating effect
+            vec3 pos = position;
+            float pulse = sin(time * 2.0) * 0.1 + 1.0;
+            pos *= pulse;
+            
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float time;
+          uniform vec3 color;
+          uniform vec3 glowColor;
+          varying vec2 vUv;
+          varying vec3 vPosition;
+          
+          void main() {
+            // Distance from center
+            float dist = length(vUv - 0.5);
+            
+            // Create energy rings
+            float rings = sin(dist * 20.0 - time * 3.0) * 0.5 + 0.5;
+            
+            // Radial gradient
+            float radial = 1.0 - dist * 2.0;
+            radial = pow(radial, 2.0);
+            
+            // Swirling effect
+            float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+            float swirl = sin(angle * 8.0 + time * 2.0) * 0.5 + 0.5;
+            
+            // Combine effects
+            vec3 finalColor = mix(color, glowColor, swirl * 0.3);
+            float alpha = radial * (0.8 + rings * 0.2);
+            
+            gl_FragColor = vec4(finalColor, alpha);
+          }
+        `
+      };
       
-      // Outer ring
-      const ringGeometry = new THREE.TorusGeometry(2, 0.2, 16, 100);
-      const ringMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00ffff,
+      // White hole core with shader
+      const coreGeometry = new THREE.SphereGeometry(2, 64, 64);
+      const coreMaterial = new THREE.ShaderMaterial({
+        uniforms: whiteHoleShader.uniforms,
+        vertexShader: whiteHoleShader.vertexShader,
+        fragmentShader: whiteHoleShader.fragmentShader,
         transparent: true,
-        opacity: 0.8
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
       });
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      group.add(ring);
+      const core = new THREE.Mesh(coreGeometry, coreMaterial);
+      group.add(core);
+      
+      // Particle vortex around white hole
+      const particleCount = 3000;
+      const particleGeometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const colors = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 2 + Math.random() * 3;
+        const height = (Math.random() - 0.5) * 2;
+        
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = height;
+        positions[i * 3 + 2] = Math.sin(angle) * radius;
+        
+        // White to cyan gradient
+        const colorMix = Math.random();
+        colors[i * 3] = colorMix;
+        colors[i * 3 + 1] = 1.0;
+        colors[i * 3 + 2] = 1.0;
+        
+        sizes[i] = Math.random() * 3 + 1;
+      }
+      
+      particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      
+      const particleMaterial = new THREE.PointsMaterial({
+        size: 0.1,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
+      });
+      
+      const particles = new THREE.Points(particleGeometry, particleMaterial);
+      group.add(particles);
+      
+      // Energy rings
+      for (let i = 0; i < 3; i++) {
+        const ringGeometry = new THREE.TorusGeometry(2.5 + i * 0.5, 0.05, 16, 100);
+        const ringMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0x00ffff).lerp(new THREE.Color(0xffffff), i * 0.3),
+          transparent: true,
+          opacity: 0.6 - i * 0.15,
+          emissive: 0x00ffff,
+          emissiveIntensity: 0.5
+        });
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+        ring.rotation.y = Math.random() * Math.PI;
+        ring.userData.rotationSpeed = 0.5 + Math.random() * 0.5;
+        group.add(ring);
+      }
       
       return group;
     };
     
     const whiteHole = createWhiteHole();
     whiteHole.position.set(0, 0, 0);
+    whiteHoleRef.current = whiteHole;
     scene.add(whiteHole);
     
     // Lighting
@@ -212,22 +338,43 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     const dataStreams: THREE.Line[] = [];
     dataStreamsRef.current = dataStreams;
     
-    // Matrix rain background
+    // MATRIX DIGITAL RAIN - Falling code effect
     const createMatrixRain = () => {
-      const geometry = new THREE.PlaneGeometry(100, 100);
-      const material = new THREE.MeshBasicMaterial({
-        color: 0x003300,
+      const rainCount = 1000;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(rainCount * 3);
+      const velocities = new Float32Array(rainCount);
+      const sizes = new Float32Array(rainCount);
+      
+      for (let i = 0; i < rainCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 100;
+        positions[i * 3 + 1] = Math.random() * 100 - 50;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+        
+        velocities[i] = Math.random() * 0.3 + 0.1;
+        sizes[i] = Math.random() * 2 + 1;
+      }
+      
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 1));
+      geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      
+      const material = new THREE.PointsMaterial({
+        color: 0x00ff00,
+        size: 0.3,
         transparent: true,
-        opacity: 0.1,
-        side: THREE.DoubleSide
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true
       });
-      const rain = new THREE.Mesh(geometry, material);
-      rain.position.z = -30;
+      
+      const rain = new THREE.Points(geometry, material);
       return rain;
     };
     
     const matrixRain = createMatrixRain();
     matrixRain.visible = false; // Start hidden
+    matrixRainRef.current = matrixRain;
     scene.add(matrixRain);
     
     // EMERGENCE ANIMATION - User emerges from white hole
@@ -353,10 +500,63 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       animationIdRef.current = requestAnimationFrame(animate);
       
       const elapsedTime = clockRef.current.getElapsedTime();
+      const delta = clockRef.current.getDelta();
       
       // Update controls
       if (controls.enabled) {
         controls.update();
+      }
+      
+      // Animate WHITE HOLE shader and effects
+      if (whiteHoleRef.current) {
+        // Update shader time uniform
+        const core = whiteHoleRef.current.children[0] as THREE.Mesh;
+        if (core && core.material && 'uniforms' in core.material) {
+          (core.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
+        }
+        
+        // Rotate particle vortex
+        const particles = whiteHoleRef.current.children[1] as THREE.Points;
+        if (particles) {
+          particles.rotation.y = elapsedTime * 0.3;
+          
+          // Animate particle positions in spiral
+          const positions = particles.geometry.attributes.position.array as Float32Array;
+          for (let i = 0; i < positions.length; i += 3) {
+            const angle = (i / positions.length) * Math.PI * 2 + elapsedTime * 0.5;
+            const radius = 2 + Math.sin(elapsedTime + i * 0.1) * 0.5;
+            positions[i] = Math.cos(angle) * radius;
+            positions[i + 2] = Math.sin(angle) * radius;
+          }
+          particles.geometry.attributes.position.needsUpdate = true;
+        }
+        
+        // Rotate energy rings
+        for (let i = 2; i < whiteHoleRef.current.children.length; i++) {
+          const ring = whiteHoleRef.current.children[i] as THREE.Mesh;
+          if (ring) {
+            ring.rotation.z += delta * ring.userData.rotationSpeed;
+          }
+        }
+      }
+      
+      // Animate MATRIX DIGITAL RAIN
+      if (matrixRainRef.current && matrixRainRef.current.visible) {
+        const positions = matrixRainRef.current.geometry.attributes.position.array as Float32Array;
+        const velocities = matrixRainRef.current.geometry.attributes.velocity.array as Float32Array;
+        
+        for (let i = 0; i < positions.length; i += 3) {
+          // Move particles down
+          positions[i + 1] -= velocities[i / 3] * 2;
+          
+          // Reset to top when reaching bottom
+          if (positions[i + 1] < -50) {
+            positions[i + 1] = 50;
+            positions[i] = (Math.random() - 0.5) * 100;
+            positions[i + 2] = (Math.random() - 0.5) * 100;
+          }
+        }
+        matrixRainRef.current.geometry.attributes.position.needsUpdate = true;
       }
       
       // Rotate singularity
@@ -382,12 +582,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         });
       }
       
-      // White hole rotation
-      if (whiteHole) {
-        whiteHole.rotation.z = elapsedTime * 0.5;
+      // Render with post-processing
+      if (composerRef.current) {
+        composerRef.current.render();
       }
-      
-      renderer.render(scene, camera);
     };
     
     // Start emergence animation after a short delay
@@ -408,6 +606,11 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       camera.updateProjectionMatrix();
       
       renderer.setSize(width, height);
+      
+      // Update composer size
+      if (composerRef.current) {
+        composerRef.current.setSize(width, height);
+      }
     };
     
     window.addEventListener('resize', handleResize);
@@ -431,6 +634,32 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   
   return (
     <div ref={mountRef} className="fixed inset-0 w-full h-full">
+      {/* Matrix CRT Scan Line Effect */}
+      <div className="absolute inset-0 pointer-events-none z-[60]">
+        <div 
+          className="absolute inset-0 opacity-10"
+          style={{
+            background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 0, 0.03) 2px, rgba(0, 255, 0, 0.03) 4px)',
+            animation: 'scan 8s linear infinite'
+          }}
+        />
+        <div 
+          className="absolute inset-0 opacity-5"
+          style={{
+            background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.3) 100%)',
+          }}
+        />
+      </div>
+      
+      {/* Glitch Effect Overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none z-[61] mix-blend-screen opacity-20"
+        style={{
+          background: 'linear-gradient(90deg, transparent, rgba(0, 255, 0, 0.1), transparent)',
+          animation: 'glitch 5s steps(2, end) infinite'
+        }}
+      />
+      
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         {/* Back Button - Only show after transition */}
@@ -445,15 +674,36 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </button>
         )}
         
-        {/* Title */}
+        {/* Title with Matrix Glitch Effect */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center">
-          <h1 className="text-4xl font-bold text-green-500 font-mono tracking-wider 
-                         animate-pulse drop-shadow-[0_0_10px_rgba(0,255,0,0.5)]">
-            MATRIX SKYNET
-          </h1>
-          <p className="text-green-400 font-mono text-sm mt-2">
-            SUPER ADMIN COMMAND CENTER
+          <div className="relative">
+            <h1 className="text-5xl font-bold text-green-500 font-mono tracking-[0.3em] 
+                           drop-shadow-[0_0_20px_rgba(0,255,0,0.8)]"
+                style={{ animation: 'flicker 3s infinite' }}>
+              MATRIX SKYNET
+            </h1>
+            {/* Glitch shadow layers */}
+            <h1 className="absolute top-0 left-0 text-5xl font-bold text-cyan-400 font-mono tracking-[0.3em] opacity-30"
+                style={{ 
+                  animation: 'glitch 2s infinite',
+                  clipPath: 'polygon(0 0, 100% 0, 100% 45%, 0 45%)'
+                }}>
+              MATRIX SKYNET
+            </h1>
+            <h1 className="absolute top-0 left-0 text-5xl font-bold text-red-400 font-mono tracking-[0.3em] opacity-30"
+                style={{ 
+                  animation: 'glitch 1.5s infinite reverse',
+                  clipPath: 'polygon(0 55%, 100% 55%, 100% 100%, 0 100%)'
+                }}>
+              MATRIX SKYNET
+            </h1>
+          </div>
+          <p className="text-green-400 font-mono text-xs mt-3 tracking-widest opacity-80">
+            ⟨ SUPER ADMIN COMMAND CENTER ⟩
           </p>
+          <div className="text-green-500 font-mono text-xs mt-1 opacity-60">
+            [ NEURAL NETWORK ACTIVE ]
+          </div>
         </div>
         
         {/* Status Panel - Show after transition */}
@@ -564,6 +814,26 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+      
+      {/* Matrix Animation Styles */}
+      <style>{`
+        @keyframes scan {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100%); }
+        }
+        
+        @keyframes glitch {
+          0%, 90%, 100% { transform: translateX(0); }
+          92% { transform: translateX(-2px); }
+          94% { transform: translateX(2px); }
+          96% { transform: translateX(-1px); }
+        }
+        
+        @keyframes flicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
     </div>
   );
 }
