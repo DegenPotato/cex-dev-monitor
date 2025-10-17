@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useExperienceSettings, useReducedMotion } from '../../contexts/ExperienceSettingsContext';
 import { useAudio } from '../../contexts/AudioContext';
+import { YouTubeControls } from './YouTubeControls';
 
 interface ExperienceModeToggleProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -26,6 +27,8 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
   // Audio controls
   const audioContext = showAudioControls ? useAudio() : null;
   const {
+    audioSource,
+    setAudioSource,
     isPlaying,
     volume,
     distortionEnabled,
@@ -140,8 +143,43 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
               <div className="border-t border-gray-700 pt-3 space-y-3">
                 <h4 className="font-mono text-sm text-cyan-400 mb-2">🎵 Audio</h4>
                 
-                {/* Track Info */}
-                {currentTrack && (
+                {/* Audio Source Toggle */}
+                <div className="space-y-2">
+                  <label className="block text-xs text-gray-400 font-mono mb-2">Source</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setAudioSource?.('local')}
+                      className={`
+                        px-3 py-2 rounded-lg font-mono text-xs transition-all
+                        ${audioSource === 'local'
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                          : 'bg-gray-800/50 text-gray-400 border border-gray-600/30 hover:bg-gray-700/50'
+                        }
+                      `}
+                    >
+                      💿 Local MP3s
+                    </button>
+                    <button
+                      onClick={() => setAudioSource?.('youtube')}
+                      className={`
+                        px-3 py-2 rounded-lg font-mono text-xs transition-all
+                        ${audioSource === 'youtube'
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                          : 'bg-gray-800/50 text-gray-400 border border-gray-600/30 hover:bg-gray-700/50'
+                        }
+                      `}
+                    >
+                      📺 YouTube
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Conditional Rendering based on Audio Source */}
+                {audioSource === 'local' ? (
+                  /* Local MP3 Controls */
+                  <>
+                    {/* Track Info */}
+                    {currentTrack && (
                   <div className="flex items-center gap-2 mb-2 text-xs text-cyan-300 font-mono">
                     <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                     <span className="truncate max-w-[200px]">{currentTrack}</span>
@@ -228,6 +266,11 @@ export const ExperienceModeToggle: React.FC<ExperienceModeToggleProps> = ({
                     `} />
                   </button>
                 </div>
+                  </>
+                ) : (
+                  /* YouTube Controls */
+                  <YouTubeControls />
+                )}
               </div>
             )}
             

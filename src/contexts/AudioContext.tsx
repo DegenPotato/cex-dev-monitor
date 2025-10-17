@@ -1,11 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import * as THREE from 'three';
 
+export type AudioSource = 'local' | 'youtube';
+
 interface AudioContextType {
+  // Source selection
+  audioSource: AudioSource;
+  setAudioSource: (source: AudioSource) => void;
+  
+  // Playback state
   isPlaying: boolean;
   volume: number;
   distortionEnabled: boolean;
   currentTrack: string;
+  
+  // Controls
   togglePlayPause: () => void;
   setVolume: (volume: number) => void;
   toggleDistortion: () => void;
@@ -30,6 +39,7 @@ interface AudioProviderProps {
 }
 
 export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
+  const [audioSource, setAudioSource] = useState<AudioSource>('local');
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(2.0);
   const [distortionEnabled, setDistortionEnabled] = useState(true);
@@ -305,6 +315,8 @@ export const AudioProvider: React.FC<AudioProviderProps> = ({ children }) => {
 
   return (
     <AudioContext.Provider value={{
+      audioSource,
+      setAudioSource,
       isPlaying,
       volume,
       distortionEnabled,

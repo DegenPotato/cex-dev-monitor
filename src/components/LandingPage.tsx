@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { BlackholeScene } from './landing/BlackholeScene';
 import { SolarSystemScene } from './landing/SolarSystemScene';
+import { MatrixSkynetScene } from './landing/MatrixSkynetScene';
 import { Dashboard } from './Dashboard';
 import { useAuth } from '../contexts/AuthContext';
-
-// Lazy load Matrix scene to avoid import errors
-import { MatrixSkynetScene } from './landing/MatrixSkynetScene';
 
 export function LandingPage() {
   const { user } = useAuth();

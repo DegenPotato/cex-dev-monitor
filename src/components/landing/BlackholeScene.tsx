@@ -455,8 +455,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isQuantumTunneling, setIsQuantumTunneling] = useState(false);
     const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
-    const soundRef = useRef<THREE.PositionalAudio | null>(null);
-    const audioAnalyzerRef = useRef<THREE.AudioAnalyser | null>(null);
     const velocities = useRef<THREE.Vector3[]>([]);
     
     // Wallet & Auth
@@ -470,10 +468,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     // Universe Selection State
     const [selectedUniverse, setSelectedUniverse] = useState<string | null>(null);
     
-    // Audio playlist management
-    const playlistRef = useRef<string[]>([]);
-    const currentTrackIndexRef = useRef(0);
-    
     // Refs to store Three.js objects for reverse animation
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const controlsRef = useRef<any>(null);
@@ -486,7 +480,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const lensingPassRef = useRef<any>(null);
     const chromaticAberrationPassRef = useRef<any>(null);
     const whiteHolePassRef = useRef<any>(null);
-    const playAudioRef = useRef<(() => void) | null>(null);
 
 
     const handleEnterClick = useCallback(() => {
@@ -563,186 +556,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         };
     }, []);
     
-    // Audio setup - separate effect that only runs ONCE on mount
-    useEffect(() => {
-        console.log('🎵 Initializing audio system (runs once)');
-        
-        const listener = new THREE.AudioListener();
-        const sound = new THREE.PositionalAudio(listener);
-        soundRef.current = sound;
-        
-        // Create audio analyzer for frequency data
-        const audioAnalyzer = new THREE.AudioAnalyser(sound, 256);
-        audioAnalyzerRef.current = audioAnalyzer;
-        
-        // AUDIO PLAYLIST - Randomized on every refresh
-        // Add all your audio files here (make sure they're in /public folder)
-        const audioFiles = [
-            '/blackHole.mp3',
-            '/blackHole2.mp3',  // Replace with actual filenames
-            '/blackHole3.mp3',  // Replace with actual filenames
-            '/blackHole4.mp3',  // Replace with actual filenames
-        ];
-        
-        // Shuffle playlist (Fisher-Yates algorithm)
-        const shufflePlaylist = (arr: string[]) => {
-            const shuffled = [...arr];
-            for (let i = shuffled.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-            return shuffled;
-        };
-        
-        playlistRef.current = shufflePlaylist(audioFiles);
-        console.log('🎵 Playlist shuffled:', playlistRef.current);
-        
-        const audioLoader = new THREE.AudioLoader();
-        let audioLoaded = false;
-        let shouldAutoPlay = false; // Track if we should auto-play after loading
-        
-        // Reference to track if we're already advancing (prevent double-triggers)
-        let isAdvancingTrack = false;
-        
-        // Function to advance to next track (for playlist looping)
-        const playNextTrack = () => {
-            // Prevent multiple simultaneous track advances
-            if (isAdvancingTrack) {
-                console.log('⚠️ Already advancing track, skipping...');
-                return;
-            }
-            
-            isAdvancingTrack = true;
-            console.log('🎵 Track ended, advancing to next...');
-            
-            // Stop current sound completely
-            if (sound.isPlaying) {
-                sound.stop();
-            }
-            
-            // Clear old source node and its listeners
-            if (sound.source) {
-                sound.source.onended = null;
-                sound.source = null;
-            }
-            
-            currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % playlistRef.current.length;
-            
-            // If we completed the playlist, reshuffle for variety
-            if (currentTrackIndexRef.current === 0) {
-                console.log('🔄 Playlist complete! Reshuffling and looping...');
-                playlistRef.current = shufflePlaylist(audioFiles);
-            }
-            
-            // Load next track and auto-play it
-            setTimeout(() => {
-                loadTrack(currentTrackIndexRef.current, true);
-                isAdvancingTrack = false;
-            }, 100);
-        };
-        
-        // Load and play a track from the playlist
-        const loadTrack = (trackIndex: number, autoPlay = false) => {
-            const trackPath = playlistRef.current[trackIndex];
-            console.log(`🎵 Loading track ${trackIndex + 1}/${playlistRef.current.length}: ${trackPath}`);
-            
-            // Stop any currently playing sound
-            if (sound.isPlaying) {
-                sound.stop();
-            }
-            
-            shouldAutoPlay = autoPlay;
-            
-            audioLoader.load(trackPath, function(buffer) {
-                sound.setBuffer(buffer);
-                sound.setLoop(false); // No loop - we'll handle playlist advancement
-                sound.setVolume(2.0);
-                sound.setRefDistance(10);
-                sound.setRolloffFactor(2.0);
-                
-                // Apply lowpass filter for space/underwater effect
-                if (sound.context.state === 'running' || sound.context.state === 'suspended') {
-                    const filter = sound.context.createBiquadFilter();
-                    filter.type = 'lowpass';
-                    filter.frequency.value = 100;
-                    sound.setFilter(filter);
-                }
-                
-                audioLoaded = true;
-                console.log('🔊 Audio loaded and ready to play');
-                
-                // Auto-play if requested (happens when advancing playlist)
-                if (shouldAutoPlay && listener.context.state === 'running') {
-                    console.log('▶️ Auto-playing next track');
-                    sound.play();
-                    
-                    // Attach ended listener AFTER play creates the source node
-                    setTimeout(() => {
-                        if (sound.source) {
-                            sound.source.onended = playNextTrack;
-                            console.log('✅ Track end listener attached to new source');
-                        }
-                    }, 100);
-                }
-            });
-        };
-        
-        // Load first track
-        loadTrack(0);
-        
-        // Setup audio playback on user interaction (mobile/VR compatible)
-        const playAudio = async () => {
-            try {
-                // Resume audio context if suspended (required for mobile)
-                if (listener.context.state === 'suspended') {
-                    await listener.context.resume();
-                    console.log('🔊 Audio context resumed');
-                }
-                
-                // Play audio if loaded and not already playing
-                if (sound && audioLoaded && !sound.isPlaying) {
-                    sound.play();
-                    console.log('▶️ Audio playback started');
-                    
-                    // Attach track end listener after first play
-                    setTimeout(() => {
-                        if (sound.source && sound.source.onended !== playNextTrack) {
-                            sound.source.onended = playNextTrack;
-                            console.log('✅ Playlist loop enabled - track end listener active');
-                        }
-                    }, 100);
-                    
-                    // Remove all event listeners after successful playback
-                    removeAudioEvents();
-                }
-            } catch (error) {
-                console.warn('⚠️ Audio playback failed:', error);
-            }
-        };
-        
-        // Remove all audio trigger events
-        const removeAudioEvents = () => {
-            window.removeEventListener('click', playAudio);
-            window.removeEventListener('touchstart', playAudio);
-            window.removeEventListener('pointerdown', playAudio);
-            window.removeEventListener('keydown', playAudio);
-        };
-        
-        playAudioRef.current = playAudio;
-        
-        // Add multiple event types for better mobile/VR compatibility
-        window.addEventListener('click', playAudio);
-        window.addEventListener('touchstart', playAudio, { passive: true });
-        window.addEventListener('pointerdown', playAudio);
-        window.addEventListener('keydown', playAudio);
-        
-        console.log('🎧 Audio triggers registered (click, touch, pointer, keyboard)');
-        
-        // Cleanup only removes event listeners, does NOT stop audio
-        return () => {
-            removeAudioEvents();
-        };
-    }, []); // Only runs once on mount
+    // Audio is now handled by global AudioContext (src/contexts/AudioContext.tsx)
+    // It's initialized on ENTER button click to comply with browser autoplay policies
     
     // Main scene setup
     useEffect(() => {
@@ -783,12 +598,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
             console.log('🌌 HDRI disabled - using black background with particle stars');
         }
         
-        // Add audio listener to camera if audio is initialized
-        if (soundRef.current) {
-            const listener = soundRef.current.listener;
-            camera.add(listener);
-        }
-
+        // Audio is handled by global AudioContext - no need to add listener to camera
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -819,9 +630,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         const blackHoleGeometry = new THREE.SphereGeometry(1.5, 64, 64);
         const blackHoleMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const blackHole = new THREE.Mesh(blackHoleGeometry, blackHoleMaterial);
-        if (soundRef.current) {
-            blackHole.add(soundRef.current);
-        }
+        // Audio is handled by global AudioContext - no positional audio attachment needed
         scene.add(blackHole);
         
         const diskVertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
@@ -1236,21 +1045,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
             // Mascot animations removed (mascot temporarily disabled)
 
-            // Audio reactivity - Enhanced responsiveness
+            // Audio reactivity - Using global AudioContext (no local audio analysis for now)
+            // Visual effects still work without audio (default animations)
             let bass = 0, mid = 0, treble = 0;
-            if (soundRef.current?.isPlaying && audioAnalyzerRef.current) {
-                const frequencyData = audioAnalyzerRef.current.getFrequencyData();
-                
-                // Extract frequency ranges (0-255 values)
-                // Bass: 20-250 Hz (roughly indices 0-32)
-                bass = frequencyData.slice(0, 32).reduce((a: number, b: number) => a + b, 0) / (32 * 255);
-                
-                // Mid: 250-2000 Hz (indices 32-128)
-                mid = frequencyData.slice(32, 128).reduce((a: number, b: number) => a + b, 0) / (96 * 255);
-                
-                // Treble: 2000+ Hz (indices 128-256)
-                treble = frequencyData.slice(128, 256).reduce((a: number, b: number) => a + b, 0) / (128 * 255);
-            }
+            // TODO: Integrate global AudioContext analyzer for visual reactivity if needed
 
             // ENHANCED DISK RESPONSIVENESS
             
@@ -1379,11 +1177,8 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 controls.update();
             }
 
-            // Bloom responds to overall audio energy (gentle, not overwhelming)
-            if (soundRef.current?.isPlaying) {
-                const avgEnergy = (bass + mid + treble) / 3;
-                bloomPass.strength = 0.4 + avgEnergy * 1.2; // Gentle bloom: 0.4-1.6 (eye-friendly!)
-            }
+            // Bloom with gentle pulsing (audio reactivity removed for now)
+            bloomPass.strength = 0.4 + Math.sin(elapsedTime * 0.5) * 0.2; // Gentle bloom: 0.2-0.6
             
             // Update quantum barrier uniforms
             if (barrierMaterialRef.current && barrierMaterialRef.current.uniforms.uTime) {
@@ -1431,24 +1226,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                     controls.enabled = true;
                     console.log('🎮 Controls enabled - you can now rotate around the vortex!');
                     
-                    // Restore audio volume and filter to normal
-                    if (soundRef.current && soundRef.current.context.state === 'running') {
-                        const volumeObj = { vol: soundRef.current.getVolume() };
-                        gsap.to(volumeObj, { 
-                            vol: 1.0, 
-                            duration: 1.0, 
-                            ease: 'power2.out',
-                            onUpdate: () => { soundRef.current?.setVolume(volumeObj.vol); }
-                        });
-                        
-                        // Restore filter frequency back to 100 Hz (space ambient)
-                        const currentFilter = soundRef.current.getFilter();
-                        if (currentFilter && currentFilter instanceof BiquadFilterNode) {
-                            gsap.to(currentFilter.frequency, { value: 100, duration: 1.0, ease: 'power2.out' });
-                        }
-                        
-                        console.log('🔊 Audio restored to normal volume and filter');
-                    }
+                    // Audio is handled by global AudioContext - no local control needed
                     
                     // Show React auth UI overlay
                     // Always show the billboard, but content will vary based on auth state
