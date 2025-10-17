@@ -30,6 +30,11 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [currentNodeIndex, setCurrentNodeIndex] = useState(0);
+  const [showAccountManager, setShowAccountManager] = useState(false);
+  
+  // Node navigation functions (moved outside useEffect for accessibility)
+  const focusOnNodeRef = useRef<(nodeIndex: number, duration?: number) => void>();
+  const navigateNodeRef = useRef<(direction: 'next' | 'prev') => void>();
   
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
@@ -374,34 +379,34 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     
     const singularity = createCore();
     singularityRef.current = singularity;
-    singularity.scale.set(0, 0, 0); // Start hidden
-    singularity.position.set(0, 0, 0); // At white hole center
     scene.add(singularity);
     
-    // Create neural nodes
-    const nodeColors = [0x00ff00, 0x0088ff, 0xff00ff, 0xffffff, 0xff0000, 0x8800ff];
-    const nodePositions = [
-      new THREE.Vector3(10, 0, 0),
-      new THREE.Vector3(-10, 0, 0),
-      new THREE.Vector3(0, 0, 10),
-      new THREE.Vector3(0, 0, -10),
-      new THREE.Vector3(7, 7, 7),
-      new THREE.Vector3(-7, -7, -7)
+    // Create NEURAL NETWORK NODES
+    const nodeConfigs = [
+      { name: 'Wallet Tracker', color: 0x00ff00, position: new THREE.Vector3(0, 0, 0) },
+      { name: 'Token Monitor', color: 0x00ffff, position: new THREE.Vector3(10, 5, -5) },
+      { name: 'Transaction Flow', color: 0xff00ff, position: new THREE.Vector3(-10, 3, 5) },
+      { name: 'Analytics Core', color: 0xffffff, position: new THREE.Vector3(5, -5, 10) },
+      { name: 'Alert System', color: 0xff0000, position: new THREE.Vector3(-5, 8, -10) },
+      { name: 'AI Processor', color: 0x9900ff, position: new THREE.Vector3(0, -8, 0) },
+      { name: 'Account Manager', color: 0x00ff99, position: new THREE.Vector3(12, 0, 8) } // New secure node
     ];
     
     const nodes: THREE.Mesh[] = [];
-    nodeColors.forEach((color, index) => {
-      const geometry = new THREE.OctahedronGeometry(1, 0);
+    
+    nodeConfigs.forEach((config) => {
+      const geometry = new THREE.OctahedronGeometry(1.5);
       const material = new THREE.MeshPhongMaterial({
-        color,
-        emissive: color,
+        color: config.color,
+        emissive: config.color,
         emissiveIntensity: 0.3,
         wireframe: true
       });
       const node = new THREE.Mesh(geometry, material);
       node.position.set(0, 0, 0); // Start at center
       node.scale.set(0, 0, 0); // Start hidden
-      node.userData.targetPosition = nodePositions[index]; // Store target position
+      node.userData.targetPosition = config.position; // Store target position
+      node.userData.name = config.name;
       scene.add(node);
       nodes.push(node);
     });
@@ -417,6 +422,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       
       const node = nodesRef.current[nodeIndex];
       currentNodeRef.current = nodeIndex;
+      setCurrentNodeIndex(nodeIndex);
+      
+      // Show Account Manager interface when node 6 is selected
+      setShowAccountManager(nodeIndex === 6);
       
       // Update OrbitControls target to the node position
       gsap.to(controlsRef.current.target, {
@@ -458,9 +467,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       } else {
         newIndex = (newIndex - 1 + nodesRef.current.length) % nodesRef.current.length;
       }
-      setCurrentNodeIndex(newIndex);
       focusOnNode(newIndex);
     };
+    
+    // Store functions in refs for keyboard handler access
+    focusOnNodeRef.current = focusOnNode;
+    navigateNodeRef.current = navigateNode;
     
     // ENTRY ANIMATION - Dashboard initialization sequence
     const runEmergenceAnimation = () => {
@@ -679,15 +691,15 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         case 'ArrowRight':
         case 'd':
         case 'D':
-          navigateNode('next');
+          navigateNodeRef.current?.('next');
           break;
         case 'ArrowLeft':
         case 'a':
         case 'A':
-          navigateNode('prev');
+          navigateNodeRef.current?.('prev');
           break;
         case ' ': // Spacebar to reset camera position for current node
-          focusOnNode(currentNodeRef.current, 1);
+          focusOnNodeRef.current?.(currentNodeRef.current, 1);
           break;
       }
     };
@@ -826,10 +838,10 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               <div className="text-green-500 text-lg mb-2">FOCUSED NODE</div>
               <div className="text-2xl font-bold text-green-300">
                 {['WALLET TRACKER', 'TOKEN MONITOR', 'TRANSACTION FLOW', 
-                  'ANALYTICS CORE', 'ALERT SYSTEM', 'AI PROCESSOR'][currentNodeIndex]}
+                  'ANALYTICS CORE', 'ALERT SYSTEM', 'AI PROCESSOR', 'ACCOUNT MANAGER'][currentNodeIndex]}
               </div>
               <div className="text-xs text-green-500/60 mt-2">
-                Node {currentNodeIndex + 1} of 6
+                Node {currentNodeIndex + 1} of 7
               </div>
             </div>
           </div>
@@ -891,7 +903,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
         
-        {/* Node List - Show all nodes with current highlighted */}
+        {/* Node List - Show all nodes with current highlighted - CLICKABLE */}
         {!isTransitioning && (
           <div className="absolute top-24 right-8 bg-black/80 border border-green-500/30 rounded p-4 max-w-xs pointer-events-auto
                           animate-in fade-in slide-in-from-right duration-500">
@@ -903,11 +915,13 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                 { color: 'bg-purple-500', name: 'Transaction Flow' },
                 { color: 'bg-white', name: 'Analytics Core' },
                 { color: 'bg-red-500', name: 'Alert System' },
-                { color: 'bg-purple-700', name: 'AI Processor' }
+                { color: 'bg-purple-700', name: 'AI Processor' },
+                { color: 'bg-cyan-400', name: 'Account Manager', secure: true }
               ].map((node, index) => (
                 <div 
                   key={index}
-                  className={`flex items-center gap-2 transition-all ${
+                  onClick={() => focusOnNodeRef.current?.(index, 1)}
+                  className={`flex items-center gap-2 transition-all cursor-pointer hover:scale-105 ${
                     index === currentNodeIndex ? 'scale-110 ml-2' : ''
                   }`}
                 >
@@ -917,12 +931,160 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                   <span className={`${
                     index === currentNodeIndex 
                       ? 'text-green-300 font-bold' 
-                      : 'text-green-400'
+                      : 'text-green-400 hover:text-green-300'
                   }`}>
                     {node.name}
                   </span>
+                  {node.secure && (
+                    <span className="text-yellow-400 text-xs ml-1">🔒</span>
+                  )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        
+        {/* ACCOUNT MANAGER 3D INTERFACE - Secure user-specific panel */}
+        {showAccountManager && !isTransitioning && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+            <div className="bg-black/90 border-2 border-cyan-400 rounded-lg p-8 max-w-2xl w-full mx-8 pointer-events-auto
+                            animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,255,153,0.3)]">
+              {/* Header with security badge */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-cyan-400 font-mono text-2xl mb-1 flex items-center gap-2">
+                    🔒 ACCOUNT MANAGER
+                    <span className="text-xs text-yellow-400 border border-yellow-400 px-2 py-0.5 rounded">
+                      SECURE
+                    </span>
+                  </h2>
+                  <p className="text-green-400/60 text-sm font-mono">
+                    USER: {user?.username?.toUpperCase() || 'GENESIS'} | ID: {user?.id || 'GEN-001'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAccountManager(false)}
+                  className="text-red-400 hover:text-red-300 transition-colors text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* Connected Accounts Grid */}
+              <div className="space-y-6">
+                <div className="border border-green-500/30 rounded-lg p-4">
+                  <h3 className="text-green-400 font-mono text-lg mb-4">CONNECTED ACCOUNTS</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Telegram Connection */}
+                    <div className="bg-black/50 border border-cyan-500/30 rounded-lg p-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse"></div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">📨</span>
+                          <span className="text-cyan-300 font-mono font-bold">TELEGRAM</span>
+                        </div>
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="text-green-400 font-mono">STATUS: <span className="text-green-300">CONNECTED</span></div>
+                        <div className="text-gray-400 font-mono">@your_username</div>
+                        <button className="mt-2 text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded hover:bg-red-500/30 transition-colors">
+                          DISCONNECT
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* X (Twitter) Connection */}
+                    <div className="bg-black/50 border border-gray-500/30 rounded-lg p-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-400 to-transparent"></div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">𝕏</span>
+                          <span className="text-gray-300 font-mono font-bold">X (TWITTER)</span>
+                        </div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="text-gray-400 font-mono">STATUS: <span className="text-gray-300">NOT CONNECTED</span></div>
+                        <button className="mt-2 text-xs bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded hover:bg-cyan-500/30 transition-colors">
+                          CONNECT
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Discord Connection */}
+                    <div className="bg-black/50 border border-indigo-500/30 rounded-lg p-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-400 to-transparent"></div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">🎮</span>
+                          <span className="text-indigo-300 font-mono font-bold">DISCORD</span>
+                        </div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="text-gray-400 font-mono">STATUS: <span className="text-gray-300">NOT CONNECTED</span></div>
+                        <button className="mt-2 text-xs bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded hover:bg-cyan-500/30 transition-colors">
+                          CONNECT
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* GitHub Connection */}
+                    <div className="bg-black/50 border border-gray-500/30 rounded-lg p-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-400 to-transparent"></div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">🐱</span>
+                          <span className="text-gray-300 font-mono font-bold">GITHUB</span>
+                        </div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="text-gray-400 font-mono">STATUS: <span className="text-gray-300">NOT CONNECTED</span></div>
+                        <button className="mt-2 text-xs bg-cyan-500/20 text-cyan-400 px-3 py-1 rounded hover:bg-cyan-500/30 transition-colors">
+                          CONNECT
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Security Settings */}
+                <div className="border border-yellow-500/30 rounded-lg p-4">
+                  <h3 className="text-yellow-400 font-mono text-lg mb-4 flex items-center gap-2">
+                    🔐 SECURITY SETTINGS
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-400 font-mono">2FA Enabled</span>
+                      <input type="checkbox" checked className="accent-green-400" readOnly />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-400 font-mono">API Key Encryption</span>
+                      <input type="checkbox" checked className="accent-green-400" readOnly />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-400 font-mono">Session Timeout</span>
+                      <span className="text-green-300 font-mono">30 MIN</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-400 font-mono">Last Login</span>
+                      <span className="text-green-300 font-mono">TODAY 13:45</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex justify-between mt-6">
+                  <button className="px-4 py-2 bg-red-500/20 text-red-400 rounded font-mono hover:bg-red-500/30 transition-colors">
+                    REVOKE ALL ACCESS
+                  </button>
+                  <button className="px-4 py-2 bg-green-500/20 text-green-400 rounded font-mono hover:bg-green-500/30 transition-colors">
+                    SAVE CONFIGURATION
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
