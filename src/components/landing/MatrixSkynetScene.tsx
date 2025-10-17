@@ -43,16 +43,16 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     scene.fog = new THREE.FogExp2(0x000511, 0.02);
     sceneRef.current = scene;
     
-    // Camera - Start at white hole exit point
+    // Camera - Start near the white hole boundary (just entered the universe)
     const camera = new THREE.PerspectiveCamera(
       60,
       window.innerWidth / window.innerHeight,
       0.1,
-      1000
+      200 // Increased far plane to see the distant horizon
     );
-    // Start emerging from white hole (0, 0, 0)
-    camera.position.set(0, 0, 1);
-    camera.lookAt(0, 0, 10);
+    // Start near the boundary, looking inward toward the center
+    camera.position.set(0, 5, 45); // Close to max distance (50)
+    camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
     
     // Renderer
@@ -82,12 +82,24 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.minDistance = 5;
-    controls.maxDistance = 50;
+    controls.maxDistance = 50; // Max distance prevents reaching the horizon at radius 80
     controls.enabled = false; // Disabled during entry animation
     controlsRef.current = controls;
     
-    // Create ENHANCED WHITE HOLE with custom shader
-    const createWhiteHole = () => {
+    /**
+     * WHITE HOLE COSMOLOGY:
+     * - The white hole is an 80-unit radius sphere surrounding the entire universe
+     * - It's the "event horizon" boundary that can never be reached
+     * - Camera max distance (50) keeps you confined within the bubble
+     * - Unlike black holes (matter falls in), white holes theoretically emit matter
+     * - But nothing can cross the boundary from inside (hence unreachable)
+     * - This creates a "pocket dimension" or "universe bubble" concept
+     * - The Matrix universe exists INSIDE this white hole boundary
+     **/
+    
+    // Create WHITE HOLE EVENT HORIZON - The unreachable boundary of the Matrix universe
+    // A distant spherical horizon that nothing can enter
+    const createWhiteHoleHorizon = () => {
       const group = new THREE.Group();
       
       // Custom shader for white hole with energy distortion
@@ -145,34 +157,35 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         `
       };
       
-      // White hole core with shader
-      const coreGeometry = new THREE.SphereGeometry(2, 64, 64);
+      // Massive sphere as the universe boundary - inside-out rendering
+      const coreGeometry = new THREE.SphereGeometry(80, 64, 64);
       const coreMaterial = new THREE.ShaderMaterial({
         uniforms: whiteHoleShader.uniforms,
         vertexShader: whiteHoleShader.vertexShader,
         fragmentShader: whiteHoleShader.fragmentShader,
         transparent: true,
-        side: THREE.DoubleSide,
+        side: THREE.BackSide, // Render inside of sphere
         blending: THREE.AdditiveBlending
       });
       const core = new THREE.Mesh(coreGeometry, coreMaterial);
       group.add(core);
       
-      // Particle vortex around white hole
-      const particleCount = 3000;
+      // Particle field at the event horizon boundary
+      const particleCount = 5000;
       const particleGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
       const sizes = new Float32Array(particleCount);
       
       for (let i = 0; i < particleCount; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 2 + Math.random() * 3;
-        const height = (Math.random() - 0.5) * 2;
+        // Distribute on inner surface of sphere (event horizon)
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        const radius = 75 + Math.random() * 3; // Near the boundary
         
-        positions[i * 3] = Math.cos(angle) * radius;
-        positions[i * 3 + 1] = height;
-        positions[i * 3 + 2] = Math.sin(angle) * radius;
+        positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = radius * Math.cos(phi);
         
         // White to cyan gradient
         const colorMix = Math.random();
@@ -199,30 +212,13 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       const particles = new THREE.Points(particleGeometry, particleMaterial);
       group.add(particles);
       
-      // Energy rings
-      for (let i = 0; i < 3; i++) {
-        const ringGeometry = new THREE.TorusGeometry(2.5 + i * 0.5, 0.05, 16, 100);
-        const ringMaterial = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(0x00ffff).lerp(new THREE.Color(0xffffff), i * 0.3),
-          transparent: true,
-          opacity: 0.6 - i * 0.15,
-          emissive: 0x00ffff,
-          emissiveIntensity: 0.5
-        });
-        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-        ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
-        ring.rotation.y = Math.random() * Math.PI;
-        ring.userData.rotationSpeed = 0.5 + Math.random() * 0.5;
-        group.add(ring);
-      }
-      
       return group;
     };
     
-    const whiteHole = createWhiteHole();
-    whiteHole.position.set(0, 0, 0);
-    whiteHoleRef.current = whiteHole;
-    scene.add(whiteHole);
+    const whiteHoleHorizon = createWhiteHoleHorizon();
+    whiteHoleHorizon.position.set(0, 0, 0); // Centered, but camera is inside
+    whiteHoleRef.current = whiteHoleHorizon;
+    scene.add(whiteHoleHorizon);
     
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x001122, 0.5);
@@ -377,19 +373,19 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
     matrixRainRef.current = matrixRain;
     scene.add(matrixRain);
     
-    // EMERGENCE ANIMATION - User emerges from white hole
+    // ENTRY ANIMATION - User enters the Matrix universe bubble, settling at center
     const runEmergenceAnimation = () => {
-      console.log('🌌 Starting Matrix emergence animation...');
+      console.log('🌌 Entering Matrix universe boundary...');
       
       const tl = gsap.timeline({
         onComplete: () => {
-          console.log('✨ Emergence complete!');
+          console.log('✨ Stabilized at universe center!');
           setIsTransitioning(false);
           
-          // Enable controls for free navigation
+          // Enable controls for free navigation (but max distance keeps you from reaching horizon)
           if (controlsRef.current) {
             controlsRef.current.enabled = true;
-            console.log('🎮 Free navigation enabled!');
+            console.log('🎮 Free navigation enabled! White hole horizon is unreachable.');
           }
           
           // Create data streams after nodes are in position
@@ -423,9 +419,11 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         }
       });
       
-      // Phase 1: Camera emerges from white hole
+      // Phase 1: Disoriented entry - spin slightly while stabilizing
       tl.to(camera.position, {
-        z: 8,
+        x: 2,
+        y: 8,
+        z: 40,
         duration: 2,
         ease: 'power2.out',
         onUpdate: () => camera.lookAt(0, 0, 0)
@@ -485,13 +483,12 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
         duration: 2
       }, '-=0.5')
       
-      // Phase 6: Fade out white hole
-      .to(whiteHole.scale, {
-        x: 0.2,
-        y: 0.2,
-        z: 0.2,
-        duration: 2,
-        ease: 'power2.in'
+      // Phase 6: White hole horizon pulses (it's always there as the boundary)
+      .to({}, {
+        duration: 1,
+        onStart: () => {
+          console.log('🌐 White hole event horizon stabilized - universe boundary active');
+        }
       }, '-=1');
     };
     
@@ -500,43 +497,42 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
       animationIdRef.current = requestAnimationFrame(animate);
       
       const elapsedTime = clockRef.current.getElapsedTime();
-      const delta = clockRef.current.getDelta();
       
       // Update controls
       if (controls.enabled) {
         controls.update();
       }
       
-      // Animate WHITE HOLE shader and effects
+      // Animate WHITE HOLE HORIZON - the distant unreachable boundary
       if (whiteHoleRef.current) {
-        // Update shader time uniform
-        const core = whiteHoleRef.current.children[0] as THREE.Mesh;
-        if (core && core.material && 'uniforms' in core.material) {
-          (core.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
+        // Update shader time uniform for energy ripples
+        const horizon = whiteHoleRef.current.children[0] as THREE.Mesh;
+        if (horizon && horizon.material && 'uniforms' in horizon.material) {
+          (horizon.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
         }
         
-        // Rotate particle vortex
+        // Slowly rotate the entire horizon sphere
+        whiteHoleRef.current.rotation.y = elapsedTime * 0.02;
+        
+        // Animate particles on the event horizon surface
         const particles = whiteHoleRef.current.children[1] as THREE.Points;
         if (particles) {
-          particles.rotation.y = elapsedTime * 0.3;
+          // Slow rotation to show the boundary is always there
+          particles.rotation.y = elapsedTime * 0.05;
           
-          // Animate particle positions in spiral
+          // Subtle shimmer effect on horizon particles
           const positions = particles.geometry.attributes.position.array as Float32Array;
           for (let i = 0; i < positions.length; i += 3) {
-            const angle = (i / positions.length) * Math.PI * 2 + elapsedTime * 0.5;
-            const radius = 2 + Math.sin(elapsedTime + i * 0.1) * 0.5;
-            positions[i] = Math.cos(angle) * radius;
-            positions[i + 2] = Math.sin(angle) * radius;
+            const theta = Math.atan2(positions[i + 2], positions[i]);
+            const phi = Math.acos(positions[i + 1] / 75);
+            const shimmer = Math.sin(elapsedTime * 2 + i * 0.1) * 0.2;
+            const radius = 75 + shimmer;
+            
+            positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i + 2] = radius * Math.cos(phi);
           }
           particles.geometry.attributes.position.needsUpdate = true;
-        }
-        
-        // Rotate energy rings
-        for (let i = 2; i < whiteHoleRef.current.children.length; i++) {
-          const ring = whiteHoleRef.current.children[i] as THREE.Mesh;
-          if (ring) {
-            ring.rotation.z += delta * ring.userData.rotationSpeed;
-          }
         }
       }
       
@@ -702,7 +698,8 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
             ⟨ SUPER ADMIN COMMAND CENTER ⟩
           </p>
           <div className="text-green-500 font-mono text-xs mt-1 opacity-60">
-            [ NEURAL NETWORK ACTIVE ]
+            [ NEURAL NETWORK ACTIVE ]<br/>
+            <span className="text-green-400/40 text-[10px]">• CONTAINED WITHIN WHITE HOLE UNIVERSE •</span>
           </div>
         </div>
         
@@ -728,24 +725,33 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
               <div>• LEFT CLICK + DRAG: Rotate</div>
               <div>• RIGHT CLICK + DRAG: Pan</div>
               <div>• SCROLL: Zoom in/out</div>
+              <div className="text-green-500/60 text-xs mt-3 border-t border-green-500/20 pt-2">
+                ⚠️ White hole event horizon<br/>
+                remains unreachable
+              </div>
             </div>
           </div>
         )}
         
-        {/* Emergence Transition Screen */}
+        {/* Entry Transition Screen */}
         {isTransitioning && !isLoading && (
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
               <div className="text-green-400 font-mono text-2xl mb-4 animate-pulse">
-                EMERGING FROM WHITE HOLE
+                ENTERING MATRIX UNIVERSE
               </div>
-              <div className="text-green-300 font-mono text-sm">
-                <span className="inline-block animate-pulse">MATERIALIZING NEURAL NETWORK</span>
+              <div className="text-green-300 font-mono text-sm mb-2">
+                <span className="inline-block animate-pulse">STABILIZING WITHIN EVENT HORIZON</span>
                 <span className="inline-block ml-2">
                   <span className="animate-pulse delay-100">.</span>
                   <span className="animate-pulse delay-200">.</span>
                   <span className="animate-pulse delay-300">.</span>
                 </span>
+              </div>
+              <div className="text-green-500/60 font-mono text-xs">
+                [ WHITE HOLE BOUNDARY DETECTED ]<br/>
+                [ DISTANCE: UNREACHABLE ]<br/>
+                [ STATUS: CONFINED TO UNIVERSE BUBBLE ]
               </div>
             </div>
           </div>
