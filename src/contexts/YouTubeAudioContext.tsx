@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
 
 // YouTube and Google types are already declared in src/types/youtube.d.ts
 // No need to redeclare them here
@@ -25,6 +26,10 @@ interface YouTubeAudioContextType {
   currentVideo: YouTubeVideo | null;
   queue: YouTubeVideo[];
   volume: number;
+  currentTime: number;
+  duration: number;
+  shuffle: boolean;
+  repeat: 'off' | 'one' | 'all';
   autoplay: boolean;
   loop: boolean;
   distortionEnabled: boolean;
@@ -75,28 +80,28 @@ export const useYouTubeAudio = () => {
   return context;
 };
 
-interface YouTubeAudioProviderProps {
-  children: ReactNode;
-}
-
-export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ children }) => {
+export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user, isAuthenticated: userIsAuthenticated } = useAuth();
+  
   const [isYouTubeReady, setIsYouTubeReady] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [currentVideo, setCurrentVideo] = useState<YouTubeVideo | null>(null);
   const [queue, setQueue] = useState<YouTubeVideo[]>([]);
-  const [volume, setVolumeState] = useState(50);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(75);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<'off' | 'one' | 'all'>('off');
   const [autoplay, setAutoplay] = useState(true);
   const [loop, setLoop] = useState(false);
   const [distortionEnabled, setDistortionEnabled] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userPlaylists, setUserPlaylists] = useState<YouTubePlaylist[]>([]);
-  // Remove unused accessToken state - we use the ref instead
   
   const playerRef = useRef<any>(null);
   const accessTokenRef = useRef<string | null>(null);
   const isLoadingAPIRef = useRef(false);
-  // const hasLoadedSavedAccountRef = useRef(false); // Not used currently
   
   // Web Audio API for distortion
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -115,31 +120,21 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     console.log('🎵 YouTube: Enabling YouTube integration...');
     
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
+      if (!userIsAuthenticated || !user) {
         console.error('❌ User not authenticated');
         return;
       }
-
-      // Get user info from auth token
-      const userStr = localStorage.getItem('user');
-      if (!userStr) {
-        console.error('❌ User data not found');
-        return;
-      }
-
-      const user = JSON.parse(userStr);
       
-      // Enable YouTube for this user
+      // Enable YouTube for this user (cookies are sent automatically)
       const response = await fetch('/api/youtube/preferences', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include', // Important: send cookies
         body: JSON.stringify({
           enabled: true,
-          email: user.email || `${user.username}@youtube.local`,
+          email: user.username + '@youtube.local',
           preferences: {
             volume: 75,
             shuffle: false,
@@ -149,11 +144,12 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
       });
 
       if (!response.ok) {
-        throw new Error('Failed to enable YouTube');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to enable YouTube');
       }
 
       setIsAuthenticated(true);
-      setUserEmail(user.email || user.username);
+      setUserEmail(user.username);
       console.log('✅ YouTube: Enabled for user', user.username);
       
       // Load user's playlists
@@ -168,14 +164,11 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   // Check if user is authenticated and load YouTube preferences
   useEffect(() => {
     const checkYouTubeAuth = async () => {
-      const token = localStorage.getItem('authToken');
-      const userStr = localStorage.getItem('user');
-      
-      if (!token || !userStr) return;
+      if (!userIsAuthenticated || !user) return;
 
       try {
         const response = await fetch('/api/youtube/preferences', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          credentials: 'include'
         });
 
         if (response.ok) {
@@ -192,7 +185,7 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     };
 
     checkYouTubeAuth();
-  }, []);
+  }, [userIsAuthenticated, user]);
 
   // YouTube API loading and initialization
   useEffect(() => {
@@ -437,8 +430,8 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     console.log('⏮️ Previous track not implemented yet');
   };
 
-  const setVolume = (vol: number) => {
-    setVolumeState(vol);
+  const updateVolume = (vol: number) => {
+    setVolume(vol);
     if (playerRef.current) {
       playerRef.current.setVolume(vol);
     }
@@ -568,13 +561,10 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   // Load user's playlists from database
   const loadUserPlaylists = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
+      if (!userIsAuthenticated) return;
 
       const response = await fetch('/api/youtube/playlists', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -639,14 +629,13 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
   // Sign out - disable YouTube for user
   const signOut = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
+      if (userIsAuthenticated) {
         await fetch('/api/youtube/preferences', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({ enabled: false })
         });
       }
@@ -659,12 +648,7 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     accessTokenRef.current = null;
     setUserPlaylists([]);
     
-    // Backend revocation commented out until backend is ready
-    // revokeAccountOnBackend().catch((err: any) => 
-    //   console.error('❌ Failed to revoke on backend:', err)
-    // );
-    
-    console.log('✅ Signed out');
+    console.log('✅ YouTube signed out');
   };
 
   // Save YouTube account to backend
@@ -815,6 +799,10 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     currentVideo: currentVideo || null,
     queue: queue || [],
     volume: volume || 50,
+    currentTime: currentTime || 0,
+    duration: duration || 0,
+    shuffle: shuffle || false,
+    repeat: repeat || 'off',
     autoplay: autoplay || true,
     loop: loop || false,
     distortionEnabled: distortionEnabled || false,
@@ -825,7 +813,7 @@ export const YouTubeAudioProvider: React.FC<YouTubeAudioProviderProps> = ({ chil
     pause: pause || (() => {}),
     skip: skip || (() => {}),
     previous: previous || (() => {}),
-    setVolume: setVolume || (() => {}),
+    setVolume: updateVolume || (() => {}),
     seekTo: seekTo || (() => {}),
     toggleAutoplay: toggleAutoplay || (() => {}),
     toggleLoop: toggleLoop || (() => {}),
