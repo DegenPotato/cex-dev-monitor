@@ -2017,11 +2017,15 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                                 });
                                             }
                                         }}
-                                        className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 
-                                                   text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300
-                                                   shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]"
+                                        className={`w-full px-8 py-4 text-white font-bold rounded-lg transform hover:scale-105 transition-all duration-300 ${
+                                            selectedUniverse === 'matrix' 
+                                                ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:shadow-[0_0_30px_rgba(16,185,129,0.6)]'
+                                                : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.6)]'
+                                        }`}
                                     >
-                                        ENTER SOLAR SYSTEM →
+                                        {selectedUniverse === 'matrix' ? '🔮 ENTER THE MATRIX →' : 
+                                         selectedUniverse === 'spaces-manager' ? '🌌 ENTER SPACES MANAGER →' :
+                                         'ENTER SOLAR SYSTEM →'}
                                     </button>
                                 </div>
                             ) : (
