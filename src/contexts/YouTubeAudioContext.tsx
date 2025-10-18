@@ -110,16 +110,29 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   const distortionNodeRef = useRef<WaveShaperNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
 
-  // YouTube API Key (you'll need to replace this with your own)
+  // YouTube API Key
   const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
-  // OAuth Client ID for Google Sign-In
-  const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
-  // Use configured redirect URI from env, or fallback to current origin
-  const OAUTH_REDIRECT_URI = import.meta.env.VITE_GOOGLE_OAUTH_REDIRECT_URI || (window.location.origin + '/oauth/google/callback.html');
+  // OAuth Client ID for Google Identity Services
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
 
-  // Google OAuth 2.0 Sign-In with Popup
+  // Load Google Identity Services script
+  useEffect(() => {
+    if (!CLIENT_ID) return;
+    
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+    
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, [CLIENT_ID]);
+
+  // Google Identity Services - Sign In with Token Model
   const signIn = async () => {
-    console.log('🔐 YouTube: Initiating Google OAuth...');
+    console.log('🔐 YouTube: Initiating Google Sign-In...');
     
     try {
       if (!userIsAuthenticated || !user) {
@@ -127,106 +140,74 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
         return;
       }
 
-      if (!OAUTH_CLIENT_ID) {
+      if (!CLIENT_ID) {
         console.error('❌ Google OAuth Client ID not configured');
         console.log('⚠️ Fallback: Enabling YouTube without Google account');
-        // Fallback to local-only mode
         setIsAuthenticated(true);
         setUserEmail(user.username + '@local');
         return;
       }
-      
-      // Build Google OAuth URL
-      const scopes = [
-        'https://www.googleapis.com/auth/youtube.readonly',
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/userinfo.profile'
-      ].join(' ');
-      
-      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-      authUrl.searchParams.set('client_id', OAUTH_CLIENT_ID);
-      authUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
-      authUrl.searchParams.set('response_type', 'token');
-      authUrl.searchParams.set('scope', scopes);
-      authUrl.searchParams.set('state', `user_${user.id}`);
-      
-      console.log('🌐 Opening Google OAuth popup...');
-      console.log('📍 Redirect URI:', OAUTH_REDIRECT_URI);
-      console.log('🔑 Client ID:', OAUTH_CLIENT_ID);
-      console.log('🔗 Full OAuth URL:', authUrl.toString());
-      
-      // Open OAuth popup
-      const width = 500;
-      const height = 600;
-      const left = (window.innerWidth - width) / 2;
-      const top = (window.innerHeight - height) / 2;
-      
-      const popup = window.open(
-        authUrl.toString(),
-        'Google Sign-In',
-        `width=${width},height=${height},left=${left},top=${top},popup=yes`
-      );
-      
-      if (!popup) {
-        console.error('❌ Popup blocked! Please allow popups for this site.');
-        alert('Please allow popups to connect your Google account.');
+
+      // Check if Google Identity Services is loaded
+      if (!window.google?.accounts?.oauth2) {
+        console.error('❌ Google Identity Services not loaded');
         return;
       }
-      
-      // Listen for OAuth callback
-      const handleOAuthCallback = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        
-        if (event.data.type === 'GOOGLE_OAUTH_SUCCESS') {
-          console.log('✅ Google OAuth successful!');
-          const { accessToken, email } = event.data;
-          
-          // Store access token
+
+      // Initialize token client
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            console.error('❌ Token error:', tokenResponse.error);
+            return;
+          }
+
+          const accessToken = tokenResponse.access_token;
+          console.log('✅ Access token received');
+
+          // Store token
           accessTokenRef.current = accessToken;
-          
-          // Update state
-          setIsAuthenticated(true);
-          setUserEmail(email);
-          
-          // Sync with backend
-          fetch('/api/youtube/preferences', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              enabled: true,
-              email: email,
-              accessToken: accessToken,
-              preferences: { volume: 75, shuffle: false, repeat: 'off' }
-            })
-          }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
-          
-          // Load user's playlists
-          loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
-          
-          // Cleanup
-          window.removeEventListener('message', handleOAuthCallback);
-          popup?.close();
-        } else if (event.data.type === 'GOOGLE_OAUTH_ERROR') {
-          console.error('❌ Google OAuth failed:', event.data.error);
-          window.removeEventListener('message', handleOAuthCallback);
-          popup?.close();
-        }
-      };
-      
-      window.addEventListener('message', handleOAuthCallback);
-      
-      // Check if popup was closed without completing
-      const checkPopupClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkPopupClosed);
-          window.removeEventListener('message', handleOAuthCallback);
-          console.log('🔒 OAuth popup closed');
-        }
-      }, 500);
+
+          // Fetch user info
+          try {
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const userInfo = await userInfoResponse.json();
+
+            // Update state
+            setIsAuthenticated(true);
+            setUserEmail(userInfo.email);
+            console.log('✅ Signed in as:', userInfo.email);
+
+            // Sync with backend (non-blocking)
+            fetch('/api/youtube/preferences', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                enabled: true,
+                email: userInfo.email,
+                accessToken: accessToken,
+                preferences: { volume: 75, shuffle: false, repeat: 'off' }
+              })
+            }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
+
+            // Load playlists
+            loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
+          } catch (error) {
+            console.error('❌ Failed to fetch user info:', error);
+          }
+        },
+      });
+
+      // Request access token
+      tokenClient.requestAccessToken();
       
     } catch (error) {
-      console.error('❌ YouTube OAuth error:', error);
+      console.error('❌ YouTube sign-in error:', error);
     }
   };
 
