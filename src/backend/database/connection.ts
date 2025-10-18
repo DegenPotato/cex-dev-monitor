@@ -297,6 +297,7 @@ export async function initDatabase() {
       referral_code TEXT UNIQUE NOT NULL,
       referred_by INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_login TEXT,
       login_count INTEGER DEFAULT 0,
       UNIQUE(wallet_address),
