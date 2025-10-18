@@ -3,12 +3,13 @@ import { BlackholeScene } from './landing/BlackholeScene';
 import { SolarSystemScene } from './landing/SolarSystemScene';
 import { MatrixSkynetScene } from './landing/MatrixSkynetScene';
 import { BlackWhiteHoleMetricSimulation } from './landing/BlackWhiteHoleMetricSimulation';
+import { InformationTopologySimulation } from './landing/InformationTopologySimulation';
 import { Dashboard } from './Dashboard';
 import { useAuth } from '../contexts/AuthContext';
 
 export function LandingPage() {
   const { user } = useAuth();
-  const [currentUniverse, setCurrentUniverse] = useState<'blackhole' | 'solar' | 'matrix' | 'dashboard' | 'simulation'>('blackhole');
+  const [currentUniverse, setCurrentUniverse] = useState<'blackhole' | 'solar' | 'matrix' | 'dashboard' | 'simulation' | 'infotopo'>('blackhole');
   
   // Debug logging for state changes
   useEffect(() => {
@@ -27,6 +28,12 @@ export function LandingPage() {
     } else if (selectedUniverse === 'matrix') {
       console.log('🔮 Entering The Matrix...');
       setCurrentUniverse('matrix');
+    } else if (selectedUniverse === 'simulation') {
+      console.log('🌌 Entering Metric Simulation...');
+      setCurrentUniverse('simulation');
+    } else if (selectedUniverse === 'infotopo') {
+      console.log('🔮 Entering Information Topology...');
+      setCurrentUniverse('infotopo');
     } else if (selectedUniverse === 'cex-monitor') {
       console.log('📊 Entering CEX Dashboard...');
       setCurrentUniverse('dashboard');
@@ -147,6 +154,19 @@ export function LandingPage() {
           <button
             onClick={() => setCurrentUniverse('blackhole')}
             className="absolute top-4 left-4 z-50 px-4 py-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg backdrop-blur-sm transition-colors"
+          >
+            🌀 Return to Entry Portal
+          </button>
+        </>
+      )}
+      
+      {/* Information Topology Simulation */}
+      {currentUniverse === 'infotopo' && (
+        <>
+          <InformationTopologySimulation />
+          <button
+            onClick={() => setCurrentUniverse('blackhole')}
+            className="absolute top-4 right-4 z-50 px-4 py-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg backdrop-blur-sm transition-colors"
           >
             🌀 Return to Entry Portal
           </button>

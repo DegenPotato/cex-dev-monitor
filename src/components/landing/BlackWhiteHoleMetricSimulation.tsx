@@ -41,8 +41,12 @@ interface SimulationParams {
 }
 
 interface Particle {
+  // Geodesic coordinates [t, r, φ] (equatorial plane)
+  x: [number, number, number];
+  // 4-velocity [dt/dλ, dr/dλ, dφ/dλ]
+  v: [number, number, number];
+  // Cartesian position for rendering
   position: THREE.Vector3;
-  velocity: THREE.Vector3;
   trail: THREE.Vector3[];
   color: THREE.Color;
   phase: 'infall' | 'bounce' | 'expansion';
@@ -70,8 +74,8 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
     showVectorField: false
   });
 
-  // Calculate the metric function A(r)
-  const calculateMetric = (r: number): number => {
+  // Calculate the metric function f(r) = A(r)
+  const f = (r: number): number => {
     const { G, M, c, r_min } = params;
     if (r < 0.01) r = 0.01; // Prevent division by zero
     
@@ -81,40 +85,140 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
     return schwarzschild - bounce;
   };
 
-  // Calculate geodesic acceleration
-  const calculateGeodesicAcceleration = (position: THREE.Vector3): THREE.Vector3 => {
-    const r = position.length();
-    if (r < 0.01) return new THREE.Vector3(); // Too close to center
+  // Calculate derivative of metric function f'(r)
+  const fp = (r: number): number => {
+    const { G, M, c, r_min } = params;
+    if (r < 0.01) r = 0.01;
     
-    const A = calculateMetric(r);
-    const dr = 0.001; // Small increment for derivative
-    const dA_dr = (calculateMetric(r + dr) - calculateMetric(r)) / dr;
+    // d/dr [1 + 2GM/(c²r²) - (r_min/r) * exp(-r_min/r)]
+    const term1 = -4 * G * M / (c * c * r * r * r);
     
-    // Radial geodesic equation (simplified for visualization)
-    const radialAccel = -0.5 * dA_dr / A;
+    // d/dr [(r_min/r) * exp(-r_min/r)]
+    // = -(r_min/r²) * exp(-r_min/r) + (r_min²/r³) * exp(-r_min/r)
+    const expTerm = Math.exp(-r_min / r);
+    const term2 = -(r_min / (r * r)) * expTerm + (r_min * r_min / (r * r * r)) * expTerm;
     
-    // Create acceleration vector
-    const direction = position.clone().normalize();
-    return direction.multiplyScalar(radialAccel);
+    return term1 - term2;
   };
 
-  // Initialize a test particle
+  // Christoffel symbols for equatorial plane (θ = π/2)
+  const Gamma_t_tr = (r: number): number => 0.5 * fp(r) / f(r);
+  const Gamma_r_tt = (r: number): number => 0.5 * f(r) * fp(r);
+  const Gamma_r_rr = (r: number): number => -0.5 * fp(r) / f(r);
+  const Gamma_r_phiphi = (r: number): number => -r * f(r);
+  const Gamma_phi_r = (r: number): number => 1 / r;
+
+  // Calculate geodesic acceleration: a^μ = -Γ^μ_{νρ} v^ν v^ρ
+  const calculateGeodesicAcceleration = (r: number, v: [number, number, number]): [number, number, number] => {
+    if (r < 0.01) return [0, 0, 0]; // Too close to center
+    
+    const [vt, vr, vphi] = v;
+    
+    // a_t = -2 * Γ^t_{tr} * vt * vr
+    const at = -2 * Gamma_t_tr(r) * vt * vr;
+    
+    // a_r = -(Γ^r_{tt} * vt² + Γ^r_{rr} * vr² + Γ^r_{φφ} * vφ²)
+    const ar = -(Gamma_r_tt(r) * vt * vt + Gamma_r_rr(r) * vr * vr + Gamma_r_phiphi(r) * vphi * vphi);
+    
+    // a_φ = -2 * Γ^φ_{rφ} * vr * vφ
+    const aphi = -2 * Gamma_phi_r(r) * vr * vphi;
+    
+    return [at, ar, aphi];
+  };
+
+  // RK4 integration step for geodesic equations
+  const rk4Step = (state: {x: [number, number, number], v: [number, number, number]}, dt: number) => {
+    const [x0, v0] = [state.x.slice() as [number, number, number], state.v.slice() as [number, number, number]];
+    const r0 = x0[1];
+    
+    // k1
+    const dv1 = calculateGeodesicAcceleration(r0, v0);
+    
+    // k2
+    const x1: [number, number, number] = [
+      x0[0] + 0.5 * dt * v0[0],
+      x0[1] + 0.5 * dt * v0[1],
+      x0[2] + 0.5 * dt * v0[2]
+    ];
+    const v1: [number, number, number] = [
+      v0[0] + 0.5 * dt * dv1[0],
+      v0[1] + 0.5 * dt * dv1[1],
+      v0[2] + 0.5 * dt * dv1[2]
+    ];
+    const dv2 = calculateGeodesicAcceleration(x1[1], v1);
+    
+    // k3
+    const x2: [number, number, number] = [
+      x0[0] + 0.5 * dt * v1[0],
+      x0[1] + 0.5 * dt * v1[1],
+      x0[2] + 0.5 * dt * v1[2]
+    ];
+    const v2: [number, number, number] = [
+      v0[0] + 0.5 * dt * dv2[0],
+      v0[1] + 0.5 * dt * dv2[1],
+      v0[2] + 0.5 * dt * dv2[2]
+    ];
+    const dv3 = calculateGeodesicAcceleration(x2[1], v2);
+    
+    // k4
+    const x3: [number, number, number] = [
+      x0[0] + dt * v2[0],
+      x0[1] + dt * v2[1],
+      x0[2] + dt * v2[2]
+    ];
+    const v3: [number, number, number] = [
+      v0[0] + dt * dv3[0],
+      v0[1] + dt * dv3[1],
+      v0[2] + dt * dv3[2]
+    ];
+    const dv4 = calculateGeodesicAcceleration(x3[1], v3);
+    
+    // Final RK4 step
+    const xf: [number, number, number] = [
+      x0[0] + dt * (v0[0] + 2*v1[0] + 2*v2[0] + v3[0]) / 6,
+      x0[1] + dt * (v0[1] + 2*v1[1] + 2*v2[1] + v3[1]) / 6,
+      x0[2] + dt * (v0[2] + 2*v1[2] + 2*v2[2] + v3[2]) / 6
+    ];
+    const vf: [number, number, number] = [
+      v0[0] + dt * (dv1[0] + 2*dv2[0] + 2*dv3[0] + dv4[0]) / 6,
+      v0[1] + dt * (dv1[1] + 2*dv2[1] + 2*dv3[1] + dv4[1]) / 6,
+      v0[2] + dt * (dv1[2] + 2*dv2[2] + 2*dv3[2] + dv4[2]) / 6
+    ];
+    
+    return { x: xf, v: vf };
+  };
+
+  // Initialize a test particle with proper initial conditions
   const initializeParticle = (index: number): Particle => {
-    // Create particles at different angles and distances
+    // Create particles at different angles and distances (radial infall)
     const angle = (index / params.particleCount) * Math.PI * 2;
-    const distance = 5 + Math.random() * 10;
+    const r0 = 5 + Math.random() * 10;
+    
+    // Initial geodesic coordinates [t, r, φ]
+    const x: [number, number, number] = [0, r0, angle];
+    
+    // Initial 4-velocity: radial infall from rest
+    // For timelike particle: g_μν v^μ v^ν = -1
+    // For particle at rest: dt/dλ = E/f(r), dr/dλ = 0, dφ/dλ = 0
+    const fr = f(r0);
+    const E = Math.sqrt(fr); // Energy for particle starting from rest
+    const vt = E / fr; // dt/dλ
+    const vr = -0.1; // Small inward radial velocity to start infall
+    const vphi = 0; // Pure radial motion (no angular momentum)
+    
+    const v: [number, number, number] = [vt, vr, vphi];
+    
+    // Convert to Cartesian for rendering
+    const position = new THREE.Vector3(
+      r0 * Math.cos(angle),
+      r0 * Math.sin(angle),
+      0
+    );
     
     return {
-      position: new THREE.Vector3(
-        Math.cos(angle) * distance,
-        Math.sin(angle) * distance,
-        (Math.random() - 0.5) * 2
-      ),
-      velocity: new THREE.Vector3(
-        -Math.cos(angle) * 0.5,
-        -Math.sin(angle) * 0.5,
-        0
-      ),
+      x,
+      v,
+      position,
       trail: [],
       color: new THREE.Color(0x00ffff),
       phase: 'infall',
@@ -122,14 +226,26 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
     };
   };
 
-  // Update particle physics
+  // Update particle physics using geodesic equations
   const updateParticle = (particle: Particle, dt: number): void => {
-    // Get geodesic acceleration
-    const acceleration = calculateGeodesicAcceleration(particle.position);
+    // Adaptive timestep near r_min for stability
+    const r = particle.x[1];
+    const adaptiveDt = dt * Math.min(1, r / params.r_min);
     
-    // Update velocity and position
-    particle.velocity.add(acceleration.clone().multiplyScalar(dt));
-    particle.position.add(particle.velocity.clone().multiplyScalar(dt));
+    // Integrate geodesic equations using RK4
+    const newState = rk4Step({ x: particle.x, v: particle.v }, adaptiveDt);
+    
+    // Update geodesic coordinates
+    particle.x = newState.x;
+    particle.v = newState.v;
+    
+    // Convert geodesic coords to Cartesian for rendering
+    const [, r_new, phi] = particle.x; // t is coordinate time, not used for rendering
+    particle.position.set(
+      r_new * Math.cos(phi),
+      r_new * Math.sin(phi),
+      0
+    );
     
     // Track trail
     if (particle.trail.length > 100) {
@@ -137,25 +253,24 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
     }
     particle.trail.push(particle.position.clone());
     
-    // Determine phase based on distance and velocity
-    const r = particle.position.length();
-    const radialVelocity = particle.velocity.dot(particle.position.clone().normalize());
+    // Determine phase based on radial velocity
+    const vr = particle.v[1]; // dr/dλ
     
-    if (r < params.r_min * 1.5 && radialVelocity < 0) {
+    if (r_new < params.r_min * 1.5 && vr < 0) {
       particle.phase = 'bounce';
       particle.color = new THREE.Color(0xff0000);
-    } else if (r > params.r_min * 1.5 && radialVelocity > 0) {
+    } else if (r_new > params.r_min * 1.5 && vr > 0) {
       particle.phase = 'expansion';
       particle.color = new THREE.Color(0x00ff00);
-    } else if (radialVelocity < 0) {
+    } else if (vr < 0) {
       particle.phase = 'infall';
       particle.color = new THREE.Color(0x0088ff);
     }
     
-    particle.age += dt;
+    particle.age += adaptiveDt;
     
-    // Reset particle if it goes too far
-    if (r > 30 || r < 0.1) {
+    // Reset particle if it goes too far or too close
+    if (r_new > 30 || r_new < 0.1) {
       Object.assign(particle, initializeParticle(particlesRef.current.indexOf(particle)));
     }
   };

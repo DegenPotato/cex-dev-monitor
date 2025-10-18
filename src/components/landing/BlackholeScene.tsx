@@ -1533,6 +1533,44 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 </div>
             </div>
             
+            {/* Quick Navigation - Bottom Left */}
+            {!showAuthBillboard && !isTransitioning && (
+                <div className="absolute bottom-8 left-8 flex flex-col gap-2 pointer-events-auto">
+                    <button
+                        onClick={() => onEnter?.('simulation')}
+                        className="px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/30 
+                                   text-cyan-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
+                    >
+                        🌌 Metric Simulation
+                    </button>
+                    <button
+                        onClick={() => onEnter?.('infotopo')}
+                        className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 
+                                   text-indigo-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(99,102,241,0.3)] backdrop-blur-sm"
+                    >
+                        🔮 Info Topology
+                    </button>
+                    <button
+                        onClick={() => onEnter?.('matrix')}
+                        className="px-4 py-2 bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 
+                                   text-green-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
+                    >
+                        🔮 Matrix
+                    </button>
+                    <button
+                        onClick={() => onEnter?.('cex-monitor')}
+                        className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 
+                                   text-purple-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
+                    >
+                        📊 Dashboard
+                    </button>
+                </div>
+            )}
+            
             {/* Fullscreen Button - Bottom Right (always visible) */}
             <button
                 onClick={toggleFullscreen}
