@@ -19,9 +19,22 @@ export const UnifiedMusicPlayer: React.FC<UnifiedMusicPlayerProps> = ({ onClose 
   // Audio source toggle
   const [audioSource, setAudioSource] = useState<AudioSource>('local');
   
+  // YouTube search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  
   // Determine which context to use
   const isLocal = audioSource === 'local';
   const currentContext = isLocal ? localAudio : youtubeAudio;
+  
+  // Handle YouTube search
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    console.log('🔍 Searching for:', searchQuery);
+    const results = await youtubeAudio.searchVideos(searchQuery);
+    setSearchResults(results);
+    console.log('✅ Search results:', results.length);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center pointer-events-auto">
@@ -212,18 +225,50 @@ export const UnifiedMusicPlayer: React.FC<UnifiedMusicPlayerProps> = ({ onClose 
                 <div className="flex gap-2 mb-4">
                   <input
                     type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search YouTube..."
                     className="flex-1 bg-black/50 text-white px-4 py-2 rounded border border-pink-500/30 focus:border-pink-500"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        // Handle search
+                        handleSearch();
                       }
                     }}
                   />
-                  <button className="bg-pink-500/20 text-pink-400 px-6 py-2 rounded hover:bg-pink-500/30">
+                  <button 
+                    onClick={handleSearch}
+                    className="bg-pink-500/20 text-pink-400 px-6 py-2 rounded hover:bg-pink-500/30"
+                  >
                     Search
                   </button>
                 </div>
+                
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <>
+                    <h4 className="text-pink-300 mb-2">Search Results ({searchResults.length})</h4>
+                    <div className="flex-1 overflow-y-auto space-y-2 mb-4">
+                      {searchResults.map((video) => (
+                        <div
+                          key={video.id}
+                          onClick={() => {
+                            youtubeAudio.addToQueue(video);
+                            youtubeAudio.playVideo(video.id);
+                          }}
+                          className="p-3 bg-gray-800/50 rounded border border-transparent hover:border-pink-500/50 cursor-pointer transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <img src={video.thumbnail} alt={video.title} className="w-16 h-12 object-cover rounded" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm truncate">{video.title}</div>
+                              <div className="text-gray-400 text-xs">{video.channelTitle}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
                 
                 {/* Queue */}
                 <h4 className="text-pink-300 mb-2">Current Queue ({youtubeAudio.queue.length})</h4>
