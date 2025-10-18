@@ -1633,41 +1633,43 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             </div>
                                         </button>
                                         
-                                        {/* Dashboard - Current */}
-                                        <button
-                                            onClick={() => {
-                                                setSelectedUniverse('cex-monitor');
-                                                console.log('🎯 Selected: Dashboard');
-                                            }}
-                                            className="group relative p-6 bg-gradient-to-br from-purple-900/30 to-pink-900/30 
-                                                     border border-purple-400/50 rounded-lg hover:border-purple-300 
-                                                     hover:shadow-[0_0_30px_rgba(147,51,234,0.3)] transition-all duration-300
-                                                     transform hover:scale-[1.02] cursor-pointer"
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <div className="text-left">
-                                                    <h3 className="text-xl font-bold text-purple-300 group-hover:text-purple-200">
-                                                        Dashboard
-                                                    </h3>
-                                                    <p className="text-sm text-gray-400 mt-1">
-                                                        Solana Monitoring • Token Analysis • Wallet Tracking
-                                                    </p>
-                                                    <div className="flex items-center gap-2 mt-2">
-                                                        <span className="text-xs px-2 py-1 bg-pink-500/20 text-pink-400 rounded">
-                                                            CURRENT
-                                                        </span>
-                                                        <span className="text-xs text-gray-500">
-                                                            Entry: Black Hole Vortex
-                                                        </span>
+                                        {/* Dashboard - SUPER ADMIN ONLY */}
+                                        {user?.role === 'super_admin' && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedUniverse('cex-monitor');
+                                                    console.log('🎯 Selected: Dashboard');
+                                                }}
+                                                className="group relative p-6 bg-gradient-to-br from-purple-900/30 to-pink-900/30 
+                                                         border border-purple-400/50 rounded-lg hover:border-purple-300 
+                                                         hover:shadow-[0_0_30px_rgba(147,51,234,0.3)] transition-all duration-300
+                                                         transform hover:scale-[1.02] cursor-pointer"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-left">
+                                                        <h3 className="text-xl font-bold text-purple-300 group-hover:text-purple-200">
+                                                            Dashboard
+                                                        </h3>
+                                                        <p className="text-sm text-gray-400 mt-1">
+                                                            Solana Monitoring • Token Analysis • Wallet Tracking
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-2">
+                                                            <span className="text-xs px-2 py-1 bg-pink-500/20 text-pink-400 rounded">
+                                                                CURRENT
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">
+                                                                Entry: Black Hole Vortex
+                                                            </span>
+                                                        </div>
                                                     </div>
+                                                    <svg className="w-8 h-8 text-purple-400 group-hover:text-purple-300 transform group-hover:translate-x-1 transition-transform" 
+                                                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                              d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                                    </svg>
                                                 </div>
-                                                <svg className="w-8 h-8 text-purple-400 group-hover:text-purple-300 transform group-hover:translate-x-1 transition-transform" 
-                                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                                          d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                                </svg>
-                                            </div>
-                                        </button>
+                                            </button>
+                                        )}
                                         
                                         {/* Matrix Universe - SUPER ADMIN ONLY */}
                                         {user?.role === 'super_admin' && (

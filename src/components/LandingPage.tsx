@@ -43,10 +43,8 @@ export function LandingPage() {
       console.log('🔮 Entering Higher Dimensional Network...');
       setCurrentUniverse('hyperdim');
     } else if (selectedUniverse === 'cex-monitor') {
-      console.log('📊 Redirecting to Dashboard...');
-      // Redirect to /dashboard after animation
-      window.location.href = '/dashboard';
-      return; // Prevent any state updates
+      console.log('📊 Entering Dashboard...');
+      setCurrentUniverse('dashboard');
     } else {
       // Default behavior when no specific universe selected
       console.log('⚠️ No universe specified, defaulting to Dashboard');
