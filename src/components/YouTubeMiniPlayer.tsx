@@ -117,13 +117,14 @@ export function YouTubeMiniPlayer() {
         rel: 0,
         showinfo: 0,
         fs: 0,
-        playsinline: 1,
-        origin: window.location.origin
+        playsinline: 1
       },
       events: {
         onStateChange: onPlayerStateChange,
         onReady: onPlayerReady
-      }
+      },
+      host: 'https://www.youtube.com',
+      origin: window.location.origin
     });
   };
 
