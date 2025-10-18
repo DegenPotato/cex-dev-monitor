@@ -1561,6 +1561,14 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         🌊 Multilayer Space
                     </button>
                     <button
+                        onClick={() => onEnter?.('hyperdim')}
+                        className="px-4 py-2 bg-pink-600/20 hover:bg-pink-600/40 border border-pink-500/30 
+                                   text-pink-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] backdrop-blur-sm"
+                    >
+                        🌐 Hyperdimensional
+                    </button>
+                    <button
                         onClick={() => onEnter?.('matrix')}
                         className="px-4 py-2 bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 
                                    text-green-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
