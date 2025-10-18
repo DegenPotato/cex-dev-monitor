@@ -59,6 +59,9 @@ interface SimParams {
   observerEffect: boolean;
   showHigherDimensions: boolean;
   timeEvolution: number;
+  showTunnels: boolean;
+  entanglementStrength: number;
+  informationDecay: number;
 }
 
 export const InformationTopologySimulation: React.FC = () => {
@@ -86,7 +89,10 @@ export const InformationTopologySimulation: React.FC = () => {
     quantumNoise: 0.01,
     observerEffect: true,
     showHigherDimensions: true,
-    timeEvolution: 0.01
+    timeEvolution: 0.01,
+    showTunnels: true,
+    entanglementStrength: 0.5,
+    informationDecay: 0.02
   });
 
   // Initialize information nodes with random states
@@ -133,37 +139,75 @@ export const InformationTopologySimulation: React.FC = () => {
     return nodes;
   };
 
-  // Update information flow between nodes
+  // Update information flow between nodes with entanglement
   const updateInformationFlow = (nodes: InfoNode[]) => {
     // Calculate state updates based on connected neighbors
     const newStates = new Array(nodes.length).fill(0);
+    const entanglements = new Map<number, number>(); // Store entangled pairs
     
     nodes.forEach((node, i) => {
       let totalInfluence = 0;
       let influenceCount = 0;
+      let maxEntanglement = 0;
+      let entangledNode = -1;
       
       node.connections.forEach(connId => {
         const neighbor = nodes[connId];
         if (neighbor) {
           const distance = node.position.distanceTo(neighbor.position);
+          
+          // Local information transfer
           const influence = neighbor.state / (1 + distance);
           totalInfluence += influence;
           influenceCount++;
+          
+          // Quantum entanglement - instantaneous correlation
+          const similarity = 1 - Math.abs(node.state - neighbor.state);
+          const entanglement = similarity * params.entanglementStrength / (1 + distance);
+          
+          if (entanglement > maxEntanglement && entanglement > 0.3) {
+            maxEntanglement = entanglement;
+            entangledNode = connId;
+          }
         }
       });
       
-      // Update state based on neighbors + quantum noise
+      // Store strongest entanglement
+      if (entangledNode >= 0) {
+        entanglements.set(i, entangledNode);
+      }
+      
+      // Update state: local flow + decay + quantum noise
       if (influenceCount > 0) {
-        newStates[i] = node.state * 0.95 + (totalInfluence / influenceCount) * params.informationFlow;
-        // Add quantum fluctuations
-        newStates[i] += (Math.random() - 0.5) * params.quantumNoise;
+        // Information flows from neighbors
+        const localFlow = (totalInfluence / influenceCount) * params.informationFlow;
+        
+        // Information decay (2nd law of thermodynamics)
+        const decay = node.state * params.informationDecay;
+        
+        // Quantum fluctuations
+        const noise = (Math.random() - 0.5) * params.quantumNoise;
+        
+        newStates[i] = node.state * 0.95 + localFlow - decay + noise;
         newStates[i] = Math.max(0, Math.min(1, newStates[i])); // Clamp [0, 1]
       } else {
-        newStates[i] = node.state;
+        // Isolated nodes decay faster
+        newStates[i] = node.state * (1 - params.informationDecay * 2);
       }
       
       // Update entropy based on information flow
       node.entropy = Math.abs(newStates[i] - node.state) * 10 + node.entropy * 0.9;
+    });
+    
+    // Apply entanglement correlations (instantaneous)
+    entanglements.forEach((targetId, sourceId) => {
+      if (targetId < newStates.length && sourceId < newStates.length) {
+        // Entangled nodes tend toward similar states
+        const correlation = (newStates[sourceId] + newStates[targetId]) / 2;
+        const strength = params.entanglementStrength * 0.5;
+        newStates[sourceId] = newStates[sourceId] * (1 - strength) + correlation * strength;
+        newStates[targetId] = newStates[targetId] * (1 - strength) + correlation * strength;
+      }
     });
     
     // Apply new states
@@ -173,7 +217,7 @@ export const InformationTopologySimulation: React.FC = () => {
   };
 
   // Check for black hole formation (information compression)
-  const checkBlackHoleFormation = (nodes: InfoNode[]) => {
+  const checkBlackHoleFormation = (nodes: InfoNode[], scene: THREE.Scene) => {
     nodes.forEach(node => {
       // High information density creates black holes
       if (node.state > params.compressionThreshold && !node.isBlackHole) {
@@ -208,14 +252,16 @@ export const InformationTopologySimulation: React.FC = () => {
         
         // Check for white hole transition
         if (node.compressionLevel! > 1.5) {
-          triggerWhiteHoleTransition(node, nodes);
+          triggerWhiteHoleTransition(node, nodes, scene);
         }
       }
     });
   };
 
   // Trigger white hole emission (information expansion)
-  const triggerWhiteHoleTransition = (node: InfoNode, allNodes: InfoNode[]) => {
+  const triggerWhiteHoleTransition = (node: InfoNode, allNodes: InfoNode[], scene: THREE.Scene) => {
+    const oldPosition = node.position.clone();
+    
     node.isBlackHole = false;
     node.isWhiteHole = true;
     node.phase = 'expanding';
@@ -227,29 +273,75 @@ export const InformationTopologySimulation: React.FC = () => {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.random() * Math.PI;
     
-    node.position.set(
+    const newPosition = new THREE.Vector3(
       tunnelDistance * Math.sin(phi) * Math.cos(theta),
       tunnelDistance * Math.sin(phi) * Math.sin(theta),
       tunnelDistance * Math.cos(phi)
     );
     
-    // Emit information to nearby nodes
+    // Create tunnel visualization if enabled
+    if (params.showTunnels) {
+      const curve = new THREE.CubicBezierCurve3(
+        oldPosition,
+        oldPosition.clone().add(new THREE.Vector3(
+          (Math.random() - 0.5) * 20,
+          (Math.random() - 0.5) * 20,
+          (Math.random() - 0.5) * 20
+        )),
+        newPosition.clone().add(new THREE.Vector3(
+          (Math.random() - 0.5) * 20,
+          (Math.random() - 0.5) * 20,
+          (Math.random() - 0.5) * 20
+        )),
+        newPosition
+      );
+      
+      const points = curve.getPoints(50);
+      const tunnelGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const tunnelMaterial = new THREE.LineBasicMaterial({
+        color: 0xff00ff,
+        opacity: 0.8,
+        transparent: true,
+        linewidth: 3
+      });
+      const tunnel = new THREE.Line(tunnelGeometry, tunnelMaterial);
+      scene.add(tunnel);
+      
+      // Fade out and remove tunnel
+      setTimeout(() => {
+        scene.remove(tunnel);
+        tunnelGeometry.dispose();
+        tunnelMaterial.dispose();
+      }, 2000);
+    }
+    
+    node.position.copy(newPosition);
+    
+    // Emit information to nearby nodes with wave effect
     setTimeout(() => {
       allNodes.forEach(other => {
         const distance = node.position.distanceTo(other.position);
-        if (distance < 5 && other.id !== node.id) {
-          other.state += node.compressionLevel! * params.expansionRate / (1 + distance);
-          other.velocity.addScaledVector(
-            other.position.clone().sub(node.position).normalize(),
-            0.5
-          );
+        if (distance < 8 && other.id !== node.id) {
+          // Information transfer
+          const transfer = node.compressionLevel! * params.expansionRate / (1 + distance);
+          other.state = Math.min(1, other.state + transfer);
+          
+          // Momentum transfer (push nodes away)
+          const direction = other.position.clone().sub(node.position).normalize();
+          other.velocity.addScaledVector(direction, 0.5);
+          
+          // Create entanglement
+          if (!node.connections.includes(other.id) && Math.random() < 0.3) {
+            node.connections.push(other.id);
+            other.connections.push(node.id);
+          }
         }
       });
       
-      // Reset node
+      // Reset node with residual state
       node.isWhiteHole = false;
       node.phase = 'stable';
-      node.state = 0.5;
+      node.state = 0.3 + Math.random() * 0.2; // Some information retained
       node.compressionLevel = 0;
       whiteHolesRef.current.delete(node.id);
     }, 1000);
@@ -456,11 +548,14 @@ export const InformationTopologySimulation: React.FC = () => {
     simFolder.add(params, 'gravityStrength', 0, 0.5).name('Gravity Strength');
     simFolder.add(params, 'quantumNoise', 0, 0.1).name('Quantum Noise');
     simFolder.add(params, 'timeEvolution', 0, 0.1).name('Time Evolution');
+    simFolder.add(params, 'entanglementStrength', 0, 1).name('Entanglement');
+    simFolder.add(params, 'informationDecay', 0, 0.1).name('Info Decay (Entropy)');
     simFolder.open();
     
     const visualFolder = gui.addFolder('Visualization');
     visualFolder.add(params, 'observerEffect').name('Observer Effect');
     visualFolder.add(params, 'showHigherDimensions').name('Higher Dimensions');
+    visualFolder.add(params, 'showTunnels').name('Show Wormhole Tunnels');
     visualFolder.add(params, 'connectionRadius', 1, 10).name('Connection Range').onChange(() => {
       // Rebuild connections
       nodes.forEach(node => node.connections = []);
@@ -490,7 +585,7 @@ export const InformationTopologySimulation: React.FC = () => {
       updateInformationFlow(nodes);
       
       // Check for black hole formation
-      checkBlackHoleFormation(nodes);
+      checkBlackHoleFormation(nodes, scene);
       
       // Apply observer effect
       if (camera) {
@@ -580,14 +675,19 @@ export const InformationTopologySimulation: React.FC = () => {
   return (
     <div ref={mountRef} className="w-full h-screen relative">
       <div className="absolute top-4 left-4 text-white bg-black/50 p-4 rounded-lg backdrop-blur-sm max-w-md">
-        <h2 className="text-2xl font-bold mb-2">Information Topology Simulation</h2>
+        <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+          Information Topology Simulation
+        </h2>
         <div className="text-sm space-y-1">
-          <p className="text-cyan-400">Information creates geometry, not vice versa</p>
+          <p className="text-cyan-400 font-semibold">Information creates geometry, not vice versa</p>
           <p>⚪ Nodes = Information packets (qubits/data)</p>
-          <p>➖ Edges = Information flow/entanglement</p>
+          <p>➖ Edges = Information flow (local + entangled)</p>
+          <p>🔗 Entanglement = Instantaneous correlation</p>
           <p>⚫ Black holes = Information compression</p>
-          <p>⚡ White holes = Information expansion</p>
-          <p className="text-yellow-400">Observer effect collapses uncertainty near camera</p>
+          <p>⚡ White holes = Emission via wormhole tunnels</p>
+          <p className="text-purple-400">💜 Tunnels visualize BH→WH transitions</p>
+          <p className="text-yellow-400">👁 Observer collapses quantum uncertainty</p>
+          <p className="text-red-400 text-xs mt-2">⚠️ Information decay: 2nd law of thermodynamics</p>
         </div>
       </div>
       
