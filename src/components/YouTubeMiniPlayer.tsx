@@ -59,16 +59,7 @@ export function YouTubeMiniPlayer() {
   }, []);
 
   const initGoogleAPI = () => {
-    if (!window.gapi) {
-      console.warn('⚠️ Google API not loaded');
-      return;
-    }
-    
-    // Check if credentials are provided
-    if (!CLIENT_ID || !API_KEY || CLIENT_ID === '' || API_KEY === '') {
-      console.warn('⚠️ YouTube API credentials not configured. Player will work but OAuth features disabled.');
-      return;
-    }
+    if (!window.gapi) return;
     
     window.gapi.load('client:auth2', () => {
       window.gapi.client.init({
@@ -77,15 +68,14 @@ export function YouTubeMiniPlayer() {
         discoveryDocs: DISCOVERY_DOCS,
         scope: SCOPES
       }).then(() => {
-        console.log('✅ Google API initialized successfully');
-        const authInstance = window.gapi.auth2.getAuthInstance();
+        console.log('✅ Google API initialized');
+        const authInstance = window.gapi.auth2?.getAuthInstance();
         if (authInstance) {
-          // Listen for sign-in state changes
           authInstance.isSignedIn.listen(updateSigninStatus);
           updateSigninStatus(authInstance.isSignedIn.get());
         }
       }).catch((error: any) => {
-        console.error('❌ Google API initialization failed:', error);
+        console.error('❌ Google API init failed:', error);
       });
     });
   };
@@ -98,26 +88,18 @@ export function YouTubeMiniPlayer() {
   };
 
   const handleAuthClick = () => {
-    if (!window.gapi) {
-      console.warn('⚠️ Google API not loaded');
-      return;
-    }
+    if (!window.gapi) return;
     
     const authInstance = window.gapi.auth2?.getAuthInstance();
     if (!authInstance) {
-      console.error('❌ Google Auth not initialized. Please configure YouTube API credentials.');
-      alert('YouTube API credentials not configured. Please add VITE_YOUTUBE_CLIENT_ID and VITE_YOUTUBE_API_KEY to your .env file.');
+      console.error('❌ Auth not initialized');
       return;
     }
     
-    try {
-      if (isSignedIn) {
-        authInstance.signOut();
-      } else {
-        authInstance.signIn();
-      }
-    } catch (error) {
-      console.error('❌ Auth action failed:', error);
+    if (isSignedIn) {
+      authInstance.signOut();
+    } else {
+      authInstance.signIn();
     }
   };
 
@@ -159,21 +141,7 @@ export function YouTubeMiniPlayer() {
   };
 
   const searchVideos = async () => {
-    if (!searchQuery) {
-      console.warn('⚠️ No search query provided');
-      return;
-    }
-    
-    if (!API_KEY || API_KEY === '') {
-      console.error('❌ YouTube API key not configured');
-      alert('YouTube API key not configured. Please add VITE_YOUTUBE_API_KEY to your .env file.');
-      return;
-    }
-    
-    if (!window.gapi?.client?.youtube) {
-      console.error('❌ YouTube API not initialized');
-      return;
-    }
+    if (!API_KEY || !searchQuery || !window.gapi) return;
 
     try {
       const response = await window.gapi.client.youtube.search.list({
@@ -192,17 +160,12 @@ export function YouTubeMiniPlayer() {
 
       setSearchResults(videos);
     } catch (error) {
-      console.error('❌ Search failed:', error);
-      alert('Search failed. Please check your API configuration.');
+      console.error('Search failed:', error);
     }
   };
 
   const loadUserPlaylists = async () => {
-    if (!window.gapi?.client?.youtube) {
-      console.warn('⚠️ YouTube API not initialized');
-      return;
-    }
-    
+    if (!window.gapi) return;
     try {
       const response = await window.gapi.client.youtube.playlists.list({
         part: 'snippet',
@@ -210,9 +173,8 @@ export function YouTubeMiniPlayer() {
         maxResults: 20
       });
       setPlaylists(response.result.items || []);
-      console.log('✅ Loaded', response.result.items?.length || 0, 'playlists');
     } catch (error) {
-      console.error('❌ Failed to load playlists:', error);
+      console.error('Failed to load playlists:', error);
     }
   };
 
@@ -270,22 +232,16 @@ export function YouTubeMiniPlayer() {
           <span className="text-cyan-400 font-semibold">YouTube Music</span>
         </div>
         <div className="flex items-center gap-2">
-          {(CLIENT_ID && API_KEY) ? (
-            <button
-              onClick={handleAuthClick}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                isSignedIn 
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/40' 
-                  : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
-              }`}
-            >
-              {isSignedIn ? 'Connected' : 'Connect'}
-            </button>
-          ) : (
-            <div className="px-3 py-1 rounded-lg text-xs bg-gray-500/20 text-gray-400 border border-gray-500/40" title="Configure API credentials in .env">
-              No API Key
-            </div>
-          )}
+          <button
+            onClick={handleAuthClick}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+              isSignedIn 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/40' 
+                : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+            }`}
+          >
+            {isSignedIn ? 'Connected' : 'Connect'}
+          </button>
           <button
             onClick={() => setIsMinimized(!isMinimized)}
             className="p-1.5 hover:bg-cyan-500/20 rounded-lg transition-colors text-cyan-400"
