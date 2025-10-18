@@ -14,7 +14,7 @@ import { useExperienceSettings } from '../../contexts/ExperienceSettingsContext'
 import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
 import { useAudio } from '../../contexts/AudioContext';
 import { HudContainer, ExperienceModeToggle } from '../hud';
-import { UnifiedMusicPlayer } from '../music/UnifiedMusicPlayer';
+import { ComprehensiveMusicPlayer } from '../music/ComprehensiveMusicPlayer';
 import { getAdaptiveQualitySettings, getOptimalParticleCount } from '../../utils/performance';
 import { gsap } from 'gsap';
 
@@ -1143,9 +1143,9 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {/* UNIFIED MUSIC PLAYER - Local & YouTube */}
+        {/* COMPREHENSIVE MUSIC PLAYER - Full Audio Suite */}
         {showMusicPlayer && !isTransitioning && (
-          <UnifiedMusicPlayer onClose={() => setShowMusicPlayer(false)} />
+          <ComprehensiveMusicPlayer onClose={() => setShowMusicPlayer(false)} />
         )}
         
         {/* OLD MUSIC PLAYER - BACKUP (Hidden) */}
