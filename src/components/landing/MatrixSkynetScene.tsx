@@ -46,7 +46,16 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
-  const { isAuthenticated: isYouTubeConnected, userEmail: youtubeEmail, signIn: connectGoogle } = useYouTubeAudio();
+  const youtubeAudio = useYouTubeAudio();
+  const isYouTubeConnected = youtubeAudio.isAuthenticated;
+  const youtubeEmail = youtubeAudio.userEmail;
+  const connectGoogle = youtubeAudio.signIn;
+  const [isYouTubeConnectedState, setIsYouTubeConnected] = useState(false);
+  
+  // Sync YouTube connection state
+  useEffect(() => {
+    setIsYouTubeConnected(youtubeAudio.isAuthenticated);
+  }, [youtubeAudio.isAuthenticated]);
   const {
     // Source
     audioSource,
