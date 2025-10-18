@@ -1633,11 +1633,11 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             </div>
                                         </button>
                                         
-                                        {/* CEX Dev Monitor - Current */}
+                                        {/* Dashboard - Current */}
                                         <button
                                             onClick={() => {
                                                 setSelectedUniverse('cex-monitor');
-                                                console.log('🎯 Selected: CEX Dev Monitor');
+                                                console.log('🎯 Selected: Dashboard');
                                             }}
                                             className="group relative p-6 bg-gradient-to-br from-purple-900/30 to-pink-900/30 
                                                      border border-purple-400/50 rounded-lg hover:border-purple-300 
@@ -1647,13 +1647,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                             <div className="flex items-center justify-between">
                                                 <div className="text-left">
                                                     <h3 className="text-xl font-bold text-purple-300 group-hover:text-purple-200">
-                                                        CEX Dev Monitor
+                                                        Dashboard
                                                     </h3>
                                                     <p className="text-sm text-gray-400 mt-1">
                                                         Solana Monitoring • Token Analysis • Wallet Tracking
                                                     </p>
                                                     <div className="flex items-center gap-2 mt-2">
-                                                        <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-400 rounded">
+                                                        <span className="text-xs px-2 py-1 bg-pink-500/20 text-pink-400 rounded">
                                                             CURRENT
                                                         </span>
                                                         <span className="text-xs text-gray-500">
@@ -1733,7 +1733,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                         {!connected && !isAuthenticated && 'Connect your wallet or enter access code.'}
                                         {connected && !isAuthenticated && 'Sign the message to authenticate.'}
                                         {isAuthenticated && !selectedUniverse && 'Select your destination universe.'}
-                                        {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : selectedUniverse === 'matrix' ? 'The Matrix' : 'CEX Monitor'}...`}
+                                        {selectedUniverse && `Entering ${selectedUniverse === 'spaces-manager' ? 'Spaces Manager' : selectedUniverse === 'matrix' ? 'The Matrix' : 'Dashboard'}...`}
                                     </p>
                                     
                                     {/* Connect Wallet / Authenticate Flow */}
