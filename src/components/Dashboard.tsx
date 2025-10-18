@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Settings, Circle, Wallet, Flame, Database } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Settings, Circle, Wallet, Flame, Database, Activity, TrendingUp, ChevronRight } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
@@ -15,13 +15,68 @@ export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
+  const starsCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    
+    // Animated stars background
+    const canvas = starsCanvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    const stars: Array<{ x: number; y: number; size: number; speed: number; opacity: number }> = [];
+    for (let i = 0; i < 200; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2,
+        speed: Math.random() * 0.5 + 0.1,
+        opacity: Math.random()
+      });
+    }
+    
+    let animationId: number;
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      stars.forEach(star => {
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(0, 255, 221, ${star.opacity})`;
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        star.x -= star.speed;
+        star.opacity = Math.sin(Date.now() * 0.001 + star.x) * 0.5 + 0.5;
+        
+        if (star.x < 0) {
+          star.x = canvas.width;
+          star.y = Math.random() * canvas.height;
+        }
+      });
+      
+      animationId = requestAnimationFrame(animate);
+    };
+    animate();
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('resize', resizeCanvas);
+      cancelAnimationFrame(animationId);
+    };
   }, []);
 
   useEffect(() => {
@@ -50,16 +105,29 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-black relative overflow-hidden">
+      {/* Animated Stars Background */}
+      <canvas 
+        ref={starsCanvasRef}
+        className="fixed inset-0 w-full h-full"
+        style={{ background: 'radial-gradient(circle at center, #000511 0%, #000000 100%)' }}
+      />
+      
+      {/* Cosmic Glow Effects */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+      </div>
+      
       {/* Settings Overlay */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
-          <div className="w-full max-w-6xl bg-slate-800 rounded-xl border border-purple-500/30 shadow-2xl my-8">
-            <div className="flex items-center justify-between p-6 border-b border-purple-500/20">
-              <h2 className="text-2xl font-bold text-white">Settings & Configuration</h2>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-start justify-center overflow-y-auto p-4">
+          <div className="w-full max-w-6xl bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/30 shadow-2xl shadow-cyan-500/20 my-8">
+            <div className="flex items-center justify-between p-6 border-b border-cyan-500/20">
+              <h2 className="text-2xl font-bold text-cyan-400">Settings & Configuration</h2>
               <button
                 onClick={() => setShowSettings(false)}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-cyan-400 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -71,95 +139,123 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-5xl font-bold mb-2">
-              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-500 bg-clip-text text-transparent">
-                Sniff Agency
+          <div className="relative">
+            <h1 className="text-5xl font-bold mb-2 tracking-wider">
+              <span className="text-cyan-400 drop-shadow-[0_0_30px_rgba(0,255,221,0.5)]">
+                SNIFF AGENCY
               </span>
             </h1>
-            <p className="text-lg text-purple-300/80">Wallet Tracking Manager</p>
+            <p className="text-lg text-cyan-300/60 font-light">Follow the Money.</p>
+            <div className="absolute -bottom-2 left-0 h-[1px] w-32 bg-gradient-to-r from-cyan-400 to-transparent" />
           </div>
           
           <div className="flex items-center gap-4">
             {/* Connection Status */}
-            <div className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm px-4 py-2 rounded-full border border-purple-500/20">
+            <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
               <Circle 
-                className={`w-2.5 h-2.5 ${isConnected ? 'fill-green-400 text-green-400 animate-pulse' : 'fill-red-400 text-red-400'}`}
+                className={`w-2.5 h-2.5 ${isConnected ? 'fill-cyan-400 text-cyan-400' : 'fill-red-400 text-red-400'}`}
               />
-              <span className={`text-sm font-medium ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                {isConnected ? 'Live' : 'Offline'}
+              <span className={`text-sm font-medium ${isConnected ? 'text-cyan-400' : 'text-red-400'}`}>
+                {isConnected ? 'LIVE' : 'OFFLINE'}
               </span>
+              {isConnected && (
+                <div className="absolute inset-0 rounded-full bg-cyan-400/20 animate-ping" />
+              )}
             </div>
 
             {/* Settings Button */}
             <button
               onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 bg-slate-800/50 backdrop-blur-sm hover:bg-slate-700/50 px-4 py-2 rounded-full border border-purple-500/20 transition-all text-gray-300 hover:text-white"
+              className="flex items-center gap-2 bg-black/40 backdrop-blur-xl hover:bg-cyan-500/10 px-4 py-2 rounded-full border border-cyan-500/20 transition-all text-gray-300 hover:text-cyan-400 hover:border-cyan-500/40 shadow-lg shadow-cyan-500/10 group"
               title="Open Settings"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
               <span className="font-medium">Settings</span>
             </button>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-3 mb-8 bg-black/40 backdrop-blur-xl p-1.5 rounded-2xl border border-cyan-500/20">
           <button
             onClick={() => setActiveTab('wallets')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'wallets'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
             }`}
           >
-            <Wallet className="w-5 h-5" />
-            Wallet Monitoring
+            {activeTab === 'wallets' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <Wallet className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Wallet Monitoring</span>
+            {activeTab === 'wallets' && (
+              <Activity className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('tokens')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'tokens'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
             }`}
           >
-            <Flame className="w-5 h-5" />
-            Token Launch History
+            {activeTab === 'tokens' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <Flame className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Token Launch History</span>
+            {activeTab === 'tokens' && (
+              <TrendingUp className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('database')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'database'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                : 'bg-slate-800/50 text-gray-300 hover:bg-slate-700/50'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
             }`}
           >
-            <Database className="w-5 h-5" />
-            Database Admin
+            {activeTab === 'database' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <Database className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Database Admin</span>
+            {activeTab === 'database' && (
+              <ChevronRight className="w-4 h-4 ml-2 text-cyan-300 relative z-10" />
+            )}
           </button>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content with Glassmorphism */}
         {activeTab === 'wallets' ? (
           <div className="space-y-6">
             {/* Wallet Monitoring Hub */}
-            <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
               <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
             </div>
             
             {/* Recent Token Mints */}
-            <RecentTokenMints />
+            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
+              <RecentTokenMints />
+            </div>
           </div>
         ) : activeTab === 'tokens' ? (
-          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl">
+          <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
             <TokensTab />
           </div>
         ) : (
-          <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl h-[calc(100vh-250px)]">
+          <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
             <DatabaseTab />
           </div>
         )}

@@ -217,36 +217,36 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
     <div className="p-6">
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-lg p-4">
+        <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-600/10 backdrop-blur-sm border border-cyan-500/30 rounded-lg p-4 shadow-lg shadow-cyan-500/10">
           <div className="flex items-center justify-between mb-2">
-            <Activity className="w-5 h-5 text-purple-400" />
+            <Activity className="w-5 h-5 text-cyan-400" />
             <span className="text-2xl font-bold text-white">{activeCount}/{wallets.length}</span>
           </div>
-          <p className="text-sm text-gray-300">Active Monitoring</p>
+          <p className="text-sm text-cyan-200/70">Active Monitoring</p>
         </div>
         
-        <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/20 border border-amber-500/30 rounded-lg p-4">
+        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 backdrop-blur-sm border border-purple-500/30 rounded-lg p-4 shadow-lg shadow-purple-500/10">
           <div className="flex items-center justify-between mb-2">
-            <Flame className="w-5 h-5 text-amber-400" />
+            <Flame className="w-5 h-5 text-purple-400" />
             <span className="text-2xl font-bold text-white">{devCount}</span>
           </div>
-          <p className="text-sm text-gray-300">Dev Wallets</p>
+          <p className="text-sm text-purple-200/70">Dev Wallets</p>
         </div>
         
-        <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 border border-green-500/30 rounded-lg p-4">
+        <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 backdrop-blur-sm border border-green-500/30 rounded-lg p-4 shadow-lg shadow-green-500/10">
           <div className="flex items-center justify-between mb-2">
             <DollarSign className="w-5 h-5 text-green-400" />
             <span className="text-2xl font-bold text-white">{stats?.transactions_24h || 0}</span>
           </div>
-          <p className="text-sm text-gray-300">Transactions (24h)</p>
+          <p className="text-sm text-green-200/70">Transactions (24h)</p>
         </div>
         
-        <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-lg p-4">
+        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 backdrop-blur-sm border border-blue-500/30 rounded-lg p-4 shadow-lg shadow-blue-500/10">
           <div className="flex items-center justify-between mb-2">
             <Clock className="w-5 h-5 text-blue-400" />
             <span className="text-2xl font-bold text-white">{stats?.tokens_24h || 0}</span>
           </div>
-          <p className="text-sm text-gray-300">Tokens (24h)</p>
+          <p className="text-sm text-blue-200/70">Tokens (24h)</p>
         </div>
       </div>
 
@@ -260,7 +260,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search wallets by address, label, or source..."
-            className="w-full bg-slate-700 text-white rounded-lg pl-10 pr-4 py-2.5 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none transition-colors"
+            className="w-full bg-black/40 backdrop-blur-sm text-white rounded-lg pl-10 pr-4 py-2.5 border border-cyan-500/20 focus:border-cyan-500/50 focus:outline-none transition-colors shadow-lg shadow-cyan-500/10"
           />
         </div>
 
@@ -270,7 +270,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           <select
             value={filterBy}
             onChange={(e) => setFilterBy(e.target.value as FilterBy)}
-            className="bg-slate-700 text-white rounded-lg pl-9 pr-10 py-2.5 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer"
+            className="bg-black/40 backdrop-blur-sm text-white rounded-lg pl-9 pr-10 py-2.5 border border-cyan-500/20 focus:border-cyan-500/50 focus:outline-none transition-colors appearance-none cursor-pointer shadow-lg shadow-cyan-500/10"
           >
             <option value="all">All Wallets</option>
             <option value="active">Active Only</option>
@@ -285,7 +285,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortBy)}
-            className="bg-slate-700 text-white rounded-lg pl-9 pr-10 py-2.5 border border-purple-500/20 focus:border-purple-500/50 focus:outline-none transition-colors appearance-none cursor-pointer"
+            className="bg-black/40 backdrop-blur-sm text-white rounded-lg pl-9 pr-10 py-2.5 border border-cyan-500/20 focus:border-cyan-500/50 focus:outline-none transition-colors appearance-none cursor-pointer shadow-lg shadow-cyan-500/10"
           >
             <option value="date">Newest First</option>
             <option value="activity">Most Active</option>
@@ -297,7 +297,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
         {/* Add Wallet */}
         <button
           onClick={() => setShowAddWallet(!showAddWallet)}
-          className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
+          className="flex items-center justify-center gap-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 px-6 py-2.5 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
         >
           <Plus className="w-4 h-4" />
           <span>Add Wallet</span>
@@ -306,8 +306,8 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
 
       {/* Bulk Actions */}
       {selectedWallets.size > 0 && (
-        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4 mb-6 flex items-center justify-between">
-          <span className="text-white font-medium">{selectedWallets.size} wallet(s) selected</span>
+        <div className="bg-cyan-900/20 backdrop-blur-sm border border-cyan-500/30 rounded-lg p-4 mb-6 flex items-center justify-between shadow-lg shadow-cyan-500/10">
+          <span className="text-cyan-300 font-medium">{selectedWallets.size} wallet(s) selected</span>
           <div className="flex gap-2">
             <button
               onClick={() => bulkToggleMonitoring(true)}
@@ -336,8 +336,8 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
 
       {/* Add Wallet Form */}
       {showAddWallet && (
-        <div className="bg-slate-700/50 border border-purple-500/30 rounded-lg p-6 mb-6">
-          <h3 className="text-white font-semibold mb-4 text-lg">Add New Wallet to Monitor</h3>
+        <div className="bg-black/40 backdrop-blur-xl border border-cyan-500/30 rounded-lg p-6 mb-6 shadow-xl shadow-cyan-500/10">
+          <h3 className="text-cyan-400 font-semibold mb-4 text-lg">Add New Wallet to Monitor</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
@@ -375,10 +375,10 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
               {/* Pumpfun Launches */}
               <button
                 onClick={() => setNewWalletMonitoringType('pumpfun')}
-                className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                className={`relative p-4 rounded-lg border-2 transition-all text-left backdrop-blur-sm ${
                   newWalletMonitoringType === 'pumpfun'
-                    ? 'border-purple-500 bg-purple-500/20'
-                    : 'border-slate-600 bg-slate-700/30 hover:border-purple-500/50'
+                    ? 'border-purple-500 bg-purple-500/20 shadow-lg shadow-purple-500/10'
+                    : 'border-gray-600/50 bg-black/20 hover:border-purple-500/50'
                 }`}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -405,10 +405,10 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
               {/* Trading Activity */}
               <button
                 onClick={() => setNewWalletMonitoringType('trading')}
-                className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                className={`relative p-4 rounded-lg border-2 transition-all text-left backdrop-blur-sm ${
                   newWalletMonitoringType === 'trading'
-                    ? 'border-blue-500 bg-blue-500/20'
-                    : 'border-slate-600 bg-slate-700/30 hover:border-blue-500/50'
+                    ? 'border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/10'
+                    : 'border-gray-600/50 bg-black/20 hover:border-blue-500/50'
                 }`}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -435,7 +435,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           </div>
 
           {/* Rate Limit Configuration */}
-          <div className="mb-6 bg-slate-800/50 border border-slate-600 rounded-lg p-4">
+          <div className="mb-6 bg-black/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-4 shadow-lg shadow-cyan-500/10">
             <label className="block text-sm font-medium text-gray-300 mb-3">
               Rate Limit Configuration
             </label>
@@ -454,7 +454,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                     step="0.1"
                     value={newWalletRateLimitRPS}
                     onChange={(e) => setNewWalletRateLimitRPS(parseFloat(e.target.value))}
-                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    className="flex-1 h-2 bg-black/40 rounded-lg appearance-none cursor-pointer accent-cyan-500 shadow-inner"
                   />
                   <input
                     type="number"
@@ -463,7 +463,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                     step="0.1"
                     value={newWalletRateLimitRPS}
                     onChange={(e) => setNewWalletRateLimitRPS(parseFloat(e.target.value) || 1)}
-                    className="w-20 bg-slate-700 text-white rounded px-2 py-1 text-sm border border-purple-500/20"
+                    className="w-20 bg-black/40 backdrop-blur-sm text-white rounded px-2 py-1 text-sm border border-cyan-500/20 focus:border-cyan-500/50 focus:outline-none"
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -492,7 +492,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
               </div>
             </div>
 
-            <div className="mt-3 text-xs text-gray-400 bg-slate-700/50 rounded p-2">
+            <div className="mt-3 text-xs text-cyan-200/60 bg-black/20 backdrop-blur-sm rounded p-2 border border-cyan-500/10">
               💡 <strong>Tip:</strong> Start with 1 RPS (default) for safe testing. Increase for faster backfills if needed. This prevents rate limiting from RPC nodes.
             </div>
           </div>
@@ -507,7 +507,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           <div className="flex gap-2">
             <button
               onClick={addWallet}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+              className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 px-6 py-2.5 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
             >
               <Plus className="w-4 h-4" />
               Add Wallet
@@ -526,10 +526,10 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
       )}
 
       {/* Wallet List */}
-      <div className="bg-slate-900/50 rounded-lg border border-purple-500/20 overflow-hidden">
+      <div className="bg-black/30 backdrop-blur-xl rounded-lg border border-cyan-500/20 overflow-hidden shadow-2xl shadow-cyan-500/10">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-800/50 border-b border-purple-500/20">
+            <thead className="bg-black/50 border-b border-cyan-500/20">
               <tr>
                 <th className="px-4 py-3 text-left">
                   <button onClick={toggleAllSelection} className="text-gray-400 hover:text-white">
@@ -547,7 +547,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-purple-500/10">
+            <tbody className="divide-y divide-cyan-500/10">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
@@ -562,14 +562,14 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                 </tr>
               ) : (
                 filteredWallets.map((wallet) => (
-                  <tr key={wallet.address} className="hover:bg-slate-800/30 transition-colors">
+                  <tr key={wallet.address} className="hover:bg-cyan-500/5 transition-colors">
                     <td className="px-4 py-3">
                       <button 
                         onClick={() => toggleWalletSelection(wallet.address)}
                         className="text-gray-400 hover:text-white"
                       >
                         {selectedWallets.has(wallet.address) ? 
-                          <CheckSquare className="w-5 h-5 text-purple-400" /> : 
+                          <CheckSquare className="w-5 h-5 text-cyan-400" /> : 
                           <Square className="w-5 h-5" />
                         }
                       </button>
@@ -580,7 +580,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                           href={`https://solscan.io/account/${wallet.address}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-purple-400 hover:text-purple-300 font-mono text-sm"
+                          className="text-cyan-400 hover:text-cyan-300 font-mono text-sm transition-colors"
                         >
                           {wallet.address.slice(0, 8)}...{wallet.address.slice(-6)}
                         </a>
@@ -589,7 +589,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                         )}
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           {wallet.is_dev === 1 && (
-                            <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded">
+                            <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded backdrop-blur-sm">
                               <Flame className="w-3 h-3" />
                               Dev • {wallet.dev_tokens_count || 0} tokens
                             </span>
@@ -617,7 +617,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 bg-slate-700 text-gray-300 text-xs px-2 py-1 rounded">
+                      <span className="inline-flex items-center gap-1 bg-black/30 backdrop-blur-sm text-cyan-200/70 text-xs px-2 py-1 rounded border border-cyan-500/20">
                         {wallet.source}
                       </span>
                     </td>
@@ -697,7 +697,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
       </div>
 
       {/* Footer Info */}
-      <div className="mt-6 text-center text-sm text-gray-400">
+      <div className="mt-6 text-center text-sm text-cyan-300/60">
         Showing {filteredWallets.length} of {wallets.length} wallet(s)
       </div>
     </div>

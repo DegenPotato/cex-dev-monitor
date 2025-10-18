@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Flame, ExternalLink, Clock, User } from 'lucide-react';
+import { ExternalLink, Clock, User, Rocket, Activity } from 'lucide-react';
 import { apiUrl } from '../config';
 
 interface TokenMint {
@@ -66,24 +66,27 @@ export function RecentTokenMints() {
 
   if (loading) {
     return (
-      <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl p-6">
+      <div className="p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Flame className="w-6 h-6 text-purple-400" />
-          <h2 className="text-2xl font-bold text-white">Recent Token Mints</h2>
+          <Rocket className="w-6 h-6 text-cyan-400 animate-pulse" />
+          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
         </div>
-        <div className="text-gray-400 text-center py-8">Loading...</div>
+        <div className="text-cyan-300/60 text-center py-8 flex items-center justify-center gap-2">
+          <Activity className="w-5 h-5 animate-spin" />
+          <span>Scanning blockchain...</span>
+        </div>
       </div>
     );
   }
 
   if (tokens.length === 0) {
     return (
-      <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl p-6">
+      <div className="p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Flame className="w-6 h-6 text-purple-400" />
-          <h2 className="text-2xl font-bold text-white">Recent Token Mints</h2>
+          <Rocket className="w-6 h-6 text-cyan-400" />
+          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
         </div>
-        <div className="text-gray-400 text-center py-8">
+        <div className="text-cyan-300/60 text-center py-8 bg-black/20 rounded-lg border border-cyan-500/10">
           No tokens detected yet. Add monitored wallets to start tracking.
         </div>
       </div>
@@ -91,22 +94,24 @@ export function RecentTokenMints() {
   }
 
   return (
-    <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-purple-500/20 shadow-xl p-6">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <Flame className="w-6 h-6 text-purple-400" />
-          <h2 className="text-2xl font-bold text-white">Recent Token Mints</h2>
+          <Rocket className="w-6 h-6 text-cyan-400" />
+          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
+          <div className="h-[1px] w-16 bg-gradient-to-r from-cyan-400 to-transparent" />
         </div>
-        <span className="text-sm text-gray-400">{tokens.length} tokens</span>
+        <span className="text-sm text-cyan-300/60 bg-black/30 backdrop-blur-sm px-3 py-1 rounded-full border border-cyan-500/20">{tokens.length} tokens</span>
       </div>
 
       <div className="space-y-3">
         {tokens.map((token) => (
           <div
             key={token.id}
-            className="bg-slate-700/50 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all"
+            className="bg-black/30 backdrop-blur-xl rounded-lg p-4 border border-cyan-500/10 hover:border-cyan-500/30 transition-all hover:bg-cyan-500/5 shadow-lg shadow-cyan-500/5 hover:shadow-cyan-500/10 relative overflow-hidden group"
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <div className="flex items-start justify-between gap-4 relative z-10">
               {/* Token Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
@@ -114,21 +119,21 @@ export function RecentTokenMints() {
                     {token.name || token.symbol || 'Unknown Token'}
                   </h3>
                   {token.symbol && token.name && (
-                    <span className="text-purple-400 text-sm">${token.symbol}</span>
+                    <span className="text-cyan-400 text-sm bg-cyan-500/10 px-2 py-0.5 rounded">${token.symbol}</span>
                   )}
                 </div>
                 
-                <div className="flex items-center gap-4 text-sm text-gray-400">
+                <div className="flex items-center gap-4 text-sm text-cyan-200/60">
                   <div className="flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" />
+                    <User className="w-3.5 h-3.5 text-cyan-400/60" />
                     <span className="font-mono">{formatAddress(token.creator_address)}</span>
                   </div>
                   <div className="flex items-center gap-1.5" title={formatTimestamp(token.launch_time)}>
-                    <Clock className="w-3.5 h-3.5" />
+                    <Clock className="w-3.5 h-3.5 text-cyan-400/60" />
                     <span>{getTimeAgo(token.launch_time)}</span>
                   </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-cyan-300/40 mt-1">
                   {formatTimestamp(token.launch_time)}
                 </div>
               </div>
@@ -139,7 +144,7 @@ export function RecentTokenMints() {
                   href={`https://solscan.io/token/${token.mint_address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 text-xs font-medium rounded transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
                   title="View on Solscan"
                 >
                   <span>Token</span>
@@ -149,7 +154,7 @@ export function RecentTokenMints() {
                   href={`https://solscan.io/tx/${token.signature}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/40 text-xs font-medium rounded transition-all hover:shadow-lg hover:shadow-purple-500/20 backdrop-blur-sm"
                   title="View Transaction"
                 >
                   <span>TX</span>
@@ -159,10 +164,10 @@ export function RecentTokenMints() {
             </div>
 
             {/* Mint Address */}
-            <div className="mt-2 pt-2 border-t border-slate-600/50">
+            <div className="mt-2 pt-2 border-t border-cyan-500/10 relative z-10">
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-500">Mint:</span>
-                <code className="text-gray-400 font-mono">{token.mint_address}</code>
+                <span className="text-cyan-300/40">Mint:</span>
+                <code className="text-cyan-200/60 font-mono bg-black/20 px-2 py-0.5 rounded">{token.mint_address}</code>
               </div>
             </div>
           </div>
