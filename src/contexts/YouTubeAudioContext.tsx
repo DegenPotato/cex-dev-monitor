@@ -114,7 +114,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
   // OAuth Client ID for Google Sign-In
   const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
-  const OAUTH_REDIRECT_URI = window.location.origin + '/oauth/google/callback';
+  const OAUTH_REDIRECT_URI = window.location.origin + '/oauth/google/callback.html';
 
   // Google OAuth 2.0 Sign-In with Popup
   const signIn = async () => {
