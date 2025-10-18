@@ -16,6 +16,12 @@ interface YouTubeVideo {
   channel: string;
 }
 
+// YouTube API configuration - MUST be outside component to avoid closure issues
+const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
+const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
+const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
+const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
+
 export function YouTubeMiniPlayer() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -29,12 +35,6 @@ export function YouTubeMiniPlayer() {
   const [showSearch, setShowSearch] = useState(false);
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
-
-  // YouTube API configuration
-  const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
-  const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
-  const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
-  const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
 
   useEffect(() => {
     // Load YouTube IFrame API
@@ -61,6 +61,13 @@ export function YouTubeMiniPlayer() {
   const initGoogleAPI = () => {
     if (!window.gapi) return;
     
+    console.log('🔑 Initializing Google API with:', {
+      hasApiKey: !!API_KEY,
+      hasClientId: !!CLIENT_ID,
+      apiKeyLength: API_KEY?.length || 0,
+      clientIdLength: CLIENT_ID?.length || 0
+    });
+    
     window.gapi.load('client:auth2', () => {
       window.gapi.client.init({
         apiKey: API_KEY,
@@ -68,7 +75,7 @@ export function YouTubeMiniPlayer() {
         discoveryDocs: DISCOVERY_DOCS,
         scope: SCOPES
       }).then(() => {
-        console.log('✅ Google API initialized');
+        console.log('✅ Google API initialized successfully');
         const authInstance = window.gapi.auth2?.getAuthInstance();
         if (authInstance) {
           authInstance.isSignedIn.listen(updateSigninStatus);
@@ -76,6 +83,7 @@ export function YouTubeMiniPlayer() {
         }
       }).catch((error: any) => {
         console.error('❌ Google API init failed:', error);
+        console.error('Debug info:', { API_KEY, CLIENT_ID });
       });
     });
   };
