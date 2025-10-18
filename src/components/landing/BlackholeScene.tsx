@@ -1553,6 +1553,14 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                         🔮 Info Topology
                     </button>
                     <button
+                        onClick={() => onEnter?.('multilayer')}
+                        className="px-4 py-2 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/30 
+                                   text-orange-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
+                                   hover:shadow-[0_0_15px_rgba(251,146,60,0.3)] backdrop-blur-sm"
+                    >
+                        🌊 Multilayer Space
+                    </button>
+                    <button
                         onClick={() => onEnter?.('matrix')}
                         className="px-4 py-2 bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 
                                    text-green-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
