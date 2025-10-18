@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { BlackholeScene } from './landing/BlackholeScene';
 import { SolarSystemScene } from './landing/SolarSystemScene';
 import { MatrixSkynetScene } from './landing/MatrixSkynetScene';
+import { BlackWhiteHoleMetricSimulation } from './landing/BlackWhiteHoleMetricSimulation';
 import { Dashboard } from './Dashboard';
 import { useAuth } from '../contexts/AuthContext';
 
 export function LandingPage() {
   const { user } = useAuth();
-  const [currentUniverse, setCurrentUniverse] = useState<'blackhole' | 'solar' | 'matrix' | 'dashboard'>('blackhole');
+  const [currentUniverse, setCurrentUniverse] = useState<'blackhole' | 'solar' | 'matrix' | 'dashboard' | 'simulation'>('blackhole');
   
   // Debug logging for state changes
   useEffect(() => {
@@ -72,6 +73,16 @@ export function LandingPage() {
             >
               🪐 Solar System Demo
             </button>
+            
+            {/* Access Black-White Hole Simulation */}
+            <button
+              onClick={() => setCurrentUniverse('simulation')}
+              className="block px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 
+                         border border-cyan-500/30 rounded-lg text-cyan-300 font-bold 
+                         transition-all duration-300 hover:scale-105"
+            >
+              🌌 Metric Simulation
+            </button>
           </div>
         </>
       )}
@@ -104,6 +115,16 @@ export function LandingPage() {
                 📊 CEX Dashboard
               </button>
             )}
+            
+            {/* Access Black-White Hole Simulation */}
+            <button
+              onClick={() => setCurrentUniverse('simulation')}
+              className="block px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 
+                         border border-cyan-500/30 rounded-lg text-cyan-300 font-bold 
+                         transition-all duration-300 hover:scale-105"
+            >
+              🌌 Metric Simulation
+            </button>
           </div>
         </>
       )}
@@ -116,6 +137,19 @@ export function LandingPage() {
           <div className="fixed bottom-4 left-4 bg-green-500/20 border border-green-500 px-4 py-2 rounded text-green-300 text-sm z-[9999]">
             🔮 Matrix Universe Active
           </div>
+        </>
+      )}
+      
+      {/* Black-White Hole Metric Simulation */}
+      {currentUniverse === 'simulation' && (
+        <>
+          <BlackWhiteHoleMetricSimulation />
+          <button
+            onClick={() => setCurrentUniverse('blackhole')}
+            className="absolute top-4 left-4 z-50 px-4 py-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg backdrop-blur-sm transition-colors"
+          >
+            🌀 Return to Entry Portal
+          </button>
         </>
       )}
     </main>
