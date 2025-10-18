@@ -34,9 +34,13 @@ interface InfoNode {
   phase: 'stable' | 'compressing' | 'expanding' | 'tunneling';
   color: THREE.Color;
   mesh?: THREE.Mesh;
+  coreMesh?: THREE.Mesh; // Inner glowing core
+  haloMesh?: THREE.Mesh; // Outer energy halo
   isBlackHole?: boolean;
   isWhiteHole?: boolean;
   compressionLevel?: number;
+  pulsePhase?: number; // For animation
+  distortionSphere?: THREE.Mesh; // Gravitational lensing
 }
 
 // Edge between nodes - information flow
@@ -45,6 +49,8 @@ interface InfoEdge {
   to: number;
   strength: number; // Information transfer rate
   line?: THREE.Line;
+  tube?: THREE.Mesh; // 3D tube geometry
+  flowParticles?: THREE.Points; // Animated particles
 }
 
 // Simulation parameters
@@ -279,7 +285,7 @@ export const InformationTopologySimulation: React.FC = () => {
       tunnelDistance * Math.cos(phi)
     );
     
-    // Create tunnel visualization if enabled
+    // Create dramatic wormhole tunnel visualization
     if (params.showTunnels) {
       const curve = new THREE.CubicBezierCurve3(
         oldPosition,
@@ -296,23 +302,71 @@ export const InformationTopologySimulation: React.FC = () => {
         newPosition
       );
       
-      const points = curve.getPoints(50);
-      const tunnelGeometry = new THREE.BufferGeometry().setFromPoints(points);
-      const tunnelMaterial = new THREE.LineBasicMaterial({
+      // Create tube tunnel
+      const tunnelTubeGeometry = new THREE.TubeGeometry(curve, 50, 0.3, 16, false);
+      const tunnelTubeMaterial = new THREE.MeshPhongMaterial({
         color: 0xff00ff,
-        opacity: 0.8,
+        emissive: 0xff00ff,
+        emissiveIntensity: 1,
         transparent: true,
-        linewidth: 3
+        opacity: 0.5,
+        side: THREE.DoubleSide
       });
-      const tunnel = new THREE.Line(tunnelGeometry, tunnelMaterial);
-      scene.add(tunnel);
+      const tunnelTube = new THREE.Mesh(tunnelTubeGeometry, tunnelTubeMaterial);
+      scene.add(tunnelTube);
       
-      // Fade out and remove tunnel
-      setTimeout(() => {
-        scene.remove(tunnel);
-        tunnelGeometry.dispose();
-        tunnelMaterial.dispose();
-      }, 2000);
+      // Create particle stream through tunnel
+      const streamParticleCount = 100;
+      const streamPositions = new Float32Array(streamParticleCount * 3);
+      const streamColors = new Float32Array(streamParticleCount * 3);
+      
+      for (let i = 0; i < streamParticleCount; i++) {
+        const t = i / streamParticleCount;
+        const point = curve.getPoint(t);
+        streamPositions[i * 3] = point.x;
+        streamPositions[i * 3 + 1] = point.y;
+        streamPositions[i * 3 + 2] = point.z;
+        
+        const color = new THREE.Color().setHSL(0.8 - t * 0.3, 1, 0.5);
+        streamColors[i * 3] = color.r;
+        streamColors[i * 3 + 1] = color.g;
+        streamColors[i * 3 + 2] = color.b;
+      }
+      
+      const streamGeometry = new THREE.BufferGeometry();
+      streamGeometry.setAttribute('position', new THREE.BufferAttribute(streamPositions, 3));
+      streamGeometry.setAttribute('color', new THREE.BufferAttribute(streamColors, 3));
+      
+      const streamMaterial = new THREE.PointsMaterial({
+        size: 0.2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      
+      const streamParticles = new THREE.Points(streamGeometry, streamMaterial);
+      scene.add(streamParticles);
+      
+      // Fade out and remove tunnel with pulsing effect
+      let tunnelTime = 0;
+      const tunnelInterval = setInterval(() => {
+        tunnelTime += 0.05;
+        const pulse = Math.sin(tunnelTime * 5) * 0.5 + 0.5;
+        tunnelTubeMaterial.opacity = 0.5 * (1 - tunnelTime / 2) * (0.5 + pulse * 0.5);
+        streamMaterial.opacity = 1 * (1 - tunnelTime / 2);
+        
+        if (tunnelTime >= 2) {
+          clearInterval(tunnelInterval);
+          scene.remove(tunnelTube);
+          scene.remove(streamParticles);
+          tunnelTubeGeometry.dispose();
+          tunnelTubeMaterial.dispose();
+          streamGeometry.dispose();
+          streamMaterial.dispose();
+        }
+      }, 50);
     }
     
     node.position.copy(newPosition);
@@ -399,17 +453,16 @@ export const InformationTopologySimulation: React.FC = () => {
     });
   };
 
-  // Update edges based on current connections
+  // Update edges with realistic tubes and particle flows
   const updateEdges = (nodes: InfoNode[], edges: InfoEdge[], scene: THREE.Scene) => {
     // Clear old edges
     edges.forEach(edge => {
-      if (edge.line) {
-        scene.remove(edge.line);
-      }
+      if (edge.tube) scene.remove(edge.tube);
+      if (edge.flowParticles) scene.remove(edge.flowParticles);
     });
     edges.length = 0;
     
-    // Create new edges
+    // Create new edges with tube geometry
     const processedPairs = new Set<string>();
     
     nodes.forEach(node => {
@@ -421,27 +474,79 @@ export const InformationTopologySimulation: React.FC = () => {
           const other = nodes[connId];
           
           if (other) {
-            const geometry = new THREE.BufferGeometry().setFromPoints([
+            // Create curved path for the tube
+            const curve = new THREE.QuadraticBezierCurve3(
               node.position,
+              node.position.clone().lerp(other.position, 0.5).add(
+                new THREE.Vector3(
+                  (Math.random() - 0.5) * 2,
+                  (Math.random() - 0.5) * 2,
+                  (Math.random() - 0.5) * 2
+                )
+              ),
               other.position
-            ]);
+            );
+            
+            // Create tube geometry along curve
+            const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.05, 8, false);
             
             // Edge color based on information flow
             const flowStrength = Math.abs(node.state - other.state);
-            const material = new THREE.LineBasicMaterial({
-              color: new THREE.Color().setHSL(0.6, 1, 0.5),
-              opacity: 0.2 + flowStrength * 0.5,
-              transparent: true
+            const isEntangled = flowStrength < 0.2; // Similar states = entangled
+            
+            const tubeMaterial = new THREE.MeshPhongMaterial({
+              color: isEntangled ? 0xff00ff : new THREE.Color().setHSL(0.6, 1, 0.3 + flowStrength * 0.5),
+              emissive: isEntangled ? 0xff00ff : 0x0066ff,
+              emissiveIntensity: 0.3 + flowStrength * 0.7,
+              transparent: true,
+              opacity: 0.4 + flowStrength * 0.4,
+              side: THREE.DoubleSide
             });
             
-            const line = new THREE.Line(geometry, material);
-            scene.add(line);
+            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            scene.add(tube);
+            
+            // Create flow particles along the edge
+            const particleCount = 10;
+            const particlePositions = new Float32Array(particleCount * 3);
+            const particleColors = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+              const t = i / particleCount;
+              const point = curve.getPoint(t);
+              particlePositions[i * 3] = point.x;
+              particlePositions[i * 3 + 1] = point.y;
+              particlePositions[i * 3 + 2] = point.z;
+              
+              // Color gradient along flow
+              const color = new THREE.Color().setHSL(0.6 + t * 0.2, 1, 0.5);
+              particleColors[i * 3] = color.r;
+              particleColors[i * 3 + 1] = color.g;
+              particleColors[i * 3 + 2] = color.b;
+            }
+            
+            const particleGeometry = new THREE.BufferGeometry();
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+              size: 0.15,
+              vertexColors: true,
+              transparent: true,
+              opacity: 0.8,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false
+            });
+            
+            const flowParticles = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(flowParticles);
             
             edges.push({
               from: node.id,
               to: connId,
               strength: flowStrength,
-              line
+              tube,
+              flowParticles
             });
           }
         }
@@ -516,26 +621,100 @@ export const InformationTopologySimulation: React.FC = () => {
     const nodes = initializeNodes();
     nodesRef.current = nodes;
     
-    // Create node meshes
-    const nodeGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    // Create realistic node geometries
+    const outerGeometry = new THREE.IcosahedronGeometry(0.3, 2); // Faceted outer shell
+    const coreGeometry = new THREE.SphereGeometry(0.15, 32, 32); // Smooth core
+    const haloGeometry = new THREE.SphereGeometry(0.5, 32, 32); // Energy halo
     
     nodes.forEach(node => {
-      const material = new THREE.MeshPhongMaterial({
+      node.pulsePhase = Math.random() * Math.PI * 2;
+      
+      // Outer shell - crystalline structure
+      const outerMaterial = new THREE.MeshPhysicalMaterial({
         color: node.color,
         emissive: node.color,
-        emissiveIntensity: 0.3
+        emissiveIntensity: 0.5,
+        metalness: 0.8,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
       });
       
-      const mesh = new THREE.Mesh(nodeGeometry, material);
+      const mesh = new THREE.Mesh(outerGeometry, outerMaterial);
       mesh.position.copy(node.position);
       node.mesh = mesh;
       scene.add(mesh);
+      
+      // Inner glowing core
+      const coreMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9
+      });
+      
+      const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+      coreMesh.position.copy(node.position);
+      node.coreMesh = coreMesh;
+      scene.add(coreMesh);
+      
+      // Energy halo (for high-energy states)
+      const haloMaterial = new THREE.MeshBasicMaterial({
+        color: node.color,
+        transparent: true,
+        opacity: 0,
+        side: THREE.BackSide,
+        depthWrite: false
+      });
+      
+      const haloMesh = new THREE.Mesh(haloGeometry, haloMaterial);
+      haloMesh.position.copy(node.position);
+      node.haloMesh = haloMesh;
+      scene.add(haloMesh);
     });
 
     // Initialize edges
     const edges: InfoEdge[] = [];
     edgesRef.current = edges;
     updateEdges(nodes, edges, scene);
+
+    // Add ambient quantum foam particles
+    const ambientParticleCount = 1000;
+    const ambientPositions = new Float32Array(ambientParticleCount * 3);
+    const ambientColors = new Float32Array(ambientParticleCount * 3);
+    
+    for (let i = 0; i < ambientParticleCount; i++) {
+      // Random spherical distribution
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = 20 + Math.random() * 30;
+      
+      ambientPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      ambientPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      ambientPositions[i * 3 + 2] = r * Math.cos(phi);
+      
+      // Subtle colors - quantum vacuum fluctuations
+      const color = new THREE.Color().setHSL(Math.random(), 0.5, 0.5);
+      ambientColors[i * 3] = color.r;
+      ambientColors[i * 3 + 1] = color.g;
+      ambientColors[i * 3 + 2] = color.b;
+    }
+    
+    const ambientGeometry = new THREE.BufferGeometry();
+    ambientGeometry.setAttribute('position', new THREE.BufferAttribute(ambientPositions, 3));
+    ambientGeometry.setAttribute('color', new THREE.BufferAttribute(ambientColors, 3));
+    
+    const ambientMaterial = new THREE.PointsMaterial({
+      size: 0.05,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.3,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    
+    const ambientParticles = new THREE.Points(ambientGeometry, ambientMaterial);
+    scene.add(ambientParticles);
 
     // GUI controls
     const gui = new GUI();
@@ -592,34 +771,133 @@ export const InformationTopologySimulation: React.FC = () => {
         applyObserverEffect(nodes, camera);
       }
       
-      // Update node positions based on velocity
+      // Update node positions and visuals
       nodes.forEach(node => {
         node.position.add(node.velocity.clone().multiplyScalar(deltaTime));
-        
-        // Apply damping
         node.velocity.multiplyScalar(0.99);
         
-        // Update mesh position
+        // Update pulse animation
+        node.pulsePhase! += deltaTime * 2;
+        const pulse = Math.sin(node.pulsePhase!) * 0.5 + 0.5;
+        
+        // Update outer shell
         if (node.mesh) {
           node.mesh.position.copy(node.position);
           
-          // Scale based on information content
-          const scale = 0.5 + node.state * 1.5;
-          node.mesh.scale.setScalar(scale);
+          // Scale based on information content + pulse
+          const baseScale = 0.7 + node.state * 1.3;
+          const pulseScale = 1 + pulse * 0.1 * node.state;
+          node.mesh.scale.setScalar(baseScale * pulseScale);
           
-          // Rotation for higher dimensional projection
+          // Rotation for quantum uncertainty
           if (params.showHigherDimensions) {
-            node.mesh.rotation.x = elapsedTime * 0.5 + node.id * 0.1;
-            node.mesh.rotation.y = elapsedTime * 0.3 + node.id * 0.2;
+            node.mesh.rotation.x += deltaTime * (0.5 + node.entropy * 0.5);
+            node.mesh.rotation.y += deltaTime * (0.3 + node.entropy * 0.3);
           }
+          
+          // Update material based on state
+          const material = node.mesh.material as THREE.MeshPhysicalMaterial;
+          material.emissiveIntensity = 0.3 + node.state * 0.7;
+          material.opacity = 0.6 + node.state * 0.3;
+        }
+        
+        // Update glowing core
+        if (node.coreMesh) {
+          node.coreMesh.position.copy(node.position);
+          const coreScale = 0.5 + node.state * 0.8 + pulse * 0.2;
+          node.coreMesh.scale.setScalar(coreScale);
+          
+          const coreMaterial = node.coreMesh.material as THREE.MeshBasicMaterial;
+          coreMaterial.opacity = 0.7 + node.state * 0.3;
+        }
+        
+        // Update energy halo (visible at high states)
+        if (node.haloMesh) {
+          node.haloMesh.position.copy(node.position);
+          const haloMaterial = node.haloMesh.material as THREE.MeshBasicMaterial;
+          
+          if (node.state > 0.6 || node.isBlackHole || node.isWhiteHole) {
+            // High energy or special states
+            const haloIntensity = node.isBlackHole ? 0.3 : 
+                                 node.isWhiteHole ? 0.8 : 
+                                 (node.state - 0.6) * 2;
+            haloMaterial.opacity = haloIntensity * (0.5 + pulse * 0.5);
+            const haloScale = 1.5 + pulse * 0.5;
+            node.haloMesh.scale.setScalar(haloScale);
+          } else {
+            haloMaterial.opacity = 0;
+          }
+        }
+        
+        // Black hole gravitational lensing effect
+        if (node.isBlackHole) {
+          if (!node.distortionSphere) {
+            const distortionGeometry = new THREE.SphereGeometry(2, 32, 32);
+            const distortionMaterial = new THREE.MeshBasicMaterial({
+              color: 0x000000,
+              transparent: true,
+              opacity: 0.3,
+              side: THREE.BackSide,
+              blending: THREE.AdditiveBlending
+            });
+            node.distortionSphere = new THREE.Mesh(distortionGeometry, distortionMaterial);
+            scene.add(node.distortionSphere);
+          }
+          
+          node.distortionSphere.position.copy(node.position);
+          const distortScale = 1 + node.compressionLevel! * 0.5 + pulse * 0.1;
+          node.distortionSphere.scale.setScalar(distortScale);
+          
+          const distortMaterial = node.distortionSphere.material as THREE.MeshBasicMaterial;
+          distortMaterial.opacity = 0.2 + node.compressionLevel! * 0.3;
+        } else if (node.distortionSphere) {
+          // Remove distortion sphere if no longer black hole
+          scene.remove(node.distortionSphere);
+          node.distortionSphere = undefined;
+        }
+        
+        // White hole emission effects
+        if (node.isWhiteHole && node.haloMesh) {
+          const haloMaterial = node.haloMesh.material as THREE.MeshBasicMaterial;
+          haloMaterial.opacity = 0.8 + pulse * 0.2;
+          node.haloMesh.scale.setScalar(3 + pulse * 1);
         }
       });
       
       // Update colors
       updateNodeColors(nodes, elapsedTime);
       
-      // Update edges
-      if (Math.floor(elapsedTime * 10) % 5 === 0) { // Update every 0.5 seconds
+      // Animate flow particles along edges
+      edges.forEach(edge => {
+        if (edge.flowParticles) {
+          const positions = edge.flowParticles.geometry.attributes.position.array as Float32Array;
+          const fromNode = nodes.find(n => n.id === edge.from);
+          const toNode = nodes.find(n => n.id === edge.to);
+          
+          if (fromNode && toNode) {
+            // Recreate curve with updated positions
+            const curve = new THREE.QuadraticBezierCurve3(
+              fromNode.position,
+              fromNode.position.clone().lerp(toNode.position, 0.5),
+              toNode.position
+            );
+            
+            // Animate particles along the curve
+            for (let i = 0; i < positions.length / 3; i++) {
+              const t = ((i / (positions.length / 3)) + elapsedTime * 0.2) % 1;
+              const point = curve.getPoint(t);
+              positions[i * 3] = point.x;
+              positions[i * 3 + 1] = point.y;
+              positions[i * 3 + 2] = point.z;
+            }
+            
+            edge.flowParticles.geometry.attributes.position.needsUpdate = true;
+          }
+        }
+      });
+      
+      // Update edges periodically
+      if (Math.floor(elapsedTime * 10) % 5 === 0) {
         updateEdges(nodes, edges, scene);
       }
       
