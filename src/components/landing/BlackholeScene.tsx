@@ -461,7 +461,13 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     // Wallet & Auth
     const { connected, publicKey } = useWallet();
     const { user, isAuthenticated, authenticateWallet, isAuthenticating, authenticateWithCode, logout } = useAuth();
-    const { initializeAudio, getAudioAnalyzer } = useAudio();
+    const { 
+        initializeAudio, 
+        getAudioAnalyzer, 
+        setDistortionAmount,
+        distortionEnabled,
+        toggleDistortion
+    } = useAudio();
     const [showCodeEntry, setShowCodeEntry] = useState(false);
     const [accessCode, setAccessCode] = useState('');
     const [codeError, setCodeError] = useState(false);
@@ -1202,6 +1208,36 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
             if (!isTransitioning) {
                 controls.update();
+                
+                // DYNAMIC AUDIO DISTORTION BASED ON DISTANCE FROM SINGULARITY
+                const distanceFromCenter = camera.position.length(); // Distance from origin (0,0,0)
+                const maxDistance = 30; // Beyond this distance, no distortion
+                const minDistance = 2;  // At this distance or closer, maximum distortion
+                
+                // Calculate distortion amount based on distance (inverse relationship)
+                let distortionLevel = 0;
+                if (distanceFromCenter < maxDistance) {
+                    // Closer = more distortion, farther = less distortion
+                    const normalizedDistance = Math.max(0, Math.min(1, 
+                        (distanceFromCenter - minDistance) / (maxDistance - minDistance)
+                    ));
+                    // Invert so closer = higher value (0-100 range for distortion)
+                    distortionLevel = (1 - normalizedDistance) * 100;
+                    
+                    // Apply the calculated distortion
+                    if (setDistortionAmount) {
+                        setDistortionAmount(distortionLevel);
+                    }
+                    
+                    // Enable distortion if we're close enough and it's not already enabled
+                    if (distortionLevel > 5 && !distortionEnabled && toggleDistortion) {
+                        console.log('🎸 Entering distortion field at distance:', distanceFromCenter);
+                        toggleDistortion();
+                    } else if (distortionLevel < 5 && distortionEnabled && toggleDistortion) {
+                        console.log('🎸 Exiting distortion field at distance:', distanceFromCenter);
+                        toggleDistortion();
+                    }
+                }
             }
 
             // Bloom with gentle pulsing (audio reactivity removed for now)

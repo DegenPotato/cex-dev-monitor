@@ -1507,7 +1507,7 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                       </div>
                     </div>
                     
-                    {/* YouTube/Google Connection - INTEGRATED HERE */}
+                    {/* YouTube/Google Connection - PROPER OAUTH */}
                     <div className={`bg-black/50 border rounded-lg p-4 relative overflow-hidden col-span-2 ${
                       isYouTubeConnected ? 'border-green-500/30' : 'border-red-500/30'
                     }`}>
@@ -1516,38 +1516,60 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                       }`}></div>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">📺</span>
+                          <span className="text-2xl">🔐</span>
                           <span className={`font-mono font-bold ${
                             isYouTubeConnected ? 'text-green-300' : 'text-red-300'
-                          }`}>YOUTUBE / GOOGLE</span>
+                          }`}>GOOGLE ACCOUNT</span>
                         </div>
                         <div className={`w-2 h-2 rounded-full ${
                           isYouTubeConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-400'
                         }`}></div>
                       </div>
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-3 text-sm">
                         <div className="text-gray-400 font-mono">
-                          STATUS: <span className={isYouTubeConnected ? 'text-green-300' : 'text-gray-300'}>
-                            {isYouTubeConnected ? 'CONNECTED' : 'NOT CONNECTED'}
+                          STATUS: <span className={isYouTubeConnected ? 'text-green-300' : 'text-red-300'}>
+                            {isYouTubeConnected ? 'AUTHENTICATED' : 'NOT CONNECTED'}
                           </span>
                         </div>
                         {isYouTubeConnected && youtubeEmail && (
-                          <div className="text-green-400 font-mono text-xs">{youtubeEmail}</div>
+                          <>
+                            <div className="text-green-400 font-mono text-xs">Account: {youtubeEmail}</div>
+                            <div className="text-gray-500 font-mono text-xs">
+                              ✅ YouTube Music Access
+                              <br />✅ Playlists & Search
+                              <br />✅ Full API Access
+                            </div>
+                          </>
                         )}
                         {!isYouTubeConnected && (
-                          <div className="text-gray-500 font-mono text-xs">Connect to enable YouTube music playback</div>
+                          <div className="text-yellow-400 font-mono text-xs">
+                            🔓 Connect your Google account to:
+                            <br />• Access YouTube Music library
+                            <br />• Search and play any song
+                            <br />• Sync your playlists
+                          </div>
                         )}
-                        <button 
-                          onClick={connectGoogle}
-                          className={`mt-2 text-xs px-3 py-1 rounded transition-colors ${
-                            isYouTubeConnected 
-                              ? 'bg-gray-500/20 text-gray-400 cursor-default' 
-                              : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                          }`}
-                          disabled={isYouTubeConnected}
-                        >
-                          {isYouTubeConnected ? 'CONNECTED' : 'CONNECT GOOGLE ACCOUNT'}
-                        </button>
+                        {isYouTubeConnected ? (
+                          <button 
+                            onClick={() => {
+                              youtubeAudio.signOut();
+                              setIsYouTubeConnected(false);
+                            }}
+                            className="mt-2 text-xs px-3 py-1 rounded transition-colors bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                          >
+                            DISCONNECT ACCOUNT
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={async () => {
+                              await youtubeAudio.signIn();
+                              setIsYouTubeConnected(youtubeAudio.isAuthenticated);
+                            }}
+                            className="mt-2 text-xs px-4 py-2 rounded transition-colors bg-gradient-to-r from-blue-500/20 to-red-500/20 text-white hover:from-blue-500/30 hover:to-red-500/30 border border-blue-500/30"
+                          >
+                            🔗 CONNECT WITH GOOGLE
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
