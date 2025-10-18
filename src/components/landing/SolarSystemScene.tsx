@@ -35,6 +35,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import gsap from 'gsap';
+import BlackWhiteHoleMetricSimulation from './BlackWhiteHoleMetricSimulation';
 
 // Planet Data Structure
 interface Planet {
@@ -159,8 +160,8 @@ const CometShader = {
 export function SolarSystemScene() {
     const mountRef = useRef<HTMLDivElement>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
-    const [isLoaded, setIsLoaded] = useState(false);
-    const [_selectedPlanet, setSelectedPlanet] = useState<string | null>(null);
+    const [selectedPlanet, setSelectedPlanet] = useState<string | null>(null);
+    const [simulationMode, setSimulationMode] = useState<'normal' | 'metric'>('normal');
     const [userLevel, _setUserLevel] = useState(1);
     const [viewMode, setViewMode] = useState<'overview' | 'planet' | 'first-person'>('overview');
     
@@ -586,7 +587,6 @@ export function SolarSystemScene() {
         };
         
         animate();
-        setIsLoaded(true);
         
         // Handle resize
         const handleResize = () => {
@@ -610,30 +610,52 @@ export function SolarSystemScene() {
     const sendSuperChat = () => {
         const fromPlanet = planets[0];
         const toPlanet = planets[2];
-        if (fromPlanet.mesh && toPlanet.mesh) {
-            launchComet(fromPlanet.mesh.position, toPlanet.mesh.position);
-        }
+        
+        if (!sceneRef.current || !fromPlanet.mesh || !toPlanet.mesh) return;
+        
+        launchComet(fromPlanet.mesh.position, toPlanet.mesh.position);
     };
     
+    // Show metric simulation if in metric mode
+    if (simulationMode === 'metric') {
+        return (
+            <div className="relative w-full h-screen">
+                <BlackWhiteHoleMetricSimulation />
+                <button
+                    onClick={() => setSimulationMode('normal')}
+                    className="absolute top-4 right-4 z-50 px-4 py-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg backdrop-blur-sm transition-colors"
+                >
+                    ← Back to Solar System
+                </button>
+            </div>
+        );
+    }
+    
     return (
-        <div className="relative w-full h-full bg-black">
-            <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
+        <div className="relative w-full h-screen overflow-hidden">
+            <div ref={mountRef} className="absolute inset-0" />
+            
+            {/* Simulation Mode Toggle */}
+            <button
+                onClick={() => setSimulationMode('metric')}
+                className="absolute top-4 left-4 z-50 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg backdrop-blur-sm transition-all shadow-lg"
+            >
+                🌌 Black-White Hole Metric Simulation
+            </button>
             
             {/* UI Overlay */}
-            <div className={`absolute top-0 left-0 w-full h-full pointer-events-none ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-1000`}>
-                {/* Title */}
-                <div className="absolute top-8 left-8 text-white">
-                    <h1 className="text-3xl font-bold mb-2">SOLAR SPACES MANAGER</h1>
-                    <p className="text-sm text-gray-400">Live Streaming Universe • Demo Mode</p>
-                </div>
-                
+            <div className="absolute inset-0 pointer-events-none">
                 {/* Planet Info Panel */}
                 <div className="absolute top-8 right-8 bg-black/80 backdrop-blur-md border border-yellow-500/30 rounded-lg p-4 max-w-xs pointer-events-auto">
                     <h2 className="text-lg font-bold text-yellow-400 mb-3">Active Channels</h2>
                     {planets.map(planet => (
                         <div 
                             key={planet.id} 
-                            className="mb-2 p-2 rounded hover:bg-yellow-500/10 cursor-pointer transition-colors"
+                            className={`mb-2 p-2 rounded cursor-pointer transition-colors ${
+                                selectedPlanet === planet.id 
+                                    ? 'bg-yellow-500/30 border border-yellow-500/50' 
+                                    : 'hover:bg-yellow-500/10'
+                            }`}
                             onClick={() => setSelectedPlanet(planet.id)}
                         >
                             <div className="flex justify-between items-center">
