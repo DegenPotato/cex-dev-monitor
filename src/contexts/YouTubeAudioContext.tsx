@@ -125,35 +125,25 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
         return;
       }
       
-      // Enable YouTube for this user (cookies are sent automatically)
-      const response = await fetch('/api/youtube/preferences', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include', // Important: send cookies
-        body: JSON.stringify({
-          enabled: true,
-          email: user.username + '@youtube.local',
-          preferences: {
-            volume: 75,
-            shuffle: false,
-            repeat: 'off'
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to enable YouTube');
-      }
-
+      // Enable YouTube locally (backend sync optional)
       setIsAuthenticated(true);
       setUserEmail(user.username);
       console.log('✅ YouTube: Enabled for user', user.username);
       
-      // Load user's playlists
-      await loadUserPlaylists();
+      // Try to sync with backend (non-blocking)
+      fetch('/api/youtube/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          enabled: true,
+          email: user.username + '@youtube.local',
+          preferences: { volume: 75, shuffle: false, repeat: 'off' }
+        })
+      }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
+      
+      // Load playlists if available
+      loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
     } catch (error) {
       console.error('❌ YouTube enable error:', error);
     }
@@ -176,11 +166,12 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
           if (data.enabled) {
             setIsAuthenticated(true);
             setUserEmail(data.email);
-            await loadUserPlaylists();
+            loadUserPlaylists().catch(() => {});
           }
         }
       } catch (error) {
-        console.error('Failed to check YouTube auth:', error);
+        // Backend unavailable - YouTube still works for playback
+        console.log('ℹ️ Backend unavailable, YouTube playback still enabled');
       }
     };
 
@@ -568,7 +559,8 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load playlists');
+        console.log('ℹ️ No saved playlists available');
+        return;
       }
 
       const playlists = await response.json();
@@ -583,7 +575,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
       setUserPlaylists(formatted);
       console.log('✅ Loaded user playlists:', formatted.length);
     } catch (error) {
-      console.error('❌ Failed to load playlists:', error);
+      console.log('ℹ️ Playlists not available (backend optional)');
     }
   };
 
