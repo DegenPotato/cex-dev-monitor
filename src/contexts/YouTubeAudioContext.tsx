@@ -115,6 +115,16 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   // OAuth Client ID for Google Identity Services
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
 
+  // Utility: Truncate email for privacy in logs
+  const truncateEmail = (email: string): string => {
+    if (!email || !email.includes('@')) return '***@***';
+    const [username, domain] = email.split('@');
+    const truncatedUser = username.length > 3 
+      ? username.slice(0, 3) + '***' 
+      : '***';
+    return `${truncatedUser}@${domain}`;
+  };
+
   // Load Google Identity Services script
   useEffect(() => {
     if (!CLIENT_ID) return;
@@ -177,19 +187,25 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
             });
             const userInfo = await userInfoResponse.json();
 
-            // Update state
-            setIsAuthenticated(true);
-            setUserEmail(userInfo.email);
-            console.log('✅ Signed in as:', userInfo.email);
+            // Truncate email for privacy
+            const truncated = truncateEmail(userInfo.email);
 
-            // Sync with backend (non-blocking)
+            // Update state with truncated email
+            setIsAuthenticated(true);
+            setUserEmail(truncated);
+            console.log('✅ Signed in as:', truncated);
+
+            // Sync with backend (non-blocking) - send full email to backend only
             fetch('/api/youtube/preferences', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
               credentials: 'include',
               body: JSON.stringify({
                 enabled: true,
-                email: userInfo.email,
+                email: userInfo.email, // Full email to backend
                 accessToken: accessToken,
                 preferences: { volume: 75, shuffle: false, repeat: 'off' }
               })

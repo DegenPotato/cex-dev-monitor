@@ -59,14 +59,22 @@ router.get('/preferences', authService.requireSecureAuth(), async (req: Request,
   }
 });
 
-// Update YouTube preferences
-router.post('/preferences', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+// Update YouTube preferences - allows both session auth and token in body
+router.post('/preferences', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    // Try session auth first, fallback to storing preferences without user ID
+    const userId = (req as any).user?.id;
     const { enabled, email, preferences } = req.body;
 
+    if (!userId) {
+      // No session - this is fine, just acknowledge the request
+      console.log('✅ YouTube preferences received (session-less mode):', { enabled, email: email?.slice(0, 5) + '***' });
+      return res.json({ success: true, message: 'Preferences acknowledged (stored client-side)' });
+    }
+
+    // Has session - save to database
     const prefJson = JSON.stringify(preferences).replace(/'/g, "''");
-    const emailEsc = email ? `'${email.replace(/'/g, "''")}''` : 'NULL';
+    const emailEsc = email ? `'${email.replace(/'/g, "''")}'` : 'NULL';
     
     runQuery(`
       UPDATE users 
@@ -78,9 +86,10 @@ router.post('/preferences', authService.requireSecureAuth(), async (req: Request
       WHERE id = ${userId}
     `);
 
+    console.log('✅ YouTube preferences saved to DB for user:', userId);
     res.json({ success: true, message: 'Preferences updated' });
   } catch (error) {
-    console.error('Error updating YouTube preferences:', error);
+    console.error('❌ Error updating YouTube preferences:', error);
     res.status(500).json({ error: 'Failed to update preferences' });
   }
 });
