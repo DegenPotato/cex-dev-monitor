@@ -1411,9 +1411,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         <div className="relative w-full h-full">
             <div ref={mountRef} className="absolute top-0 left-0 w-full h-full" />
             
-            {/* System Status & Experience Settings - Always visible, top-right */}
+            {/* Experience Settings - Moved to bottom-left */}
             {!showAuthBillboard && (
-                <div className="absolute top-8 right-8 pointer-events-auto z-50">
+                <div className="absolute bottom-8 left-8 pointer-events-auto z-50">
                     <ExperienceModeToggle 
                         showSystemStatus={true}
                         showAudioControls={true}
@@ -1533,59 +1533,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 </div>
             </div>
             
-            {/* Quick Navigation - Bottom Left */}
-            {!showAuthBillboard && !isTransitioning && (
-                <div className="absolute bottom-8 left-8 flex flex-col gap-2 pointer-events-auto">
-                    <button
-                        onClick={() => onEnter?.('simulation')}
-                        className="px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/30 
-                                   text-cyan-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
-                    >
-                        🌌 Metric Simulation
-                    </button>
-                    <button
-                        onClick={() => onEnter?.('infotopo')}
-                        className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 
-                                   text-indigo-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(99,102,241,0.3)] backdrop-blur-sm"
-                    >
-                        🔮 Info Topology
-                    </button>
-                    <button
-                        onClick={() => onEnter?.('multilayer')}
-                        className="px-4 py-2 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/30 
-                                   text-orange-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(251,146,60,0.3)] backdrop-blur-sm"
-                    >
-                        🌊 Multilayer Space
-                    </button>
-                    <button
-                        onClick={() => onEnter?.('hyperdim')}
-                        className="px-4 py-2 bg-pink-600/20 hover:bg-pink-600/40 border border-pink-500/30 
-                                   text-pink-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] backdrop-blur-sm"
-                    >
-                        🌐 Hyperdimensional
-                    </button>
-                    <button
-                        onClick={() => onEnter?.('matrix')}
-                        className="px-4 py-2 bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 
-                                   text-green-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
-                    >
-                        🔮 Matrix
-                    </button>
-                    <button
-                        onClick={() => onEnter?.('cex-monitor')}
-                        className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 
-                                   text-purple-300 rounded-lg font-bold transition-all duration-300 hover:scale-105
-                                   hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] backdrop-blur-sm"
-                    >
-                        📊 Dashboard
-                    </button>
-                </div>
-            )}
             
             {/* Fullscreen Button - Bottom Right (always visible) */}
             <button
