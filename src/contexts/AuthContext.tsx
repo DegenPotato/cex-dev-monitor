@@ -5,6 +5,9 @@ import bs58 from 'bs58';
 // VPS Backend URL (use existing VITE_API_URL)
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'https://api.sniff.agency';
 
+// Super admin wallets from environment
+const SUPER_ADMIN_WALLETS = (import.meta.env.VITE_SUPER_ADMIN_WALLETS || '').split(',').filter(Boolean).map((w: string) => w.trim().toLowerCase());
+
 interface User {
     id: number;
     username: string;
@@ -176,6 +179,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             const { user: authenticatedUser } = await verifyResponse.json();
             console.log('✅ [Auth] Authentication successful!');
+            
+            // Check if wallet is in super admin list
+            const isSuperAdmin = SUPER_ADMIN_WALLETS.includes(walletAddress.toLowerCase());
+            if (isSuperAdmin && authenticatedUser.role !== 'super_admin') {
+                // Override role to super_admin if wallet is in the list
+                authenticatedUser.role = 'super_admin';
+                console.log('🛡️ [Auth] Super admin wallet detected, elevating privileges');
+            }
 
             setUser(authenticatedUser);
             setIsAuthenticated(true);

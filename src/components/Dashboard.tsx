@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Settings, Circle, Wallet, Flame, Database, Activity, TrendingUp, ChevronRight } from 'lucide-react';
+import { Settings, Circle, Wallet, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
@@ -8,6 +8,11 @@ import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
+import { WalletConnector } from './WalletConnector';
+import { YouTubeMiniPlayer } from './YouTubeMiniPlayer';
+import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 type Tab = 'wallets' | 'tokens' | 'database';
 
@@ -16,12 +21,87 @@ export function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
   const starsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const vortexCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
+  const { user, isAuthenticated, authenticateWallet } = useAuth();
+  const { connected } = useWallet();
+  const { setVisible } = useWalletModal();
+  
+  const isSuperAdmin = user?.role === 'super_admin';
+  const hasAccess = isAuthenticated && isSuperAdmin;
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
+    // Only fetch data if user has access
+    if (hasAccess) {
+      fetchData();
+      const interval = setInterval(fetchData, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [hasAccess]);
+  
+  useEffect(() => {
+    // Set up vortex animation for non-admins
+    if (!hasAccess) {
+      const canvas = vortexCanvasRef.current;
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      const resizeCanvas = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      };
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      
+      let time = 0;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      
+      const animateVortex = () => {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw spiraling particles into vortex
+        for (let i = 0; i < 50; i++) {
+          const angle = (i / 50) * Math.PI * 2 + time * 0.02;
+          const radius = 300 * Math.exp(-i * 0.01) * (1 - Math.sin(time * 0.01) * 0.3);
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          
+          const size = 2 * (1 - i / 50);
+          const opacity = (1 - i / 50) * 0.8;
+          
+          ctx.beginPath();
+          ctx.fillStyle = `rgba(0, 255, 221, ${opacity})`;
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Add purple accent particles
+          if (i % 5 === 0) {
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(147, 51, 234, ${opacity * 0.6})`;
+            ctx.arc(x + 5, y + 5, size * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        
+        time += 1;
+        requestAnimationFrame(animateVortex);
+      };
+      animateVortex();
+      
+      return () => {
+        window.removeEventListener('resize', resizeCanvas);
+      };
+    }
+  }, [hasAccess]);
+  
+  useEffect(() => {
+    // Only set up stars animation if user has access
+    if (!hasAccess) return;
     
     // Animated stars background
     const canvas = starsCanvasRef.current;
@@ -73,11 +153,10 @@ export function Dashboard() {
     animate();
     
     return () => {
-      clearInterval(interval);
       window.removeEventListener('resize', resizeCanvas);
       cancelAnimationFrame(animationId);
     };
-  }, []);
+  }, [hasAccess]);
 
   useEffect(() => {
     // Listen for monitoring status updates
@@ -103,7 +182,86 @@ export function Dashboard() {
       console.error('Error fetching stats:', error);
     }
   };
+  
+  const handleConnectWallet = () => {
+    if (!connected) {
+      setVisible(true);
+    } else {
+      authenticateWallet();
+    }
+  };
 
+  // Show vortex access denied screen for non-super_admins
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-black relative overflow-hidden flex items-center justify-center">
+        {/* Vortex Animation Background */}
+        <canvas 
+          ref={vortexCanvasRef}
+          className="fixed inset-0 w-full h-full"
+          style={{ background: 'radial-gradient(circle at center, #000511 0%, #000000 100%)' }}
+        />
+        
+        {/* Access Denied Message */}
+        <div className="relative z-10 text-center p-8 bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/20 max-w-md">
+          <div className="mb-6">
+            <Lock className="w-16 h-16 text-cyan-400 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">ACCESS DENIED</h1>
+            <p className="text-cyan-300/60">You have entered the vortex, but lack the clearance to proceed.</p>
+          </div>
+          
+          <div className="space-y-4">
+            {!connected ? (
+              <>
+                <p className="text-sm text-gray-400">
+                  Connect your wallet to verify your identity
+                </p>
+                <button
+                  onClick={handleConnectWallet}
+                  className="w-full px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
+                >
+                  <Wallet className="w-5 h-5 inline-block mr-2" />
+                  Connect Wallet
+                </button>
+              </>
+            ) : !isAuthenticated ? (
+              <>
+                <p className="text-sm text-gray-400">
+                  Authenticate to continue
+                </p>
+                <button
+                  onClick={() => authenticateWallet()}
+                  className="w-full px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
+                >
+                  Authenticate
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 justify-center text-red-400">
+                  <AlertTriangle className="w-5 h-5" />
+                  <p className="text-sm font-medium">
+                    INSUFFICIENT CLEARANCE
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Only super administrators may access the dashboard
+                </p>
+              </>
+            )}
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-cyan-500/20">
+            <p className="text-xs text-cyan-300/40">
+              SNIFF AGENCY SECURITY PROTOCOL ACTIVE
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular dashboard for super_admins
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
       {/* Animated Stars Background */}
@@ -153,6 +311,9 @@ export function Dashboard() {
           </div>
           
           <div className="flex items-center gap-4">
+            {/* Wallet Connector */}
+            <WalletConnector />
+            
             {/* Connection Status */}
             <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
               <Circle 
@@ -260,6 +421,9 @@ export function Dashboard() {
           </div>
         )}
       </div>
+      
+      {/* YouTube Mini Player */}
+      <YouTubeMiniPlayer />
     </div>
   );
 }
