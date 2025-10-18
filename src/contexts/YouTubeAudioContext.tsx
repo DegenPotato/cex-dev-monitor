@@ -112,44 +112,119 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   // YouTube API Key (you'll need to replace this with your own)
   const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
-  // OAuth Client ID is used in signIn function via import.meta.env
-  // const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
+  // OAuth Client ID for Google Sign-In
+  const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
+  const OAUTH_REDIRECT_URI = window.location.origin + '/oauth/google/callback';
 
-  // Enable YouTube for authenticated user
+  // Google OAuth 2.0 Sign-In with Popup
   const signIn = async () => {
-    console.log('🎵 YouTube: Enabling YouTube integration...');
+    console.log('🔐 YouTube: Initiating Google OAuth...');
     
     try {
       if (!userIsAuthenticated || !user) {
-        console.error('❌ User not authenticated');
+        console.error('❌ User not authenticated with our system');
+        return;
+      }
+
+      if (!OAUTH_CLIENT_ID) {
+        console.error('❌ Google OAuth Client ID not configured');
+        console.log('⚠️ Fallback: Enabling YouTube without Google account');
+        // Fallback to local-only mode
+        setIsAuthenticated(true);
+        setUserEmail(user.username + '@local');
         return;
       }
       
-      // Enable YouTube locally (backend sync optional)
-      setIsAuthenticated(true);
-      setUserEmail(user.username);
-      console.log('✅ YouTube: Enabled for user', user.username);
+      // Build Google OAuth URL
+      const scopes = [
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile'
+      ].join(' ');
       
-      // Try to sync with backend (non-blocking)
-      fetch('/api/youtube/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          enabled: true,
-          email: user.username + '@youtube.local',
-          preferences: { volume: 75, shuffle: false, repeat: 'off' }
-        })
-      }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
+      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      authUrl.searchParams.set('client_id', OAUTH_CLIENT_ID);
+      authUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
+      authUrl.searchParams.set('response_type', 'token');
+      authUrl.searchParams.set('scope', scopes);
+      authUrl.searchParams.set('state', `user_${user.id}`);
       
-      // Load playlists if available
-      loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
+      console.log('🌐 Opening Google OAuth popup...');
+      
+      // Open OAuth popup
+      const width = 500;
+      const height = 600;
+      const left = (window.innerWidth - width) / 2;
+      const top = (window.innerHeight - height) / 2;
+      
+      const popup = window.open(
+        authUrl.toString(),
+        'Google Sign-In',
+        `width=${width},height=${height},left=${left},top=${top},popup=yes`
+      );
+      
+      if (!popup) {
+        console.error('❌ Popup blocked! Please allow popups for this site.');
+        alert('Please allow popups to connect your Google account.');
+        return;
+      }
+      
+      // Listen for OAuth callback
+      const handleOAuthCallback = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        
+        if (event.data.type === 'GOOGLE_OAUTH_SUCCESS') {
+          console.log('✅ Google OAuth successful!');
+          const { accessToken, email } = event.data;
+          
+          // Store access token
+          accessTokenRef.current = accessToken;
+          
+          // Update state
+          setIsAuthenticated(true);
+          setUserEmail(email);
+          
+          // Sync with backend
+          fetch('/api/youtube/preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              enabled: true,
+              email: email,
+              accessToken: accessToken,
+              preferences: { volume: 75, shuffle: false, repeat: 'off' }
+            })
+          }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
+          
+          // Load user's playlists
+          loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
+          
+          // Cleanup
+          window.removeEventListener('message', handleOAuthCallback);
+          popup?.close();
+        } else if (event.data.type === 'GOOGLE_OAUTH_ERROR') {
+          console.error('❌ Google OAuth failed:', event.data.error);
+          window.removeEventListener('message', handleOAuthCallback);
+          popup?.close();
+        }
+      };
+      
+      window.addEventListener('message', handleOAuthCallback);
+      
+      // Check if popup was closed without completing
+      const checkPopupClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkPopupClosed);
+          window.removeEventListener('message', handleOAuthCallback);
+          console.log('🔒 OAuth popup closed');
+        }
+      }, 500);
+      
     } catch (error) {
-      console.error('❌ YouTube enable error:', error);
+      console.error('❌ YouTube OAuth error:', error);
     }
   };
-
-  // Google OAuth functions removed - we use our own auth system now
 
   // Check if user is authenticated and load YouTube preferences
   useEffect(() => {
