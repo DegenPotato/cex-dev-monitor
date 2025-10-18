@@ -101,7 +101,17 @@ await initDatabase();
 
 // Register API routes BEFORE static files
 app.use('/api/auth', authRoutes); // Auth routes are public (login, verify, etc.)
-app.use('/api/youtube', youtubeRoutes); // YouTube integration (requires auth)
+// Mount YouTube routes with OPTIONS handling
+app.use('/api/youtube', (req, res, next) => {
+  // Handle OPTIONS for CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    return res.status(200).end();
+  }
+  next();
+}, youtubeRoutes); // YouTube integration (requires auth)
 app.use('/api/database', databaseRoutes);
 
 // Create auth service for protecting specific routes

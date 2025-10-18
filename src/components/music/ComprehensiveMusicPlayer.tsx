@@ -238,7 +238,14 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
               {/* Transport Controls */}
               <div className="flex items-center justify-center gap-4 mt-6">
                 <button
-                  onClick={() => isLocal ? localAudio.toggleShuffle() : youtubeAudio.toggleShuffle()}
+                  onClick={() => {
+                    if (isLocal) {
+                      localAudio.toggleShuffle();
+                    } else {
+                      // YouTube doesn't have toggleShuffle, manually toggle
+                      console.log('Shuffle toggle not available for YouTube');
+                    }
+                  }}
                   className={`p-2 rounded-lg transition-all ${
                     (isLocal ? localAudio.shuffleEnabled : youtubeAudio.shuffle)
                       ? 'bg-pink-500/30 text-pink-400'
@@ -250,7 +257,7 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                 </button>
                 
                 <button
-                  onClick={() => isLocal ? localAudio.previousTrack() : youtubeAudio.previousVideo()}
+                  onClick={() => isLocal ? localAudio.previousTrack() : youtubeAudio.previous()}
                   className="p-3 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-white transition-all"
                   title="Previous"
                 >
@@ -258,14 +265,20 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                 </button>
                 
                 <button
-                  onClick={() => isLocal ? localAudio.togglePlayPause() : youtubeAudio.togglePlayPause()}
+                  onClick={() => {
+                    if (isLocal) {
+                      localAudio.togglePlayPause();
+                    } else {
+                      youtubeAudio.isPlaying ? youtubeAudio.pause() : youtubeAudio.play();
+                    }
+                  }}
                   className="p-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white transition-all transform hover:scale-105 shadow-lg shadow-pink-500/50"
                 >
                   {(isLocal ? localAudio.isPlaying : youtubeAudio.isPlaying) ? '⏸️' : '▶️'}
                 </button>
                 
                 <button
-                  onClick={() => isLocal ? localAudio.nextTrack() : youtubeAudio.nextVideo()}
+                  onClick={() => isLocal ? localAudio.nextTrack() : youtubeAudio.skip()}
                   className="p-3 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-white transition-all"
                   title="Next"
                 >
@@ -279,7 +292,8 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                       const currentIndex = modes.indexOf(localAudio.repeatMode);
                       localAudio.setRepeatMode(modes[(currentIndex + 1) % 3]);
                     } else {
-                      youtubeAudio.toggleRepeat();
+                      // YouTube doesn't have toggleRepeat, manually cycle
+                      console.log('Repeat toggle not available for YouTube');
                     }
                   }}
                   className={`p-2 rounded-lg transition-all ${
@@ -320,7 +334,7 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                       if (isLocal) {
                         localAudio.setVolume(val / 20);
                       } else {
-                        youtubeAudio.updateVolume(val);
+                        youtubeAudio.setVolume(val);
                       }
                     }}
                     className="w-full accent-pink-500"
@@ -507,7 +521,7 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                           key={video.id}
                           onClick={() => {
                             youtubeAudio.addToQueue(video);
-                            youtubeAudio.playVideo(video.id);
+                            youtubeAudio.playVideo(video);
                           }}
                           className="p-2 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 cursor-pointer transition-all flex items-center gap-3"
                         >
@@ -531,10 +545,10 @@ export const ComprehensiveMusicPlayer: React.FC<ComprehensiveMusicPlayerProps> =
                   Queue ({youtubeAudio.queue.length})
                 </h4>
                 <div className="flex-1 overflow-y-auto space-y-2 bg-black/30 rounded-lg p-2">
-                  {youtubeAudio.queue.map((video, index) => (
+                  {youtubeAudio.queue.map((video) => (
                     <div
                       key={video.id}
-                      onClick={() => youtubeAudio.playVideo(video.id)}
+                      onClick={() => youtubeAudio.playVideo(video)}
                       className={`p-2 rounded-lg cursor-pointer transition-all ${
                         youtubeAudio.currentVideo?.id === video.id
                           ? 'bg-gradient-to-r from-red-500/30 to-orange-500/30 border border-red-500/50'
