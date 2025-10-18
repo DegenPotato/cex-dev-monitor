@@ -50,12 +50,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
   const isYouTubeConnected = youtubeAudio.isAuthenticated;
   const youtubeEmail = youtubeAudio.userEmail;
   const connectGoogle = youtubeAudio.signIn;
-  const [isYouTubeConnectedState, setIsYouTubeConnected] = useState(false);
-  
-  // Sync YouTube connection state
-  useEffect(() => {
-    setIsYouTubeConnected(youtubeAudio.isAuthenticated);
-  }, [youtubeAudio.isAuthenticated]);
   const {
     // Source
     audioSource,
@@ -1562,7 +1556,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                           <button 
                             onClick={() => {
                               youtubeAudio.signOut();
-                              setIsYouTubeConnected(false);
                             }}
                             className="mt-2 text-xs px-3 py-1 rounded transition-colors bg-red-500/20 text-red-400 hover:bg-red-500/30"
                           >
@@ -1572,7 +1565,6 @@ export function MatrixSkynetScene({ onBack }: { onBack: () => void }) {
                           <button 
                             onClick={async () => {
                               await youtubeAudio.signIn();
-                              setIsYouTubeConnected(youtubeAudio.isAuthenticated);
                             }}
                             className="mt-2 text-xs px-4 py-2 rounded transition-colors bg-gradient-to-r from-blue-500/20 to-red-500/20 text-white hover:from-blue-500/30 hover:to-red-500/30 border border-blue-500/30"
                           >
