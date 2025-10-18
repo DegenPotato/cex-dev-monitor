@@ -257,6 +257,11 @@ class SecureAuthService {
   requireSecureAuth() {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
       try {
+        // Skip auth for OPTIONS requests (CORS preflight)
+        if (req.method === 'OPTIONS') {
+          return next();
+        }
+
         console.log('🔐 Secure auth middleware called for:', req.method, req.url);
 
         // Extract tokens from cookies
