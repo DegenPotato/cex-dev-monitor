@@ -49,8 +49,10 @@ interface Particle {
   position: THREE.Vector3;
   trail: THREE.Vector3[];
   color: THREE.Color;
-  phase: 'infall' | 'bounce' | 'expansion';
+  phase: 'infall' | 'throat' | 'emergence' | 'expansion';
   age: number;
+  universe: 'A' | 'B'; // Which side of the wormhole
+  opacity: number; // For transition effects
 }
 
 export const BlackWhiteHoleMetricSimulation: React.FC = () => {
@@ -74,31 +76,25 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
     showVectorField: false
   });
 
-  // Calculate the metric function f(r) = A(r)
+  // Morris-Thorne wormhole metric with smooth throat
   const f = (r: number): number => {
     const { G, M, c, r_min } = params;
-    if (r < 0.01) r = 0.01; // Prevent division by zero
+    const rho = Math.max(Math.abs(r - r_min), 0.01); // Distance from throat
     
-    const schwarzschild = 1 + (2 * G * M) / (c * c * r * r);
-    const bounce = (r_min / r) * Math.exp(-r_min / r);
+    // Modified metric for traversable wormhole
+    // Approaches Schwarzschild at large r, smooth at throat
+    const shape = 1 - (r_min * r_min) / (rho * rho + r_min * r_min);
+    const mass_term = (2 * G * M) / (c * c * (rho + r_min));
     
-    return schwarzschild - bounce;
+    return shape * (1 - mass_term);
   };
 
   // Calculate derivative of metric function f'(r)
   const fp = (r: number): number => {
-    const { G, M, c, r_min } = params;
-    if (r < 0.01) r = 0.01;
+    const dr = 0.001;
     
-    // d/dr [1 + 2GM/(c²r²) - (r_min/r) * exp(-r_min/r)]
-    const term1 = -4 * G * M / (c * c * r * r * r);
-    
-    // d/dr [(r_min/r) * exp(-r_min/r)]
-    // = -(r_min/r²) * exp(-r_min/r) + (r_min²/r³) * exp(-r_min/r)
-    const expTerm = Math.exp(-r_min / r);
-    const term2 = -(r_min / (r * r)) * expTerm + (r_min * r_min / (r * r * r)) * expTerm;
-    
-    return term1 - term2;
+    // Numerical derivative for stability
+    return (f(r + dr) - f(r - dr)) / (2 * dr);
   };
 
   // Christoffel symbols for equatorial plane (θ = π/2)
@@ -222,55 +218,91 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
       trail: [],
       color: new THREE.Color(0x00ffff),
       phase: 'infall',
-      age: 0
+      age: 0,
+      universe: 'A', // Start in universe A
+      opacity: 1.0
     };
   };
 
-  // Update particle physics using geodesic equations
+  // Update particle physics for wormhole traversal
   const updateParticle = (particle: Particle, dt: number): void => {
-    // Adaptive timestep near r_min for stability
     const r = particle.x[1];
-    const adaptiveDt = dt * Math.min(1, r / params.r_min);
+    const adaptiveDt = dt * Math.min(1, Math.abs(r - params.r_min) / params.r_min + 0.1);
     
-    // Integrate geodesic equations using RK4
+    // Integrate geodesic equations
     const newState = rk4Step({ x: particle.x, v: particle.v }, adaptiveDt);
-    
-    // Update geodesic coordinates
     particle.x = newState.x;
     particle.v = newState.v;
     
-    // Convert geodesic coords to Cartesian for rendering
-    const [, r_new, phi] = particle.x; // t is coordinate time, not used for rendering
-    particle.position.set(
-      r_new * Math.cos(phi),
-      r_new * Math.sin(phi),
-      0
-    );
+    const [, r_new, phi] = particle.x;
+    const vr = particle.v[1]; // dr/dλ
     
-    // Track trail
+    // Handle wormhole transition at throat
+    const throatRegion = Math.abs(r_new - params.r_min) < 0.5;
+    
+    if (throatRegion) {
+      particle.phase = 'throat';
+      particle.color = new THREE.Color(0xff00ff); // Magenta at throat
+      
+      // Fade effect during transition
+      particle.opacity = Math.max(0.3, 1 - Math.abs(r_new - params.r_min) / 0.5);
+      
+      // Check for universe transition
+      if (particle.universe === 'A' && vr < 0 && r_new < params.r_min) {
+        // Transition from A to B
+        particle.universe = 'B';
+        particle.phase = 'emergence';
+        
+        // Continue motion in universe B (mirror coordinates)
+        particle.x[1] = 2 * params.r_min - r_new;
+        particle.v[1] = -vr; // Reverse radial velocity
+      }
+    } else {
+      particle.opacity = 1.0;
+      
+      if (particle.universe === 'A') {
+        // Universe A dynamics
+        if (vr < 0) {
+          particle.phase = 'infall';
+          particle.color = new THREE.Color(0x0088ff); // Blue falling in
+        } else {
+          particle.phase = 'expansion';
+          particle.color = new THREE.Color(0x00ff88); // Green expanding
+        }
+      } else {
+        // Universe B dynamics (on the other side)
+        particle.phase = 'expansion';
+        particle.color = new THREE.Color(0xffff00); // Yellow in universe B
+        
+        // Apply offset for universe B visualization
+        const offset = 20; // Spatial separation between universes
+        particle.position.set(
+          r_new * Math.cos(phi) + offset,
+          r_new * Math.sin(phi),
+          0
+        );
+      }
+    }
+    
+    // Standard position update for universe A
+    if (particle.universe === 'A') {
+      particle.position.set(
+        r_new * Math.cos(phi),
+        r_new * Math.sin(phi),
+        0
+      );
+    }
+    
+    // Track trail with opacity
     if (particle.trail.length > 100) {
       particle.trail.shift();
     }
     particle.trail.push(particle.position.clone());
     
-    // Determine phase based on radial velocity
-    const vr = particle.v[1]; // dr/dλ
-    
-    if (r_new < params.r_min * 1.5 && vr < 0) {
-      particle.phase = 'bounce';
-      particle.color = new THREE.Color(0xff0000);
-    } else if (r_new > params.r_min * 1.5 && vr > 0) {
-      particle.phase = 'expansion';
-      particle.color = new THREE.Color(0x00ff00);
-    } else if (vr < 0) {
-      particle.phase = 'infall';
-      particle.color = new THREE.Color(0x0088ff);
-    }
-    
     particle.age += adaptiveDt;
     
-    // Reset particle if it goes too far or too close
-    if (r_new > 30 || r_new < 0.1) {
+    // Reset if too far
+    if (r_new > 30 || (particle.universe === 'B' && r_new < params.r_min - 5)) {
       Object.assign(particle, initializeParticle(particlesRef.current.indexOf(particle)));
     }
   };
@@ -494,11 +526,14 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
       particlesRef.current.forEach((particle, index) => {
         updateParticle(particle, params.timeStep);
         
-        // Update mesh position and color
+        // Update mesh position, color, and opacity
         if (particleMeshes[index]) {
           particleMeshes[index].position.copy(particle.position);
-          (particleMeshes[index].material as THREE.MeshPhongMaterial).color = particle.color;
-          (particleMeshes[index].material as THREE.MeshPhongMaterial).emissive = particle.color;
+          const material = particleMeshes[index].material as THREE.MeshPhongMaterial;
+          material.color = particle.color;
+          material.emissive = particle.color;
+          material.opacity = particle.opacity;
+          material.transparent = particle.opacity < 1.0;
         }
         
         // Update trail
@@ -560,12 +595,14 @@ export const BlackWhiteHoleMetricSimulation: React.FC = () => {
   return (
     <div ref={mountRef} className="w-full h-screen relative">
       <div className="absolute top-4 left-4 text-white bg-black/50 p-4 rounded-lg backdrop-blur-sm">
-        <h2 className="text-2xl font-bold mb-2">Black-White Hole Metric Simulation</h2>
+        <h2 className="text-2xl font-bold mb-2">Wormhole Metric Simulation</h2>
         <div className="text-sm space-y-1">
-          <p>A(r) = 1 + (2GM)/(c²r²) - (r_min/r) * exp(-r_min/r)</p>
-          <p className="text-blue-400">Blue: Infall phase</p>
-          <p className="text-red-400">Red: Bounce at r_min</p>
-          <p className="text-green-400">Green: Expansion (white hole)</p>
+          <p>Morris-Thorne traversable wormhole</p>
+          <p className="text-blue-400">Blue: Infall in Universe A</p>
+          <p className="text-purple-400">Purple: Throat transition</p>
+          <p className="text-yellow-400">Yellow: Emergence in Universe B</p>
+          <p className="text-green-400">Green: Expansion in Universe A</p>
+          <p className="mt-2 text-cyan-300">Two universes connected at r = r_min</p>
         </div>
       </div>
     </div>
