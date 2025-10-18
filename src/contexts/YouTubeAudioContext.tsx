@@ -114,7 +114,8 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
   // OAuth Client ID for Google Sign-In
   const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
-  const OAUTH_REDIRECT_URI = window.location.origin + '/oauth/google/callback.html';
+  // Use configured redirect URI from env, or fallback to current origin
+  const OAUTH_REDIRECT_URI = import.meta.env.VITE_GOOGLE_OAUTH_REDIRECT_URI || (window.location.origin + '/oauth/google/callback.html');
 
   // Google OAuth 2.0 Sign-In with Popup
   const signIn = async () => {
@@ -150,6 +151,9 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
       authUrl.searchParams.set('state', `user_${user.id}`);
       
       console.log('🌐 Opening Google OAuth popup...');
+      console.log('📍 Redirect URI:', OAUTH_REDIRECT_URI);
+      console.log('🔑 Client ID:', OAUTH_CLIENT_ID);
+      console.log('🔗 Full OAuth URL:', authUrl.toString());
       
       // Open OAuth popup
       const width = 500;
