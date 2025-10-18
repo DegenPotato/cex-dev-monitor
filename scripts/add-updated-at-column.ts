@@ -36,13 +36,13 @@ async function addColumn() {
       return;
     }
 
-    // Add the column
+    // Add the column (SQLite doesn't allow CURRENT_TIMESTAMP in ALTER TABLE)
     console.log('➕ Adding updated_at column...');
-    db.run('ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP');
+    db.run('ALTER TABLE users ADD COLUMN updated_at TEXT');
     
-    // Update existing rows
-    console.log('🔄 Updating existing rows...');
-    db.run('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL');
+    // Update all rows with current timestamp
+    console.log('🔄 Updating all rows...');
+    db.run("UPDATE users SET updated_at = datetime('now')");
 
     console.log('✅ Column added successfully');
 
