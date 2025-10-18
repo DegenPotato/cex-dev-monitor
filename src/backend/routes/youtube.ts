@@ -6,9 +6,10 @@
 
 import express, { Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database/connection.js';
-import { authenticateToken } from '../middleware/auth.js';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const router = express.Router();
+const authService = new SecureAuthService();
 
 // Helper to execute UPDATE/INSERT/DELETE queries with sql.js
 function runQuery(query: string) {
@@ -24,7 +25,7 @@ function execQuery(query: string) {
 }
 
 // Get user's YouTube preferences
-router.get('/preferences', authenticateToken, async (req: Request, res: Response) => {
+router.get('/preferences', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const db = getDatabase();
@@ -59,7 +60,7 @@ router.get('/preferences', authenticateToken, async (req: Request, res: Response
 });
 
 // Update YouTube preferences
-router.post('/preferences', authenticateToken, async (req: Request, res: Response) => {
+router.post('/preferences', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { enabled, email, preferences } = req.body;
@@ -85,7 +86,7 @@ router.post('/preferences', authenticateToken, async (req: Request, res: Respons
 });
 
 // Get user's YouTube playlists
-router.get('/playlists', authenticateToken, async (req: Request, res: Response) => {
+router.get('/playlists', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     
@@ -115,7 +116,7 @@ router.get('/playlists', authenticateToken, async (req: Request, res: Response) 
 });
 
 // Save/Update playlist
-router.post('/playlists', authenticateToken, async (req: Request, res: Response) => {
+router.post('/playlists', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { id, name, videos, isFavorite } = req.body;
@@ -149,7 +150,7 @@ router.post('/playlists', authenticateToken, async (req: Request, res: Response)
 });
 
 // Delete playlist
-router.delete('/playlists/:id', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/playlists/:id', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const playlistId = parseInt(req.params.id);
@@ -167,7 +168,7 @@ router.delete('/playlists/:id', authenticateToken, async (req: Request, res: Res
 });
 
 // Update play count
-router.post('/playlists/:id/play', authenticateToken, async (req: Request, res: Response) => {
+router.post('/playlists/:id/play', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const playlistId = parseInt(req.params.id);
@@ -187,7 +188,7 @@ router.post('/playlists/:id/play', authenticateToken, async (req: Request, res: 
 });
 
 // Add to playback history
-router.post('/history', authenticateToken, async (req: Request, res: Response) => {
+router.post('/history', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { videoId, title, thumbnail, channelTitle, duration } = req.body;
@@ -209,7 +210,7 @@ router.post('/history', authenticateToken, async (req: Request, res: Response) =
 });
 
 // Get playback history
-router.get('/history', authenticateToken, async (req: Request, res: Response) => {
+router.get('/history', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const limit = parseInt(req.query.limit as string) || 50;
