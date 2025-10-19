@@ -47,10 +47,14 @@ const RobustChart: React.FC<RobustChartProps> = ({
         // Check all required fields exist and are valid numbers
         if (!candle || !candle.timestamp) return false;
         
+        const t = Number(candle.timestamp);
         const o = Number(candle.open);
         const h = Number(candle.high);
         const l = Number(candle.low);
         const c = Number(candle.close);
+        
+        // Check for valid timestamp (must be positive number)
+        if (isNaN(t) || t <= 0) return false;
         
         // Check for valid numbers
         if (isNaN(o) || isNaN(h) || isNaN(l) || isNaN(c)) return false;
@@ -64,13 +68,13 @@ const RobustChart: React.FC<RobustChartProps> = ({
         return true;
       })
       .map(candle => ({
-        ...candle,
-        timestamp: Math.floor(candle.timestamp),
+        timestamp: Number(candle.timestamp), // Keep in milliseconds internally
         open: Number(candle.open),
         high: Number(candle.high),
         low: Number(candle.low),
         close: Number(candle.close),
-        volume: Number(candle.volume || 0)
+        volume: Number(candle.volume || 0),
+        pool_address: candle.pool_address
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -136,9 +140,9 @@ const RobustChart: React.FC<RobustChartProps> = ({
         },
       });
 
-      // Set data
+      // Set data - IMPORTANT: lightweight-charts expects timestamps in SECONDS, not milliseconds
       const candleData = validData.map(candle => ({
-        time: candle.timestamp as any,
+        time: Math.floor(candle.timestamp / 1000) as any, // Convert ms to seconds
         open: candle.open,
         high: candle.high,
         low: candle.low,
@@ -146,7 +150,7 @@ const RobustChart: React.FC<RobustChartProps> = ({
       }));
 
       const volumeData = validData.map(candle => ({
-        time: candle.timestamp as any,
+        time: Math.floor(candle.timestamp / 1000) as any, // Convert ms to seconds
         value: candle.volume,
         color: candle.close >= candle.open 
           ? 'rgba(16, 185, 129, 0.3)' 
