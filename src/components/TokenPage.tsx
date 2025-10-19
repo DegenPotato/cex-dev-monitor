@@ -37,9 +37,13 @@ interface OHLCVCandle {
   volume: number;
 }
 
-export function TokenPage() {
-  // Extract address from URL path (/dashboard/token/:address)
-  const address = window.location.pathname.split('/dashboard/token/')[1] || window.location.pathname.split('/token/')[1];
+interface TokenPageProps {
+  address?: string;
+}
+
+export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
+  // Use prop address if provided, otherwise extract from URL (for backward compatibility)
+  const address = propAddress || window.location.pathname.split('/dashboard/token/')[1] || window.location.pathname.split('/token/')[1];
   const [token, setToken] = useState<TokenData | null>(null);
   const [ohlcv, setOhlcv] = useState<OHLCVCandle[]>([]);
   const [timeframe, setTimeframe] = useState('1h');

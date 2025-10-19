@@ -8,6 +8,7 @@ import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
+import { TokenPage } from './TokenPage';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
@@ -19,6 +20,7 @@ export function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
   const [isAgentMinimized, setIsAgentMinimized] = useState(false);
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<string | null>(null);
   const starsCanvasRef = useRef<HTMLCanvasElement>(null);
   const vortexCanvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -475,7 +477,7 @@ export function Dashboard() {
         ) : activeTab === 'tokens' ? (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-            <TokensTab />
+            <TokensTab onTokenSelect={setSelectedTokenAddress} />
           </div>
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
@@ -484,6 +486,27 @@ export function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Token Detail Overlay */}
+      {selectedTokenAddress && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-7xl relative">
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedTokenAddress(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/60 hover:bg-red-600/20 border border-cyan-500/30 hover:border-red-500/60 rounded-lg text-gray-400 hover:text-red-400 transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+              title="Close"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            {/* Token Page Content */}
+            <TokenPage address={selectedTokenAddress} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

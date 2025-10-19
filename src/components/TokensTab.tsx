@@ -31,7 +31,11 @@ interface Token {
 
 type SortBy = 'newest' | 'mcap' | 'gain' | 'ath';
 
-export function TokensTab() {
+interface TokensTabProps {
+  onTokenSelect?: (address: string) => void;
+}
+
+export function TokensTab({ onTokenSelect }: TokensTabProps) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('newest');
@@ -271,19 +275,19 @@ export function TokensTab() {
                 {/* Token Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <a 
-                      href={`/dashboard/token/${token.mint_address}`}
-                      className="text-lg font-bold text-white hover:text-purple-400 transition-colors cursor-pointer"
+                    <button 
+                      onClick={() => onTokenSelect?.(token.mint_address)}
+                      className="text-lg font-bold text-white hover:text-purple-400 transition-colors cursor-pointer text-left"
                     >
                       {token.name || token.symbol || 'Unknown Token'}
-                    </a>
+                    </button>
                     {token.symbol && token.name && (
-                      <a 
-                        href={`/dashboard/token/${token.mint_address}`}
+                      <button 
+                        onClick={() => onTokenSelect?.(token.mint_address)}
                         className="text-purple-400 hover:text-purple-300 font-mono cursor-pointer"
                       >
                         ${token.symbol}
-                      </a>
+                      </button>
                     )}
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       token.platform === 'pumpfun' 
