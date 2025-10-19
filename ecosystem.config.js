@@ -16,5 +16,18 @@ module.exports = {
     time: true,
     merge_logs: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
-  }]
+  }],
+  
+  deploy: {
+    production: {
+      user: 'root',  // Change this to your VPS username
+      host: 'YOUR_VPS_IP',  // Change this to your VPS IP
+      ref: 'origin/main',
+      repo: 'git@github.com:DegenPotato/cex-dev-monitor.git',
+      path: '/var/www/cex-monitor',
+      'pre-deploy-local': '',
+      'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',
+      'pre-setup': ''
+    }
+  }
 };
