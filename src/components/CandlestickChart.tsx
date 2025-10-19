@@ -130,38 +130,82 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     // Debug log
     console.log('[CandlestickChart] Raw data:', data);
 
-    // Convert data to candlestick format
+    // Convert data to candlestick format with strict validation
     const candleData: CandlestickData[] = data
-      .filter(candle => candle && candle.timestamp && candle.open && candle.high && candle.low && candle.close)
+      .filter(candle => {
+        // Strict validation - all values must be valid numbers
+        return candle && 
+               typeof candle.timestamp === 'number' && !isNaN(candle.timestamp) && candle.timestamp > 0 &&
+               typeof candle.open === 'number' && !isNaN(candle.open) && candle.open > 0 &&
+               typeof candle.high === 'number' && !isNaN(candle.high) && candle.high > 0 &&
+               typeof candle.low === 'number' && !isNaN(candle.low) && candle.low > 0 &&
+               typeof candle.close === 'number' && !isNaN(candle.close) && candle.close > 0;
+      })
       .map(candle => ({
-        time: candle.timestamp as any, // Unix timestamp
+        time: Math.floor(candle.timestamp) as any, // Ensure integer timestamp
         open: Number(candle.open),
-        high: Number(candle.high),
+        high: Number(candle.high), 
         low: Number(candle.low),
         close: Number(candle.close),
       }))
+      .filter(candle => {
+        // Additional validation after conversion
+        return !isNaN(candle.open) && !isNaN(candle.high) && !isNaN(candle.low) && !isNaN(candle.close) &&
+               candle.high >= candle.low && // High must be >= Low
+               candle.high >= candle.open && candle.high >= candle.close && // High must be highest
+               candle.low <= candle.open && candle.low <= candle.close; // Low must be lowest
+      })
       .sort((a, b) => (a.time as number) - (b.time as number));
     
     console.log('[CandlestickChart] Processed candle data:', candleData);
+    
+    if (candleData.length === 0) {
+      console.warn('[CandlestickChart] No valid candles after filtering. Raw data sample:', data.slice(0, 3));
+    }
 
-    // Convert volume data
+    // Convert volume data with strict validation
     const volumeData = data
-      .filter(candle => candle && candle.timestamp && candle.volume !== undefined)
+      .filter(candle => {
+        return candle && 
+               typeof candle.timestamp === 'number' && !isNaN(candle.timestamp) && candle.timestamp > 0 &&
+               typeof candle.volume === 'number' && !isNaN(candle.volume) && candle.volume >= 0 &&
+               typeof candle.open === 'number' && !isNaN(candle.open) &&
+               typeof candle.close === 'number' && !isNaN(candle.close);
+      })
       .map(candle => ({
-        time: candle.timestamp as any,
-        value: Number(candle.volume),
+        time: Math.floor(candle.timestamp) as any, // Ensure integer timestamp
+        value: Math.max(0, Number(candle.volume) || 0), // Ensure non-negative volume
         color: candle.close >= candle.open 
           ? 'rgba(16, 185, 129, 0.3)' 
           : 'rgba(239, 68, 68, 0.3)',
       }))
+      .filter(v => !isNaN(v.value)) // Final validation
       .sort((a, b) => (a.time as number) - (b.time as number));
 
     // Set data only if we have valid data
     if (candleData.length > 0) {
-      candleSeriesRef.current.setData(candleData);
-      volumeSeriesRef.current.setData(volumeData);
+      try {
+        // Clear existing data first
+        candleSeriesRef.current.setData([]);
+        volumeSeriesRef.current.setData([]);
+        
+        // Set new data
+        candleSeriesRef.current.setData(candleData);
+        volumeSeriesRef.current.setData(volumeData);
+      } catch (error) {
+        console.error('[CandlestickChart] Error setting data:', error);
+        console.error('[CandlestickChart] First candle:', candleData[0]);
+        console.error('[CandlestickChart] First volume:', volumeData[0]);
+      }
     } else {
       console.warn('[CandlestickChart] No valid candle data to display');
+      // Clear chart if no valid data
+      try {
+        candleSeriesRef.current.setData([]);
+        volumeSeriesRef.current.setData([]);
+      } catch (e) {
+        // Ignore errors when clearing
+      }
     }
 
     // Add migration marker if available
