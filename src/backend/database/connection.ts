@@ -677,6 +677,34 @@ export async function initDatabase() {
     );
   `);
 
+  // Technical Indicators Table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS technical_indicators (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mint_address TEXT NOT NULL,
+      pool_address TEXT,
+      timeframe TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      rsi_2 REAL,
+      rsi_14 REAL,
+      ema_21 REAL,
+      ema_50 REAL,
+      ema_100 REAL,
+      ema_200 REAL,
+      macd_line REAL,
+      macd_signal REAL,
+      macd_histogram REAL,
+      bb_upper REAL,
+      bb_middle REAL,
+      bb_lower REAL,
+      bb_width REAL,
+      volume_sma_20 REAL,
+      volume_ratio REAL,
+      calculated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      UNIQUE(mint_address, timeframe, timestamp)
+    );
+  `);
+
   db.run(`
 
     CREATE TABLE IF NOT EXISTS config (
@@ -700,6 +728,10 @@ export async function initDatabase() {
     
     CREATE INDEX IF NOT EXISTS idx_backfill_progress_mint ON ohlcv_backfill_progress(mint_address);
     CREATE INDEX IF NOT EXISTS idx_backfill_progress_incomplete ON ohlcv_backfill_progress(backfill_complete);
+    
+    CREATE INDEX IF NOT EXISTS idx_technical_indicators_lookup ON technical_indicators(mint_address, timeframe, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_technical_indicators_timestamp ON technical_indicators(timestamp);
+    
     CREATE INDEX IF NOT EXISTS idx_token_mints_creator ON token_mints(creator_address);
     CREATE INDEX IF NOT EXISTS idx_monitored_wallets_active ON monitored_wallets(is_active);
     CREATE INDEX IF NOT EXISTS idx_source_wallets_monitoring ON source_wallets(is_monitoring);
