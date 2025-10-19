@@ -11,7 +11,7 @@ export class TokenMintProvider {
         graduation_percentage, launchpad_completed, launchpad_completed_at, migrated_pool_address,
         total_supply, market_cap_usd, coingecko_coin_id, gt_score, description,
         last_updated, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         mint.mint_address,
         mint.creator_address,
