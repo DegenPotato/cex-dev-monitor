@@ -492,19 +492,21 @@ export function Dashboard() {
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 overflow-y-auto">
           <div className="min-h-screen flex items-start justify-center p-4 py-8">
             <div className="w-full max-w-7xl relative">
-              {/* Close Button */}
-              <button
-                onClick={() => setSelectedTokenAddress(null)}
-                className="fixed top-4 right-4 z-[60] p-2 bg-black/60 hover:bg-red-600/20 border border-cyan-500/30 hover:border-red-500/60 rounded-lg text-gray-400 hover:text-red-400 transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                title="Close"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-              
-              {/* Token Page Content */}
-              <TokenPage address={selectedTokenAddress} />
+              {/* Token Page Content with Close Button */}
+              <div className="relative">
+                {/* Close Button - positioned on token page */}
+                <button
+                  onClick={() => setSelectedTokenAddress(null)}
+                  className="absolute -top-2 -right-2 z-10 p-2 bg-black/80 hover:bg-red-600/20 border border-cyan-500/30 hover:border-red-500/60 rounded-lg text-gray-400 hover:text-red-400 transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                  title="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                
+                <TokenPage address={selectedTokenAddress} />
+              </div>
             </div>
           </div>
         </div>
