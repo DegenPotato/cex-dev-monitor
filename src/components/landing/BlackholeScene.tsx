@@ -1427,10 +1427,10 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                 </div>
             )}
             
-            {/* Agent Status Indicator - Top Right, Below Settings */}
+            {/* Agent Status Indicator - Top Right, Fixed to viewport */}
             {(connected || isAuthenticated) && !showAuthBillboard && (
-                <div className="pointer-events-auto absolute top-32 right-8 bg-black/80 backdrop-blur-md border border-cyan-500/30 
-                               rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.2)] z-40
+                <div className="pointer-events-auto fixed top-6 right-8 bg-black/80 backdrop-blur-md border border-cyan-500/30 
+                               rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.2)] z-[9999]
                                transition-all duration-300 hover:border-cyan-400/50 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
                     {/* Status Header - Clickable to toggle minimize */}
                     <div 
