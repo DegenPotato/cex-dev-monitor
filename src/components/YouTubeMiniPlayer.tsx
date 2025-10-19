@@ -17,11 +17,6 @@ interface YouTubeVideo {
 }
 
 export function YouTubeMiniPlayer() {
-  // YouTube API configuration
-  const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
-  const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
-  const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
-  const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
   const [isMinimized, setIsMinimized] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -35,6 +30,27 @@ export function YouTubeMiniPlayer() {
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
 
+  const loadUserPlaylists = async () => {
+    if (!window.gapi) return;
+    try {
+      const response = await window.gapi.client.youtube.playlists.list({
+        part: 'snippet',
+        mine: true,
+        maxResults: 20
+      });
+      setPlaylists(response.result.items || []);
+    } catch (error) {
+      console.error('Failed to load playlists:', error);
+    }
+  };
+
+  const updateSigninStatus = (isSignedIn: boolean) => {
+    setIsSignedIn(isSignedIn);
+    if (isSignedIn) {
+      loadUserPlaylists();
+    }
+  };
+
   useEffect(() => {
     // Load YouTube IFrame API
     const tag = document.createElement('script');
@@ -45,7 +61,30 @@ export function YouTubeMiniPlayer() {
     // Load Google API
     const gapiScript = document.createElement('script');
     gapiScript.src = 'https://apis.google.com/js/api.js';
-    gapiScript.onload = initGoogleAPI;
+    gapiScript.onload = () => {
+      if (!window.gapi) return;
+      
+      // YouTube API configuration - access env vars here
+      const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
+      const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
+      const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
+      const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
+      
+      window.gapi.load('client:auth2', () => {
+        window.gapi.client.init({
+          apiKey: API_KEY,
+          clientId: CLIENT_ID,
+          discoveryDocs: DISCOVERY_DOCS,
+          scope: SCOPES
+        }).then(() => {
+          const authInstance = window.gapi.auth2?.getAuthInstance();
+          if (authInstance) {
+            authInstance.isSignedIn.listen(updateSigninStatus);
+            updateSigninStatus(authInstance.isSignedIn.get());
+          }
+        });
+      });
+    };
     document.body.appendChild(gapiScript);
 
     window.onYouTubeIframeAPIReady = initializePlayer;
@@ -56,32 +95,6 @@ export function YouTubeMiniPlayer() {
       }
     };
   }, []);
-
-  const initGoogleAPI = () => {
-    if (!window.gapi) return;
-    
-    window.gapi.load('client:auth2', () => {
-      window.gapi.client.init({
-        apiKey: API_KEY,
-        clientId: CLIENT_ID,
-        discoveryDocs: DISCOVERY_DOCS,
-        scope: SCOPES
-      }).then(() => {
-        const authInstance = window.gapi.auth2?.getAuthInstance();
-        if (authInstance) {
-          authInstance.isSignedIn.listen(updateSigninStatus);
-          updateSigninStatus(authInstance.isSignedIn.get());
-        }
-      });
-    });
-  };
-
-  const updateSigninStatus = (isSignedIn: boolean) => {
-    setIsSignedIn(isSignedIn);
-    if (isSignedIn) {
-      loadUserPlaylists();
-    }
-  };
 
   const handleAuthClick = () => {
     if (!window.gapi?.auth2) return;
@@ -153,20 +166,6 @@ export function YouTubeMiniPlayer() {
       setSearchResults(videos);
     } catch (error) {
       console.error('Search failed:', error);
-    }
-  };
-
-  const loadUserPlaylists = async () => {
-    if (!window.gapi) return;
-    try {
-      const response = await window.gapi.client.youtube.playlists.list({
-        part: 'snippet',
-        mine: true,
-        maxResults: 20
-      });
-      setPlaylists(response.result.items || []);
-    } catch (error) {
-      console.error('Failed to load playlists:', error);
     }
   };
 
