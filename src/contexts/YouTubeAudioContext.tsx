@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+import { config } from '../config';
 
 // YouTube and Google types are already declared in src/types/youtube.d.ts
 // No need to redeclare them here
@@ -196,7 +197,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
             console.log('✅ Signed in as:', truncated);
 
             // Link Google account to user in database
-            fetch('/api/youtube/oauth/link', {
+            fetch(`${config.apiUrl}/api/youtube/oauth/link`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json'
@@ -248,7 +249,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
       if (!userIsAuthenticated || !user) return;
 
       try {
-        const response = await fetch('/api/youtube/oauth/status', {
+        const response = await fetch(`${config.apiUrl}/api/youtube/oauth/status`, {
           credentials: 'include'
         });
 
@@ -646,7 +647,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
     try {
       if (!userIsAuthenticated) return;
 
-      const response = await fetch('/api/youtube/playlists', {
+      const response = await fetch(`${config.apiUrl}/api/youtube/playlists`, {
         credentials: 'include'
       });
 
@@ -714,7 +715,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   const signOut = async () => {
     try {
       if (userIsAuthenticated) {
-        await fetch('/api/youtube/preferences', {
+        await fetch(`${config.apiUrl}/api/youtube/preferences`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -753,7 +754,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
         return;
       }
 
-      const response = await fetch('/api/youtube/account/save', {
+      const response = await fetch(`${config.apiUrl}/api/youtube/account/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -782,7 +783,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
         return;
       }
 
-      const response = await fetch('/api/youtube/account', {
+      const response = await fetch(`${config.apiUrl}/api/youtube/account`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -830,7 +831,7 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
       const token = localStorage.getItem('authToken');
       if (!token) return;
 
-      await fetch('/api/youtube/account/revoke', {
+      await fetch(`${config.apiUrl}/api/youtube/account/revoke`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
