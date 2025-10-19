@@ -42,12 +42,15 @@ export function TechnicalIndicatorsPanel({ mintAddress, currentPrice }: Technica
   }, [mintAddress, timeframe]);
 
   const fetchIndicators = async () => {
+    setLoading(true);
     try {
       // Fetch latest indicators
+      console.log(`[TechnicalIndicators] Fetching for ${mintAddress}, timeframe: ${timeframe}`);
       const latestResponse = await fetch(
         apiUrl(`/api/indicators/${mintAddress}/latest?timeframe=${timeframe}`)
       );
       const latest = await latestResponse.json();
+      console.log('[TechnicalIndicators] Latest indicators:', latest);
       setIndicators(latest);
 
       // Fetch historical indicators
@@ -55,6 +58,7 @@ export function TechnicalIndicatorsPanel({ mintAddress, currentPrice }: Technica
         apiUrl(`/api/indicators/${mintAddress}?timeframe=${timeframe}&limit=20`)
       );
       const history = await historyResponse.json();
+      console.log('[TechnicalIndicators] Historical data count:', history?.length || 0);
       setHistoricalData(history);
     } catch (error) {
       console.error('Error fetching indicators:', error);

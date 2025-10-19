@@ -4,7 +4,6 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { config } from '../config';
 import { SettingsPanel } from './SettingsPanel';
 import { WalletMonitoringTabs } from './WalletMonitoringTabs';
-import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
 import { TokenPage } from './TokenPage';
@@ -536,24 +535,30 @@ export function Dashboard() {
 
         {/* Main Content with Glassmorphism */}
         {activeTab === 'wallets' ? (
-          <div className="space-y-6">
-            {/* Wallet Monitoring with Tabs */}
-            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-              <WalletMonitoringTabs />
-            </div>
-            
-            {/* Recent Token Mints */}
-            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
-              <RecentTokenMints />
-            </div>
-          </div>
-        ) : activeTab === 'tokens' ? (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-            <TokensTab onTokenSelect={setSelectedTokenAddress} />
+            <WalletMonitoringTabs />
           </div>
+        ) : activeTab === 'tokens' ? (
+          selectedTokenAddress ? (
+            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+              <div className="relative p-6">
+                <button
+                  onClick={() => setSelectedTokenAddress(null)}
+                  className="absolute top-4 right-4 z-10 px-4 py-2 bg-black/80 hover:bg-cyan-600/20 border border-cyan-500/30 hover:border-cyan-400/60 rounded-lg text-gray-400 hover:text-cyan-400 transition-all duration-200 hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] flex items-center gap-2"
+                >
+                  ← Back to Token List
+                </button>
+                <TokenPage mintAddress={selectedTokenAddress} />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+              <TokensTab onTokenSelect={setSelectedTokenAddress} />
+            </div>
+          )
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
@@ -561,31 +566,6 @@ export function Dashboard() {
           </div>
         )}
       </div>
-      )}
-
-      {/* Token Detail Overlay */}
-      {selectedTokenAddress && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[10000] overflow-y-auto">
-          <div className="min-h-screen flex items-start justify-center p-4 py-8">
-            <div className="w-full max-w-7xl relative">
-              {/* Token Page Content with Close Button */}
-              <div className="relative">
-                {/* Close Button - positioned on token page */}
-                <button
-                  onClick={() => setSelectedTokenAddress(null)}
-                  className="absolute -top-2 -right-2 z-10 p-2 bg-black/80 hover:bg-red-600/20 border border-cyan-500/30 hover:border-red-500/60 rounded-lg text-gray-400 hover:text-red-400 transition-all duration-200 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                  title="Close"
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                
-                <TokenPage address={selectedTokenAddress} />
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
