@@ -34,6 +34,17 @@ const RobustChart: React.FC<RobustChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
   const [validData, setValidData] = useState<OHLCVData[]>([]);
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    time: string;
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    volume: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Dynamic price formatter based on magnitude
   const formatPrice = (price: number): string => {
@@ -144,9 +155,8 @@ const RobustChart: React.FC<RobustChartProps> = ({
         wickDownColor: '#ef4444',
       });
 
-      // Add volume series
+      // Add volume series (don't set default color, use per-bar colors)
       const volumeSeries = chart.addHistogramSeries({
-        color: 'rgba(6, 182, 212, 0.3)',
         priceFormat: {
           type: 'volume',
         },
@@ -213,6 +223,40 @@ const RobustChart: React.FC<RobustChartProps> = ({
 
       // Fit content
       chart.timeScale().fitContent();
+
+      // Add crosshair move handler for tooltip
+      chart.subscribeCrosshairMove((param) => {
+        if (!param || !param.time || !containerRef.current) {
+          setTooltip(null);
+          return;
+        }
+
+        const candleDataPoint = param.seriesData.get(candleSeries);
+        const volumeDataPoint = param.seriesData.get(volumeSeries);
+        
+        if (candleDataPoint && 'open' in candleDataPoint) {
+          const candle = candleDataPoint as any;
+          const volume = volumeDataPoint && 'value' in volumeDataPoint ? (volumeDataPoint as any).value : 0;
+          
+          // Get mouse coordinates
+          const x = param.point?.x || 0;
+          const y = param.point?.y || 0;
+
+          setTooltip({
+            visible: true,
+            time: new Date((param.time as number) * 1000).toLocaleString(),
+            open: formatPrice(candle.open),
+            high: formatPrice(candle.high),
+            low: formatPrice(candle.low),
+            close: formatPrice(candle.close),
+            volume: volume.toFixed(2),
+            x: x,
+            y: y,
+          });
+        } else {
+          setTooltip(null);
+        }
+      });
 
       // Handle resize
       const handleResize = () => {
@@ -362,6 +406,46 @@ const RobustChart: React.FC<RobustChartProps> = ({
           <div className="bg-black/80 rounded px-2 py-1">
             <span className="text-gray-400">Candles:</span>{' '}
             <span className="text-cyan-400">{stats.candleCount}</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Tooltip */}
+      {tooltip && tooltip.visible && (
+        <div 
+          className="absolute z-20 pointer-events-none"
+          style={{ 
+            left: `${tooltip.x + 10}px`, 
+            top: `${tooltip.y - 10}px`,
+            transform: tooltip.x > 300 ? 'translateX(-100%)' : undefined
+          }}
+        >
+          <div className="bg-black/95 backdrop-blur-sm border border-cyan-500/40 rounded-lg p-3 shadow-lg shadow-cyan-500/20 text-xs">
+            <div className="text-gray-400 mb-2 border-b border-cyan-500/20 pb-1">
+              {tooltip.time}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-gray-500">Open:</span>
+                <div className="text-white font-mono">${tooltip.open}</div>
+              </div>
+              <div>
+                <span className="text-green-400">High:</span>
+                <div className="text-green-400 font-mono">${tooltip.high}</div>
+              </div>
+              <div>
+                <span className="text-red-400">Low:</span>
+                <div className="text-red-400 font-mono">${tooltip.low}</div>
+              </div>
+              <div>
+                <span className="text-gray-500">Close:</span>
+                <div className="text-white font-mono">${tooltip.close}</div>
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-t border-cyan-500/20">
+              <span className="text-cyan-400">Volume:</span>{' '}
+              <span className="text-white font-mono">${tooltip.volume}</span>
+            </div>
           </div>
         </div>
       )}
