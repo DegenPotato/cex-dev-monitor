@@ -12,8 +12,59 @@ import { TokenPage } from './TokenPage';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
+import { useAudio } from '../contexts/AudioContext';
 
 type Tab = 'wallets' | 'tokens' | 'database';
+
+// Sound-reactive glow component
+function SoundReactiveGlow({ analyser }: { analyser: AnalyserNode | null }) {
+  const [audioLevel, setAudioLevel] = useState(0);
+  
+  useEffect(() => {
+    if (!analyser) return;
+    
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let animationId: number;
+    
+    const animate = () => {
+      analyser.getByteFrequencyData(dataArray);
+      const sum = dataArray.reduce((a, b) => a + b, 0);
+      const level = sum / dataArray.length / 255; // Normalize to 0-1
+      setAudioLevel(level);
+      
+      animationId = requestAnimationFrame(animate);
+    };
+    animate();
+    
+    return () => cancelAnimationFrame(animationId);
+  }, [analyser]);
+  
+  const glowIntensity = Math.min(audioLevel * 30, 20);
+  const scale = 1 + audioLevel * 0.5;
+  
+  return (
+    <div className="fixed inset-0 pointer-events-none">
+      <div 
+        className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
+        style={{ 
+          opacity: 0.1 + audioLevel * 0.5,
+          transform: `scale(${scale})`,
+          filter: `blur(${48 + glowIntensity}px)`,
+          transition: 'transform 0.1s ease-out, opacity 0.1s ease-out'
+        }}
+      />
+      <div 
+        className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"
+        style={{ 
+          opacity: 0.1 + audioLevel * 0.5,
+          transform: `scale(${scale})`,
+          filter: `blur(${48 + glowIntensity}px)`,
+          transition: 'transform 0.1s ease-out, opacity 0.1s ease-out'
+        }}
+      />
+    </div>
+  );
+}
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -21,12 +72,18 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
   const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
   const [selectedTokenAddress, setSelectedTokenAddress] = useState<string | null>(null);
+  const [isDashboardMinimized, setIsDashboardMinimized] = useState(false);
   const starsCanvasRef = useRef<HTMLCanvasElement>(null);
   const vortexCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
   const { user, isAuthenticated, logout } = useAuth();
   const { publicKey } = useWallet();
+  const { getAudioAnalyzer } = useAudio();
+  
+  // Get the Web Audio API analyser node from THREE.AudioAnalyser
+  const audioAnalyzer = getAudioAnalyzer();
+  const analyser = audioAnalyzer?.analyser || null;
   
   const isSuperAdmin = user?.role === 'super_admin';
   const hasAccess = isAuthenticated && isSuperAdmin;
@@ -117,30 +174,65 @@ export function Dashboard() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
-    const stars: Array<{ x: number; y: number; size: number; speed: number; opacity: number }> = [];
+    const stars: Array<{ x: number; y: number; baseSize: number; size: number; speed: number; opacity: number; pulseOffset: number }> = [];
     for (let i = 0; i < 200; i++) {
       stars.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
+        baseSize: Math.random() * 2,
         size: Math.random() * 2,
         speed: Math.random() * 0.5 + 0.1,
-        opacity: Math.random()
+        opacity: Math.random(),
+        pulseOffset: Math.random() * Math.PI * 2
       });
     }
+    
+    // Audio analysis setup
+    const dataArray = new Uint8Array(analyser ? analyser.frequencyBinCount : 128);
     
     let animationId: number;
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      stars.forEach(star => {
+      // Get audio data
+      let audioLevel = 0;
+      if (analyser) {
+        analyser.getByteFrequencyData(dataArray);
+        // Calculate average volume
+        const sum = dataArray.reduce((a, b) => a + b, 0);
+        audioLevel = sum / dataArray.length / 255; // Normalize to 0-1
+      }
+      
+      stars.forEach((star, index) => {
+        // Make stars pulse with audio
+        const pulseFactor = 1 + audioLevel * 3;
+        const frequencyIndex = Math.floor((index / stars.length) * dataArray.length);
+        const frequencyLevel = analyser ? dataArray[frequencyIndex] / 255 : 0;
+        
+        // Size reacts to audio
+        star.size = star.baseSize * pulseFactor * (1 + frequencyLevel);
+        
+        // Opacity pulses with audio
+        const basePulse = Math.sin(Date.now() * 0.001 + star.pulseOffset) * 0.5 + 0.5;
+        star.opacity = basePulse * (0.5 + audioLevel * 0.5);
+        
+        // Speed increases with audio
+        const currentSpeed = star.speed * (1 + audioLevel * 2);
+        
         ctx.beginPath();
-        ctx.fillStyle = `rgba(0, 255, 221, ${star.opacity})`;
+        // Color shifts with audio intensity
+        const r = Math.floor(audioLevel * 100);
+        const g = 255;
+        const b = 221 + Math.floor(audioLevel * 34); // Shifts towards white with audio
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.opacity})`;
+        ctx.shadowBlur = audioLevel * 20;
+        ctx.shadowColor = `rgba(0, 255, 221, ${audioLevel})`;
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
         
-        star.x -= star.speed;
-        star.opacity = Math.sin(Date.now() * 0.001 + star.x) * 0.5 + 0.5;
+        star.x -= currentSpeed;
         
         if (star.x < 0) {
           star.x = canvas.width;
@@ -156,7 +248,7 @@ export function Dashboard() {
       window.removeEventListener('resize', resizeCanvas);
       cancelAnimationFrame(animationId);
     };
-  }, [hasAccess]);
+  }, [hasAccess, analyser]);
 
   useEffect(() => {
     // Listen for monitoring status updates
@@ -257,11 +349,8 @@ export function Dashboard() {
         style={{ background: 'radial-gradient(circle at center, #000511 0%, #000000 100%)' }}
       />
       
-      {/* Cosmic Glow Effects */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-      </div>
+      {/* Sound-Reactive Cosmic Glow Effects */}
+      <SoundReactiveGlow analyser={analyser} />
       
       {/* Settings Overlay */}
       {showSettings && (
@@ -343,6 +432,27 @@ export function Dashboard() {
                 <UnifiedMusicController />
               </div>
               
+              {/* Dashboard Minimizer */}
+              <button
+                onClick={() => setIsDashboardMinimized(!isDashboardMinimized)}
+                className={`w-full mb-3 px-3 py-2 ${
+                  isDashboardMinimized 
+                    ? 'bg-cyan-500/20 border-cyan-400/60 text-cyan-300' 
+                    : 'bg-black/40 border-cyan-500/30 text-cyan-400 hover:text-cyan-300'
+                } hover:bg-cyan-500/30 border rounded text-xs font-bold uppercase tracking-wide
+                  transition-all duration-200 hover:shadow-[0_0_15px_rgba(0,255,255,0.3)]
+                  flex items-center justify-center gap-2`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {isDashboardMinimized ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  )}
+                </svg>
+                {isDashboardMinimized ? 'SHOW DASHBOARD' : 'HIDE DASHBOARD'}
+              </button>
+              
               {/* Disconnect Button */}
               <button
                 onClick={async () => {
@@ -365,7 +475,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-6 relative z-10">
+      {!isDashboardMinimized && (
+        <div className="container mx-auto px-4 py-6 relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8 mr-80">
           <div className="relative">
@@ -486,6 +597,7 @@ export function Dashboard() {
           </div>
         )}
       </div>
+      )}
 
       {/* Token Detail Overlay */}
       {selectedTokenAddress && (
