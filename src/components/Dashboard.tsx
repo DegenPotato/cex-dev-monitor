@@ -4,7 +4,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
 import { SettingsPanel } from './SettingsPanel';
-import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
+import { WalletMonitoringTabs } from './WalletMonitoringTabs';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
@@ -573,10 +573,10 @@ export function Dashboard() {
         {/* Main Content with Glassmorphism */}
         {activeTab === 'wallets' ? (
           <div className="space-y-6">
-            {/* Wallet Monitoring Hub */}
+            {/* Wallet Monitoring with Tabs */}
             <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-              <WalletMonitoringHub stats={stats} onUpdate={fetchData} />
+              <WalletMonitoringTabs />
             </div>
             
             {/* Recent Token Mints */}

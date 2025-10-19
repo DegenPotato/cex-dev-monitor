@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check, Play, Trash2 } from 'lucide-react';
 import { apiUrl, config } from '../config';
+import { TechnicalIndicatorsPanel } from './TechnicalIndicatorsPanel';
 import RobustChart from './RobustChart';
 
 interface TokenData {
@@ -611,6 +612,12 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             height={400}
           />
         </div>
+
+        {/* Technical Indicators Panel */}
+        <TechnicalIndicatorsPanel 
+          mintAddress={token.mint_address} 
+          currentPrice={token.price_usd}
+        />
 
         {/* Transaction Link */}
         <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">

@@ -30,6 +30,7 @@ import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
+import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
@@ -182,6 +183,7 @@ const tradingActivityMonitor = new TradingActivityMonitor();
 const marketDataTracker = new MarketDataTracker();
 const ohlcvCollector = new OHLCVCollector();
 const metricsCalculator = new OHLCVMetricsCalculator();
+const technicalIndicatorCalculator = new TechnicalIndicatorCalculator();
 
 // Load request pacing configuration from database (separate for proxy/RPC)
 (async () => {
@@ -1379,13 +1381,15 @@ app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
   }
 });
 
-// OHLCV Metrics Calculator control endpoints
+// Technical Indicators Calculator control endpoints (renamed from metrics)
 app.post('/api/metrics/start', (_req, res) => {
   try {
-    metricsCalculator.start();
+    // Start both calculators
+    metricsCalculator.start();  // Market cap metrics
+    technicalIndicatorCalculator.start();  // Technical indicators
     res.json({ 
       success: true, 
-      message: 'Metrics calculator started' 
+      message: 'Technical indicator & metrics calculators started' 
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1394,10 +1398,12 @@ app.post('/api/metrics/start', (_req, res) => {
 
 app.post('/api/metrics/stop', (_req, res) => {
   try {
+    // Stop both calculators
     metricsCalculator.stop();
+    technicalIndicatorCalculator.stop();
     res.json({ 
       success: true, 
-      message: 'Metrics calculator stopped' 
+      message: 'Technical indicator & metrics calculators stopped' 
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1405,7 +1411,37 @@ app.post('/api/metrics/stop', (_req, res) => {
 });
 
 app.get('/api/metrics/status', (_req, res) => {
-  res.json(metricsCalculator.getStatus());
+  res.json({
+    marketCapMetrics: metricsCalculator.getStatus(),
+    technicalIndicators: technicalIndicatorCalculator.getStatus()
+  });
+});
+
+// Get technical indicators for a specific token
+app.get('/api/indicators/:mintAddress', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    const timeframe = req.query.timeframe as string || '1m';
+    const limit = parseInt(req.query.limit as string) || 100;
+    
+    const indicators = await technicalIndicatorCalculator.getIndicators(mintAddress, timeframe, limit);
+    res.json(indicators);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get latest indicators for a token
+app.get('/api/indicators/:mintAddress/latest', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    const timeframe = req.query.timeframe as string || '1m';
+    
+    const latest = await technicalIndicatorCalculator.getLatestIndicators(mintAddress, timeframe);
+    res.json(latest || {});
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // OHLCV Fetch Test - Fetch candles without saving to database

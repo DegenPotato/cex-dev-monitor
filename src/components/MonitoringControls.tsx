@@ -465,7 +465,16 @@ export function MonitoringControls() {
             </button>
 
             <div className="mt-2 text-xs text-emerald-300 bg-emerald-900/20 rounded p-2">
-              📈 Calculates RSI, MACD, Bollinger Bands from OHLCV
+              📈 Calculates technical indicators from OHLCV data:
+              <div className="mt-1 text-emerald-400">
+                • RSI-2, RSI-14 (momentum)
+                • EMA 21/50/100/200 (trends)
+                • MACD (12-26-9 crossovers)
+                • Bollinger Bands (volatility)
+              </div>
+              <div className="mt-1 text-emerald-500 text-[10px]">
+                Also calculates market cap metrics (starting/ATH/current)
+              </div>
             </div>
           </div>
         )}
