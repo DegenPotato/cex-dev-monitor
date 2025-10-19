@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Music, Play, Pause, SkipForward, SkipBack, Volume2, X, Minimize2, Maximize2, Youtube, Search, List } from 'lucide-react';
+import { useYouTubeAudio } from '../contexts/YouTubeAudioContext';
 
 declare global {
   interface Window {
@@ -9,98 +10,44 @@ declare global {
   }
 }
 
-interface YouTubeVideo {
-  id: string;
-  title: string;
-  thumbnail: string;
-  channel: string;
-}
+// Use same interface as context to avoid conflicts
 
 export function YouTubeMiniPlayer() {
+  // Use the existing YouTube context instead of reinventing OAuth
+  const {
+    isAuthenticated: isSignedIn,
+    userEmail,
+    signIn,
+    signOut,
+    searchVideos: contextSearchVideos,
+    userPlaylists,
+    playVideo: contextPlayVideo,
+    isPlaying,
+    currentVideo,
+    volume: contextVolume,
+    setVolume: setContextVolume,
+    play,
+    pause,
+    skip,
+    previous
+  } = useYouTubeAudio();
+  
   const [isMinimized, setIsMinimized] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-  const [volume, setVolume] = useState(50);
-  const [currentVideo, setCurrentVideo] = useState<YouTubeVideo | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
-  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [localVolume, setLocalVolume] = useState(contextVolume);
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
 
-  const loadUserPlaylists = async () => {
-    if (!window.gapi) return;
-    try {
-      const response = await window.gapi.client.youtube.playlists.list({
-        part: 'snippet',
-        mine: true,
-        maxResults: 20
-      });
-      setPlaylists(response.result.items || []);
-    } catch (error) {
-      console.error('Failed to load playlists:', error);
-    }
-  };
-
-  const updateSigninStatus = (isSignedIn: boolean) => {
-    setIsSignedIn(isSignedIn);
-    if (isSignedIn) {
-      loadUserPlaylists();
-    }
-  };
-
+  // Remove YouTube iframe player init - we're using the context
   useEffect(() => {
-    // Load YouTube IFrame API
+    // Load YouTube IFrame API for the player widget only
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-    // Load Google API
-    const gapiScript = document.createElement('script');
-    gapiScript.src = 'https://apis.google.com/js/api.js';
-    gapiScript.onload = () => {
-      if (!window.gapi) return;
-      
-      // YouTube API configuration - access env vars here
-      const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
-      const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || '';
-      const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
-      const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
-      
-      console.log('🔑 Initializing OAuth with:', {
-        hasApiKey: !!API_KEY,
-        hasClientId: !!CLIENT_ID,
-        apiKeyLength: API_KEY.length,
-        clientIdLength: CLIENT_ID.length
-      });
-      
-      if (!CLIENT_ID || !API_KEY) {
-        console.error('❌ YouTube credentials missing from environment');
-        return;
-      }
-      
-      window.gapi.load('client:auth2', () => {
-        window.gapi.client.init({
-          apiKey: API_KEY,
-          clientId: CLIENT_ID,
-          discoveryDocs: DISCOVERY_DOCS,
-          scope: SCOPES
-        }).then(() => {
-          console.log('✅ Google OAuth initialized');
-          const authInstance = window.gapi.auth2?.getAuthInstance();
-          if (authInstance) {
-            authInstance.isSignedIn.listen(updateSigninStatus);
-            updateSigninStatus(authInstance.isSignedIn.get());
-          }
-        }).catch((error: any) => {
-          console.error('❌ OAuth init failed:', error);
-        });
-      });
-    };
-    document.body.appendChild(gapiScript);
 
     window.onYouTubeIframeAPIReady = initializePlayer;
 
@@ -111,22 +58,11 @@ export function YouTubeMiniPlayer() {
     };
   }, []);
 
-  const handleAuthClick = () => {
-    if (!window.gapi?.auth2) {
-      console.error('Google Auth not loaded yet');
-      return;
-    }
-    
-    const authInstance = window.gapi.auth2.getAuthInstance();
-    if (!authInstance) {
-      console.error('Auth not initialized - check API credentials');
-      return;
-    }
-    
+  const handleAuthClick = async () => {
     if (isSignedIn) {
-      authInstance.signOut();
+      signOut();
     } else {
-      authInstance.signIn();
+      await signIn();
     }
   };
 
@@ -156,64 +92,45 @@ export function YouTubeMiniPlayer() {
   };
 
   const onPlayerReady = () => {
-    playerRef.current.setVolume(volume);
+    if (playerRef.current) {
+      playerRef.current.setVolume(localVolume);
+    }
   };
 
   const onPlayerStateChange = (event: any) => {
     if (!window.YT) return;
-    if (event.data === window.YT.PlayerState.PLAYING) {
-      setIsPlaying(true);
-    } else if (event.data === window.YT.PlayerState.PAUSED) {
-      setIsPlaying(false);
-    }
+    // Sync with context state if needed
   };
 
-  const searchVideos = async () => {
-    if (!searchQuery || !window.gapi) return;
-
+  const handleSearch = async () => {
+    if (!searchQuery) return;
     try {
-      const response = await window.gapi.client.youtube.search.list({
-        part: 'snippet',
-        q: searchQuery,
-        maxResults: 10,
-        type: 'video'
-      });
-
-      const videos = response.result.items.map((item: any) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        thumbnail: item.snippet.thumbnails.default.url,
-        channel: item.snippet.channelTitle
-      }));
-
-      setSearchResults(videos);
+      const results = await contextSearchVideos(searchQuery);
+      if (results) {
+        setSearchResults(results);
+      }
     } catch (error) {
       console.error('Search failed:', error);
     }
   };
 
-  const playVideo = (video: YouTubeVideo) => {
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(video.id);
-      setCurrentVideo(video);
-      setIsPlaying(true);
-      setShowSearch(false);
-    }
+  const handlePlayVideo = (video: any) => {
+    contextPlayVideo(video);
+    setShowSearch(false);
   };
 
   const togglePlayPause = () => {
-    if (!playerRef.current) return;
-    
     if (isPlaying) {
-      playerRef.current.pauseVideo();
+      pause();
     } else {
-      playerRef.current.playVideo();
+      play();
     }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseInt(e.target.value);
-    setVolume(newVolume);
+    setLocalVolume(newVolume);
+    setContextVolume(newVolume);
     if (playerRef.current) {
       playerRef.current.setVolume(newVolume);
     }
@@ -279,7 +196,7 @@ export function YouTubeMiniPlayer() {
             {currentVideo && (
               <div className="mt-3">
                 <h3 className="text-white font-semibold text-sm truncate">{currentVideo.title}</h3>
-                <p className="text-cyan-300/60 text-xs truncate">{currentVideo.channel}</p>
+                <p className="text-cyan-300/60 text-xs truncate">{(currentVideo as any).channelTitle || 'YouTube'}</p>
               </div>
             )}
           </div>
@@ -289,7 +206,7 @@ export function YouTubeMiniPlayer() {
             <div className="flex items-center justify-center gap-4 mb-3">
               <button 
                 className="p-2 hover:bg-cyan-500/20 rounded-lg transition-colors text-cyan-400"
-                onClick={() => playerRef.current?.previousVideo()}
+                onClick={previous}
               >
                 <SkipBack className="w-5 h-5" />
               </button>
@@ -301,7 +218,7 @@ export function YouTubeMiniPlayer() {
               </button>
               <button 
                 className="p-2 hover:bg-cyan-500/20 rounded-lg transition-colors text-cyan-400"
-                onClick={() => playerRef.current?.nextVideo()}
+                onClick={skip}
               >
                 <SkipForward className="w-5 h-5" />
               </button>
@@ -314,11 +231,11 @@ export function YouTubeMiniPlayer() {
                 type="range"
                 min="0"
                 max="100"
-                value={volume}
+                value={localVolume}
                 onChange={handleVolumeChange}
-                className="flex-1 h-1 bg-black/40 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                className="flex-1 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
               />
-              <span className="text-xs text-cyan-300/60 w-8">{volume}%</span>
+              <span className="text-cyan-400 text-xs w-8 text-right">{localVolume}%</span>
             </div>
           </div>
 
@@ -358,12 +275,12 @@ export function YouTubeMiniPlayer() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && searchVideos()}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder="Search for music..."
                     className="flex-1 bg-black/40 backdrop-blur-sm text-white rounded-lg px-3 py-2 text-sm border border-cyan-500/20 focus:border-cyan-500/50 focus:outline-none"
                   />
                   <button
-                    onClick={searchVideos}
+                    onClick={handleSearch}
                     className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg border border-cyan-500/40 transition-all"
                   >
                     <Search className="w-4 h-4" />
@@ -374,7 +291,7 @@ export function YouTubeMiniPlayer() {
                   {searchResults.map((video) => (
                     <button
                       key={video.id}
-                      onClick={() => playVideo(video)}
+                      onClick={() => handlePlayVideo(video)}
                       className="w-full flex items-center gap-3 p-2 hover:bg-cyan-500/10 rounded-lg transition-all text-left group"
                     >
                       <img 
@@ -386,7 +303,7 @@ export function YouTubeMiniPlayer() {
                         <h4 className="text-white text-sm truncate group-hover:text-cyan-400 transition-colors">
                           {video.title}
                         </h4>
-                        <p className="text-cyan-300/60 text-xs truncate">{video.channel}</p>
+                        <p className="text-cyan-300/60 text-xs truncate">{video.channelTitle || video.channel || ''}</p>
                       </div>
                       <Play className="w-4 h-4 text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
@@ -410,7 +327,7 @@ export function YouTubeMiniPlayer() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {playlists.map((playlist) => (
+                    {userPlaylists.map((playlist: any) => (
                       <button
                         key={playlist.id}
                         className="w-full flex items-center gap-3 p-2 hover:bg-cyan-500/10 rounded-lg transition-all text-left"
