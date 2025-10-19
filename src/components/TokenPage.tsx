@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check, Play, Trash2, RefreshCw } from 'lucide-react';
 import { apiUrl, config } from '../config';
+import CandlestickChart from './CandlestickChart';
 
 interface TokenData {
   mint_address: string;
@@ -46,6 +47,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const address = propAddress || window.location.pathname.split('/dashboard/token/')[1] || window.location.pathname.split('/token/')[1];
   const [token, setToken] = useState<TokenData | null>(null);
   const [ohlcv, setOhlcv] = useState<OHLCVCandle[]>([]);
+  const [migration, setMigration] = useState<{ completed_at: number | null; raydium_pool: string | null } | null>(null);
   const [timeframe, setTimeframe] = useState('1h');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState('');
@@ -55,6 +57,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const [testStatus, setTestStatus] = useState<any>(null);
   const [testRunning, setTestRunning] = useState(false);
   const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testPollingInterval, setTestPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   // Fetch token data
   useEffect(() => {
@@ -89,14 +92,13 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
         const data = await response.json();
         
         // New format includes candles, migration info, and pools
-        // For now, just use candles array (migration marking can be added later)
         if (data.candles) {
           setOhlcv(data.candles);
-          // TODO: Use data.migration.completed_at to mark migration point on chart
-          // TODO: Use data.pools to show which pool each candle is from
+          setMigration(data.migration);
         } else {
           // Fallback for old format (just array of candles)
           setOhlcv(data || []);
+          setMigration(null);
         }
       } catch (error) {
         console.error('Error fetching OHLCV:', error);
@@ -118,33 +120,60 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
     }
   };
 
-  // Auto-fetch test status when panel is open
+  // Cleanup polling interval on unmount
   useEffect(() => {
-    if (showTestPanel && address) {
+    return () => {
+      if (testPollingInterval) {
+        clearInterval(testPollingInterval);
+      }
+    };
+  }, [testPollingInterval]);
+  
+  // Initial status fetch when panel opens
+  useEffect(() => {
+    if (showTestPanel && !testPollingInterval) {
       fetchTestStatus();
-      const interval = setInterval(fetchTestStatus, 3000); // Poll every 3 seconds
-      return () => clearInterval(interval);
     }
-  }, [showTestPanel, address]);
+  }, [showTestPanel]);
 
   // Run OHLCV test
   const runTest = async () => {
     if (!address) return;
+    
     setTestRunning(true);
     try {
       const response = await fetch(apiUrl(`/api/ohlcv/test/${address}`), {
         method: 'POST',
         credentials: 'include'
       });
-      const data = await response.json();
-      console.log('Test started:', data);
       
-      // Poll for status updates
-      setTimeout(fetchTestStatus, 2000);
+      if (response.ok) {
+        // Immediately poll for status
+        await fetchTestStatus();
+        
+        // Set up polling interval
+        const interval = setInterval(async () => {
+          await fetchTestStatus();
+          // Also refresh OHLCV data to show new candles
+          const ohlcvResponse = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`));
+          const data = await ohlcvResponse.json();
+          if (data.candles) {
+            setOhlcv(data.candles);
+            setMigration(data.migration);
+          }
+        }, 3000);
+        
+        setTestPollingInterval(interval);
+        
+        // Stop after 2 minutes
+        setTimeout(() => {
+          clearInterval(interval);
+          setTestRunning(false);
+          setTestPollingInterval(null);
+        }, 120000);
+      }
     } catch (error) {
       console.error('Error running test:', error);
-      alert('Failed to start test. Check console for details.');
-    } finally {
       setTestRunning(false);
     }
   };
@@ -435,10 +464,23 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                 <button
                   onClick={runTest}
                   disabled={testRunning}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/40 text-green-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/40 text-green-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed relative"
                 >
-                  <Play className="w-4 h-4" />
-                  {testRunning ? 'Running...' : 'Run Test'}
+                  {testRunning ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Collecting Data...</span>
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      <span>Run Test</span>
+                    </>
+                  )}
                 </button>
                 
                 <button
@@ -539,6 +581,15 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                   ({ohlcv.length} candles loaded)
                 </span>
               )}
+              {testRunning && (
+                <span className="flex items-center gap-1 text-xs text-yellow-400 font-normal">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                  </span>
+                  Live collection
+                </span>
+              )}
             </h3>
             <div className="flex gap-2">
               {['1m', '15m', '1h', '4h', '1d'].map(tf => (
@@ -557,66 +608,12 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             </div>
           </div>
           
-          <div className="bg-black/40 rounded-lg">
-            {ohlcv.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-cyan-500/20">
-                    <tr className="text-gray-400">
-                      <th className="px-4 py-3 text-left">Time</th>
-                      <th className="px-4 py-3 text-right">Open ($)</th>
-                      <th className="px-4 py-3 text-right">High ($)</th>
-                      <th className="px-4 py-3 text-right">Low ($)</th>
-                      <th className="px-4 py-3 text-right">Close ($)</th>
-                      <th className="px-4 py-3 text-right">Volume</th>
-                      <th className="px-4 py-3 text-right">MCap (Open)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-cyan-500/10">
-                    {ohlcv.slice(-50).reverse().map((candle, i) => {
-                      const totalSupply = token?.total_supply ? parseFloat(token.total_supply) : 1_000_000_000;
-                      const openMcap = candle.open * totalSupply;
-                      const change = ((candle.close - candle.open) / candle.open) * 100;
-                      const isGreen = change >= 0;
-                      
-                      return (
-                        <tr key={i} className="hover:bg-cyan-500/5">
-                          <td className="px-4 py-2 text-gray-300">
-                            {new Date(candle.timestamp * 1000).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2 text-right text-white font-mono">
-                            ${candle.open.toFixed(8)}
-                          </td>
-                          <td className="px-4 py-2 text-right text-green-400 font-mono">
-                            ${candle.high.toFixed(8)}
-                          </td>
-                          <td className="px-4 py-2 text-right text-red-400 font-mono">
-                            ${candle.low.toFixed(8)}
-                          </td>
-                          <td className={`px-4 py-2 text-right font-mono ${isGreen ? 'text-green-400' : 'text-red-400'}`}>
-                            ${candle.close.toFixed(8)}
-                          </td>
-                          <td className="px-4 py-2 text-right text-gray-400 font-mono">
-                            ${candle.volume.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2 text-right text-blue-400 font-mono">
-                            ${openMcap.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="px-4 py-3 text-center text-gray-500 text-xs border-t border-cyan-500/20">
-                  Showing last 50 of {ohlcv.length} candles • First candle: {new Date(ohlcv[0]?.timestamp * 1000).toLocaleString()}
-                </div>
-              </div>
-            ) : (
-              <div className="h-96 flex items-center justify-center text-gray-400">
-                No OHLCV data available. Start OHLCV Collector in Settings.
-              </div>
-            )}
-          </div>
+          {/* Candlestick Chart */}
+          <CandlestickChart 
+            data={ohlcv} 
+            migration={migration}
+            height={400}
+          />
         </div>
 
         {/* Transaction Link */}
