@@ -7,9 +7,11 @@
 import express, { Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database/connection.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+import YouTubeOAuthService from '../../lib/auth/YouTubeOAuthService.js';
 
 const router = express.Router();
 const authService = new SecureAuthService();
+const youtubeService = new YouTubeOAuthService();
 
 // Helper to execute UPDATE/INSERT/DELETE queries with sql.js
 function runQuery(query: string) {
@@ -23,6 +25,73 @@ function execQuery(query: string) {
   const db = getDatabase();
   return db.exec(query);
 }
+
+// ==================== GOOGLE OAUTH ROUTES ====================
+
+// Link Google account (save OAuth tokens)
+router.post('/oauth/link', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { googleUserInfo, tokenData } = req.body;
+
+    if (!googleUserInfo || !tokenData) {
+      return res.status(400).json({ error: 'Missing googleUserInfo or tokenData' });
+    }
+
+    await youtubeService.linkGoogleAccount(userId, googleUserInfo, tokenData);
+    
+    res.json({ 
+      success: true, 
+      message: 'Google account linked successfully',
+      email: googleUserInfo.email 
+    });
+  } catch (error: any) {
+    console.error('❌ Error linking Google account:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get linked Google account status
+router.get('/oauth/status', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const account = await youtubeService.getActiveYouTubeAccount(userId);
+    
+    if (account) {
+      res.json({
+        linked: true,
+        email: account.email,
+        googleUserId: account.google_user_id
+      });
+    } else {
+      res.json({ linked: false });
+    }
+  } catch (error: any) {
+    console.error('❌ Error checking OAuth status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Unlink Google account
+router.post('/oauth/unlink', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { googleUserId } = req.body;
+
+    if (!googleUserId) {
+      return res.status(400).json({ error: 'Missing googleUserId' });
+    }
+
+    await youtubeService.unlinkGoogleAccount(userId, googleUserId);
+    
+    res.json({ success: true, message: 'Google account unlinked' });
+  } catch (error: any) {
+    console.error('❌ Error unlinking Google account:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== YOUTUBE PREFERENCES ====================
 
 // Get user's YouTube preferences
 router.get('/preferences', authService.requireSecureAuth(), async (req: Request, res: Response) => {

@@ -195,21 +195,36 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
             setUserEmail(truncated);
             console.log('✅ Signed in as:', truncated);
 
-            // Sync with backend (non-blocking) - send full email to backend only
-            fetch('/api/youtube/preferences', {
+            // Link Google account to user in database
+            fetch('/api/youtube/oauth/link', {
               method: 'POST',
               headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
+                'Content-Type': 'application/json'
               },
               credentials: 'include',
               body: JSON.stringify({
-                enabled: true,
-                email: userInfo.email, // Full email to backend
-                accessToken: accessToken,
-                preferences: { volume: 75, shuffle: false, repeat: 'off' }
+                googleUserInfo: {
+                  id: userInfo.id,
+                  email: userInfo.email,
+                  name: userInfo.name || userInfo.email
+                },
+                tokenData: {
+                  access_token: accessToken,
+                  token_type: 'Bearer',
+                  expires_in: tokenResponse.expires_in || 3600,
+                  scope: tokenResponse.scope
+                }
               })
-            }).catch(err => console.warn('⚠️ Backend sync failed (non-critical):', err.message));
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) {
+                console.log('✅ Google account linked to user');
+              } else {
+                console.error('❌ Failed to link account:', data.error);
+              }
+            })
+            .catch(err => console.error('❌ Backend link failed:', err));
 
             // Load playlists
             loadUserPlaylists().catch(() => console.log('ℹ️ No saved playlists'));
@@ -227,21 +242,22 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   };
 
-  // Check if user is authenticated and load YouTube preferences
+  // Check if user has linked Google account on page load
   useEffect(() => {
     const checkYouTubeAuth = async () => {
       if (!userIsAuthenticated || !user) return;
 
       try {
-        const response = await fetch('/api/youtube/preferences', {
+        const response = await fetch('/api/youtube/oauth/status', {
           credentials: 'include'
         });
 
         if (response.ok) {
           const data = await response.json();
-          if (data.enabled) {
+          if (data.linked) {
             setIsAuthenticated(true);
-            setUserEmail(data.email);
+            setUserEmail(truncateEmail(data.email));
+            console.log('✅ Google account already linked:', truncateEmail(data.email));
             loadUserPlaylists().catch(() => {});
           }
         }
