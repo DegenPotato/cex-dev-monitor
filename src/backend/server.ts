@@ -9,7 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
-import { queryAll } from './database/helpers.js';
+import { queryAll, queryOne, execute } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
