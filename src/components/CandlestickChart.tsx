@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, LineStyle, LineWidth } from 'lightweight-charts';
-import type { IChartApi, CandlestickData } from 'lightweight-charts';
+import { createChart, ColorType, LineStyle, LineWidth, IChartApi, CandlestickData } from 'lightweight-charts';
 
 interface OHLCVData {
   timestamp: number;
@@ -75,49 +74,36 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
     chartRef.current = chart;
 
-    try {
-      // Add candlestick series (cast to any for v5 compatibility)
-      const candleSeries = (chart as any).addCandlestickSeries({
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderUpColor: '#10b981',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#10b981',
-        wickDownColor: '#ef4444',
-      });
+    // Add candlestick series (v4 API)
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#10b981',
+      downColor: '#ef4444',
+      borderUpColor: '#10b981',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#10b981',
+      wickDownColor: '#ef4444',
+    });
 
-      candleSeriesRef.current = candleSeries;
+    candleSeriesRef.current = candleSeries;
 
-      // Add volume series (cast to any for v5 compatibility)
-      const volumeSeries = (chart as any).addHistogramSeries({
-        color: 'rgba(6, 182, 212, 0.3)',
-        priceFormat: {
-          type: 'volume',
-        },
-        priceScaleId: 'volume',
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
-      });
+    // Add volume series (v4 API)
+    const volumeSeries = chart.addHistogramSeries({
+      color: 'rgba(6, 182, 212, 0.3)',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+    });
 
-      volumeSeriesRef.current = volumeSeries;
+    volumeSeriesRef.current = volumeSeries;
 
-      // Configure second price scale for volume
-      chart.priceScale('volume').applyOptions({
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
-      });
-    } catch (error) {
-      console.error('[CandlestickChart] Error creating series:', error);
-      // Fallback: show error message
-      if (chartContainerRef.current) {
-        chartContainerRef.current.innerHTML = '<div style="color: #ef4444; padding: 20px; text-align: center;">Chart initialization error. Check console for details.</div>';
-      }
-      return;
-    }
+    // Configure second price scale for volume (set scaleMargins here, not in series options)
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+    });
 
     // Handle resize
     const handleResize = () => {
