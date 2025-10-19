@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { 
-  Youtube, Play, Pause, SkipForward, SkipBack, Volume2, 
-  Shuffle, Repeat, Repeat1, List, Disc3, Search, X,
-  Sliders, Music, Plus, Trash2, ExternalLink
+  Youtube, Play, Volume2, 
+  Shuffle, Repeat, Repeat1, Disc3, Search, X,
+  Sliders, Music, Plus, Trash2
 } from 'lucide-react';
 import { useAudio } from '../contexts/AudioContext';
 import { useYouTubeAudio } from '../contexts/YouTubeAudioContext';
@@ -25,9 +25,6 @@ export function MusicManager({ isOpen, onClose }: MusicManagerProps) {
     setAudioSource,
     isPlaying: localIsPlaying,
     volume: localVolume,
-    currentTrack,
-    currentTime: localCurrentTime,
-    duration: localDuration,
     playlist,
     currentTrackIndex,
     bassLevel,
@@ -42,9 +39,6 @@ export function MusicManager({ isOpen, onClose }: MusicManagerProps) {
     setBassLevel,
     setTrebleLevel,
     setDistortionAmount,
-    nextTrack: nextLocalTrack,
-    previousTrack: previousLocalTrack,
-    seekTo: seekLocalTo,
     toggleShuffle: toggleLocalShuffle,
     setRepeatMode: setLocalRepeatMode,
     selectTrack
@@ -53,32 +47,16 @@ export function MusicManager({ isOpen, onClose }: MusicManagerProps) {
   // YouTube audio context  
   const {
     isPlaying: youtubeIsPlaying,
-    currentVideo,
     volume: youtubeVolume,
-    currentTime: youtubeCurrentTime,
-    duration: youtubeDuration,
     queue: youtubeQueue,
-    shuffle: youtubeShuffle,
-    repeat: youtubeRepeat,
-    distortionEnabled: youtubeDistortionEnabled,
     isAuthenticated: isYouTubeSignedIn,
-    userEmail,
-    userPlaylists,
-    play: playYoutube,
     pause: pauseYoutube,
-    skip: skipYoutube,
-    previous: previousYoutube,
     setVolume: setYoutubeVolume,
-    seekTo: seekYoutubeTo,
-    toggleDistortion: toggleYoutubeDistortion,
     signIn: signInYoutube,
-    signOut: signOutYoutube,
     searchVideos,
     addToQueue,
     removeFromQueue,
-    clearQueue,
-    playVideo,
-    loadPlaylist
+    playVideo
   } = useYouTubeAudio();
 
   // Switch audio source when tab changes
@@ -94,13 +72,6 @@ export function MusicManager({ isOpen, onClose }: MusicManagerProps) {
       setAudioSource(activeTab);
     }
   }, [activeTab]);
-
-  // Format time helper
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   // YouTube search
   const handleYouTubeSearch = async () => {
