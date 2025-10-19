@@ -35,6 +35,27 @@ const RobustChart: React.FC<RobustChartProps> = ({
   const [chartError, setChartError] = useState<string | null>(null);
   const [validData, setValidData] = useState<OHLCVData[]>([]);
 
+  // Dynamic price formatter based on magnitude
+  const formatPrice = (price: number): string => {
+    if (!price || price === 0) return '0.00';
+    
+    // For extremely small prices, use scientific notation
+    if (price < 0.000000000001) {
+      return price.toExponential(4);
+    }
+    
+    // Dynamic precision based on price magnitude
+    if (price < 0.0000001) return price.toFixed(12);
+    if (price < 0.000001) return price.toFixed(10);
+    if (price < 0.00001) return price.toFixed(8);
+    if (price < 0.0001) return price.toFixed(7);
+    if (price < 0.001) return price.toFixed(6);
+    if (price < 0.01) return price.toFixed(5);
+    if (price < 0.1) return price.toFixed(4);
+    if (price < 1) return price.toFixed(3);
+    return price.toFixed(2);
+  };
+
   // Validate and clean data
   useEffect(() => {
     if (!data || data.length === 0) {
@@ -333,7 +354,7 @@ const RobustChart: React.FC<RobustChartProps> = ({
         <div className="absolute top-2 left-2 z-10 flex gap-3 text-xs">
           <div className="bg-black/80 rounded px-2 py-1">
             <span className="text-gray-400">Price:</span>{' '}
-            <span className="text-white font-mono">${stats.latest.close.toFixed(8)}</span>{' '}
+            <span className="text-white font-mono">${formatPrice(stats.latest.close)}</span>{' '}
             <span className={stats.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}>
               ({stats.priceChange >= 0 ? '+' : ''}{stats.priceChange.toFixed(2)}%)
             </span>

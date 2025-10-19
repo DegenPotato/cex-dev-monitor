@@ -217,8 +217,22 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
   const formatPrice = (price: number | null | undefined) => {
     if (!price) return 'N/A';
-    if (price < 0.01) return `$${price.toFixed(6)}`;
-    return `$${price.toFixed(4)}`;
+    
+    // For extremely small prices, use scientific notation
+    if (price < 0.000000000001) { // Less than 12 decimals
+      return `$${price.toExponential(4)}`; // Show as scientific notation
+    }
+    
+    // Dynamic precision based on price magnitude
+    if (price < 0.0000001) return `$${price.toFixed(12)}`; // Show 12 decimals
+    if (price < 0.000001) return `$${price.toFixed(10)}`;  // Show 10 decimals
+    if (price < 0.00001) return `$${price.toFixed(8)}`;    // Show 8 decimals
+    if (price < 0.0001) return `$${price.toFixed(7)}`;     // Show 7 decimals
+    if (price < 0.001) return `$${price.toFixed(6)}`;      // Show 6 decimals
+    if (price < 0.01) return `$${price.toFixed(5)}`;       // Show 5 decimals
+    if (price < 0.1) return `$${price.toFixed(4)}`;        // Show 4 decimals
+    if (price < 1) return `$${price.toFixed(3)}`;          // Show 3 decimals
+    return `$${price.toFixed(2)}`;                         // Show 2 decimals for normal prices
   };
 
   const calculatePriceChange = () => {
@@ -328,7 +342,11 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
           <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
             <div className="text-gray-400 text-sm mb-1">Price (SOL)</div>
             <div className="text-white text-xl font-bold">
-              {token.price_sol ? token.price_sol.toFixed(8) : 'N/A'} SOL
+              {token.price_sol ? 
+                (token.price_sol < 0.00000001 ? token.price_sol.toFixed(12) :
+                 token.price_sol < 0.0000001 ? token.price_sol.toFixed(10) :
+                 token.price_sol.toFixed(8)) 
+                : 'N/A'} SOL
             </div>
             <div className="text-gray-500 text-xs">Solana price</div>
           </div>
@@ -511,10 +529,10 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                               <td className="py-2 px-2 text-gray-300">
                                 {new Date(candle.timestamp * 1000).toLocaleString()}
                               </td>
-                              <td className="text-right py-2 px-2 text-white">{candle.open.toFixed(8)}</td>
-                              <td className="text-right py-2 px-2 text-green-400">{candle.high.toFixed(8)}</td>
-                              <td className="text-right py-2 px-2 text-red-400">{candle.low.toFixed(8)}</td>
-                              <td className="text-right py-2 px-2 text-white">{candle.close.toFixed(8)}</td>
+                              <td className="text-right py-2 px-2 text-white">{formatPrice(candle.open).replace('$', '')}</td>
+                              <td className="text-right py-2 px-2 text-green-400">{formatPrice(candle.high).replace('$', '')}</td>
+                              <td className="text-right py-2 px-2 text-red-400">{formatPrice(candle.low).replace('$', '')}</td>
+                              <td className="text-right py-2 px-2 text-white">{formatPrice(candle.close).replace('$', '')}</td>
                               <td className="text-right py-2 px-2 text-cyan-400">{candle.volume.toFixed(2)}</td>
                             </tr>
                           ))}

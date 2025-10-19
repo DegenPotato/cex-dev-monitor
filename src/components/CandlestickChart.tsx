@@ -32,11 +32,34 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const candleSeriesRef = useRef<any>(null);
   const volumeSeriesRef = useRef<any>(null);
 
+  // Calculate optimal decimal precision based on price range
+  const calculatePrecision = (prices: number[]): number => {
+    if (prices.length === 0) return 8;
+    
+    const minPrice = Math.min(...prices);
+    
+    // For very small prices, show more decimals
+    if (minPrice < 0.0000001) return 12; // Show 12 decimals
+    if (minPrice < 0.000001) return 10;  // Show 10 decimals
+    if (minPrice < 0.00001) return 8;    // Show 8 decimals
+    if (minPrice < 0.0001) return 7;     // Show 7 decimals
+    if (minPrice < 0.001) return 6;      // Show 6 decimals
+    if (minPrice < 0.01) return 5;       // Show 5 decimals
+    if (minPrice < 0.1) return 4;        // Show 4 decimals
+    if (minPrice < 1) return 3;          // Show 3 decimals
+    return 2;                            // Show 2 decimals for normal prices
+  };
+
   useEffect(() => {
     if (!chartContainerRef.current) {
       console.warn('[CandlestickChart] Container ref not ready');
       return;
     }
+
+    // Calculate precision from data
+    const prices = data.map(d => d.close).filter(p => p > 0);
+    const precision = calculatePrecision(prices);
+    const minMove = Math.pow(10, -precision);
 
     // Create chart
     const chart = createChart(chartContainerRef.current, {
@@ -82,6 +105,11 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       borderDownColor: '#ef4444',
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'price',
+        precision: precision, // Dynamic precision based on price range
+        minMove: minMove, // Dynamic minimum movement
+      },
     });
 
     candleSeriesRef.current = candleSeries;
@@ -122,7 +150,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
         chartRef.current.remove();
       }
     };
-  }, [height]);
+  }, [height, data]); // Re-create chart when data changes to update precision
 
   useEffect(() => {
     if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
