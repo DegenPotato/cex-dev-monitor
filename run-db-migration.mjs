@@ -88,7 +88,30 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_youtube_playlists_favorite ON youtube_playlists(is_favorite)`,
   `CREATE INDEX IF NOT EXISTS idx_youtube_history_user ON youtube_history(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_youtube_history_video ON youtube_history(video_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_youtube_history_played_at ON youtube_history(played_at)`
+  `CREATE INDEX IF NOT EXISTS idx_youtube_history_played_at ON youtube_history(played_at)`,
+  
+  // Add token_pools table for OHLCV data
+  `CREATE TABLE IF NOT EXISTS token_pools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mint_address TEXT NOT NULL,
+    pool_address TEXT NOT NULL,
+    pool_name TEXT,
+    dex TEXT,
+    base_token TEXT,
+    quote_token TEXT,
+    volume_24h_usd REAL,
+    liquidity_usd REAL,
+    price_usd REAL,
+    is_primary INTEGER DEFAULT 0,
+    discovered_at INTEGER NOT NULL,
+    last_verified INTEGER,
+    UNIQUE(mint_address, pool_address),
+    FOREIGN KEY (mint_address) REFERENCES token_mints(mint_address)
+  )`,
+  
+  `CREATE INDEX IF NOT EXISTS idx_token_pools_mint ON token_pools(mint_address)`,
+  `CREATE INDEX IF NOT EXISTS idx_token_pools_pool ON token_pools(pool_address)`,
+  `CREATE INDEX IF NOT EXISTS idx_token_pools_primary ON token_pools(mint_address, is_primary)`
 ];
 
 migrations.forEach((sql, i) => {

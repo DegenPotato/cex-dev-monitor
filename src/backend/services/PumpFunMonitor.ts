@@ -1,5 +1,6 @@
 import { PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 import { TokenMintProvider } from '../providers/TokenMintProvider.js';
+import { TokenPoolProvider } from '../providers/TokenPoolProvider.js';
 import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { WalletRateLimiter } from './WalletRateLimiter.js';
@@ -575,6 +576,18 @@ export class PumpFunMonitor extends EventEmitter {
       // CRITICAL: Verify on-chain metadata creator matches monitored wallet
       const mintPubkey = new PublicKey(mintAddress);
       
+      // Derive Pump.fun bonding curve pool address (PDA)
+      const PUMPFUN_PROGRAM = new PublicKey(PUMPFUN_PROGRAM_ID);
+      const [bondingCurvePool] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from('bonding-curve'),
+          mintPubkey.toBuffer(),
+        ],
+        PUMPFUN_PROGRAM
+      );
+      const poolAddress = bondingCurvePool.toBase58();
+      console.log(`💧 [PumpFun] Derived bonding curve pool: ${poolAddress.slice(0, 8)}... for mint ${mintAddress.slice(0, 8)}...`);
+      
       // Derive metadata account address (Metaplex standard)
       const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
       const [metadataAccount] = PublicKey.findProgramAddressSync(
@@ -681,8 +694,24 @@ export class PumpFunMonitor extends EventEmitter {
       const launchDate = new Date(launchTimestamp).toLocaleString();
       console.log(`🚀 NEW PUMP.FUN TOKEN MINT: ${tokenInfo.symbol || mintAddress.slice(0, 8)}... by ${walletAddress.slice(0, 8)}...`);
       console.log(`   Mint Address: ${mintAddress}`);
+      console.log(`   Pool Address: ${poolAddress}`);
       console.log(`   Launch Time: ${launchDate}`);
       console.log(`   Signature: ${signature}`);
+
+      // Save the Pump.fun bonding curve pool
+      await TokenPoolProvider.create({
+        mint_address: mintAddress,
+        pool_address: poolAddress,
+        pool_name: `${tokenInfo.symbol || 'TOKEN'}/SOL`,
+        dex: 'pumpfun',
+        base_token: mintAddress,
+        quote_token: 'So11111111111111111111111111111111111111112', // SOL
+        volume_24h_usd: tokenInfo.volumeUsd24h,
+        liquidity_usd: tokenInfo.totalReserveUsd,
+        price_usd: tokenInfo.priceUsd,
+        is_primary: 1, // Pumpfun pool is primary until migration
+        discovered_at: launchTimestamp
+      });
 
       // IMMEDIATELY mark wallet as dev wallet (real-time detection)
       const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
