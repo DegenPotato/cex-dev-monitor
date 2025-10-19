@@ -189,8 +189,8 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const isPositive = priceChange !== null && priceChange >= 0;
 
   return (
-    <div className="min-h-screen bg-black/40 backdrop-blur-xl p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="bg-black/40 backdrop-blur-xl rounded-2xl p-6">
+      <div className="space-y-6">
         
         {/* Header */}
         <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 p-6 relative overflow-hidden">
