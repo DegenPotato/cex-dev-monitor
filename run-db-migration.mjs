@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import { readFileSync, writeFileSync } from 'fs';
 
 const SQL = await initSqlJs();
-const buffer = readFileSync('./database.sqlite');
+const buffer = readFileSync('./monitor.db');
 const db = new SQL.Database(buffer);
 
 const migrations = [
@@ -29,7 +29,7 @@ migrations.forEach((sql, i) => {
 });
 
 const data = db.export();
-writeFileSync('./database.sqlite', data);
+writeFileSync('./monitor.db', data);
 console.log('✅ Database saved');
 db.close();
 console.log('✅ Migration complete!');
