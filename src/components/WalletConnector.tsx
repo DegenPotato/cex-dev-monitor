@@ -1,24 +1,20 @@
 import { useState } from 'react';
 import { Wallet, LogOut, Copy, Check, ExternalLink, Shield } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../contexts/AuthContext';
 
 export function WalletConnector() {
-  const { publicKey, connected } = useWallet();
-  const { setVisible } = useWalletModal();
-  const { user, isAuthenticated, authenticateWallet, logout, isAuthenticating } = useAuth();
+  const { publicKey } = useWallet();
+  const { user, isAuthenticated, logout } = useAuth();
   const [copied, setCopied] = useState(false);
 
-  const walletAddress = publicKey?.toBase58() || null;
+  // Use AuthContext as single source of truth
+  const walletAddress = user?.wallet_address || publicKey?.toBase58() || null;
   const isSuperAdmin = user?.role === 'super_admin';
 
-  const handleConnect = async () => {
-    if (!connected) {
-      setVisible(true);
-    } else if (!isAuthenticated) {
-      await authenticateWallet();
-    }
+  const handleConnect = () => {
+    // Redirect to landing page for authentication
+    window.location.href = '/';
   };
 
   const handleDisconnect = async () => {
@@ -37,7 +33,8 @@ export function WalletConnector() {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
-  if (connected && walletAddress) {
+  // Check AuthContext state, not wallet adapter
+  if (isAuthenticated && user && walletAddress) {
     return (
       <div className="relative group">
         <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
@@ -119,14 +116,14 @@ export function WalletConnector() {
     );
   }
 
+  // User not authenticated - redirect to landing page
   return (
     <button
       onClick={handleConnect}
-      disabled={isAuthenticating}
-      className="flex items-center gap-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 px-4 py-2 rounded-full font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex items-center gap-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 px-4 py-2 rounded-full font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
     >
       <Wallet className="w-4 h-4" />
-      {isAuthenticating ? 'Authenticating...' : 'Connect Wallet'}
+      Connect Wallet
     </button>
   );
 }
