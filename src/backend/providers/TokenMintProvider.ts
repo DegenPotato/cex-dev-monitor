@@ -8,10 +8,10 @@ export class TokenMintProvider {
       `INSERT INTO token_mints (
         mint_address, creator_address, name, symbol, timestamp, platform, signature, 
         starting_mcap, current_mcap, ath_mcap, price_usd, price_sol, 
-        graduation_percentage, launchpad_completed, launchpad_completed_at, 
+        graduation_percentage, launchpad_completed, launchpad_completed_at, migrated_pool_address,
         total_supply, market_cap_usd, coingecko_coin_id, gt_score, description,
         last_updated, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         mint.mint_address,
         mint.creator_address,
@@ -28,6 +28,7 @@ export class TokenMintProvider {
         mint.graduation_percentage,
         mint.launchpad_completed,
         mint.launchpad_completed_at,
+        mint.migrated_pool_address,
         mint.total_supply,
         mint.market_cap_usd,
         mint.coingecko_coin_id,
