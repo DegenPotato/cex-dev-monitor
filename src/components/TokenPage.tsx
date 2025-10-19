@@ -62,12 +62,12 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
     const fetchToken = async () => {
       try {
-        const response = await fetch(apiUrl(`/api/tokens/recent`));
-        const tokens = await response.json();
-        const foundToken = tokens.find((t: TokenData) => t.mint_address === address);
-        
-        if (foundToken) {
-          setToken(foundToken);
+        const response = await fetch(apiUrl(`/api/tokens/${address}`));
+        if (response.ok) {
+          const token = await response.json();
+          setToken(token);
+        } else {
+          console.error('Token not found in database');
         }
         setLoading(false);
       } catch (error) {

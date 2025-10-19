@@ -1065,6 +1065,16 @@ app.get('/api/tokens/recent', async (req, res) => {
   res.json(tokens);
 });
 
+// Get single token by mint address
+app.get('/api/tokens/:mintAddress', async (req, res) => {
+  const { mintAddress } = req.params;
+  const token = await TokenMintProvider.findByMintAddress(mintAddress);
+  if (!token) {
+    return res.status(404).json({ error: 'Token not found' });
+  }
+  res.json(token);
+});
+
 // Get token mints by creator
 app.get('/api/tokens/creator/:address', async (req, res) => {
   const { address } = req.params;
