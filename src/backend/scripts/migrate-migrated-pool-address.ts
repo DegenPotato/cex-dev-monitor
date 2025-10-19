@@ -6,10 +6,13 @@
  */
 
 import { queryAll, execute } from '../database/helpers.js';
-import { saveDatabase } from '../database/connection.js';
+import { initDatabase, saveDatabase } from '../database/connection.js';
 
 async function migratePoolAddresses() {
   console.log('🔄 Starting migration: Populate migrated_pool_address from metadata...\n');
+  
+  // Initialize database first
+  await initDatabase();
   
   try {
     // Get all tokens with metadata
@@ -30,10 +33,15 @@ async function migratePoolAddresses() {
         const metadata = JSON.parse(token.metadata);
         const migratedPoolAddress = metadata?.geckoTerminal?.migratedDestinationPoolAddress;
         
+        console.log(`🔍 [${token.symbol}] Current DB value: ${token.migrated_pool_address || 'NULL'}`);
+        console.log(`🔍 [${token.symbol}] Metadata value: ${migratedPoolAddress || 'NULL'}`);
+        
         // Only update if:
         // 1. GeckoTerminal has a migrated pool address
         // 2. Current column is NULL (don't overwrite existing values)
         if (migratedPoolAddress && !token.migrated_pool_address) {
+          console.log(`📝 [${token.symbol}] Updating with: ${migratedPoolAddress}`);
+          
           await execute(`
             UPDATE token_mints 
             SET migrated_pool_address = ?
@@ -45,9 +53,11 @@ async function migratePoolAddresses() {
           updated++;
         } else if (token.migrated_pool_address) {
           // Already has a value
+          console.log(`⏭️  [${token.symbol}] Already has value, skipping`);
           skipped++;
         } else {
           // No migrated pool in metadata (not graduated yet)
+          console.log(`⏭️  [${token.symbol}] No migrated pool in metadata`);
           skipped++;
         }
       } catch (error: any) {
