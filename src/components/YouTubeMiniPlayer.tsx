@@ -70,6 +70,18 @@ export function YouTubeMiniPlayer() {
       const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'];
       const SCOPES = 'https://www.googleapis.com/auth/youtube.readonly';
       
+      console.log('🔑 Initializing OAuth with:', {
+        hasApiKey: !!API_KEY,
+        hasClientId: !!CLIENT_ID,
+        apiKeyLength: API_KEY.length,
+        clientIdLength: CLIENT_ID.length
+      });
+      
+      if (!CLIENT_ID || !API_KEY) {
+        console.error('❌ YouTube credentials missing from environment');
+        return;
+      }
+      
       window.gapi.load('client:auth2', () => {
         window.gapi.client.init({
           apiKey: API_KEY,
@@ -77,11 +89,14 @@ export function YouTubeMiniPlayer() {
           discoveryDocs: DISCOVERY_DOCS,
           scope: SCOPES
         }).then(() => {
+          console.log('✅ Google OAuth initialized');
           const authInstance = window.gapi.auth2?.getAuthInstance();
           if (authInstance) {
             authInstance.isSignedIn.listen(updateSigninStatus);
             updateSigninStatus(authInstance.isSignedIn.get());
           }
+        }).catch((error: any) => {
+          console.error('❌ OAuth init failed:', error);
         });
       });
     };
@@ -97,9 +112,17 @@ export function YouTubeMiniPlayer() {
   }, []);
 
   const handleAuthClick = () => {
-    if (!window.gapi?.auth2) return;
+    if (!window.gapi?.auth2) {
+      console.error('Google Auth not loaded yet');
+      return;
+    }
     
     const authInstance = window.gapi.auth2.getAuthInstance();
+    if (!authInstance) {
+      console.error('Auth not initialized - check API credentials');
+      return;
+    }
+    
     if (isSignedIn) {
       authInstance.signOut();
     } else {
