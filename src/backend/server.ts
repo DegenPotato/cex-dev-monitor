@@ -9,7 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
-import { queryAll, queryOne } from './database/helpers.js';
+import { queryAll, queryOne, execute } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
@@ -19,6 +19,7 @@ import { MonitoredWalletProvider } from './providers/MonitoredWalletProvider.js'
 import { SourceWalletProvider } from './providers/SourceWalletProvider.js';
 import { TransactionProvider } from './providers/TransactionProvider.js';
 import { TokenMintProvider } from './providers/TokenMintProvider.js';
+import { TokenPoolProvider } from './providers/TokenPoolProvider.js';
 import { ConfigProvider } from './providers/ConfigProvider.js';
 import { RequestStatsTracker } from './services/RequestStatsTracker.js';
 import { globalRateLimiter } from './services/RateLimiter.js';
@@ -2419,16 +2420,22 @@ app.post('/api/database/wipe', async (req, res) => {
     pumpFunMonitor.stopAll();
     marketDataTracker.stop();
     
-    // Wipe all data tables (keep config)
+    // Wipe all data tables (keep config and user accounts)
     await TransactionProvider.deleteAll();
     await MonitoredWalletProvider.deleteAll();
     await TokenMintProvider.deleteAll();
+    await TokenPoolProvider.deleteAll();
+    
+    // Wipe OHLCV data (no provider, use execute helper)
+    await execute('DELETE FROM ohlcv_data', []);
+    await execute('DELETE FROM ohlcv_backfill_progress', []);
+    saveDatabase();
     
     console.log('🗑️  Database wiped successfully');
     
     res.json({ 
       success: true, 
-      message: 'Database wiped successfully. All wallets, transactions, and tokens have been deleted.' 
+      message: 'Database wiped successfully. All wallets, transactions, tokens, pools, and OHLCV data have been deleted.' 
     });
   } catch (error: any) {
     console.error('Error wiping database:', error);

@@ -9,7 +9,8 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "NODE_OPTIONS='--max-old-space-size=2048' tsc && vite build",
     "build:backend": "tsc -p tsconfig.backend.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migrate:pool-address": "tsx src/backend/scripts/migrate-migrated-pool-address.ts"
   },
   "dependencies": {
     "@react-three/drei": "^9.88.0",

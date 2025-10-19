@@ -87,4 +87,9 @@ export class TokenPoolProvider {
     
     console.log(`✅ [TokenPool] Marked ${poolAddress.slice(0, 8)}... as primary pool for ${mintAddress.slice(0, 8)}...`);
   }
+
+  static async deleteAll(): Promise<void> {
+    await execute('DELETE FROM token_pools', []);
+    saveDatabase();
+  }
 }

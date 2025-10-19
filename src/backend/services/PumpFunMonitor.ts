@@ -648,16 +648,19 @@ export class PumpFunMonitor extends EventEmitter {
       // Try to fetch token metadata from GeckoTerminal
       const tokenInfo = await this.fetchTokenMetadata(mintAddress);
 
-      // If token is already graduated, use migrated pool address from GeckoTerminal
-      let migratedPoolAddress: string | undefined;
-      if (tokenInfo.launchpadCompleted && tokenInfo.migratedDestinationPoolAddress) {
-        migratedPoolAddress = tokenInfo.migratedDestinationPoolAddress;
-        console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... already graduated! Migrated pool: ${migratedPoolAddress.slice(0, 8)}...`);
-      } else if (tokenInfo.launchpadCompleted) {
-        // Fallback: Try to detect Raydium pool if GeckoTerminal doesn't have it yet
-        migratedPoolAddress = await this.detectRaydiumPool(mintAddress);
+      // Use migrated pool address from GeckoTerminal if available
+      let migratedPoolAddress: string | undefined = tokenInfo.migratedDestinationPoolAddress || undefined;
+      
+      // Log graduation status if applicable
+      if (tokenInfo.launchpadCompleted) {
         if (migratedPoolAddress) {
-          console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... graduated, detected pool: ${migratedPoolAddress.slice(0, 8)}...`);
+          console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... already graduated! Migrated pool: ${migratedPoolAddress.slice(0, 8)}...`);
+        } else {
+          // Fallback: Try to detect Raydium pool if GeckoTerminal doesn't have it yet
+          migratedPoolAddress = await this.detectRaydiumPool(mintAddress);
+          if (migratedPoolAddress) {
+            console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... graduated, detected pool: ${migratedPoolAddress.slice(0, 8)}...`);
+          }
         }
       }
 

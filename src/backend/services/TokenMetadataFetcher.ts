@@ -89,6 +89,11 @@ export class TokenMetadataFetcher {
         return null;
       }
 
+      // Debug: Log launchpad_details to see what fields are available
+      if (attributes.launchpad_details) {
+        console.log(`🔍 [GeckoTerminal] Launchpad details for ${mintAddress.slice(0, 8)}:`, JSON.stringify(attributes.launchpad_details, null, 2));
+      }
+
       const metadata = {
         // Market data from first call
         name: attributes.name || undefined,
