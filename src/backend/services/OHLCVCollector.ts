@@ -273,8 +273,8 @@ export class OHLCVCollector {
       // Sort pools by preference (for marking which is "primary" for display)
       // NOTE: We still collect OHLCV data from ALL pools to ensure complete history
       // Primary pool priority:
-      // 1. Migrated Raydium pool (for graduated tokens)
-      // 2. Other Raydium pools
+      // 1. Migrated pool (PumpSwap/Raydium for graduated tokens)
+      // 2. Other PumpSwap/Raydium pools
       // 3. Highest volume pools
       pools.sort((a, b) => {
         // Highest priority: migrated pool address (post-graduation trading)
@@ -282,9 +282,10 @@ export class OHLCVCollector {
           if (a.pool_address === migratedPoolAddress) return -1;
           if (b.pool_address === migratedPoolAddress) return 1;
         }
-        // Then prefer Raydium DEX
-        if (a.dex === 'raydium' && b.dex !== 'raydium') return -1;
-        if (b.dex === 'raydium' && a.dex !== 'raydium') return 1;
+        // Then prefer PumpSwap/Raydium DEX
+        const aPriority = (a.dex === 'pumpswap' || a.dex === 'raydium') ? 1 : 0;
+        const bPriority = (b.dex === 'pumpswap' || b.dex === 'raydium') ? 1 : 0;
+        if (aPriority !== bPriority) return bPriority - aPriority;
         // Finally by volume (most active pool)
         return b.volume_24h_usd - a.volume_24h_usd;
       });

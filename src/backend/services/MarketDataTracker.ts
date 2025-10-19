@@ -20,7 +20,7 @@ export class MarketDataTracker {
   }
 
   /**
-   * Detect Raydium pool for a graduated token
+   * Detect migrated pool for a graduated token (PumpSwap or Raydium)
    */
   private async detectRaydiumPool(mintAddress: string): Promise<string | null> {
     try {
@@ -43,7 +43,7 @@ export class MarketDataTracker {
         return null;
       }
       
-      // Find first Raydium pool
+      // Find PumpSwap pool first (new standard), fallback to Raydium (legacy)
       for (const poolRef of topPoolData) {
         const poolId = poolRef.id; // Format: "solana_POOL_ADDRESS"
         if (!poolId) continue;
@@ -52,15 +52,16 @@ export class MarketDataTracker {
         const poolDetails = included.find((item: any) => item.id === poolId);
         const dexId = poolDetails?.attributes?.dex_id;
         
-        // Return first Raydium pool found
-        if (dexId === 'raydium') {
+        // Return first PumpSwap or Raydium pool found
+        if (dexId === 'pumpswap' || dexId === 'raydium') {
+          console.log(`🔄 [MarketData] Found ${dexId} pool: ${poolAddress.slice(0, 8)}...`);
           return poolAddress;
         }
       }
       
       return null;
     } catch (error) {
-      console.error(`❌ [MarketData] Error detecting Raydium pool for ${mintAddress.slice(0, 8)}...:`, error);
+      console.error(`❌ [MarketData] Error detecting migrated pool for ${mintAddress.slice(0, 8)}...:`, error);
       return null;
     }
   }
@@ -159,12 +160,12 @@ export class MarketDataTracker {
             updates.symbol = data.symbol;
           }
 
-          // If token just graduated, detect and store the Raydium pool address
+          // If token just graduated, detect and store the migrated pool address (PumpSwap/Raydium)
           if (data.launchpadCompleted && !token.migrated_pool_address) {
-            const raydiumPool = await this.detectRaydiumPool(token.mint_address);
-            if (raydiumPool) {
-              updates.migrated_pool_address = raydiumPool;
-              console.log(`🎓 [MarketData] Token ${token.mint_address.slice(0, 8)}... graduated! Raydium pool: ${raydiumPool.slice(0, 8)}...`);
+            const migratedPool = await this.detectRaydiumPool(token.mint_address);
+            if (migratedPool) {
+              updates.migrated_pool_address = migratedPool;
+              console.log(`🎓 [MarketData] Token ${token.mint_address.slice(0, 8)}... graduated! Migrated pool: ${migratedPool.slice(0, 8)}...`);
             }
           }
 

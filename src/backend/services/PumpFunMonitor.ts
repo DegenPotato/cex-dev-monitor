@@ -6,6 +6,7 @@ import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { WalletRateLimiter } from './WalletRateLimiter.js';
 import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
 import { EventEmitter } from 'events';
+import fetch from 'cross-fetch';
 
 // Pump.fun program ID
 const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
@@ -647,6 +648,15 @@ export class PumpFunMonitor extends EventEmitter {
       // Try to fetch token metadata from GeckoTerminal
       const tokenInfo = await this.fetchTokenMetadata(mintAddress);
 
+      // If token is already graduated, detect migrated pool address (PumpSwap/Raydium)
+      let migratedPoolAddress: string | undefined;
+      if (tokenInfo.launchpadCompleted) {
+        migratedPoolAddress = await this.detectRaydiumPool(mintAddress);
+        if (migratedPoolAddress) {
+          console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... already graduated! Migrated pool: ${migratedPoolAddress.slice(0, 8)}...`);
+        }
+      }
+
       await TokenMintProvider.create({
         mint_address: mintAddress,
         creator_address: walletAddress,
@@ -661,6 +671,7 @@ export class PumpFunMonitor extends EventEmitter {
         graduation_percentage: tokenInfo.launchpadGraduationPercentage,
         launchpad_completed: tokenInfo.launchpadCompleted ? 1 : 0,
         launchpad_completed_at: tokenInfo.launchpadCompletedAt ? new Date(tokenInfo.launchpadCompletedAt).getTime() : undefined,
+        migrated_pool_address: migratedPoolAddress, // Save Raydium pool if graduated
         total_supply: tokenInfo.totalSupply,
         market_cap_usd: tokenInfo.marketCapUsd,
         coingecko_coin_id: tokenInfo.coingeckoCoinId || undefined,
@@ -746,6 +757,53 @@ export class PumpFunMonitor extends EventEmitter {
       if (!error.message?.includes('UNIQUE constraint failed')) {
         console.error('Error saving token mint:', error);
       }
+    }
+  }
+
+  /**
+   * Detect migrated pool for a graduated token (PumpSwap or Raydium)
+   */
+  private async detectRaydiumPool(mintAddress: string): Promise<string | undefined> {
+    try {
+      const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mintAddress}?include=top_pools`;
+      
+      const response = await this.proxiedConnection.withProxy(() => 
+        fetch(url, { headers: { 'Accept': 'application/json' } })
+      );
+      
+      if (!response.ok) {
+        return undefined;
+      }
+      
+      const data = await response.json();
+      const relationships = data?.data?.relationships;
+      const included = data?.included || [];
+      
+      const topPoolData = relationships?.top_pools?.data;
+      if (!topPoolData || topPoolData.length === 0) {
+        return undefined;
+      }
+      
+      // Find PumpSwap pool first (new standard), fallback to Raydium (legacy)
+      for (const poolRef of topPoolData) {
+        const poolId = poolRef.id; // Format: "solana_POOL_ADDRESS"
+        if (!poolId) continue;
+        
+        const poolAddress = poolId.replace('solana_', '');
+        const poolDetails = included.find((item: any) => item.id === poolId);
+        const dexId = poolDetails?.attributes?.dex_id;
+        
+        // Return first PumpSwap or Raydium pool found
+        if (dexId === 'pumpswap' || dexId === 'raydium') {
+          console.log(`🔄 [PumpFun] Found ${dexId} pool: ${poolAddress.slice(0, 8)}...`);
+          return poolAddress;
+        }
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.error(`❌ [PumpFun] Error detecting migrated pool for ${mintAddress.slice(0, 8)}...:`, error);
+      return undefined;
     }
   }
 
