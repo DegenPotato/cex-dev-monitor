@@ -108,11 +108,11 @@ export function MusicManager({ isOpen, onClose }: MusicManagerProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-lg z-[10000] flex items-center justify-center p-8"
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center"
          onClick={onClose}>
       <div className="bg-gray-900/98 backdrop-blur-xl rounded-2xl border border-cyan-500/30 
-                    shadow-[0_0_60px_rgba(0,255,255,0.4)] w-full max-w-7xl h-[90vh] 
-                    flex flex-col overflow-hidden"
+                    shadow-[0_0_80px_rgba(0,255,255,0.5)] w-[90vw] max-w-7xl h-[85vh] 
+                    flex flex-col overflow-hidden m-8"
            onClick={(e) => e.stopPropagation()}>
         
         {/* Header */}

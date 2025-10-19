@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useAudio } from '../contexts/AudioContext';
 import { useYouTubeAudio } from '../contexts/YouTubeAudioContext';
-import { MusicManager } from './MusicManager';
+import { MusicManagerPortal } from './MusicManagerPortal';
 
 export function UnifiedMusicController() {
   const [showMusicManager, setShowMusicManager] = useState(false);
@@ -158,8 +158,8 @@ export function UnifiedMusicController() {
         </div>
       </div>
       
-      {/* Music Manager Modal - rendered outside main container */}
-      <MusicManager 
+      {/* Music Manager Modal - rendered via portal to document body */}
+      <MusicManagerPortal 
         isOpen={showMusicManager} 
         onClose={() => setShowMusicManager(false)} 
       />
