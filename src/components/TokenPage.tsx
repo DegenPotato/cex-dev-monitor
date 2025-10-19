@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check, Play, Trash2, RefreshCw } from 'lucide-react';
 import { apiUrl, config } from '../config';
-import CandlestickChart from './CandlestickChart';
+import RobustChart from './RobustChart';
 
 interface TokenData {
   mint_address: string;
@@ -625,8 +625,8 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             </div>
           </div>
           
-          {/* Candlestick Chart */}
-          <CandlestickChart 
+          {/* Robust Chart with fallback */}
+          <RobustChart 
             data={ohlcv} 
             migration={migration}
             height={400}
