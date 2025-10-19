@@ -489,7 +489,7 @@ export function Dashboard() {
 
       {/* Token Detail Overlay */}
       {selectedTokenAddress && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 overflow-y-auto">
           <div className="min-h-screen flex items-start justify-center p-4 py-8">
             <div className="w-full max-w-7xl relative">
               {/* Close Button */}
