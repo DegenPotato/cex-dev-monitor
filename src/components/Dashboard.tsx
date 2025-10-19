@@ -8,7 +8,6 @@ import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
-import { WalletConnector } from './WalletConnector';
 import { YouTubeMiniPlayer } from './YouTubeMiniPlayer';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -293,9 +292,6 @@ export function Dashboard() {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Wallet Connector */}
-            <WalletConnector />
-            
             {/* Connection Status */}
             <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
               <Circle 
