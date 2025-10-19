@@ -9,8 +9,20 @@ export function WalletConnector() {
   const [copied, setCopied] = useState(false);
 
   // Use AuthContext as single source of truth
-  const walletAddress = user?.wallet_address || publicKey?.toBase58() || null;
+  // Check both wallet_address (EVM) and solana_wallet_address (Solana)
+  const walletAddress = user?.solana_wallet_address || user?.wallet_address || publicKey?.toBase58() || null;
   const isSuperAdmin = user?.role === 'super_admin';
+
+  // Debug log
+  console.log('[WalletConnector]', {
+    isAuthenticated,
+    hasUser: !!user,
+    walletAddress,
+    userFields: {
+      solana_wallet_address: user?.solana_wallet_address,
+      wallet_address: user?.wallet_address
+    }
+  });
 
   const handleConnect = () => {
     // Redirect to landing page for authentication
