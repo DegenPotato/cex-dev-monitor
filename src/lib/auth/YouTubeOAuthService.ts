@@ -1,4 +1,4 @@
-import { queryOne, execute, getLastInsertId } from '../../backend/database/helpers.js';
+import { queryOne, execute } from '../../backend/database/helpers.js';
 
 interface YouTubeAccount {
   id: number;
@@ -96,8 +96,7 @@ class YouTubeOAuthService {
       // Update user's google_account_linked flag
       await execute(
         `UPDATE users 
-         SET google_account_linked = 1,
-             updated_at = CURRENT_TIMESTAMP
+         SET google_account_linked = 1
          WHERE id = ?`,
         [userId]
       );
@@ -124,9 +123,10 @@ class YouTubeOAuthService {
 
       if (account) {
         console.log('[YouTube OAuth] ✅ Found active YouTube account for user:', userId);
+        return account;
       }
 
-      return account;
+      return null;
     } catch (error: any) {
       console.error('[YouTube OAuth] ❌ Error fetching YouTube account:', error.message);
       return null;
@@ -196,8 +196,7 @@ class YouTubeOAuthService {
         // No more active accounts, update user flag
         await execute(
           `UPDATE users 
-           SET google_account_linked = 0,
-               updated_at = CURRENT_TIMESTAMP
+           SET google_account_linked = 0
            WHERE id = ?`,
           [userId]
         );

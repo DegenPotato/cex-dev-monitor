@@ -90,13 +90,13 @@ class ReferralTrackingProvider {
 
       // Update new user with referral attribution (store referrer's ID)
       await execute(
-        'UPDATE users SET referred_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE users SET referred_by = ? WHERE id = ?',
         [referrer.id, newUserId]
       );
 
       // Update referrer's total referral count
       await execute(
-        'UPDATE users SET total_referrals = total_referrals + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE users SET total_referrals = total_referrals + 1 WHERE id = ?',
         [referrer.id]
       );
 

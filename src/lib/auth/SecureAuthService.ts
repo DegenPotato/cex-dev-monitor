@@ -252,8 +252,7 @@ class SecureAuthService {
         `UPDATE users 
          SET last_login = CURRENT_TIMESTAMP,
              login_count = COALESCE(login_count, 0) + 1,
-             last_activity = CURRENT_TIMESTAMP,
-             updated_at = CURRENT_TIMESTAMP 
+             last_activity = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [userId]
       );
