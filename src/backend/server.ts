@@ -9,7 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
-import { queryAll, queryOne, execute } from './database/helpers.js';
+import { queryAll, queryOne } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
 import fetch from 'cross-fetch';
 import { SolanaMonitor } from './services/SolanaMonitor.js';
@@ -1515,37 +1515,33 @@ app.delete('/api/ohlcv/clear/:mintAddress', authService.requireSuperAdmin(), asy
   try {
     console.log(`🗑️ [OHLCV] Clearing data for token: ${mintAddress.slice(0,8)}...`);
     
+    const db = await getDb();
+    
     // Delete OHLCV data
-    const candlesDeleted = await execute(
-      `DELETE FROM ohlcv_data WHERE mint_address = ?`,
-      [mintAddress]
-    );
+    db.run(`DELETE FROM ohlcv_data WHERE mint_address = ?`, [mintAddress]);
+    const candlesDeleted = db.exec('SELECT changes() as deleted')[0].values[0][0];
     
     // Delete progress tracking
-    const progressDeleted = await execute(
-      `DELETE FROM ohlcv_backfill_progress WHERE mint_address = ?`,
-      [mintAddress]
-    );
+    db.run(`DELETE FROM ohlcv_backfill_progress WHERE mint_address = ?`, [mintAddress]);
+    const progressDeleted = db.exec('SELECT changes() as deleted')[0].values[0][0];
     
     // Delete pool data
-    const poolsDeleted = await execute(
-      `DELETE FROM token_pools WHERE mint_address = ?`,
-      [mintAddress]
-    );
+    db.run(`DELETE FROM token_pools WHERE mint_address = ?`, [mintAddress]);
+    const poolsDeleted = db.exec('SELECT changes() as deleted')[0].values[0][0];
     
     saveDatabase();
     
     console.log(`✅ [OHLCV] Cleared:`);
-    console.log(`   - Candles: ${(candlesDeleted as any)?.changes || 0}`);
-    console.log(`   - Progress: ${(progressDeleted as any)?.changes || 0}`);
-    console.log(`   - Pools: ${(poolsDeleted as any)?.changes || 0}`);
+    console.log(`   - Candles: ${candlesDeleted}`);
+    console.log(`   - Progress: ${progressDeleted}`);
+    console.log(`   - Pools: ${poolsDeleted}`);
     
     res.json({ 
       success: true,
       cleared: {
-        candles: (candlesDeleted as any)?.changes || 0,
-        progress: (progressDeleted as any)?.changes || 0,
-        pools: (poolsDeleted as any)?.changes || 0
+        candles: candlesDeleted,
+        progress: progressDeleted,
+        pools: poolsDeleted
       }
     });
   } catch (error: any) {
