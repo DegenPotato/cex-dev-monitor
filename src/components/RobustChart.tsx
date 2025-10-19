@@ -145,7 +145,40 @@ const RobustChart: React.FC<RobustChartProps> = ({
 
       chartRef.current = chart;
 
-      // Add candlestick series
+      // Calculate precision based on price range
+      const prices = validData.map(d => d.close).filter(p => p > 0);
+      const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+      
+      let precision = 2;
+      let minMove = 0.01;
+      
+      if (minPrice < 0.0000001) {
+        precision = 12;
+        minMove = 0.000000000001;
+      } else if (minPrice < 0.000001) {
+        precision = 10;
+        minMove = 0.0000000001;
+      } else if (minPrice < 0.00001) {
+        precision = 8;
+        minMove = 0.00000001;
+      } else if (minPrice < 0.0001) {
+        precision = 7;
+        minMove = 0.0000001;
+      } else if (minPrice < 0.001) {
+        precision = 6;
+        minMove = 0.000001;
+      } else if (minPrice < 0.01) {
+        precision = 5;
+        minMove = 0.00001;
+      } else if (minPrice < 0.1) {
+        precision = 4;
+        minMove = 0.0001;
+      } else if (minPrice < 1) {
+        precision = 3;
+        minMove = 0.001;
+      }
+
+      // Add candlestick series with dynamic precision
       const candleSeries = chart.addCandlestickSeries({
         upColor: '#10b981',
         downColor: '#ef4444',
@@ -153,6 +186,11 @@ const RobustChart: React.FC<RobustChartProps> = ({
         borderDownColor: '#ef4444',
         wickUpColor: '#10b981',
         wickDownColor: '#ef4444',
+        priceFormat: {
+          type: 'price',
+          precision: precision,
+          minMove: minMove,
+        },
       });
 
       // Add volume series (don't set default color, use per-bar colors)
@@ -226,7 +264,7 @@ const RobustChart: React.FC<RobustChartProps> = ({
 
       // Add crosshair move handler for tooltip
       chart.subscribeCrosshairMove((param) => {
-        if (!param || !param.time || !containerRef.current) {
+        if (!param || !param.time) {
           setTooltip(null);
           return;
         }
@@ -238,9 +276,11 @@ const RobustChart: React.FC<RobustChartProps> = ({
           const candle = candleDataPoint as any;
           const volume = volumeDataPoint && 'value' in volumeDataPoint ? (volumeDataPoint as any).value : 0;
           
-          // Get mouse coordinates
-          const x = param.point?.x || 0;
-          const y = param.point?.y || 0;
+          // Get mouse coordinates relative to chart
+          const x = param.point?.x ?? 100;
+          const y = param.point?.y ?? 100;
+
+          console.log('[RobustChart] Tooltip update:', { x, y, time: param.time });
 
           setTooltip({
             visible: true,
@@ -410,41 +450,41 @@ const RobustChart: React.FC<RobustChartProps> = ({
         </div>
       )}
       
-      {/* Tooltip */}
+      {/* Tooltip - positioned relative to chart container */}
       {tooltip && tooltip.visible && (
         <div 
-          className="absolute z-20 pointer-events-none"
+          className="absolute z-50 pointer-events-none"
           style={{ 
-            left: `${tooltip.x + 10}px`, 
-            top: `${tooltip.y - 10}px`,
-            transform: tooltip.x > 300 ? 'translateX(-100%)' : undefined
+            left: `${tooltip.x + 15}px`, 
+            top: `${tooltip.y + 60}px`, // Offset for stats bar at top
+            transform: tooltip.x > 400 ? 'translateX(-110%)' : undefined
           }}
         >
-          <div className="bg-black/95 backdrop-blur-sm border border-cyan-500/40 rounded-lg p-3 shadow-lg shadow-cyan-500/20 text-xs">
-            <div className="text-gray-400 mb-2 border-b border-cyan-500/20 pb-1">
+          <div className="bg-black/98 backdrop-blur-md border-2 border-cyan-500/60 rounded-xl p-4 shadow-2xl shadow-cyan-500/30 text-sm min-w-[200px]">
+            <div className="text-cyan-400 font-semibold mb-3 border-b border-cyan-500/30 pb-2 text-center">
               {tooltip.time}
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="text-gray-500">Open:</span>
-                <div className="text-white font-mono">${tooltip.open}</div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Open:</span>
+                <span className="text-white font-mono font-semibold">${tooltip.open}</span>
               </div>
-              <div>
+              <div className="flex justify-between">
                 <span className="text-green-400">High:</span>
-                <div className="text-green-400 font-mono">${tooltip.high}</div>
+                <span className="text-green-400 font-mono font-semibold">${tooltip.high}</span>
               </div>
-              <div>
+              <div className="flex justify-between">
                 <span className="text-red-400">Low:</span>
-                <div className="text-red-400 font-mono">${tooltip.low}</div>
+                <span className="text-red-400 font-mono font-semibold">${tooltip.low}</span>
               </div>
-              <div>
-                <span className="text-gray-500">Close:</span>
-                <div className="text-white font-mono">${tooltip.close}</div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Close:</span>
+                <span className="text-white font-mono font-semibold">${tooltip.close}</span>
               </div>
             </div>
-            <div className="mt-2 pt-2 border-t border-cyan-500/20">
-              <span className="text-cyan-400">Volume:</span>{' '}
-              <span className="text-white font-mono">${tooltip.volume}</span>
+            <div className="mt-3 pt-3 border-t border-cyan-500/30 flex justify-between">
+              <span className="text-cyan-400">Volume:</span>
+              <span className="text-white font-mono font-semibold">${tooltip.volume}</span>
             </div>
           </div>
         </div>
