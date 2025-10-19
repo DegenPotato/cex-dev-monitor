@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Settings, Circle, Wallet, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle } from 'lucide-react';
+import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Stats } from '../types';
 import { config, apiUrl } from '../config';
@@ -11,8 +11,6 @@ import { DatabaseTab } from './DatabaseTab';
 import { WalletConnector } from './WalletConnector';
 import { YouTubeMiniPlayer } from './YouTubeMiniPlayer';
 import { useAuth } from '../contexts/AuthContext';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 type Tab = 'wallets' | 'tokens' | 'database';
 
@@ -24,9 +22,7 @@ export function Dashboard() {
   const vortexCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const { user, isAuthenticated, authenticateWallet } = useAuth();
-  const { connected } = useWallet();
-  const { setVisible } = useWalletModal();
+  const { user, isAuthenticated } = useAuth();
   
   const isSuperAdmin = user?.role === 'super_admin';
   const hasAccess = isAuthenticated && isSuperAdmin;
@@ -183,13 +179,6 @@ export function Dashboard() {
     }
   };
   
-  const handleConnectWallet = () => {
-    if (!connected) {
-      setVisible(true);
-    } else {
-      authenticateWallet();
-    }
-  };
 
   // Show vortex access denied screen for non-super_admins
   if (!hasAccess) {
@@ -211,30 +200,17 @@ export function Dashboard() {
           </div>
           
           <div className="space-y-4">
-            {!connected ? (
+            {!isAuthenticated ? (
               <>
                 <p className="text-sm text-gray-400">
-                  Connect your wallet to verify your identity
+                  Please authenticate from the Black Hole landing page
                 </p>
-                <button
-                  onClick={handleConnectWallet}
-                  className="w-full px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
+                <a
+                  href="/"
+                  className="w-full inline-block px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm text-center"
                 >
-                  <Wallet className="w-5 h-5 inline-block mr-2" />
-                  Connect Wallet
-                </button>
-              </>
-            ) : !isAuthenticated ? (
-              <>
-                <p className="text-sm text-gray-400">
-                  Authenticate to continue
-                </p>
-                <button
-                  onClick={() => authenticateWallet()}
-                  className="w-full px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm"
-                >
-                  Authenticate
-                </button>
+                  Return to Landing Page
+                </a>
               </>
             ) : (
               <>
@@ -247,6 +223,12 @@ export function Dashboard() {
                 <p className="text-xs text-gray-500">
                   Only super administrators may access the dashboard
                 </p>
+                <a
+                  href="/"
+                  className="w-full inline-block px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm text-center mt-4"
+                >
+                  Return to Landing Page
+                </a>
               </>
             )}
           </div>
@@ -352,7 +334,7 @@ export function Dashboard() {
             {activeTab === 'wallets' && (
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
             )}
-            <Wallet className="w-5 h-5 relative z-10" />
+            <Activity className="w-5 h-5 relative z-10" />
             <span className="relative z-10">Wallet Monitoring</span>
             {activeTab === 'wallets' && (
               <Activity className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
