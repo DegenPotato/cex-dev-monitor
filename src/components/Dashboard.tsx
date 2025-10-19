@@ -550,7 +550,7 @@ export function Dashboard() {
                 >
                   ← Back to Token List
                 </button>
-                <TokenPage mintAddress={selectedTokenAddress} />
+                <TokenPage address={selectedTokenAddress} />
               </div>
             </div>
           ) : (

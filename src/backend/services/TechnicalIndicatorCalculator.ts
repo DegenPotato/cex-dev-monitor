@@ -120,16 +120,25 @@ export class TechnicalIndicatorCalculator {
   
   /**
    * Calculate indicators for a specific token and timeframe
+   * Uses backlog tracking to process ALL candles once, then incrementally update
    */
   private async calculateIndicatorsForToken(mintAddress: string, timeframe: string) {
     try {
-      // Fetch OHLCV data (need at least 200 candles for EMA200)
+      // Get the last processed timestamp for this token/timeframe
+      const lastProcessed = await queryOne<{ max_timestamp: number | null }>(`
+        SELECT MAX(timestamp) as max_timestamp
+        FROM technical_indicators
+        WHERE mint_address = ? AND timeframe = ?
+      `, [mintAddress, timeframe]);
+      
+      const lastTimestamp = lastProcessed?.max_timestamp || 0;
+      
+      // Fetch ALL candles (for backfill) or only new candles (for incremental updates)
       const candles = await queryAll<OHLCVCandle>(`
         SELECT mint_address, pool_address, timeframe, timestamp, open, high, low, close, volume
         FROM ohlcv_data
         WHERE mint_address = ? AND timeframe = ?
         ORDER BY timestamp ASC
-        LIMIT 500
       `, [mintAddress, timeframe]);
       
       if (candles.length < 20) {
@@ -141,17 +150,29 @@ export class TechnicalIndicatorCalculator {
       const closes = candles.map(c => c.close);
       const volumes = candles.map(c => c.volume);
       
-      // Calculate indicators for each candle (only the most recent ones)
-      const startIdx = Math.max(0, candles.length - 50); // Process last 50 candles
+      // Process ALL candles (comprehensive calculation with backlog tracking)
+      // Skip candles that are already processed (timestamp <= lastTimestamp)
+      const startIdx = 0; // Calculate for ALL candles from the beginning
+      
+      let processedCount = 0;
+      let skippedCount = 0;
       
       for (let i = startIdx; i < candles.length; i++) {
         const candle = candles[i];
+        
+        // Skip already processed candles (incremental update optimization)
+        if (candle.timestamp <= lastTimestamp) {
+          skippedCount++;
+          continue;
+        }
         
         // Need enough history for calculations
         if (i < 200) {
           // Skip if not enough data for EMA200
           if (candles.length < 200) continue;
         }
+        
+        processedCount++;
         
         // Calculate indicators
         const indicators: TechnicalIndicators = {
@@ -196,6 +217,12 @@ export class TechnicalIndicatorCalculator {
         
         // Store indicators in database
         await this.storeIndicators(candle, indicators);
+      }
+      
+      // Log backfill progress
+      if (processedCount > 0 || skippedCount > 0) {
+        const mode = lastTimestamp === 0 ? 'BACKFILL' : 'UPDATE';
+        console.log(`📊 [TechnicalIndicators] [${mode}] ${mintAddress}/${timeframe}: Processed ${processedCount}, Skipped ${skippedCount}`);
       }
     } catch (error: any) {
       console.error(`📊 [TechnicalIndicators] Error for ${mintAddress}/${timeframe}:`, error.message);
