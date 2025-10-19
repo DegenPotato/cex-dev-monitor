@@ -149,22 +149,46 @@ const RobustChart: React.FC<RobustChartProps> = ({
         close: candle.close,
       }));
 
-      const volumeData = validData.map(candle => ({
-        time: Math.floor(candle.timestamp) as any, // Already in seconds from GeckoTerminal
-        value: candle.volume,
-        color: candle.close >= candle.open 
-          ? 'rgba(16, 185, 129, 0.3)' 
-          : 'rgba(239, 68, 68, 0.3)',
-      }));
+      const volumeData = validData.map(candle => {
+        const vol = candle.volume || 0;
+        // Ensure volume is a valid number and not null/undefined/NaN
+        const safeVolume = (typeof vol === 'number' && !isNaN(vol) && isFinite(vol)) ? vol : 0;
+        
+        return {
+          time: Math.floor(candle.timestamp) as any,
+          value: safeVolume,
+          color: candle.close >= candle.open 
+            ? 'rgba(16, 185, 129, 0.3)' 
+            : 'rgba(239, 68, 68, 0.3)',
+        };
+      });
 
       // Debug: Log first and last candles
       if (candleData.length > 0) {
         console.log(`[RobustChart] First candle:`, candleData[0], new Date(candleData[0].time * 1000).toISOString());
         console.log(`[RobustChart] Last candle:`, candleData[candleData.length - 1], new Date(candleData[candleData.length - 1].time * 1000).toISOString());
+        console.log(`[RobustChart] First volume:`, volumeData[0]);
+        console.log(`[RobustChart] Last volume:`, volumeData[volumeData.length - 1]);
       }
 
-      candleSeries.setData(candleData);
-      volumeSeries.setData(volumeData);
+      // Try to set candle data first to catch specific errors
+      try {
+        candleSeries.setData(candleData);
+        console.log(`[RobustChart] ✅ Candlestick data set successfully`);
+      } catch (err) {
+        console.error(`[RobustChart] ❌ Error setting candlestick data:`, err);
+        console.error(`[RobustChart] Problem candles:`, candleData);
+        throw err;
+      }
+      
+      try {
+        volumeSeries.setData(volumeData);
+        console.log(`[RobustChart] ✅ Volume data set successfully`);
+      } catch (err) {
+        console.error(`[RobustChart] ❌ Error setting volume data:`, err);
+        console.error(`[RobustChart] Problem volumes:`, volumeData);
+        throw err;
+      }
 
       // Fit content
       chart.timeScale().fitContent();
