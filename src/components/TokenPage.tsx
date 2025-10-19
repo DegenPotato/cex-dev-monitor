@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check } from 'lucide-react';
+import { TrendingUp, TrendingDown, ExternalLink, Clock, DollarSign, BarChart3, Copy, Check, Play, Trash2, RefreshCw } from 'lucide-react';
 import { apiUrl, config } from '../config';
 
 interface TokenData {
@@ -50,6 +50,11 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
+  
+  // OHLCV Test state
+  const [testStatus, setTestStatus] = useState<any>(null);
+  const [testRunning, setTestRunning] = useState(false);
+  const [showTestPanel, setShowTestPanel] = useState(false);
 
   // Fetch token data
   useEffect(() => {
@@ -90,6 +95,73 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
     fetchOHLCV();
   }, [address, timeframe]);
+
+  // Fetch test status
+  const fetchTestStatus = async () => {
+    if (!address) return;
+    try {
+      const response = await fetch(apiUrl(`/api/ohlcv/test-status/${address}`));
+      const data = await response.json();
+      setTestStatus(data);
+    } catch (error) {
+      console.error('Error fetching test status:', error);
+    }
+  };
+
+  // Auto-fetch test status when panel is open
+  useEffect(() => {
+    if (showTestPanel && address) {
+      fetchTestStatus();
+      const interval = setInterval(fetchTestStatus, 3000); // Poll every 3 seconds
+      return () => clearInterval(interval);
+    }
+  }, [showTestPanel, address]);
+
+  // Run OHLCV test
+  const runTest = async () => {
+    if (!address) return;
+    setTestRunning(true);
+    try {
+      const response = await fetch(apiUrl(`/api/ohlcv/test/${address}`), {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      console.log('Test started:', data);
+      
+      // Poll for status updates
+      setTimeout(fetchTestStatus, 2000);
+    } catch (error) {
+      console.error('Error running test:', error);
+      alert('Failed to start test. Check console for details.');
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
+  // Clear test data
+  const clearTestData = async () => {
+    if (!address) return;
+    if (!confirm('Clear all OHLCV data for this token? This cannot be undone.')) return;
+    
+    try {
+      const response = await fetch(apiUrl(`/api/ohlcv/clear/${address}`), {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      console.log('Data cleared:', data);
+      alert(`Cleared: ${data.cleared.candles} candles, ${data.cleared.pools} pools`);
+      
+      // Refresh displays
+      setOhlcv([]);
+      setTestStatus(null);
+      fetchTestStatus();
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      alert('Failed to clear data. Check console for details.');
+    }
+  };
 
   // WebSocket for live updates
   useEffect(() => {
@@ -332,12 +404,131 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
           </div>
         )}
 
+        {/* OHLCV Test Panel */}
+        <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-purple-500/20 shadow-lg shadow-purple-500/10 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              🧪 OHLCV Data Collection Test
+            </h3>
+            <button
+              onClick={() => setShowTestPanel(!showTestPanel)}
+              className="text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              {showTestPanel ? 'Hide' : 'Show'} Controls
+            </button>
+          </div>
+
+          {showTestPanel && (
+            <div className="space-y-4">
+              {/* Control Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={runTest}
+                  disabled={testRunning}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/40 text-green-400 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Play className="w-4 h-4" />
+                  {testRunning ? 'Running...' : 'Run Test'}
+                </button>
+                
+                <button
+                  onClick={clearTestData}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 rounded-lg font-medium transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Clear Data
+                </button>
+                
+                <button
+                  onClick={fetchTestStatus}
+                  className="flex items-center gap-2 px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-400 rounded-lg font-medium transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh Status
+                </button>
+              </div>
+
+              {/* Test Status Display */}
+              {testStatus && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Summary Stats */}
+                  <div className="bg-black/40 rounded-lg p-4 border border-purple-500/20">
+                    <div className="text-purple-400 text-sm font-bold mb-2">Summary</div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Pools:</span>
+                        <span className="text-white font-mono">{testStatus.summary?.totalPools || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Candles:</span>
+                        <span className="text-white font-mono">{testStatus.summary?.totalCandles || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Completed:</span>
+                        <span className="text-white font-mono">
+                          {testStatus.summary?.completedTimeframes || 0}/{testStatus.summary?.totalTimeframes || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pools */}
+                  <div className="bg-black/40 rounded-lg p-4 border border-purple-500/20">
+                    <div className="text-purple-400 text-sm font-bold mb-2">Discovered Pools</div>
+                    <div className="space-y-2 text-xs">
+                      {testStatus.pools?.slice(0, 3).map((pool: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-cyan-400 font-mono">
+                            {pool.pool_address.slice(0, 6)}...
+                          </span>
+                          <span className={`px-2 py-0.5 rounded ${pool.is_primary ? 'bg-cyan-500/20 text-cyan-400' : 'bg-gray-700 text-gray-400'}`}>
+                            {pool.dex}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Progress */}
+                  <div className="bg-black/40 rounded-lg p-4 border border-purple-500/20">
+                    <div className="text-purple-400 text-sm font-bold mb-2">Timeframe Status</div>
+                    <div className="space-y-1 text-xs">
+                      {['1m', '15m', '1h', '4h', '1d'].map(tf => {
+                        const tfProgress = testStatus.progress?.find((p: any) => p.timeframe === tf);
+                        const tfCount = testStatus.candleCounts?.find((c: any) => c.timeframe === tf);
+                        return (
+                          <div key={tf} className="flex items-center justify-between">
+                            <span className="text-gray-400 font-mono">{tf}:</span>
+                            <span className={`font-mono ${tfProgress?.backfill_complete ? 'text-green-400' : 'text-yellow-400'}`}>
+                              {tfCount?.count || 0} candles {tfProgress?.backfill_complete && '✓'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-gray-500 border-t border-purple-500/20 pt-3">
+                <strong>Note:</strong> This test runs OHLCV collection for this token only. 
+                Check server logs for detailed progress. Data appears in the chart below once collected.
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Chart */}
         <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
               Price Chart
+              {ohlcv.length > 0 && (
+                <span className="text-sm text-green-400 font-normal">
+                  ({ohlcv.length} candles loaded)
+                </span>
+              )}
             </h3>
             <div className="flex gap-2">
               {['1m', '15m', '1h', '4h', '1d'].map(tf => (

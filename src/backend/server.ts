@@ -1364,6 +1364,206 @@ app.get('/api/metrics/status', (_req, res) => {
   res.json(metricsCalculator.getStatus());
 });
 
+// OHLCV Test Endpoint - Test single token collection
+app.post('/api/ohlcv/test/:mintAddress', authService.requireSuperAdmin(), async (req, res) => {
+  const { mintAddress } = req.params;
+  
+  try {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`🧪 [OHLCV Test] Starting single token test`);
+    console.log(`Token: ${mintAddress}`);
+    console.log(`Time: ${new Date().toISOString()}`);
+    console.log(`${'='.repeat(60)}\n`);
+    
+    // Get token info
+    const tokenInfo = await queryOne<{ timestamp: number; name: string; symbol: string }>(
+      `SELECT timestamp, name, symbol FROM token_mints WHERE mint_address = ?`,
+      [mintAddress]
+    );
+    
+    if (!tokenInfo) {
+      return res.status(404).json({ error: 'Token not found in database' });
+    }
+    
+    console.log(`📊 [OHLCV Test] Token Info:`, {
+      name: tokenInfo.name,
+      symbol: tokenInfo.symbol,
+      created: new Date(tokenInfo.timestamp).toISOString()
+    });
+    
+    // Respond immediately (processing happens in background)
+    res.json({ 
+      success: true, 
+      message: `Test started for ${mintAddress}. Check logs for progress.`,
+      token: tokenInfo
+    });
+    
+    // Process token in background
+    (async () => {
+      try {
+        await (ohlcvCollector as any).processToken(mintAddress, tokenInfo.timestamp);
+        
+        // Get results
+        const results = await queryAll<any>(`
+          SELECT 
+            pool_address,
+            timeframe,
+            COUNT(*) as candle_count,
+            MIN(timestamp) as oldest_candle,
+            MAX(timestamp) as newest_candle
+          FROM ohlcv_data
+          WHERE mint_address = ?
+          GROUP BY pool_address, timeframe
+        `, [mintAddress]);
+        
+        const progress = await queryAll<any>(`
+          SELECT 
+            pool_address,
+            timeframe,
+            oldest_timestamp,
+            newest_timestamp,
+            backfill_complete,
+            fetch_count,
+            error_count
+          FROM ohlcv_backfill_progress
+          WHERE mint_address = ?
+        `, [mintAddress]);
+        
+        const pools = await queryAll<any>(`
+          SELECT pool_address, dex, volume_24h_usd, is_primary
+          FROM token_pools
+          WHERE mint_address = ?
+        `, [mintAddress]);
+        
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`✅ [OHLCV Test] Test Complete`);
+        console.log(`Pools discovered: ${pools.length}`);
+        console.log(`Candle groups: ${results.length}`);
+        console.log(`Progress entries: ${progress.length}`);
+        console.log(`${'='.repeat(60)}\n`);
+        
+        // Log results
+        console.log(`\n📊 [OHLCV Test] Results:`);
+        console.table(results);
+        console.log(`\n📈 [OHLCV Test] Progress:`);
+        console.table(progress);
+        console.log(`\n🏊 [OHLCV Test] Pools:`);
+        console.table(pools);
+        
+      } catch (error: any) {
+        console.error(`❌ [OHLCV Test] Test failed:`, error);
+        console.error(`Stack:`, error.stack);
+      }
+    })();
+    
+  } catch (error: any) {
+    console.error(`❌ [OHLCV Test] Error starting test:`, error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Clear OHLCV data for a specific token (for test re-runs)
+app.delete('/api/ohlcv/clear/:mintAddress', authService.requireSuperAdmin(), async (req, res) => {
+  const { mintAddress } = req.params;
+  
+  try {
+    console.log(`🗑️ [OHLCV] Clearing data for token: ${mintAddress.slice(0,8)}...`);
+    
+    // Delete OHLCV data
+    const candlesDeleted = await execute(
+      `DELETE FROM ohlcv_data WHERE mint_address = ?`,
+      [mintAddress]
+    );
+    
+    // Delete progress tracking
+    const progressDeleted = await execute(
+      `DELETE FROM ohlcv_backfill_progress WHERE mint_address = ?`,
+      [mintAddress]
+    );
+    
+    // Delete pool data
+    const poolsDeleted = await execute(
+      `DELETE FROM token_pools WHERE mint_address = ?`,
+      [mintAddress]
+    );
+    
+    saveDatabase();
+    
+    console.log(`✅ [OHLCV] Cleared:`);
+    console.log(`   - Candles: ${(candlesDeleted as any)?.changes || 0}`);
+    console.log(`   - Progress: ${(progressDeleted as any)?.changes || 0}`);
+    console.log(`   - Pools: ${(poolsDeleted as any)?.changes || 0}`);
+    
+    res.json({ 
+      success: true,
+      cleared: {
+        candles: (candlesDeleted as any)?.changes || 0,
+        progress: (progressDeleted as any)?.changes || 0,
+        pools: (poolsDeleted as any)?.changes || 0
+      }
+    });
+  } catch (error: any) {
+    console.error(`❌ [OHLCV] Error clearing data:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get OHLCV test status for a token
+app.get('/api/ohlcv/test-status/:mintAddress', async (req, res) => {
+  const { mintAddress } = req.params;
+  
+  try {
+    const pools = await queryAll<any>(`
+      SELECT pool_address, dex, volume_24h_usd, is_primary
+      FROM token_pools
+      WHERE mint_address = ?
+    `, [mintAddress]);
+    
+    const progress = await queryAll<any>(`
+      SELECT 
+        pool_address,
+        timeframe,
+        oldest_timestamp,
+        newest_timestamp,
+        backfill_complete,
+        fetch_count,
+        error_count,
+        last_error
+      FROM ohlcv_backfill_progress
+      WHERE mint_address = ?
+    `, [mintAddress]);
+    
+    const candleCounts = await queryAll<any>(`
+      SELECT 
+        pool_address,
+        timeframe,
+        COUNT(*) as count,
+        MIN(timestamp) as first_candle,
+        MAX(timestamp) as last_candle
+      FROM ohlcv_data
+      WHERE mint_address = ?
+      GROUP BY pool_address, timeframe
+    `, [mintAddress]);
+    
+    res.json({
+      pools,
+      progress,
+      candleCounts,
+      summary: {
+        totalPools: pools.length,
+        totalCandles: candleCounts.reduce((sum: number, c: any) => sum + c.count, 0),
+        completedTimeframes: progress.filter((p: any) => p.backfill_complete).length,
+        totalTimeframes: progress.length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // One-time migration to create OHLCV tables (if they don't exist)
 app.post('/api/ohlcv/init-tables', async (_req, res) => {
   try {
