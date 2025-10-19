@@ -1587,16 +1587,20 @@ app.get('/api/ohlcv/test-status/:mintAddress', async (req, res) => {
       GROUP BY pool_address, timeframe
     `, [mintAddress]);
     
+    const summary = {
+      totalPools: pools?.length || 0,
+      totalCandles: candleCounts?.reduce((sum: number, c: any) => sum + (c.count || 0), 0) || 0,
+      completedTimeframes: progress?.filter((p: any) => p.backfill_complete)?.length || 0,
+      totalTimeframes: progress?.length || 0
+    };
+
+    console.log(`📊 [OHLCV Test Status] ${mintAddress.slice(0,8)}... - Pools: ${summary.totalPools}, Candles: ${summary.totalCandles}`);
+
     res.json({
-      pools,
-      progress,
-      candleCounts,
-      summary: {
-        totalPools: pools.length,
-        totalCandles: candleCounts.reduce((sum: number, c: any) => sum + c.count, 0),
-        completedTimeframes: progress.filter((p: any) => p.backfill_complete).length,
-        totalTimeframes: progress.length
-      }
+      pools: pools || [],
+      progress: progress || [],
+      candleCounts: candleCounts || [],
+      summary
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

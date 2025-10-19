@@ -88,7 +88,9 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
     const fetchOHLCV = async () => {
       try {
-        const response = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`));
+        const response = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`), {
+          credentials: 'include'
+        });
         const data = await response.json();
         
         // New format includes candles, migration info, and pools
@@ -112,11 +114,20 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const fetchTestStatus = async () => {
     if (!address) return;
     try {
-      const response = await fetch(apiUrl(`/api/ohlcv/test-status/${address}`));
-      const data = await response.json();
-      setTestStatus(data);
+      const response = await fetch(apiUrl(`/api/ohlcv/test-status/${address}`), {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[TokenPage] Test status received:', data);
+        setTestStatus(data);
+      } else {
+        console.error('Test status response not ok:', response.status);
+        setTestStatus(null);
+      }
     } catch (error) {
       console.error('Error fetching test status:', error);
+      setTestStatus(null);
     }
   };
 
@@ -155,11 +166,17 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
         const interval = setInterval(async () => {
           await fetchTestStatus();
           // Also refresh OHLCV data to show new candles
-          const ohlcvResponse = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`));
+          const ohlcvResponse = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`), {
+            credentials: 'include'
+          });
           const data = await ohlcvResponse.json();
+          console.log('[TokenPage] OHLCV data refreshed:', data);
           if (data.candles) {
             setOhlcv(data.candles);
             setMigration(data.migration);
+          } else if (Array.isArray(data)) {
+            // Fallback for old format
+            setOhlcv(data);
           }
         }, 3000);
         

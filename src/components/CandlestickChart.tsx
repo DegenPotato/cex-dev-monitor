@@ -33,7 +33,10 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (!chartContainerRef.current) {
+      console.warn('[CandlestickChart] Container ref not ready');
+      return;
+    }
 
     // Create chart
     const chart = createChart(chartContainerRef.current, {
@@ -127,32 +130,43 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
 
   useEffect(() => {
     if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
+    
+    // Debug log
+    console.log('[CandlestickChart] Raw data:', data);
 
     // Convert data to candlestick format
     const candleData: CandlestickData[] = data
+      .filter(candle => candle && candle.timestamp && candle.open && candle.high && candle.low && candle.close)
       .map(candle => ({
         time: candle.timestamp as any, // Unix timestamp
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
+        open: Number(candle.open),
+        high: Number(candle.high),
+        low: Number(candle.low),
+        close: Number(candle.close),
       }))
       .sort((a, b) => (a.time as number) - (b.time as number));
+    
+    console.log('[CandlestickChart] Processed candle data:', candleData);
 
     // Convert volume data
     const volumeData = data
+      .filter(candle => candle && candle.timestamp && candle.volume !== undefined)
       .map(candle => ({
         time: candle.timestamp as any,
-        value: candle.volume,
+        value: Number(candle.volume),
         color: candle.close >= candle.open 
           ? 'rgba(16, 185, 129, 0.3)' 
           : 'rgba(239, 68, 68, 0.3)',
       }))
       .sort((a, b) => (a.time as number) - (b.time as number));
 
-    // Set data
-    candleSeriesRef.current.setData(candleData);
-    volumeSeriesRef.current.setData(volumeData);
+    // Set data only if we have valid data
+    if (candleData.length > 0) {
+      candleSeriesRef.current.setData(candleData);
+      volumeSeriesRef.current.setData(volumeData);
+    } else {
+      console.warn('[CandlestickChart] No valid candle data to display');
+    }
 
     // Add migration marker if available
     if (migration?.completed_at && chartRef.current) {
