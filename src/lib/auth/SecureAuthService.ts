@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { queryOne, execute } from '../../backend/database/helpers.js';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -12,6 +13,8 @@ interface UserData {
   email?: string;
   referral_code?: string;
   last_login?: string;
+  login_count?: number;
+  google_account_linked?: number;
   created_at?: string;
 }
 
@@ -205,6 +208,98 @@ class SecureAuthService {
   }
 
   /**
+   * Hash token for storage (SHA-256)
+   */
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Create session record in database
+   */
+  async createSession(
+    userId: number,
+    refreshToken: string,
+    req: Request,
+    expiresAt: Date
+  ): Promise<void> {
+    try {
+      const tokenHash = this.hashToken(refreshToken);
+      const deviceInfo = req.headers['user-agent'] || 'Unknown';
+      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || 
+                       req.socket.remoteAddress ||
+                       'Unknown';
+
+      await execute(
+        `INSERT INTO user_sessions (user_id, token_hash, device_info, ip_address, expires_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, tokenHash, deviceInfo, ipAddress, expiresAt.toISOString()]
+      );
+
+      console.log('[SecureAuth] ✅ Session created for user:', userId);
+    } catch (error: any) {
+      console.error('[SecureAuth] ⚠️ Failed to create session:', error.message);
+      // Don't fail auth if session creation fails
+    }
+  }
+
+  /**
+   * Update login tracking (last_login, login_count)
+   */
+  async updateLoginTracking(userId: number): Promise<void> {
+    try {
+      await execute(
+        `UPDATE users 
+         SET last_login = CURRENT_TIMESTAMP,
+             login_count = COALESCE(login_count, 0) + 1,
+             last_activity = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE id = ?`,
+        [userId]
+      );
+      console.log('[SecureAuth] ✅ Updated login tracking for user:', userId);
+    } catch (error: any) {
+      console.error('[SecureAuth] ⚠️ Failed to update login tracking:', error.message);
+    }
+  }
+
+  /**
+   * Revoke session by token hash
+   */
+  async revokeSession(tokenHash: string): Promise<void> {
+    try {
+      await execute(
+        'DELETE FROM user_sessions WHERE token_hash = ?',
+        [tokenHash]
+      );
+      console.log('[SecureAuth] ✅ Session revoked');
+    } catch (error: any) {
+      console.error('[SecureAuth] ⚠️ Failed to revoke session:', error.message);
+    }
+  }
+
+  /**
+   * Clean up expired sessions and challenges
+   */
+  async cleanupExpiredRecords(): Promise<void> {
+    try {
+      // Clean expired sessions
+      await execute(
+        `DELETE FROM user_sessions WHERE expires_at < datetime('now')`
+      );
+      
+      // Clean expired and used challenges
+      await execute(
+        `DELETE FROM auth_challenges WHERE expires_at < datetime('now') OR used = 1`
+      );
+
+      console.log('[SecureAuth] 🧹 Cleanup complete');
+    } catch (error: any) {
+      console.error('[SecureAuth] ⚠️ Cleanup failed:', error.message);
+    }
+  }
+
+  /**
    * Get user by wallet address
    */
   async getUserByWallet(walletAddress: string, updateLastLogin = false): Promise<UserData | null> {
@@ -230,18 +325,9 @@ class SecureAuthService {
 
       console.log('[SecureAuth] ✅ User found:', { id: user.id, username: user.username, role: user.role });
 
-      // Update last_login if requested
+      // Update login tracking if requested
       if (updateLastLogin) {
-        try {
-          await execute(
-            'UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-            [user.id]
-          );
-          console.log('[SecureAuth] ✅ Updated last_login for user:', user.username);
-        } catch (updateError: any) {
-          console.error('[SecureAuth] ⚠️ Failed to update last_login:', updateError.message);
-          // Don't fail authentication if update fails
-        }
+        await this.updateLoginTracking(user.id);
       }
 
       return user;

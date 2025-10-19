@@ -35,6 +35,7 @@ import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
+import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -2162,6 +2163,11 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);
+  
+  // Initialize auth maintenance service (cleanup expired sessions/challenges every 30 mins)
+  const authMaintenance = new AuthMaintenanceService();
+  authMaintenance.start(30);
+  console.log(`🔧 Auth maintenance service started`);
   
   // DISABLED auto-start - use manual controls
   console.log(`⏸️  Auto-start DISABLED - Use /api/monitoring/start to begin`);

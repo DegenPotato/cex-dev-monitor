@@ -137,6 +137,13 @@ router.post('/', async (req, res) => {
     const accessToken = authService.generateAccessToken(user);
     const refreshToken = authService.generateRefreshToken(user);
 
+    // Create session record in database
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await authService.createSession(user.id, refreshToken, req, refreshTokenExpiry);
+
+    // Update login tracking (last_login, login_count)
+    await authService.updateLoginTracking(user.id);
+
     // Set secure cookies
     authService.setSecureCookies(res, accessToken, refreshToken);
 
