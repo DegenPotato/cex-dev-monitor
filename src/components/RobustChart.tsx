@@ -140,9 +140,9 @@ const RobustChart: React.FC<RobustChartProps> = ({
         },
       });
 
-      // Set data - IMPORTANT: lightweight-charts expects timestamps in SECONDS, not milliseconds
+      // Set data - timestamps from OHLCV are already in seconds (Unix timestamp)
       const candleData = validData.map(candle => ({
-        time: Math.floor(candle.timestamp / 1000) as any, // Convert ms to seconds
+        time: Math.floor(candle.timestamp) as any, // Already in seconds from GeckoTerminal
         open: candle.open,
         high: candle.high,
         low: candle.low,
@@ -150,12 +150,18 @@ const RobustChart: React.FC<RobustChartProps> = ({
       }));
 
       const volumeData = validData.map(candle => ({
-        time: Math.floor(candle.timestamp / 1000) as any, // Convert ms to seconds
+        time: Math.floor(candle.timestamp) as any, // Already in seconds from GeckoTerminal
         value: candle.volume,
         color: candle.close >= candle.open 
           ? 'rgba(16, 185, 129, 0.3)' 
           : 'rgba(239, 68, 68, 0.3)',
       }));
+
+      // Debug: Log first and last candles
+      if (candleData.length > 0) {
+        console.log(`[RobustChart] First candle:`, candleData[0], new Date(candleData[0].time * 1000).toISOString());
+        console.log(`[RobustChart] Last candle:`, candleData[candleData.length - 1], new Date(candleData[candleData.length - 1].time * 1000).toISOString());
+      }
 
       candleSeries.setData(candleData);
       volumeSeries.setData(volumeData);
