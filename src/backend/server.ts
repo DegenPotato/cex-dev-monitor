@@ -1407,6 +1407,71 @@ app.get('/api/metrics/status', (_req, res) => {
   res.json(metricsCalculator.getStatus());
 });
 
+// OHLCV Fetch Test - Fetch candles without saving to database
+app.post('/api/ohlcv/fetch-test/:mintAddress', authService.requireSuperAdmin(), async (req, res) => {
+  const { mintAddress } = req.params;
+  const { timeframe, limit } = req.body;
+  
+  try {
+    console.log(`🧪 [OHLCV Fetch Test] Fetching ${limit || 1000} candles for ${mintAddress} (${timeframe})`);
+    
+    // Get token info to find pools
+    const pools = await queryAll<any>(
+      `SELECT pool_address, dex FROM token_pools WHERE mint_address = ? ORDER BY is_primary DESC`,
+      [mintAddress]
+    );
+    
+    if (pools.length === 0) {
+      return res.status(404).json({ error: 'No pools found for this token' });
+    }
+    
+    const primaryPool = pools[0];
+    console.log(`🎯 [OHLCV Fetch Test] Using pool: ${primaryPool.pool_address} (${primaryPool.dex})`);
+    
+    // Fetch OHLCV data directly from GeckoTerminal without saving
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${primaryPool.pool_address}/ohlcv/${timeframe}?limit=${limit || 1000}&aggregate=1`;
+    
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`GeckoTerminal API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const ohlcvArray = data?.data?.attributes?.ohlcv_list || [];
+    
+    // Parse OHLCV data: [timestamp, open, high, low, close, volume]
+    const candles = ohlcvArray.map((candle: any[]) => ({
+      timestamp: candle[0],
+      open: parseFloat(candle[1]),
+      high: parseFloat(candle[2]),
+      low: parseFloat(candle[3]),
+      close: parseFloat(candle[4]),
+      volume: parseFloat(candle[5] || '0')
+    }));
+    
+    console.log(`✅ [OHLCV Fetch Test] Fetched ${candles.length} candles`);
+    
+    res.json({
+      success: true,
+      pool: {
+        address: primaryPool.pool_address,
+        dex: primaryPool.dex
+      },
+      timeframe,
+      count: candles.length,
+      candles,
+      rawResponse: data
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [OHLCV Fetch Test] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // OHLCV Test Endpoint - Test single token collection
 app.post('/api/ohlcv/test/:mintAddress', authService.requireSuperAdmin(), async (req, res) => {
   const { mintAddress } = req.params;
