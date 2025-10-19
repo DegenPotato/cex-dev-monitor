@@ -20,6 +20,52 @@ export class MarketDataTracker {
   }
 
   /**
+   * Detect Raydium pool for a graduated token
+   */
+  private async detectRaydiumPool(mintAddress: string): Promise<string | null> {
+    try {
+      const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mintAddress}?include=top_pools`;
+      
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      const relationships = data?.data?.relationships;
+      const included = data?.included || [];
+      
+      const topPoolData = relationships?.top_pools?.data;
+      if (!topPoolData || topPoolData.length === 0) {
+        return null;
+      }
+      
+      // Find first Raydium pool
+      for (const poolRef of topPoolData) {
+        const poolId = poolRef.id; // Format: "solana_POOL_ADDRESS"
+        if (!poolId) continue;
+        
+        const poolAddress = poolId.replace('solana_', '');
+        const poolDetails = included.find((item: any) => item.id === poolId);
+        const dexId = poolDetails?.attributes?.dex_id;
+        
+        // Return first Raydium pool found
+        if (dexId === 'raydium') {
+          return poolAddress;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`❌ [MarketData] Error detecting Raydium pool for ${mintAddress.slice(0, 8)}...:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Start polling for market data
    */
   start() {
@@ -111,6 +157,15 @@ export class MarketDataTracker {
           }
           if (data.symbol && !token.symbol) {
             updates.symbol = data.symbol;
+          }
+
+          // If token just graduated, detect and store the Raydium pool address
+          if (data.launchpadCompleted && !token.migrated_pool_address) {
+            const raydiumPool = await this.detectRaydiumPool(token.mint_address);
+            if (raydiumPool) {
+              updates.migrated_pool_address = raydiumPool;
+              console.log(`🎓 [MarketData] Token ${token.mint_address.slice(0, 8)}... graduated! Raydium pool: ${raydiumPool.slice(0, 8)}...`);
+            }
           }
 
           await TokenMintProvider.update(token.mint_address, updates);
