@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, ColorType } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, CandlestickData, ColorType, LineStyle, LineWidth } from 'lightweight-charts';
 
 interface OHLCVData {
   timestamp: number;
@@ -18,7 +18,7 @@ interface MigrationData {
 
 interface CandlestickChartProps {
   data: OHLCVData[];
-  migration?: MigrationData;
+  migration?: MigrationData | null;
   height?: number;
 }
 
@@ -72,7 +72,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     chartRef.current = chart;
 
     // Add candlestick series
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = (chart as any).addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -84,7 +84,7 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
     candleSeriesRef.current = candleSeries;
 
     // Add volume series
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = (chart as any).addHistogramSeries({
       color: 'rgba(6, 182, 212, 0.3)',
       priceFormat: {
         type: 'volume',
@@ -159,8 +159,8 @@ const CandlestickChart: React.FC<CandlestickChartProps> = ({
       const migrationLine = {
         price: 0,
         color: '#fbbf24',
-        lineWidth: 2,
-        lineStyle: 2, // Dashed
+        lineWidth: 2 as LineWidth,
+        lineStyle: LineStyle.Dashed,
         axisLabelVisible: false,
         title: '🎓 Graduated to Raydium',
       };
