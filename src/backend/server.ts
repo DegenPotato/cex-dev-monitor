@@ -1428,8 +1428,28 @@ app.post('/api/ohlcv/fetch-test/:mintAddress', authService.requireSuperAdmin(), 
     const primaryPool = pools[0];
     console.log(`🎯 [OHLCV Fetch Test] Using pool: ${primaryPool.pool_address} (${primaryPool.dex})`);
     
+    // Map our timeframe format to GeckoTerminal's format
+    const timeframeMap: Record<string, string> = {
+      '1m': 'minute',
+      '5m': 'minute',
+      '15m': 'minute',
+      '1h': 'hour',
+      '4h': 'hour',
+      '1d': 'day'
+    };
+    
+    const geckoTimeframe = timeframeMap[timeframe] || 'hour';
+    console.log(`🔄 [OHLCV Fetch Test] Timeframe mapping: ${timeframe} → ${geckoTimeframe}`);
+    
+    // Calculate aggregate value based on timeframe
+    // GeckoTerminal returns 1-minute candles for 'minute', we aggregate them
+    let aggregate = 1;
+    if (timeframe === '5m') aggregate = 5;
+    else if (timeframe === '15m') aggregate = 15;
+    else if (timeframe === '4h') aggregate = 4;
+    
     // Fetch OHLCV data directly from GeckoTerminal without saving
-    const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${primaryPool.pool_address}/ohlcv/${timeframe}?limit=${limit || 1000}&aggregate=1`;
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${primaryPool.pool_address}/ohlcv/${geckoTimeframe}?limit=${limit || 1000}&aggregate=${aggregate}`;
     
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' }
