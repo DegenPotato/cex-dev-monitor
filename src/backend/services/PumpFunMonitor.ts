@@ -662,6 +662,25 @@ export class PumpFunMonitor extends EventEmitter {
             console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... graduated, detected pool: ${migratedPoolAddress.slice(0, 8)}...`);
           }
         }
+        
+        // Create TokenPool entry for OHLCV tracking
+        if (migratedPoolAddress) {
+          await TokenPoolProvider.create({
+            mint_address: mintAddress,
+            pool_address: migratedPoolAddress,
+            pool_name: `${tokenInfo.symbol}/SOL`,
+            dex: 'raydium',
+            base_token: mintAddress,
+            quote_token: 'So11111111111111111111111111111111111111112', // Wrapped SOL
+            volume_24h_usd: tokenInfo.volumeUsd24h,
+            liquidity_usd: tokenInfo.totalReserveUsd,
+            price_usd: tokenInfo.priceUsd,
+            is_primary: 1, // Mark as primary pool
+            discovered_at: Date.now(),
+            last_verified: Date.now()
+          });
+          console.log(`✅ [PumpFun] Created pool entry for OHLCV tracking: ${migratedPoolAddress.slice(0, 8)}...`);
+        }
       }
 
       await TokenMintProvider.create({
