@@ -318,7 +318,7 @@ export function Dashboard() {
       
       {/* Settings Overlay */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-start justify-center overflow-y-auto p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-start justify-center overflow-y-auto p-4">
           <div className="w-full max-w-6xl bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/30 shadow-2xl shadow-cyan-500/20 my-8">
             <div className="flex items-center justify-between p-6 border-b border-cyan-500/20">
               <h2 className="text-2xl font-bold text-cyan-400">Settings & Configuration</h2>
@@ -565,7 +565,7 @@ export function Dashboard() {
 
       {/* Token Detail Overlay */}
       {selectedTokenAddress && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[10000] overflow-y-auto">
           <div className="min-h-screen flex items-start justify-center p-4 py-8">
             <div className="w-full max-w-7xl relative">
               {/* Token Page Content with Close Button */}
