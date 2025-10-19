@@ -8,6 +8,7 @@
     "dev:frontend": "vite",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "NODE_OPTIONS='--max-old-space-size=2048' tsc && vite build",
+    "build:backend": "tsc",
     "preview": "vite preview"
   },
   "dependencies": {
