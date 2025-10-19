@@ -208,7 +208,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticating(true);
 
         try {
-            const SECRET_CODE = 'J3m03d3rskutj3';
+            const SECRET_CODE = 'SNIFFAGENCY';
             
             if (code !== SECRET_CODE) {
                 console.log('❌ [Auth] Invalid access code');

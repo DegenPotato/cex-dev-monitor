@@ -5,7 +5,7 @@ Alternative authentication method for testing Matrix Skynet in VR without wallet
 
 ## Access Code
 ```
-J3m03d3rskutj3
+SNIFFAGENCY
 ```
 
 ## How It Works
@@ -25,7 +25,7 @@ J3m03d3rskutj3
 
 **Secret Code Flow:**
 1. Click "🔑 ENTER ACCESS CODE"
-2. Enter secret code: `J3m03d3rskutj3`
+2. Enter secret code: `SNIFFAGENCY`
 3. Press Enter or click "✅ VERIFY & ENTER"
 4. Instant super_admin access granted
 
@@ -151,7 +151,7 @@ const verified = speakeasy.totp.verify({
 ### Role-Based Codes
 ```typescript
 const CODE_ROLES = {
-  'J3m03d3rskutj3': 'super_admin',    // Full access
+  'SNIFFAGENCY': 'super_admin',    // Full access
   'T3stC0d3': 'admin',                 // Limited admin
   'Gu3stC0d3': 'agent'                 // Read-only
 };
@@ -162,7 +162,7 @@ const CODE_ROLES = {
 ### Manual Test
 1. Navigate to landing page
 2. Click "🔑 ENTER ACCESS CODE"
-3. Enter: `J3m03d3rskutj3`
+3. Enter: `SNIFFAGENCY`
 4. Verify access granted with super_admin role
 5. Check all Matrix nodes are accessible
 6. Test Account Manager node
