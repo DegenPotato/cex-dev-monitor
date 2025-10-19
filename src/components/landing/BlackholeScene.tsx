@@ -13,9 +13,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAudio } from '../../contexts/AudioContext';
-import { useYouTubeAudio } from '../../contexts/YouTubeAudioContext';
 import { ExperienceModeToggle } from '../hud/ExperienceModeToggle';
-import { Youtube, Play, Pause, SkipForward, SkipBack, Volume2 } from 'lucide-react';
+import { UnifiedMusicController } from '../UnifiedMusicController';
 
 interface BlackholeSceneProps {
     onEnter: (universe?: string) => void;
@@ -458,6 +457,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isQuantumTunneling, setIsQuantumTunneling] = useState(false);
     const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
+    const [audioInitialized, setAudioInitialized] = useState(false);
     const velocities = useRef<THREE.Vector3[]>([]);
     
     // Wallet & Auth
@@ -470,19 +470,6 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
         distortionEnabled,
         toggleDistortion
     } = useAudio();
-    const { 
-        isPlaying, 
-        currentVideo, 
-        volume, 
-        setVolume,
-        play: playAudio, 
-        pause: pauseAudio,
-        skip,
-        previous,
-        isAuthenticated: isYouTubeSignedIn,
-        userEmail,
-        signIn: signInYouTube
-    } = useYouTubeAudio();
     const [showCodeEntry, setShowCodeEntry] = useState(false);
     const [accessCode, setAccessCode] = useState('');
     const [codeError, setCodeError] = useState(false);
@@ -504,17 +491,49 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
     const whiteHolePassRef = useRef<any>(null);
 
 
+    // Initialize audio on first user interaction
+    const initAudioOnInteraction = useCallback(() => {
+        if (!audioInitialized) {
+            console.log('🎵 First interaction detected - initializing audio...');
+            initializeAudio()
+                .then(() => {
+                    console.log('✅ Audio initialized successfully');
+                    setAudioInitialized(true);
+                })
+                .catch(err => {
+                    console.error('❌ Failed to initialize audio:', err);
+                });
+        }
+    }, [audioInitialized, initializeAudio]);
+
+    // Add event listener for first interaction
+    useEffect(() => {
+        const handleFirstInteraction = () => {
+            initAudioOnInteraction();
+        };
+
+        // Listen for any user interaction
+        window.addEventListener('click', handleFirstInteraction, { once: true });
+        window.addEventListener('keydown', handleFirstInteraction, { once: true });
+        window.addEventListener('touchstart', handleFirstInteraction, { once: true });
+
+        return () => {
+            window.removeEventListener('click', handleFirstInteraction);
+            window.removeEventListener('keydown', handleFirstInteraction);
+            window.removeEventListener('touchstart', handleFirstInteraction);
+        };
+    }, [initAudioOnInteraction]);
+
     const handleEnterClick = useCallback(() => {
         if(isTransitioning) return;
         
-        // Initialize audio on first user interaction (essential for browser autoplay policies)
-        console.log('🎵 User interaction detected - initializing audio...');
-        initializeAudio().catch(err => {
-            console.error('❌ Failed to initialize audio:', err);
-        });
+        // Audio should already be initialized on first interaction
+        if (!audioInitialized) {
+            initAudioOnInteraction();
+        }
         
         setIsTransitioning(true);
-    }, [isTransitioning, initializeAudio]);
+    }, [isTransitioning, audioInitialized, initAudioOnInteraction]);
 
     const toggleFullscreen = useCallback(() => {
         if (!document.fullscreenElement) {
@@ -1497,70 +1516,9 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
                                 </div>
                             )}
 
-                            {/* YouTube Music Controls */}
+                            {/* Unified Music Controls */}
                             <div className="mb-3 border-t border-cyan-500/20 pt-3">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Youtube className="w-4 h-4 text-red-500" />
-                                        <span className="text-xs text-gray-500">MUSIC</span>
-                                    </div>
-                                    {!isYouTubeSignedIn && (
-                                        <button
-                                            onClick={signInYouTube}
-                                            className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-                                        >
-                                            Connect
-                                        </button>
-                                    )}
-                                    {isYouTubeSignedIn && userEmail && (
-                                        <span className="text-xs text-green-400">{userEmail}</span>
-                                    )}
-                                </div>
-                                
-                                {currentVideo && (
-                                    <div className="mb-2">
-                                        <div className="text-xs text-cyan-100 truncate">{currentVideo.title}</div>
-                                    </div>
-                                )}
-                                
-                                {/* Player Controls */}
-                                <div className="flex items-center justify-center gap-2 mb-2">
-                                    <button 
-                                        onClick={previous}
-                                        className="p-1.5 hover:bg-cyan-500/20 rounded transition-colors text-cyan-400"
-                                    >
-                                        <SkipBack className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                        onClick={isPlaying ? pauseAudio : playAudio}
-                                        className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 rounded-full transition-colors text-cyan-400 border border-cyan-500/40"
-                                    >
-                                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                    </button>
-                                    <button 
-                                        onClick={skip}
-                                        className="p-1.5 hover:bg-cyan-500/20 rounded transition-colors text-cyan-400"
-                                    >
-                                        <SkipForward className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
-                                
-                                {/* Volume Control */}
-                                <div className="flex items-center gap-2">
-                                    <Volume2 className="w-3 h-3 text-cyan-400" />
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        value={volume}
-                                        onChange={(e) => setVolume(parseInt(e.target.value))}
-                                        className="flex-1 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer 
-                                                 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 
-                                                 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:bg-cyan-400 
-                                                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
-                                    />
-                                    <span className="text-cyan-400 text-xs w-8 text-right">{volume}%</span>
-                                </div>
+                                <UnifiedMusicController compact={true} />
                             </div>
                             
                             {/* Disconnect Button */}
