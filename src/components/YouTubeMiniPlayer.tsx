@@ -97,9 +97,9 @@ export function YouTubeMiniPlayer() {
     }
   };
 
-  const onPlayerStateChange = (event: any) => {
+  const onPlayerStateChange = (_event: any) => {
     if (!window.YT) return;
-    // Sync with context state if needed
+    // Player state is managed by context
   };
 
   const handleSearch = async () => {
@@ -163,16 +163,24 @@ export function YouTubeMiniPlayer() {
           <span className="text-cyan-400 font-semibold">YouTube Music</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleAuthClick}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-              isSignedIn 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/40' 
-                : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
-            }`}
-          >
-            {isSignedIn ? 'Connected' : 'Connect'}
-          </button>
+          {isSignedIn && userEmail ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-green-400">{userEmail}</span>
+              <button
+                onClick={handleAuthClick}
+                className="px-3 py-1 rounded-lg text-xs font-medium transition-all bg-red-500/20 text-red-400 border border-red-500/40"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAuthClick}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition-all bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+            >
+              Connect
+            </button>
+          )}
           <button
             onClick={() => setIsMinimized(!isMinimized)}
             className="p-1.5 hover:bg-cyan-500/20 rounded-lg transition-colors text-cyan-400"
