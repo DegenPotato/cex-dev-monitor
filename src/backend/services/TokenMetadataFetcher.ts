@@ -26,6 +26,7 @@ export class TokenMetadataFetcher {
     launchpadGraduationPercentage?: number;
     launchpadCompleted?: boolean;
     launchpadCompletedAt?: string | null;
+    migratedDestinationPoolAddress?: string | null;
     totalSupply?: string;
     marketCapUsd?: number;
     coingeckoCoinId?: string | null;
@@ -101,6 +102,7 @@ export class TokenMetadataFetcher {
         launchpadGraduationPercentage: attributes.launchpad_details?.graduation_percentage || undefined,
         launchpadCompleted: attributes.launchpad_details?.completed || false,
         launchpadCompletedAt: attributes.launchpad_details?.completed_at || null,
+        migratedDestinationPoolAddress: attributes.launchpad_details?.migrated_destination_pool_address || null,
         totalSupply: attributes.normalized_total_supply || attributes.total_supply || undefined,
         marketCapUsd: attributes.market_cap_usd ? parseFloat(attributes.market_cap_usd) : undefined,
         coingeckoCoinId: attributes.coingecko_coin_id || null,
