@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { Stats } from '../types';
-import { config, apiUrl } from '../config';
+import { config } from '../config';
 import { SettingsPanel } from './SettingsPanel';
 import { WalletMonitoringTabs } from './WalletMonitoringTabs';
 import { RecentTokenMints } from './RecentTokenMints';
@@ -67,7 +66,6 @@ function SoundReactiveGlow({ analyser }: { analyser: AnalyserNode | null }) {
 }
 
 export function Dashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
   const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
@@ -76,7 +74,7 @@ export function Dashboard() {
   const starsCanvasRef = useRef<HTMLCanvasElement>(null);
   const vortexCanvasRef = useRef<HTMLCanvasElement>(null);
   
-  const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
+  const { isConnected } = useWebSocket(`${config.wsUrl}/ws`);
   const { user, isAuthenticated, logout } = useAuth();
   const { publicKey } = useWallet();
   const { getAudioAnalyzer } = useAudio();
@@ -88,14 +86,6 @@ export function Dashboard() {
   const isSuperAdmin = user?.role === 'super_admin';
   const hasAccess = isAuthenticated && isSuperAdmin;
 
-  useEffect(() => {
-    // Only fetch data if user has access
-    if (hasAccess) {
-      fetchData();
-      const interval = setInterval(fetchData, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [hasAccess]);
   
   useEffect(() => {
     // Set up vortex animation for non-admins
@@ -250,32 +240,6 @@ export function Dashboard() {
     };
   }, [hasAccess, analyser]);
 
-  useEffect(() => {
-    // Listen for monitoring status updates
-    const unsubStats = subscribe('stats_update', () => {
-      fetchStats();
-    });
-
-    return () => {
-      unsubStats();
-    };
-  }, [subscribe]);
-
-  const fetchData = async () => {
-    await fetchStats();
-  };
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/stats'));
-      const data = await response.json();
-      setStats(data);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
-  
-
   // Show vortex access denied screen for non-super_admins
   if (!hasAccess) {
     return (
@@ -367,7 +331,7 @@ export function Dashboard() {
                 </svg>
               </button>
             </div>
-            <SettingsPanel onUpdate={fetchData} />
+            <SettingsPanel onUpdate={() => {}} />
           </div>
         </div>
       )}
