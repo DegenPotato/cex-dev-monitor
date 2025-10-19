@@ -1518,7 +1518,7 @@ export function BlackholeScene({ onEnter }: BlackholeSceneProps) {
 
                             {/* Unified Music Controls */}
                             <div className="mb-3 border-t border-cyan-500/20 pt-3">
-                                <UnifiedMusicController compact={true} />
+                                <UnifiedMusicController />
                             </div>
                             
                             {/* Disconnect Button */}
