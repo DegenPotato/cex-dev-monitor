@@ -54,7 +54,10 @@ export function MonitoringControls() {
   const handleStart = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/monitoring/start'), { method: 'POST' });
+      const response = await fetch(apiUrl('/api/monitoring/start'), { 
+        method: 'POST',
+        credentials: 'include'
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -75,7 +78,10 @@ export function MonitoringControls() {
   const handleStop = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/monitoring/stop'), { method: 'POST' });
+      const response = await fetch(apiUrl('/api/monitoring/stop'), { 
+        method: 'POST',
+        credentials: 'include'
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -96,7 +102,10 @@ export function MonitoringControls() {
   const handleToggleProxy = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/proxy/toggle'), { method: 'POST' });
+      const response = await fetch(apiUrl('/api/proxy/toggle'), { 
+        method: 'POST',
+        credentials: 'include'
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -116,7 +125,10 @@ export function MonitoringControls() {
   const handleToggleRpcRotation = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/rpc-rotation/toggle'), { method: 'POST' });
+      const response = await fetch(apiUrl('/api/rpc-rotation/toggle'), { 
+        method: 'POST',
+        credentials: 'include'
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -136,7 +148,10 @@ export function MonitoringControls() {
     setLoading(true);
     try {
       const endpoint = status?.ohlcvCollector?.isRunning ? '/api/ohlcv/stop' : '/api/ohlcv/start';
-      const response = await fetch(apiUrl(endpoint), { method: 'POST' });
+      const response = await fetch(apiUrl(endpoint), { 
+        method: 'POST',
+        credentials: 'include' // Include cookies for authentication
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -158,7 +173,10 @@ export function MonitoringControls() {
     setLoading(true);
     try {
       const endpoint = status?.metricsCalculator?.isRunning ? '/api/metrics/stop' : '/api/metrics/start';
-      const response = await fetch(apiUrl(endpoint), { method: 'POST' });
+      const response = await fetch(apiUrl(endpoint), { 
+        method: 'POST',
+        credentials: 'include'
+      });
       const data = await response.json();
       
       if (data.success) {

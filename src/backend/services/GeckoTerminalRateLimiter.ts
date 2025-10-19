@@ -133,4 +133,4 @@ export class GeckoTerminalRateLimiter {
 }
 
 // Global singleton instance
-export const globalGeckoTerminalLimiter = new GeckoTerminalRateLimiter(10); // Very conservative: 10 req/min
+export const globalGeckoTerminalLimiter = new GeckoTerminalRateLimiter(25); // 25 req/min (safe under 30 limit)

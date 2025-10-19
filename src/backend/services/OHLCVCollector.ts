@@ -42,8 +42,8 @@ export class OHLCVCollector {
   ];
   
   // Rate limiting - Global rate limiter handles all pacing
-  private readonly BACKFILL_INTERVAL = 5 * 60 * 1000; // Run backfill every 5 minutes
-  private readonly REQUESTS_PER_MINUTE = 10; // Very conservative GeckoTerminal limit (for display only)
+  private readonly BACKFILL_INTERVAL = 15 * 60 * 1000; // Run backfill every 15 minutes
+  private readonly REQUESTS_PER_MINUTE = 30; // GeckoTerminal limit (for display only)
   private readonly MAX_CANDLES_PER_REQUEST = 1000; // GeckoTerminal max
   private readonly CANDLE_BATCH_SIZE = 100; // Incremental checkpoint interval
   // NOTE: We process ALL tokens every cycle - global rate limiter queues and paces ALL requests automatically
