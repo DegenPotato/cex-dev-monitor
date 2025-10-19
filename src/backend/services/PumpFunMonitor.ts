@@ -710,7 +710,8 @@ export class PumpFunMonitor extends EventEmitter {
         liquidity_usd: tokenInfo.totalReserveUsd,
         price_usd: tokenInfo.priceUsd,
         is_primary: 1, // Pumpfun pool is primary until migration
-        discovered_at: launchTimestamp
+        discovered_at: launchTimestamp,
+        last_verified: launchTimestamp // Set initial verification time
       });
 
       // IMMEDIATELY mark wallet as dev wallet (real-time detection)

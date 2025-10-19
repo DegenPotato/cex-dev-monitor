@@ -114,7 +114,10 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_token_pools_primary ON token_pools(mint_address, is_primary)`,
   
   // Add migrated_pool_address column to token_mints for storing post-migration Raydium pool
-  `ALTER TABLE token_mints ADD COLUMN migrated_pool_address TEXT`
+  `ALTER TABLE token_mints ADD COLUMN migrated_pool_address TEXT`,
+  
+  // Backfill NULL last_verified values (set to discovered_at for existing pools)
+  `UPDATE token_pools SET last_verified = discovered_at WHERE last_verified IS NULL`
 ];
 
 migrations.forEach((sql, i) => {
