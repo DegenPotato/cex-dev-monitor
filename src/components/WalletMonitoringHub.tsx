@@ -46,7 +46,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
   const fetchWallets = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/wallets'));
+      const response = await fetch(apiUrl('/api/wallets'), { credentials: 'include' });
       const data = await response.json();
       setWallets(data);
     } catch (error) {
@@ -79,6 +79,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
       await fetch(apiUrl(`/api/wallets/${address}/toggle`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ is_active: currentState === 1 ? 0 : 1 })
       });
       fetchWallets();
@@ -97,6 +98,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
           fetch(apiUrl(`/api/wallets/${address}/toggle`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ is_active: active ? 1 : 0 })
           })
         )
@@ -114,7 +116,8 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
     
     try {
       await fetch(apiUrl(`/api/wallets/${address}`), {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       fetchWallets();
       onUpdate();
@@ -131,7 +134,8 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
       await Promise.all(
         Array.from(selectedWallets).map(address =>
           fetch(apiUrl(`/api/wallets/${address}`), {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
           })
         )
       );
@@ -150,6 +154,7 @@ export function WalletMonitoringHub({ stats, onUpdate }: WalletMonitoringHubProp
       await fetch(apiUrl('/api/wallets'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           address: newWalletAddress.trim(),
           label: newWalletLabel.trim() || null,
