@@ -8,9 +8,10 @@ import { WalletMonitoringHub } from './WalletMonitoringHub.tsx';
 import { RecentTokenMints } from './RecentTokenMints';
 import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
-import { YouTubeMiniPlayer } from './YouTubeMiniPlayer';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useYouTubeAudio } from '../contexts/YouTubeAudioContext';
+import { Youtube, Play, Pause, SkipForward, SkipBack, Volume2 } from 'lucide-react';
 
 type Tab = 'wallets' | 'tokens' | 'database';
 
@@ -25,6 +26,19 @@ export function Dashboard() {
   const { isConnected, subscribe } = useWebSocket(`${config.wsUrl}/ws`);
   const { user, isAuthenticated, logout } = useAuth();
   const { publicKey } = useWallet();
+  const { 
+    isPlaying, 
+    currentVideo, 
+    volume, 
+    setVolume,
+    play: playAudio, 
+    pause: pauseAudio,
+    skip,
+    previous,
+    isAuthenticated: isYouTubeSignedIn,
+    userEmail,
+    signIn: signInYouTube
+  } = useYouTubeAudio();
   
   const isSuperAdmin = user?.role === 'super_admin';
   const hasAccess = isAuthenticated && isSuperAdmin;
@@ -335,6 +349,72 @@ export function Dashboard() {
                   </div>
                 </div>
               )}
+
+              {/* YouTube Music Controls */}
+              <div className="mb-3 border-t border-cyan-500/20 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Youtube className="w-4 h-4 text-red-500" />
+                    <span className="text-xs text-gray-500">MUSIC</span>
+                  </div>
+                  {!isYouTubeSignedIn && (
+                    <button
+                      onClick={signInYouTube}
+                      className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    >
+                      Connect
+                    </button>
+                  )}
+                  {isYouTubeSignedIn && userEmail && (
+                    <span className="text-xs text-green-400">{userEmail}</span>
+                  )}
+                </div>
+                
+                {currentVideo && (
+                  <div className="mb-2">
+                    <div className="text-xs text-cyan-100 truncate">{currentVideo.title}</div>
+                  </div>
+                )}
+                
+                {/* Player Controls */}
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <button 
+                    onClick={previous}
+                    className="p-1.5 hover:bg-cyan-500/20 rounded transition-colors text-cyan-400"
+                  >
+                    <SkipBack className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={isPlaying ? pauseAudio : playAudio}
+                    className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 rounded-full transition-colors text-cyan-400 border border-cyan-500/40"
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </button>
+                  <button 
+                    onClick={skip}
+                    className="p-1.5 hover:bg-cyan-500/20 rounded transition-colors text-cyan-400"
+                  >
+                    <SkipForward className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                
+                {/* Volume Control */}
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-3 h-3 text-cyan-400" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={volume}
+                    onChange={(e) => setVolume(parseInt(e.target.value))}
+                    className="flex-1 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer 
+                             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 
+                             [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:bg-cyan-400 
+                             [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
+                  />
+                  <span className="text-cyan-400 text-xs w-8 text-right">{volume}%</span>
+                </div>
+              </div>
               
               {/* Disconnect Button */}
               <button
@@ -479,9 +559,6 @@ export function Dashboard() {
           </div>
         )}
       </div>
-      
-      {/* YouTube Mini Player */}
-      <YouTubeMiniPlayer />
     </div>
   );
 }
