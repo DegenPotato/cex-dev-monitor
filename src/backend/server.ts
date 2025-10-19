@@ -1329,8 +1329,9 @@ app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
     const { address, timeframe } = req.params;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
     
+    // Get candles with pool_address to identify which pool each candle belongs to
     const candles = await queryAll(
-      `SELECT timestamp, open, high, low, close, volume 
+      `SELECT pool_address, timestamp, open, high, low, close, volume 
        FROM ohlcv_data 
        WHERE mint_address = ? AND timeframe = ? 
        ORDER BY timestamp ASC
@@ -1338,10 +1339,42 @@ app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
       [address, timeframe, limit]
     );
     
-    res.json(candles || []);
+    // Get token metadata (including migration info)
+    const tokenMeta = await queryOne<{
+      launchpad_completed_at: number | null;
+      migrated_pool_address: string | null;
+    }>(
+      `SELECT launchpad_completed_at, migrated_pool_address 
+       FROM token_mints 
+       WHERE mint_address = ?`,
+      [address]
+    );
+    
+    // Get all pools for this token
+    const pools = await queryAll<{
+      pool_address: string;
+      dex: string;
+      volume_24h_usd: number;
+      is_primary: number;
+    }>(
+      `SELECT pool_address, dex, volume_24h_usd, is_primary 
+       FROM token_pools 
+       WHERE mint_address = ?
+       ORDER BY is_primary DESC`,
+      [address]
+    );
+    
+    res.json({
+      candles: candles || [],
+      migration: {
+        completed_at: tokenMeta?.launchpad_completed_at || null,
+        raydium_pool: tokenMeta?.migrated_pool_address || null
+      },
+      pools: pools || []
+    });
   } catch (error: any) {
     console.error(`Error fetching OHLCV data:`, error);
-    res.json([]);
+    res.json({ candles: [], migration: null, pools: [] });
   }
 });
 
@@ -1411,7 +1444,7 @@ app.post('/api/ohlcv/test/:mintAddress', authService.requireSuperAdmin(), async 
     // Process token in background
     (async () => {
       try {
-        await (ohlcvCollector as any).processToken(mintAddress, tokenInfo.timestamp);
+        await ohlcvCollector.processToken(mintAddress, tokenInfo.timestamp, true);
         
         // Get results
         const results = await queryAll<any>(`

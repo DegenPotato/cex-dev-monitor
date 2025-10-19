@@ -125,8 +125,9 @@ export class OHLCVCollector {
   
   /**
    * Process a single token - fetch pools and backfill all timeframes for each pool
+   * @param forceRun - If true, bypass isRunning check (for testing)
    */
-  private async processToken(mintAddress: string, creationTimestamp: number) {
+  async processToken(mintAddress: string, creationTimestamp: number, forceRun = false) {
     try {
       console.log(`📊 [OHLCV] Processing token ${mintAddress.slice(0, 8)}...`);
       
@@ -139,15 +140,19 @@ export class OHLCVCollector {
       
       console.log(`📊 [OHLCV] Found ${pools.length} pool(s) for ${mintAddress.slice(0, 8)}..., processing timeframes`);
 
-      // Step 2: Process each pool
+      // Step 2: Process each pool (INCLUDING pre-migration pump.fun AND post-migration Raydium)
+      // This ensures we capture the complete trading history:
+      // - Pre-migration: Pump.fun bonding curve data
+      // - Post-migration: Raydium DEX data
+      // Frontend will merge these chronologically with migration marker at launchpad_completed_at
       for (const pool of pools) {
-        if (!this.isRunning) return;
+        if (!forceRun && !this.isRunning) return;
         
         console.log(`📊 [OHLCV] Processing pool ${pool.pool_address.slice(0, 8)}... (${pool.dex || 'unknown'})`);
         
         // Step 3: Process each timeframe for this pool
         for (const timeframe of this.TIMEFRAMES) {
-          if (!this.isRunning) return;
+          if (!forceRun && !this.isRunning) return;
           
           await this.backfillTimeframe(mintAddress, pool.pool_address, timeframe, creationTimestamp);
         }
@@ -186,6 +191,22 @@ export class OHLCVCollector {
     if (existing.length > 0) {
       console.log(`♻️  [Dedup] Using ${existing.length} cached pool(s) for ${mintAddress.slice(0, 8)}...`);
       return existing;
+    }
+    
+    // Check if token has a migrated_pool_address (from pump.fun graduation)
+    const tokenInfo = await queryOne<{ 
+      migrated_pool_address: string | null;
+      launchpad_completed_at: number | null;
+    }>(
+      `SELECT migrated_pool_address, launchpad_completed_at FROM token_mints WHERE mint_address = ?`,
+      [mintAddress]
+    );
+    
+    const migratedPoolAddress = tokenInfo?.migrated_pool_address;
+    const migrationTimestamp = tokenInfo?.launchpad_completed_at;
+    
+    if (migratedPoolAddress) {
+      console.log(`🎓 [OHLCV] Token ${mintAddress.slice(0, 8)}... migrated to Raydium: ${migratedPoolAddress.slice(0, 8)}... at ${migrationTimestamp ? new Date(migrationTimestamp).toISOString() : 'unknown'}`);
     }
     
     // Fetch ALL pools from GeckoTerminal using global rate limiter
@@ -249,12 +270,22 @@ export class OHLCVCollector {
         return [];
       }
       
-      // Sort pools by preference: Raydium first, then by volume
+      // Sort pools by preference (for marking which is "primary" for display)
+      // NOTE: We still collect OHLCV data from ALL pools to ensure complete history
+      // Primary pool priority:
+      // 1. Migrated Raydium pool (for graduated tokens)
+      // 2. Other Raydium pools
+      // 3. Highest volume pools
       pools.sort((a, b) => {
-        // Prefer Raydium
+        // Highest priority: migrated pool address (post-graduation trading)
+        if (migratedPoolAddress) {
+          if (a.pool_address === migratedPoolAddress) return -1;
+          if (b.pool_address === migratedPoolAddress) return 1;
+        }
+        // Then prefer Raydium DEX
         if (a.dex === 'raydium' && b.dex !== 'raydium') return -1;
         if (b.dex === 'raydium' && a.dex !== 'raydium') return 1;
-        // Then by volume
+        // Finally by volume (most active pool)
         return b.volume_24h_usd - a.volume_24h_usd;
       });
       
@@ -290,6 +321,37 @@ export class OHLCVCollector {
         }
       }
       saveDatabase();
+      
+      // If we have a migrated pool but it wasn't found in GeckoTerminal results, add it manually
+      if (migratedPoolAddress && !pools.some(p => p.pool_address === migratedPoolAddress)) {
+        console.log(`⚠️ [OHLCV] Migrated pool ${migratedPoolAddress.slice(0, 8)}... not found in GeckoTerminal, adding manually`);
+        
+        // Check if already exists in database
+        const existingMigrated = await queryOne<{ id: number }>(
+          `SELECT id FROM token_pools WHERE mint_address = ? AND pool_address = ?`,
+          [mintAddress, migratedPoolAddress]
+        );
+        
+        if (!existingMigrated) {
+          await execute(
+            `INSERT INTO token_pools 
+             (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [mintAddress, migratedPoolAddress, 'raydium', 0, 0, 0, 1, Date.now(), Date.now()]
+          );
+          console.log(`✅ [OHLCV] Manually added migrated pool ${migratedPoolAddress.slice(0, 8)}...`);
+          saveDatabase();
+        }
+        
+        // Add to pools array at front (as primary)
+        pools.unshift({
+          pool_address: migratedPoolAddress,
+          dex: 'raydium',
+          volume_24h_usd: 0,
+          liquidity_usd: 0,
+          price_usd: 0
+        });
+      }
       
       console.log(`✅ [OHLCV] Found ${pools.length} pool(s) for ${mintAddress.slice(0, 8)}..., primary: ${pools[0].pool_address.slice(0, 8)}... (${pools[0].dex})`);
       

@@ -87,7 +87,17 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
       try {
         const response = await fetch(apiUrl(`/api/ohlcv/${address}/${timeframe}`));
         const data = await response.json();
-        setOhlcv(data || []);
+        
+        // New format includes candles, migration info, and pools
+        // For now, just use candles array (migration marking can be added later)
+        if (data.candles) {
+          setOhlcv(data.candles);
+          // TODO: Use data.migration.completed_at to mark migration point on chart
+          // TODO: Use data.pools to show which pool each candle is from
+        } else {
+          // Fallback for old format (just array of candles)
+          setOhlcv(data || []);
+        }
       } catch (error) {
         console.error('Error fetching OHLCV:', error);
       }
