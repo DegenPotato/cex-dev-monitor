@@ -1424,9 +1424,12 @@ app.get('/api/indicators/:mintAddress', async (req, res) => {
     const timeframe = req.query.timeframe as string || '1m';
     const limit = parseInt(req.query.limit as string) || 100;
     
+    console.log(`📊 [API] GET /api/indicators/${mintAddress}?timeframe=${timeframe}&limit=${limit}`);
     const indicators = await technicalIndicatorCalculator.getIndicators(mintAddress, timeframe, limit);
+    console.log(`📊 [API] Found ${indicators?.length || 0} historical indicators`);
     res.json(indicators);
   } catch (error: any) {
+    console.error(`📊 [API] Error getting indicators:`, error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1437,9 +1440,12 @@ app.get('/api/indicators/:mintAddress/latest', async (req, res) => {
     const { mintAddress } = req.params;
     const timeframe = req.query.timeframe as string || '1m';
     
+    console.log(`📊 [API] GET /api/indicators/${mintAddress}/latest?timeframe=${timeframe}`);
     const latest = await technicalIndicatorCalculator.getLatestIndicators(mintAddress, timeframe);
+    console.log(`📊 [API] Latest indicators:`, latest ? 'FOUND' : 'NOT FOUND', latest);
     res.json(latest || {});
   } catch (error: any) {
+    console.error(`📊 [API] Error getting latest indicators:`, error);
     res.status(500).json({ error: error.message });
   }
 });
