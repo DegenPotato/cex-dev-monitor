@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/backend/**/*",
+    "src/lib/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/components",
+    "src/contexts",
+    "src/hooks",
+    "src/App.tsx",
+    "src/main.tsx"
+  ]
+}
