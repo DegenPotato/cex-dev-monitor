@@ -19,7 +19,7 @@ export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('wallets');
-  const [isAgentMinimized, setIsAgentMinimized] = useState(false);
+  const [isAgentMinimized, setIsAgentMinimized] = useState(true); // Start minimized
   const [selectedTokenAddress, setSelectedTokenAddress] = useState<string | null>(null);
   const starsCanvasRef = useRef<HTMLCanvasElement>(null);
   const vortexCanvasRef = useRef<HTMLCanvasElement>(null);

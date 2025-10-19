@@ -189,16 +189,17 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
   const isPositive = priceChange !== null && priceChange >= 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+    <div className="min-h-screen bg-black/40 backdrop-blur-xl p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Header */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6">
-          <div className="flex items-center justify-between">
+        <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 p-6 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+          <div className="flex items-center justify-between relative z-10">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">
                 {token.name || 'Unknown Token'}
-                <span className="text-purple-400 ml-3">${token.symbol || 'N/A'}</span>
+                <span className="text-cyan-400 ml-3">${token.symbol || 'N/A'}</span>
               </h1>
               <div className="flex items-center gap-4 text-sm text-gray-400">
                 <div className="flex items-center gap-2">
@@ -206,16 +207,14 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                   <code className="bg-slate-900/50 px-2 py-1 rounded">{token.mint_address.slice(0, 8)}...{token.mint_address.slice(-4)}</code>
                   <button 
                     onClick={() => copyToClipboard(token.mint_address, 'mint')}
-                    className="text-purple-400 hover:text-purple-300"
-                  >
+                    className="text-cyan-400 hover:text-cyan-300">
                     {copied === 'mint' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   </button>
                   <a 
                     href={`https://solscan.io/token/${token.mint_address}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300"
-                  >
+                    className="text-cyan-400 hover:text-cyan-300">
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
@@ -224,16 +223,14 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                   <code className="bg-slate-900/50 px-2 py-1 rounded">{token.creator_address.slice(0, 8)}...{token.creator_address.slice(-4)}</code>
                   <button 
                     onClick={() => copyToClipboard(token.creator_address, 'creator')}
-                    className="text-purple-400 hover:text-purple-300"
-                  >
+                    className="text-cyan-400 hover:text-cyan-300">
                     {copied === 'creator' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   </button>
                   <a 
                     href={`https://solscan.io/account/${token.creator_address}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300"
-                  >
+                    className="text-cyan-400 hover:text-cyan-300">
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
@@ -255,7 +252,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-4">
+          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
             <div className="text-gray-400 text-sm mb-1 flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
               Market Cap
@@ -264,13 +261,13 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             <div className="text-gray-500 text-xs">Start: {formatMcap(token.starting_mcap)}</div>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-4">
+          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
             <div className="text-gray-400 text-sm mb-1">ATH Market Cap</div>
             <div className="text-white text-xl font-bold">{formatMcap(token.ath_mcap)}</div>
             <div className="text-gray-500 text-xs">All-time high</div>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-4">
+          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
             <div className="text-gray-400 text-sm mb-1">Price (SOL)</div>
             <div className="text-white text-xl font-bold">
               {token.price_sol ? token.price_sol.toFixed(8) : 'N/A'} SOL
@@ -278,7 +275,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             <div className="text-gray-500 text-xs">Solana price</div>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-4">
+          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
             <div className="text-gray-400 text-sm mb-1 flex items-center gap-2">
               <Clock className="w-4 h-4" />
               Launch Time
@@ -294,14 +291,14 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
 
         {/* Pump.fun Status */}
         {token.platform === 'pumpfun' && (
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6">
+          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-6">
             <h3 className="text-lg font-bold text-white mb-4">🚀 Pump.fun Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <div className="text-gray-400 text-sm mb-2">Graduation Progress</div>
-                <div className="bg-slate-900/50 rounded-full h-4 overflow-hidden">
+                <div className="bg-black/50 rounded-full h-4 overflow-hidden">
                   <div 
-                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500"
                     style={{ width: `${token.graduation_percentage || 0}%` }}
                   />
                 </div>
@@ -324,7 +321,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                     href={`https://raydium.io/swap/?inputMint=sol&outputMint=${token.mint_address}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 font-mono text-sm"
+                    className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 font-mono text-sm"
                   >
                     {token.migrated_pool_address.slice(0, 8)}...
                     <ExternalLink className="w-4 h-4" />
@@ -336,10 +333,10 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
         )}
 
         {/* Chart */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-6">
+        <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-purple-400" />
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
               Price Chart
             </h3>
             <div className="flex gap-2">
@@ -349,8 +346,8 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                   onClick={() => setTimeframe(tf)}
                   className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
                     timeframe === tf
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                      : 'bg-black/40 text-gray-400 hover:bg-cyan-500/10 hover:text-cyan-300 border border-cyan-500/20'
                   }`}
                 >
                   {tf}
@@ -359,11 +356,11 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
             </div>
           </div>
           
-          <div className="bg-slate-900/50 rounded-lg">
+          <div className="bg-black/40 rounded-lg">
             {ohlcv.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-700">
+                  <thead className="border-b border-cyan-500/20">
                     <tr className="text-gray-400">
                       <th className="px-4 py-3 text-left">Time</th>
                       <th className="px-4 py-3 text-right">Open ($)</th>
@@ -374,7 +371,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                       <th className="px-4 py-3 text-right">MCap (Open)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-cyan-500/10">
                     {ohlcv.slice(-50).reverse().map((candle, i) => {
                       const totalSupply = token?.total_supply ? parseFloat(token.total_supply) : 1_000_000_000;
                       const openMcap = candle.open * totalSupply;
@@ -382,7 +379,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                       const isGreen = change >= 0;
                       
                       return (
-                        <tr key={i} className="hover:bg-slate-800/50">
+                        <tr key={i} className="hover:bg-cyan-500/5">
                           <td className="px-4 py-2 text-gray-300">
                             {new Date(candle.timestamp * 1000).toLocaleString()}
                           </td>
@@ -409,7 +406,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                     })}
                   </tbody>
                 </table>
-                <div className="px-4 py-3 text-center text-gray-500 text-xs border-t border-slate-800">
+                <div className="px-4 py-3 text-center text-gray-500 text-xs border-t border-cyan-500/20">
                   Showing last 50 of {ohlcv.length} candles • First candle: {new Date(ohlcv[0]?.timestamp * 1000).toLocaleString()}
                 </div>
               </div>
@@ -422,7 +419,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
         </div>
 
         {/* Transaction Link */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg border border-purple-500/20 p-4">
+        <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-lg shadow-cyan-500/10 p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-gray-400 text-sm mb-1">Creation Transaction</div>
@@ -432,7 +429,7 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
               href={`https://solscan.io/tx/${token.signature}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-all"
+              className="flex items-center gap-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 hover:border-cyan-500/60 px-4 py-2 rounded-lg transition-all"
             >
               View on Solscan
               <ExternalLink className="w-4 h-4" />
