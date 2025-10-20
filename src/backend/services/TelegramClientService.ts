@@ -132,7 +132,9 @@ export class TelegramClientService extends EventEmitter {
         [userId]
       ) as { session_string?: string } | null;
 
-      const session = new StringSession(existingSession?.session_string || '');
+      // Decrypt the session string if it exists (it's stored encrypted)
+      const sessionString = existingSession?.session_string ? this.decrypt(existingSession.session_string) : '';
+      const session = new StringSession(sessionString);
       const client = new TelegramClient(session, parseInt(apiId), apiHash, {
         connectionRetries: 5,
       });
