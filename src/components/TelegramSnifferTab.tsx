@@ -126,10 +126,12 @@ export function TelegramSnifferTab() {
     };
   }, [subscribe]);
 
-  // Load account status when authentication changes
+  // Load account status and chats when authentication changes
   useEffect(() => {
     if (isAuthenticated) {
       loadAccountStatus();
+      loadMonitoredChats(); // Load existing chats from database
+      loadDetections(); // Load existing detections
     }
   }, [isAuthenticated]);
 
@@ -162,6 +164,11 @@ export function TelegramSnifferTab() {
       if (response.ok) {
         const chats = await response.json();
         setMonitoredChats(chats);
+        // Also populate availableChats for the sniffer tab
+        setAvailableChats(chats.map((chat: any) => ({
+          ...chat,
+          id: chat.chatId
+        })));
       }
     } catch (error) {
       console.error('Failed to load monitored chats:', error);
