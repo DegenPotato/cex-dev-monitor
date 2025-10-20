@@ -401,6 +401,47 @@ export class TelegramUserService {
   }
 
   /**
+   * Update bot account verification status and username
+   */
+  async updateBotAccountVerified(userId: number, isVerified: boolean, username?: string) {
+    let sql = 'UPDATE telegram_bot_accounts SET is_verified = ?, last_connected_at = ?, updated_at = ?';
+    const params: any[] = [isVerified ? 1 : 0, Date.now(), Date.now()];
+    
+    if (username) {
+      sql += ', bot_username = ?';
+      params.push(username);
+    }
+    
+    sql += ' WHERE user_id = ?';
+    params.push(userId);
+    
+    await execute(sql, params);
+    return { success: true };
+  }
+
+  /**
+   * Delete user account
+   */
+  async deleteUserAccount(userId: number) {
+    await execute(
+      'DELETE FROM telegram_user_accounts WHERE user_id = ?',
+      [userId]
+    );
+    return { success: true };
+  }
+
+  /**
+   * Delete bot account
+   */
+  async deleteBotAccount(userId: number) {
+    await execute(
+      'DELETE FROM telegram_bot_accounts WHERE user_id = ?',
+      [userId]
+    );
+    return { success: true };
+  }
+
+  /**
    * Get account status (user account, bot account, monitored chats)
    */
   async getAccountStatus(userId: number) {

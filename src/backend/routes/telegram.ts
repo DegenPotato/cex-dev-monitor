@@ -226,21 +226,24 @@ export function createTelegramRoutes() {
       const response = await fetch(`https://api.telegram.org/bot${account.botToken}/getMe`);
       const data = await response.json();
 
-      if (!data.ok) {
-        return res.status(400).json({ 
-          success: false, 
-          error: data.description || 'Invalid bot token' 
+      if (data.ok) {
+        // Update verified status AND username
+        await telegramService.updateBotAccountVerified(userId, true, data.result.username);
+        
+        res.json({
+          success: true,
+          verified: true,
+          botInfo: data.result,
+          botUsername: data.result.username,
+          botName: data.result.first_name
+        });
+      } else {
+        res.json({
+          success: false,
+          verified: false,
+          error: data.description || 'Invalid bot token'
         });
       }
-
-      // Update verification status and username
-      await telegramService.updateBotAccountVerification(userId, true, data.result.username);
-
-      res.json({
-        success: true,
-        botUsername: data.result.username,
-        botName: data.result.first_name
-      });
     } catch (error: any) {
       console.error('[Telegram] Error verifying bot account:', error);
       res.status(500).json({ error: error.message });
@@ -367,6 +370,50 @@ export function createTelegramRoutes() {
       res.json(contracts);
     } catch (error: any) {
       console.error('[Telegram] Error getting detected contracts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Delete/disconnect user account
+   */
+  router.delete('/user-account', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      
+      // Disconnect active client if exists
+      await telegramClientService.disconnect(userId);
+      
+      // Delete from database
+      const result = await telegramService.deleteUserAccount(userId);
+      
+      res.json({
+        success: true,
+        message: 'User account disconnected and removed',
+        result
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error deleting user account:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Delete bot account
+   */
+  router.delete('/bot-account', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      
+      const result = await telegramService.deleteBotAccount(userId);
+      
+      res.json({
+        success: true,
+        message: 'Bot account removed',
+        result
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error deleting bot account:', error);
       res.status(500).json({ error: error.message });
     }
   });
