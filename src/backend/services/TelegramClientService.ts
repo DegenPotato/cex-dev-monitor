@@ -3,12 +3,26 @@
  * Handles authentication with 2FA support and real-time message monitoring
  */
 
-import { TelegramClient, Api } from 'telegram';
-import { StringSession } from 'telegram/sessions';
-import { NewMessage } from 'telegram/events';
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { queryOne, execute } from '../database/helpers.js';
+
+// Dynamic imports for telegram package
+let TelegramClient: any;
+let Api: any;
+let StringSession: any;
+let NewMessage: any;
+
+// Load telegram modules dynamically
+(async () => {
+  const telegram = await import('telegram');
+  TelegramClient = telegram.TelegramClient;
+  Api = telegram.Api;
+  const sessions = await import('telegram/sessions');
+  StringSession = sessions.StringSession;
+  const events = await import('telegram/events');
+  NewMessage = events.NewMessage;
+})();
 
 interface AuthSession {
   userId: number;
@@ -16,7 +30,7 @@ interface AuthSession {
   apiHash: string;
   phoneNumber: string;
   phoneCodeHash?: string;
-  client?: TelegramClient;
+  client?: any; // TelegramClient instance
   status: 'idle' | 'code_sent' | 'awaiting_code' | 'awaiting_2fa' | 'connected' | 'error';
   error?: string;
 }
@@ -27,7 +41,7 @@ const SOL_PATTERN_WITH_SPECIALS = /[1-9A-HJ-NP-Za-km-z]{8,}[-_.\s]{1,2}[1-9A-HJ-
 
 export class TelegramClientService extends EventEmitter {
   private sessions: Map<number, AuthSession> = new Map();
-  private activeClients: Map<number, TelegramClient> = new Map();
+  private activeClients: Map<number, any> = new Map(); // TelegramClient instances
   private encryptionKey: string;
 
   constructor() {
@@ -153,7 +167,7 @@ export class TelegramClientService extends EventEmitter {
       await this.startMonitoring(userId, client);
 
       const result = signInResult as any;
-      const user = result.user as Api.User;
+      const user = result.user as any; // Api.User
       return {
         success: true,
         status: 'connected',
@@ -250,9 +264,9 @@ export class TelegramClientService extends EventEmitter {
    * Compute SRP password hash for 2FA
    */
   private async computePasswordHash(
-    passwordInfo: Api.account.Password,
+    passwordInfo: any, // Api.account.Password
     _passwordStr: string
-  ): Promise<Api.InputCheckPasswordSRP> {
+  ): Promise<any> { // Api.InputCheckPasswordSRP
     // This is a simplified version - in production, use proper SRP implementation
     const pwdInfo = passwordInfo as any;
     const srpId = pwdInfo.srpId;
@@ -270,13 +284,13 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Start monitoring for messages
    */
-  private async startMonitoring(userId: number, client: TelegramClient) {
+  private async startMonitoring(userId: number, client: any) { // TelegramClient 
     // Get monitored chats from database
     const chats = await this.getMonitoredChats(userId);
     const userFilters = await this.getUserFilters(userId);
     
     // Add message handler
-    client.addEventHandler(async (event) => {
+    client.addEventHandler(async (event: any) => {
       try {
         const message = event.message;
         if (!message || !message.message) return;
@@ -392,7 +406,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Get sender username
    */
-  private async getSenderUsername(client: TelegramClient, senderId: any): Promise<string | undefined> {
+  private async getSenderUsername(client: any, senderId: any): Promise<string | undefined> { // TelegramClient
     try {
       if (!senderId) return undefined;
       const entity = await client.getEntity(senderId);
