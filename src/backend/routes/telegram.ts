@@ -340,7 +340,21 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Get monitored chats
+   * Get ALL chats (active and inactive) for Available Chats section
+   */
+  router.get('/all-chats', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const chats = await telegramService.getMonitoredChats(userId, true); // includeInactive = true
+      res.json(chats);
+    } catch (error: any) {
+      console.error('[Telegram] Error getting all chats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get monitored chats (active only)
    */
   router.get('/monitored-chats', authService.requireSecureAuth(), async (req, res) => {
     try {

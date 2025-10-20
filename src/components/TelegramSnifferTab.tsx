@@ -157,21 +157,30 @@ export function TelegramSnifferTab() {
     try {
       if (!isAuthenticated) return;
 
-      const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats`, {
+      // Load ALL chats for Available Chats section
+      const allChatsResponse = await fetch(`${config.apiUrl}/api/telegram/all-chats`, {
         credentials: 'include'
       });
 
-      if (response.ok) {
-        const chats = await response.json();
-        setMonitoredChats(chats);
-        // Also populate availableChats for the sniffer tab
-        setAvailableChats(chats.map((chat: any) => ({
+      if (allChatsResponse.ok) {
+        const allChats = await allChatsResponse.json();
+        setAvailableChats(allChats.map((chat: any) => ({
           ...chat,
           id: chat.chatId
         })));
       }
+
+      // Load active chats for Monitored section
+      const activeChatsResponse = await fetch(`${config.apiUrl}/api/telegram/monitored-chats`, {
+        credentials: 'include'
+      });
+
+      if (activeChatsResponse.ok) {
+        const activeChats = await activeChatsResponse.json();
+        setMonitoredChats(activeChats);
+      }
     } catch (error) {
-      console.error('Failed to load monitored chats:', error);
+      console.error('Failed to load chats:', error);
     }
   };
 

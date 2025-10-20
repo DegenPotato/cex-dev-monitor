@@ -294,12 +294,12 @@ export class TelegramUserService {
   /**
    * Get all monitored chats for a user
    */
-  async getMonitoredChats(userId: number) {
-    const chats = await queryAll(`
-      SELECT * FROM telegram_monitored_chats 
-      WHERE user_id = ? AND is_active = 1
-      ORDER BY created_at DESC
-    `, [userId]) as any[];
+  async getMonitoredChats(userId: number, includeInactive: boolean = false) {
+    const query = includeInactive
+      ? `SELECT * FROM telegram_monitored_chats WHERE user_id = ? ORDER BY created_at DESC`
+      : `SELECT * FROM telegram_monitored_chats WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC`;
+    
+    const chats = await queryAll(query, [userId]) as any[];
 
     return chats.map(chat => ({
       id: chat.id,
