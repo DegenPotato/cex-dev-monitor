@@ -410,6 +410,39 @@ export function TelegramSnifferTab() {
     }
   };
 
+  const handleBulkDelete = async (mode: 'selected' | 'all') => {
+    const confirmMsg = mode === 'all' 
+      ? `Delete ALL ${availableChats.length} chats?` 
+      : `Delete ${selectedChats.size} selected chats?`;
+    
+    if (!confirm(confirmMsg)) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          chatIds: mode === 'all' ? 'all' : Array.from(selectedChats)
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: data.message });
+        setSelectedChats(new Set());
+        loadMonitoredChats();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to delete chats' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFetchChats = async () => {
     setLoading(true);
     try {
@@ -766,10 +799,28 @@ export function TelegramSnifferTab() {
                   {selectedChats.size === filteredChats.length ? 'Deselect All' : 'Select All'}
                 </button>
                 {selectedChats.size > 0 && (
+                  <>
+                    <button
+                      onClick={() => handleBulkDelete('selected')}
+                      className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+                    >
+                      <Trash2 className="w-3 h-3 inline mr-1" />
+                      Delete Selected ({selectedChats.size})
+                    </button>
+                    <button
+                      className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                    >
+                      Configure Selected ({selectedChats.size})
+                    </button>
+                  </>
+                )}
+                {availableChats.length > 0 && (
                   <button
-                    className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                    onClick={() => handleBulkDelete('all')}
+                    className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
                   >
-                    Configure Selected ({selectedChats.size})
+                    <Trash2 className="w-3 h-3 inline mr-1" />
+                    Delete All ({availableChats.length})
                   </button>
                 )}
               </div>
