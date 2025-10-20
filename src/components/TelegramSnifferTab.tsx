@@ -6,10 +6,8 @@ import {
   User, 
   Radio, 
   Check, 
-  Send, 
   Eye,
   EyeOff,
-  AlertCircle,
   X,
   Trash2,
   RefreshCw
@@ -613,21 +611,21 @@ export function TelegramSnifferTab() {
             {/* User Account Configuration */}
             <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
               <div className="flex items-center gap-3 mb-4">
-              <User className="w-6 h-6 text-cyan-400" />
-              <h3 className="text-xl font-bold text-cyan-300">User Account</h3>
-              {userAccount?.connected && (
-                <span className="ml-auto px-2 py-1 bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs font-bold flex items-center gap-1">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  CONNECTED
-                </span>
-              )}
-              {userAccount?.verified && !userAccount?.connected && (
-                <span className="ml-auto px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  VERIFIED
-                </span>
-              )}
-            </div>
+                <User className="w-6 h-6 text-cyan-400" />
+                <h3 className="text-xl font-bold text-cyan-300">User Account</h3>
+                {userAccount?.connected && (
+                  <span className="ml-auto px-2 py-1 bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs font-bold flex items-center gap-1">
+                    <Radio className="w-3 h-3 animate-pulse" />
+                    CONNECTED
+                  </span>
+                )}
+                {userAccount?.verified && !userAccount?.connected && (
+                  <span className="ml-auto px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    VERIFIED
+                  </span>
+                )}
+              </div>
             
             <p className="text-sm text-gray-400 mb-4">
               Configure your Telegram user account for full chat access
@@ -979,3 +977,5 @@ export function TelegramSnifferTab() {
     </div>
   );
 }
+
+export default TelegramSnifferTab;
