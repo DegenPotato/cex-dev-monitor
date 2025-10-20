@@ -66,18 +66,21 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ key: 'cex_wallet', value: cexWallet })
       });
       
       await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ key: 'threshold_sol', value: threshold })
       });
       
       await fetch(apiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ key: 'max_threshold_sol', value: maxThreshold })
       });
       
@@ -85,6 +88,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       await fetch(apiUrl('/api/request-pacing/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           proxyDelayMs: parseInt(proxyPacingDelay),
           rpcDelayMs: parseInt(rpcPacingDelay)
@@ -95,6 +99,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       await fetch(apiUrl('/api/concurrency/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           proxyMaxConcurrent: parseInt(proxyMaxConcurrent),
           rpcMaxConcurrent: parseInt(rpcMaxConcurrent)
@@ -126,6 +131,7 @@ export function SettingsPanel({ onUpdate }: SettingsPanelProps) {
       const response = await fetch(apiUrl('/api/database/wipe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ confirmation: 'WIPE_DATABASE' })
       });
 
