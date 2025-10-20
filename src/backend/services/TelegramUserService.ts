@@ -401,22 +401,28 @@ export class TelegramUserService {
   }
 
   /**
-   * Get account status summary
+   * Get account status (user account, bot account, monitored chats)
    */
   async getAccountStatus(userId: number) {
     const userAccount = await this.getUserAccount(userId);
     const botAccount = await this.getBotAccount(userId);
     const monitoredChats = await this.getMonitoredChats(userId);
+    
+    // Get live connection status from TelegramClientService
+    const { telegramClientService } = await import('./TelegramClientService.js');
+    const connectionStatus = telegramClientService.getConnectionStatus(userId);
 
     return {
       userAccount: userAccount ? {
         configured: true,
         verified: userAccount.isVerified,
+        connected: connectionStatus.connected, // Live connection status
         phoneNumber: userAccount.phoneNumber,
         lastConnected: userAccount.lastConnectedAt
       } : {
         configured: false,
-        verified: false
+        verified: false,
+        connected: false
       },
       botAccount: botAccount ? {
         configured: true,
