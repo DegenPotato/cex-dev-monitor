@@ -547,7 +547,7 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Fetch user's chats/dialogs with full details
+   * Fetch user's chats/dialogs with COMPREHENSIVE details
    */
   async fetchUserChats(userId: number) {
     const client = this.activeClients.get(userId);
@@ -556,33 +556,64 @@ export class TelegramClientService extends EventEmitter {
     }
 
     try {
-      console.log(`🔄 [Telegram] Fetching chats for user ${userId}...`);
+      console.log(`🔄 [Telegram] Fetching comprehensive chat data for user ${userId}...`);
       
-      // Get all dialogs (chats)
-      const dialogs = await client.getDialogs({ limit: 100 });
+      // Get all dialogs (chats) with more data
+      const dialogs = await client.getDialogs({ 
+        limit: 500,  // Increased limit
+        offsetDate: 0,
+        offsetId: 0,
+        offsetPeer: new Api.InputPeerEmpty(),
+      });
       
       const chatsList = [];
       
       for (const dialog of dialogs) {
         const entity = dialog.entity;
         
-        // Determine chat type
+        // Get comprehensive chat type and metadata
         let chatType = 'unknown';
+        let chatSubtype = null;
         let inviteLink = null;
+        let adminRights = null;
+        let restrictions = null;
         
         if (entity.className === 'User') {
           chatType = 'private';
+          chatSubtype = entity.bot ? 'bot' : 'user';
         } else if (entity.className === 'Chat') {
           chatType = 'group';
+          chatSubtype = 'legacy_group';
         } else if (entity.className === 'Channel') {
           chatType = entity.broadcast ? 'channel' : 'supergroup';
+          chatSubtype = entity.megagroup ? 'megagroup' : entity.broadcast ? 'broadcast' : 'supergroup';
           
-          // Try to get invite link for channels/supergroups
+          // Get admin rights if available
+          if (entity.adminRights) {
+            adminRights = {
+              changeInfo: entity.adminRights.changeInfo,
+              postMessages: entity.adminRights.postMessages,
+              editMessages: entity.adminRights.editMessages,
+              deleteMessages: entity.adminRights.deleteMessages,
+              banUsers: entity.adminRights.banUsers,
+              inviteUsers: entity.adminRights.inviteUsers,
+              pinMessages: entity.adminRights.pinMessages,
+              addAdmins: entity.adminRights.addAdmins,
+              anonymous: entity.adminRights.anonymous,
+              manageCall: entity.adminRights.manageCall,
+            };
+          }
+          
+          // Get restrictions if any
+          if (entity.restriction) {
+            restrictions = entity.restriction;
+          }
+          
+          // Try to get invite link
           try {
             if (entity.username) {
               inviteLink = `https://t.me/${entity.username}`;
-            } else {
-              // Try to export invite link (requires admin rights)
+            } else if (entity.adminRights?.inviteUsers) {
               const result = await client.invoke(
                 new Api.messages.ExportChatInvite({
                   peer: entity,
@@ -595,25 +626,120 @@ export class TelegramClientService extends EventEmitter {
               }
             }
           } catch (error) {
-            // User might not have permission to get invite link
-            console.log(`  ⚠️ Could not get invite link for ${entity.title || entity.id}`);
+            // Silently fail
           }
         }
 
-        chatsList.push({
+        // Get last message info
+        let lastMessage = null;
+        if (dialog.message) {
+          lastMessage = {
+            id: dialog.message.id,
+            date: dialog.message.date,
+            text: dialog.message.message?.substring(0, 100), // First 100 chars
+            fromId: dialog.message.fromId?.userId?.toString(),
+            hasMedia: !!dialog.message.media,
+            mediaType: dialog.message.media?.className
+          };
+        }
+
+        // Get full chat statistics if available
+        let statistics = null;
+        if (entity.className === 'Channel' && entity.broadcast) {
+          try {
+            const stats = await client.invoke(
+              new Api.channels.GetFullChannel({
+                channel: entity
+              })
+            );
+            if (stats.fullChat.stats) {
+              statistics = {
+                followers: stats.fullChat.participantsCount,
+                messagesViewsCount: stats.fullChat.stats.viewsCount,
+                sharesCount: stats.fullChat.stats.forwardsCount
+              };
+            }
+          } catch (error) {
+            // Stats might not be available
+          }
+        }
+
+        // Build comprehensive chat object
+        const chatData = {
+          // Core identifiers
           chatId: entity.id.toString(),
+          accessHash: entity.accessHash?.toString(),
+          
+          // Basic info
           chatName: entity.title || `${entity.firstName || ''} ${entity.lastName || ''}`.trim() || 'Unknown',
           chatType: chatType,
+          chatSubtype: chatSubtype,
           username: entity.username || null,
           inviteLink: inviteLink,
-          participantsCount: entity.participantsCount || null,
-          unreadCount: dialog.unreadCount || 0,
+          
+          // Status flags
           isVerified: entity.verified || false,
-          isScam: entity.scam || false
-        });
+          isScam: entity.scam || false,
+          isFake: entity.fake || false,
+          isRestricted: entity.restricted || false,
+          isCreator: entity.creator || false,
+          hasLeft: entity.left || false,
+          isDeactivated: entity.deactivated || false,
+          isCallActive: entity.callActive || false,
+          isCallNotEmpty: entity.callNotEmpty || false,
+          
+          // Participants & Activity
+          participantsCount: entity.participantsCount || null,
+          onlineCount: entity.onlineCount || null,
+          unreadCount: dialog.unreadCount || 0,
+          unreadMentionsCount: dialog.unreadMentionsCount || 0,
+          unreadReactionsCount: dialog.unreadReactionsCount || 0,
+          
+          // Permissions & Rights
+          adminRights: adminRights,
+          bannedRights: entity.bannedRights || null,
+          defaultBannedRights: entity.defaultBannedRights || null,
+          restrictions: restrictions,
+          
+          // Media & Files
+          photo: entity.photo ? {
+            photoId: entity.photo.photoId?.toString(),
+            dcId: entity.photo.dcId,
+            hasVideo: entity.photo.hasVideo
+          } : null,
+          
+          // Dates
+          dateCreated: entity.date || null,
+          lastMessageDate: lastMessage?.date || null,
+          
+          // Message data
+          lastMessage: lastMessage,
+          pinnedMsgId: dialog.pinnedMsgId || null,
+          folderId: dialog.folderId || null,
+          
+          // Statistics
+          statistics: statistics,
+          
+          // Settings
+          notifySettings: dialog.notifySettings || null,
+          ttlPeriod: dialog.ttlPeriod || null,
+          
+          // Bot specific
+          botInfo: entity.botInfo ? {
+            botId: entity.botInfo.userId?.toString(),
+            description: entity.botInfo.description,
+            commands: entity.botInfo.commands
+          } : null,
+          
+          // Raw data for future use
+          rawClassName: entity.className,
+          rawFlags: entity.flags
+        };
+
+        chatsList.push(chatData);
       }
 
-      console.log(`✅ [Telegram] Fetched ${chatsList.length} chats for user ${userId}`);
+      console.log(`✅ [Telegram] Fetched ${chatsList.length} chats with comprehensive data for user ${userId}`);
       
       return chatsList;
     } catch (error: any) {

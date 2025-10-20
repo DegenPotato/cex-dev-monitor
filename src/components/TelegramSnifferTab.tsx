@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   MessageSquare, 
   Settings as SettingsIcon, 
@@ -10,7 +10,8 @@ import {
   EyeOff,
   X,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -55,10 +56,16 @@ export function TelegramSnifferTab() {
   const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'settings'>('sniffer');
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
-  const [availableChats, setAvailableChats] = useState<MonitoredChat[]>([]);
+  const [availableChats, setAvailableChats] = useState<any[]>([]);
   const [monitoredChats, setMonitoredChats] = useState<MonitoredChat[]>([]);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [detections, setDetections] = useState<ContractDetection[]>([]);
+  
+  // Search and filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'group' | 'channel' | 'private'>('all');
+  const [filterVerified, setFilterVerified] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   
   // Form states
   const [apiId, setApiId] = useState('');
@@ -444,6 +451,39 @@ export function TelegramSnifferTab() {
     }
   };
 
+  // Filter and search chats
+  const filteredChats = useMemo(() => {
+    let filtered = availableChats;
+    
+    // Apply search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(chat => 
+        chat.chatName?.toLowerCase().includes(query) ||
+        chat.username?.toLowerCase().includes(query) ||
+        chat.chatId?.includes(query) ||
+        chat.description?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply type filter
+    if (filterType !== 'all') {
+      filtered = filtered.filter(chat => {
+        if (filterType === 'group') return chat.chatType === 'group' || chat.chatType === 'supergroup';
+        if (filterType === 'channel') return chat.chatType === 'channel';
+        if (filterType === 'private') return chat.chatType === 'private';
+        return true;
+      });
+    }
+    
+    // Apply verified filter
+    if (filterVerified) {
+      filtered = filtered.filter(chat => chat.isVerified);
+    }
+    
+    return filtered;
+  }, [availableChats, searchQuery, filterType, filterVerified]);
+  
   // Load chats and detections when switching sections
   useEffect(() => {
     if (activeSection === 'monitored') {
@@ -563,6 +603,67 @@ export function TelegramSnifferTab() {
             </div>
           </div>
 
+          {/* Search and Filters */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4 mb-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Search Bar */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search chats by name, username, ID..."
+                  className="w-full pl-10 pr-4 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+              
+              {/* Filters */}
+              <div className="flex gap-2">
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="all">All Types</option>
+                  <option value="group">Groups</option>
+                  <option value="channel">Channels</option>
+                  <option value="private">Private</option>
+                </select>
+                
+                <button
+                  onClick={() => setFilterVerified(!filterVerified)}
+                  className={`px-3 py-2 rounded-lg border transition-all ${
+                    filterVerified 
+                      ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' 
+                      : 'bg-black/40 border-cyan-500/30 text-gray-400 hover:text-cyan-400'
+                  }`}
+                >
+                  <Check className="w-4 h-4" />
+                  <span className="ml-2">Verified Only</span>
+                </button>
+                
+                <button
+                  onClick={() => setShowDetails(!showDetails)}
+                  className={`px-3 py-2 rounded-lg border transition-all ${
+                    showDetails 
+                      ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400' 
+                      : 'bg-black/40 border-cyan-500/30 text-gray-400 hover:text-cyan-400'
+                  }`}
+                >
+                  <Eye className="w-4 h-4" />
+                  <span className="ml-2">Details</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Results Counter */}
+            <div className="mt-3 text-sm text-gray-400">
+              Showing {filteredChats.length} of {availableChats.length} chats
+              {searchQuery && ` matching "${searchQuery}"`}
+            </div>
+          </div>
+
           {/* Available Chats Section */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
             <div className="flex items-center justify-between mb-6">
@@ -570,15 +671,15 @@ export function TelegramSnifferTab() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    if (selectedChats.size === availableChats.length) {
+                    if (selectedChats.size === filteredChats.length) {
                       setSelectedChats(new Set());
                     } else {
-                      setSelectedChats(new Set(availableChats.map(c => c.chatId)));
+                      setSelectedChats(new Set(filteredChats.map(c => c.chatId)));
                     }
                   }}
                   className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-400 text-sm font-medium transition-all"
                 >
-                  {selectedChats.size === availableChats.length ? 'Deselect All' : 'Select All'}
+                  {selectedChats.size === filteredChats.length ? 'Deselect All' : 'Select All'}
                 </button>
                 {selectedChats.size > 0 && (
                   <button
@@ -604,7 +705,7 @@ export function TelegramSnifferTab() {
               </div>
             ) : (
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {availableChats.map((chat) => {
+                {filteredChats.map((chat) => {
                   const isSelected = selectedChats.has(chat.chatId);
                   const isMonitored = monitoredChats.some(m => m.chatId === chat.chatId && m.isActive);
                   
@@ -639,9 +740,18 @@ export function TelegramSnifferTab() {
                               {chat.chatName || chat.chatId}
                             </h4>
                             <div className="flex flex-wrap items-center gap-2 mt-1">
-                              <span className="text-xs text-gray-400">{chat.chatType}</span>
+                              <span className="text-xs text-gray-400">{chat.chatType}{chat.chatSubtype ? ` • ${chat.chatSubtype}` : ''}</span>
                               {chat.username && (
                                 <span className="text-xs text-cyan-400">@{chat.username}</span>
+                              )}
+                              {chat.isVerified && (
+                                <span className="text-xs text-blue-400">✓ Verified</span>
+                              )}
+                              {chat.isScam && (
+                                <span className="text-xs text-red-400">⚠ Scam</span>
+                              )}
+                              {chat.participantsCount && (
+                                <span className="text-xs text-gray-400">{chat.participantsCount.toLocaleString()} members</span>
                               )}
                               {isMonitored && (
                                 <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
@@ -649,6 +759,54 @@ export function TelegramSnifferTab() {
                                 </span>
                               )}
                             </div>
+                            
+                            {/* Extended Details */}
+                            {showDetails && (
+                              <div className="mt-3 p-3 bg-black/20 rounded-lg border border-cyan-500/10 text-xs space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  {chat.onlineCount && (
+                                    <div className="text-gray-400">
+                                      Online: <span className="text-green-400">{chat.onlineCount.toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                  {chat.unreadCount > 0 && (
+                                    <div className="text-gray-400">
+                                      Unread: <span className="text-yellow-400">{chat.unreadCount}</span>
+                                    </div>
+                                  )}
+                                  {chat.adminRights && (
+                                    <div className="text-gray-400">
+                                      Role: <span className="text-purple-400">Admin</span>
+                                    </div>
+                                  )}
+                                  {chat.isCreator && (
+                                    <div className="text-gray-400">
+                                      Role: <span className="text-yellow-400">Owner</span>
+                                    </div>
+                                  )}
+                                  {chat.hasLeft && (
+                                    <div className="text-gray-400">
+                                      Status: <span className="text-red-400">Left</span>
+                                    </div>
+                                  )}
+                                  {chat.lastMessage && (
+                                    <div className="col-span-2 text-gray-400 truncate">
+                                      Last msg: <span className="text-gray-300">{chat.lastMessage.text?.substring(0, 50)}...</span>
+                                    </div>
+                                  )}
+                                  {chat.statistics && (
+                                    <div className="col-span-2 text-gray-400">
+                                      Stats: {chat.statistics.followers} followers • {chat.statistics.messagesViewsCount} views
+                                    </div>
+                                  )}
+                                </div>
+                                {chat.description && (
+                                  <div className="text-gray-400">
+                                    <p className="text-gray-300">{chat.description.substring(0, 100)}...</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                         
