@@ -140,19 +140,20 @@ export class JWTAuthService {
     setSecureCookies(res: Response, accessToken: string, refreshToken: string) {
         const isProduction = process.env.NODE_ENV === 'production';
         
-        // Using Express cookie-parser
+        // Using Express cookie-parser with sameSite: 'none' for cross-site support
+        // between alpha.sniff.agency (frontend) and api.sniff.agency (backend)
         res.cookie('access_token', accessToken, {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: 'strict',
+            secure: true, // Required for sameSite: 'none'
+            sameSite: 'none', // Allow cross-site cookies
             path: '/',
             maxAge: 15 * 60 * 1000 // 15 minutes in milliseconds
         });
         
         res.cookie('refresh_token', refreshToken, {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: 'strict',
+            secure: true, // Required for sameSite: 'none'
+            sameSite: 'none', // Allow cross-site cookies
             path: '/',
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
         });
@@ -160,7 +161,8 @@ export class JWTAuthService {
         console.log('🍪 [JWTAuth] Secure cookies set:', { 
             accessToken: '15 min', 
             refreshToken: '7 days',
-            secure: isProduction 
+            secure: true,
+            sameSite: 'none' 
         });
     }
 
@@ -168,8 +170,16 @@ export class JWTAuthService {
      * Clear authentication cookies
      */
     clearSecureCookies(res: Response) {
-        res.clearCookie('access_token', { path: '/' });
-        res.clearCookie('refresh_token', { path: '/' });
+        res.clearCookie('access_token', { 
+            path: '/',
+            secure: true,
+            sameSite: 'none'
+        });
+        res.clearCookie('refresh_token', { 
+            path: '/',
+            secure: true,
+            sameSite: 'none'
+        });
         
         console.log('🗑️ [JWTAuth] Authentication cookies cleared');
     }
