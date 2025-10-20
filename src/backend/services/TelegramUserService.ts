@@ -216,6 +216,9 @@ export class TelegramUserService {
     chatId: string;
     chatName?: string;
     chatType?: string;
+    username?: string | null;
+    inviteLink?: string | null;
+    isActive?: boolean;
     forwardToChatId?: string;
     monitoredUserIds?: number[];
     monitoredKeywords?: string[];
@@ -232,12 +235,16 @@ export class TelegramUserService {
     if (existing) {
       await execute(`
         UPDATE telegram_monitored_chats 
-        SET chat_name = ?, chat_type = ?, forward_to_chat_id = ?, 
+        SET chat_name = ?, chat_type = ?, username = ?, invite_link = ?,
+            is_active = ?, forward_to_chat_id = ?, 
             monitored_user_ids = ?, monitored_keywords = ?, updated_at = ?
         WHERE user_id = ? AND chat_id = ?
       `, [
         chat.chatName || null,
         chat.chatType || null,
+        chat.username || null,
+        chat.inviteLink || null,
+        chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 1,
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
@@ -248,13 +255,16 @@ export class TelegramUserService {
     } else {
       await execute(`
         INSERT INTO telegram_monitored_chats 
-        (user_id, chat_id, chat_name, chat_type, forward_to_chat_id, monitored_user_ids, monitored_keywords, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, forward_to_chat_id, monitored_user_ids, monitored_keywords, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         userId,
         chat.chatId,
         chat.chatName || null,
         chat.chatType || null,
+        chat.username || null,
+        chat.inviteLink || null,
+        chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 0,
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,

@@ -33,6 +33,8 @@ interface MonitoredChat {
   chatId: string;
   chatName?: string;
   chatType?: string;
+  username?: string | null;
+  inviteLink?: string | null;
   isActive: boolean;
   monitoredUserIds?: number[];
   monitoredKeywords?: string[];
@@ -900,12 +902,27 @@ export function TelegramSnifferTab() {
             <div className="grid grid-cols-1 gap-3">
               {monitoredChats.map((chat) => (
                 <div key={chat.id} className="bg-black/20 backdrop-blur-sm rounded-lg border border-cyan-500/20 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
                       <h4 className="font-medium text-white">{chat.chatName || chat.chatId}</h4>
-                      <p className="text-sm text-gray-400">
-                        {chat.chatType} • ID: {chat.chatId}
-                      </p>
+                      <div className="space-y-1 mt-1">
+                        <p className="text-sm text-gray-400">
+                          Type: <span className="text-gray-300">{chat.chatType}</span>
+                        </p>
+                        <p className="text-sm text-gray-400">
+                          ID: <span className="font-mono text-gray-300">{chat.chatId}</span>
+                        </p>
+                        {chat.username && (
+                          <p className="text-sm text-gray-400">
+                            Username: <a href={`https://t.me/${chat.username}`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">@{chat.username}</a>
+                          </p>
+                        )}
+                        {chat.inviteLink && (
+                          <p className="text-sm text-gray-400">
+                            Invite Link: <a href={chat.inviteLink} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate max-w-xs inline-block align-bottom">{chat.inviteLink}</a>
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
@@ -913,8 +930,71 @@ export function TelegramSnifferTab() {
                           ? 'bg-green-500/20 border border-green-500/30 text-green-400'
                           : 'bg-gray-500/20 border border-gray-500/30 text-gray-400'
                       }`}>
-                        {chat.isActive ? 'ACTIVE' : 'PAUSED'}
+                        {chat.isActive ? 'ACTIVE' : 'INACTIVE'}
                       </span>
+                    </div>
+                  </div>
+                  
+                  {/* Configuration Section */}
+                  <div className="mt-4 pt-4 border-t border-cyan-500/10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Monitored Keywords */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                          Keywords to Monitor
+                        </label>
+                        <div className="text-sm text-gray-300">
+                          {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {chat.monitoredKeywords.map((keyword, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400 text-xs">
+                                  {keyword}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-500 text-xs">No keywords set - monitoring all messages</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Monitored Users */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                          Monitored User IDs
+                        </label>
+                        <div className="text-sm text-gray-300">
+                          {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {chat.monitoredUserIds.map((userId, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded text-purple-400 text-xs font-mono">
+                                  {userId}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-500 text-xs">No specific users - monitoring all</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        className="flex-1 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all"
+                      >
+                        Configure
+                      </button>
+                      <button
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          chat.isActive
+                            ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400'
+                            : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400'
+                        }`}
+                      >
+                        {chat.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
                     </div>
                   </div>
                 </div>

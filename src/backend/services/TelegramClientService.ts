@@ -529,6 +529,82 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Fetch user's chats/dialogs with full details
+   */
+  async fetchUserChats(userId: number) {
+    const client = this.activeClients.get(userId);
+    if (!client) {
+      throw new Error('No active client connection for this user');
+    }
+
+    try {
+      console.log(`🔄 [Telegram] Fetching chats for user ${userId}...`);
+      
+      // Get all dialogs (chats)
+      const dialogs = await client.getDialogs({ limit: 100 });
+      
+      const chatsList = [];
+      
+      for (const dialog of dialogs) {
+        const entity = dialog.entity;
+        
+        // Determine chat type
+        let chatType = 'unknown';
+        let inviteLink = null;
+        
+        if (entity.className === 'User') {
+          chatType = 'private';
+        } else if (entity.className === 'Chat') {
+          chatType = 'group';
+        } else if (entity.className === 'Channel') {
+          chatType = entity.broadcast ? 'channel' : 'supergroup';
+          
+          // Try to get invite link for channels/supergroups
+          try {
+            if (entity.username) {
+              inviteLink = `https://t.me/${entity.username}`;
+            } else {
+              // Try to export invite link (requires admin rights)
+              const result = await client.invoke(
+                new Api.messages.ExportChatInvite({
+                  peer: entity,
+                  legacyRevokePermanent: false
+                })
+              );
+              
+              if (result.className === 'ChatInviteExported') {
+                inviteLink = result.link;
+              }
+            }
+          } catch (error) {
+            // User might not have permission to get invite link
+            console.log(`  ⚠️ Could not get invite link for ${entity.title || entity.id}`);
+          }
+        }
+
+        chatsList.push({
+          chatId: entity.id.toString(),
+          chatName: entity.title || `${entity.firstName || ''} ${entity.lastName || ''}`.trim() || 'Unknown',
+          chatType: chatType,
+          username: entity.username || null,
+          inviteLink: inviteLink,
+          participantsCount: entity.participantsCount || null,
+          unreadCount: dialog.unreadCount || 0,
+          isVerified: entity.verified || false,
+          isScam: entity.scam || false
+        });
+      }
+
+      console.log(`✅ [Telegram] Fetched ${chatsList.length} chats for user ${userId}`);
+      
+      return chatsList;
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Error fetching chats:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get connection status for a user
    */
   getConnectionStatus(userId: number): { connected: boolean; client?: any } {

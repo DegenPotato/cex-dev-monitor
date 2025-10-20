@@ -251,8 +251,7 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Fetch user's chats (would call Python service with Telethon)
-   * This is a placeholder - actual implementation requires Python integration
+   * Fetch user's chats from Telegram
    */
   router.post('/fetch-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
@@ -265,17 +264,32 @@ export function createTelegramRoutes() {
         });
       }
 
-      // In real implementation, this would:
-      // 1. Send request to Python service
-      // 2. Python service uses Telethon to fetch dialogs
-      // 3. Returns list of chats with metadata
-      // 4. We save them to monitored_chats table
+      // Fetch chats from Telegram using active client
+      const chats = await telegramClientService.fetchUserChats(userId);
+      
+      // Save/update chats in database
+      let savedCount = 0;
+      for (const chat of chats) {
+        try {
+          await telegramService.saveMonitoredChat(userId, {
+            chatId: chat.chatId,
+            chatName: chat.chatName,
+            chatType: chat.chatType,
+            username: chat.username,
+            inviteLink: chat.inviteLink,
+            isActive: false // Inactive by default, user must configure and activate
+          });
+          savedCount++;
+        } catch (error) {
+          console.error(`Failed to save chat ${chat.chatId}:`, error);
+        }
+      }
 
-      // Placeholder response
       res.json({
         success: true,
-        message: 'This endpoint requires Python Telethon integration',
-        note: 'Use the Python script to fetch chats and update database'
+        message: `Fetched and saved ${savedCount} chats`,
+        totalFetched: chats.length,
+        chats: chats
       });
     } catch (error: any) {
       console.error('[Telegram] Error fetching chats:', error);
