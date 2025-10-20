@@ -1,7 +1,9 @@
 import { Router, Request } from 'express';
 import { TelegramUserService } from '../services/TelegramUserService.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
-import { authenticateToken } from '../middleware/auth.js';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+
+const authService = new SecureAuthService();
 
 // Extend Express Request type to include user property from auth middleware
 interface AuthenticatedRequest extends Request {
@@ -20,7 +22,7 @@ export function createTelegramRoutes() {
   /**
    * Get account status (user account, bot account, monitored chats)
    */
-  router.get('/status', authenticateToken, async (req, res) => {
+  router.get('/status', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const status = await telegramService.getAccountStatus(userId);
@@ -34,7 +36,7 @@ export function createTelegramRoutes() {
   /**
    * Save user account credentials
    */
-  router.post('/user-account', authenticateToken, async (req, res) => {
+  router.post('/user-account', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { apiId, apiHash, phoneNumber } = req.body;
@@ -59,7 +61,7 @@ export function createTelegramRoutes() {
   /**
    * Get user account credentials (returns masked sensitive data)
    */
-  router.get('/user-account', authenticateToken, async (req, res) => {
+  router.get('/user-account', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const account = await telegramService.getUserAccount(userId);
@@ -86,7 +88,7 @@ export function createTelegramRoutes() {
   /**
    * Start authentication - sends verification code to phone
    */
-  router.post('/user-account/start-auth', authenticateToken, async (req, res) => {
+  router.post('/user-account/start-auth', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       
@@ -114,7 +116,7 @@ export function createTelegramRoutes() {
   /**
    * Verify the code sent to phone
    */
-  router.post('/user-account/verify-code', authenticateToken, async (req, res) => {
+  router.post('/user-account/verify-code', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { code } = req.body;
@@ -140,7 +142,7 @@ export function createTelegramRoutes() {
   /**
    * Verify 2FA password
    */
-  router.post('/user-account/verify-2fa', authenticateToken, async (req, res) => {
+  router.post('/user-account/verify-2fa', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { password } = req.body;
@@ -166,7 +168,7 @@ export function createTelegramRoutes() {
   /**
    * Save bot account credentials
    */
-  router.post('/bot-account', authenticateToken, async (req, res) => {
+  router.post('/bot-account', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { botToken } = req.body;
@@ -186,7 +188,7 @@ export function createTelegramRoutes() {
   /**
    * Get bot account credentials (returns masked token)
    */
-  router.get('/bot-account', authenticateToken, async (req, res) => {
+  router.get('/bot-account', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const account = await telegramService.getBotAccount(userId);
@@ -211,7 +213,7 @@ export function createTelegramRoutes() {
   /**
    * Verify bot account (test connection to Telegram Bot API)
    */
-  router.post('/bot-account/verify', authenticateToken, async (req, res) => {
+  router.post('/bot-account/verify', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const account = await telegramService.getBotAccount(userId);
@@ -249,7 +251,7 @@ export function createTelegramRoutes() {
    * Fetch user's chats (would call Python service with Telethon)
    * This is a placeholder - actual implementation requires Python integration
    */
-  router.post('/fetch-chats', authenticateToken, async (req, res) => {
+  router.post('/fetch-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const account = await telegramService.getUserAccount(userId);
@@ -281,7 +283,7 @@ export function createTelegramRoutes() {
   /**
    * Get monitored chats
    */
-  router.get('/monitored-chats', authenticateToken, async (req, res) => {
+  router.get('/monitored-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const chats = await telegramService.getMonitoredChats(userId);
@@ -295,7 +297,7 @@ export function createTelegramRoutes() {
   /**
    * Add/Update monitored chat
    */
-  router.post('/monitored-chats', authenticateToken, async (req, res) => {
+  router.post('/monitored-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId, chatName, chatType, forwardToChatId, monitoredUserIds, monitoredKeywords } = req.body;
@@ -323,7 +325,7 @@ export function createTelegramRoutes() {
   /**
    * Toggle monitored chat active status
    */
-  router.patch('/monitored-chats/:chatId/toggle', authenticateToken, async (req, res) => {
+  router.patch('/monitored-chats/:chatId/toggle', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
@@ -340,7 +342,7 @@ export function createTelegramRoutes() {
   /**
    * Delete monitored chat
    */
-  router.delete('/monitored-chats/:chatId', authenticateToken, async (req, res) => {
+  router.delete('/monitored-chats/:chatId', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
@@ -356,7 +358,7 @@ export function createTelegramRoutes() {
   /**
    * Get detected contracts
    */
-  router.get('/detected-contracts', authenticateToken, async (req, res) => {
+  router.get('/detected-contracts', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const limit = parseInt(req.query.limit as string) || 100;
