@@ -36,6 +36,7 @@ import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
+import { createTelegramRoutes } from './routes/telegram.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 
@@ -116,6 +117,10 @@ app.use('/api/youtube', (req, res, next) => {
   next();
 }, youtubeRoutes); // YouTube integration (requires auth)
 app.use('/api/database', databaseRoutes);
+
+// Register Telegram routes
+const telegramRoutes = createTelegramRoutes();
+app.use('/api/telegram', telegramRoutes);
 
 // Create auth service for protecting specific routes
 const authService = new SecureAuthService();
