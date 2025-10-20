@@ -44,7 +44,7 @@ export class TelegramClientService extends EventEmitter {
       const existingSession = await queryOne(
         'SELECT session_string FROM telegram_user_accounts WHERE user_id = ?',
         [userId]
-      );
+      ) as { session_string?: string } | null;
 
       const session = new StringSession(existingSession?.session_string || '');
       const client = new TelegramClient(session, parseInt(apiId), apiHash, {
@@ -143,7 +143,7 @@ export class TelegramClientService extends EventEmitter {
       );
 
       // Success! Save session
-      const sessionString = client.session.save() as string;
+      const sessionString = (client.session.save() as unknown) as string;
       await this.saveSession(userId, sessionString);
       
       session.status = 'connected';
@@ -152,7 +152,8 @@ export class TelegramClientService extends EventEmitter {
       // Start monitoring
       await this.startMonitoring(userId, client);
 
-      const user = signInResult.user as Api.User;
+      const result = signInResult as any;
+      const user = result.user as Api.User;
       return {
         success: true,
         status: 'connected',
@@ -215,7 +216,7 @@ export class TelegramClientService extends EventEmitter {
       );
 
       // Success! Save session
-      const sessionString = client.session.save() as string;
+      const sessionString = (client.session.save() as unknown) as string;
       await this.saveSession(userId, sessionString);
       
       session.status = 'connected';
@@ -250,15 +251,17 @@ export class TelegramClientService extends EventEmitter {
    */
   private async computePasswordHash(
     passwordInfo: Api.account.Password,
-    password: string
+    _passwordStr: string
   ): Promise<Api.InputCheckPasswordSRP> {
     // This is a simplified version - in production, use proper SRP implementation
-    const { srpId, srpB, currentAlgo } = passwordInfo;
+    const pwdInfo = passwordInfo as any;
+    const srpId = pwdInfo.srpId;
     
     // For now, we'll use the simpler password check
-    // In production, implement full SRP protocol
+    // In production, implement full SRP protocol with passwordStr
+    // TODO: Implement proper SRP protocol using passwordStr
     return new Api.InputCheckPasswordSRP({
-      srpId: srpId!,
+      srpId: srpId || BigInt(0),
       A: Buffer.from(''), // Computed A value
       M1: Buffer.from('') // Computed M1 value
     });
@@ -424,7 +427,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Get user filters from database
    */
-  private async getUserFilters(userId: number): Promise<number[]> {
+  private async getUserFilters(_userId: number): Promise<number[]> {
     // For now, return your hardcoded filters
     // Later this can come from database
     return [448480473]; // From your Python script
