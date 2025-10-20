@@ -791,6 +791,18 @@ export class TelegramClientService extends EventEmitter {
     try {
       console.log(`🔄 [Telegram] Fetching comprehensive chat data for user ${userId}...`);
       
+      // Verify client is authorized
+      const isAuthorized = await client.checkAuthorization();
+      console.log(`🔐 [Telegram] Client authorization status: ${isAuthorized}`);
+      
+      if (!isAuthorized) {
+        throw new Error('Client is not authorized. Please re-authenticate.');
+      }
+      
+      // Verify we can get user info
+      const me = await client.getMe();
+      console.log(`👤 [Telegram] Fetching dialogs for @${me.username || me.firstName} (ID: ${me.id})`);
+      
       // Get all dialogs (chats) with more data
       const dialogs = await client.getDialogs({ 
         limit: 500,  // Increased limit
