@@ -5,15 +5,16 @@
 
 import express, { Request, Response } from 'express';
 import { YouTubeAccountProvider } from '../providers/YouTubeAccountProvider';
-import { authenticateToken } from '../middleware/auth';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const router = express.Router();
+const authService = new SecureAuthService();
 
 /**
  * Save or update YouTube account
  * POST /api/youtube/account/save
  */
-router.post('/account/save', authenticateToken, async (req: Request, res: Response) => {
+router.post('/account/save', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const {
@@ -72,7 +73,7 @@ router.post('/account/save', authenticateToken, async (req: Request, res: Respon
  * Get YouTube account for current user
  * GET /api/youtube/account
  */
-router.get('/account', authenticateToken, async (req: Request, res: Response) => {
+router.get('/account', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
 
@@ -117,7 +118,7 @@ router.get('/account', authenticateToken, async (req: Request, res: Response) =>
  * Update access token (for token refresh)
  * POST /api/youtube/account/refresh
  */
-router.post('/account/refresh', authenticateToken, async (req: Request, res: Response) => {
+router.post('/account/refresh', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { access_token, expires_in } = req.body;
@@ -163,7 +164,7 @@ router.post('/account/refresh', authenticateToken, async (req: Request, res: Res
  * Revoke YouTube account (sign out)
  * POST /api/youtube/account/revoke
  */
-router.post('/account/revoke', authenticateToken, async (req: Request, res: Response) => {
+router.post('/account/revoke', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
 
@@ -198,7 +199,7 @@ router.post('/account/revoke', authenticateToken, async (req: Request, res: Resp
  * Save playlist cache
  * POST /api/youtube/playlists/cache
  */
-router.post('/playlists/cache', authenticateToken, async (req: Request, res: Response) => {
+router.post('/playlists/cache', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { playlists } = req.body;
@@ -251,7 +252,7 @@ router.post('/playlists/cache', authenticateToken, async (req: Request, res: Res
  * Get cached playlists
  * GET /api/youtube/playlists/cache
  */
-router.get('/playlists/cache', authenticateToken, async (req: Request, res: Response) => {
+router.get('/playlists/cache', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
 
