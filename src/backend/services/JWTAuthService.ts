@@ -138,8 +138,6 @@ export class JWTAuthService {
      * Set secure HTTP-only cookies for authentication
      */
     setSecureCookies(res: Response, accessToken: string, refreshToken: string) {
-        const isProduction = process.env.NODE_ENV === 'production';
-        
         // Using Express cookie-parser with sameSite: 'none' for cross-site support
         // between alpha.sniff.agency (frontend) and api.sniff.agency (backend)
         res.cookie('access_token', accessToken, {
