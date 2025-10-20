@@ -37,6 +37,7 @@ import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
 import { createTelegramRoutes } from './routes/telegram.js';
+import userDataRoutes from './routes/user-data.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 
@@ -135,6 +136,9 @@ app.use('/api/database', databaseRoutes);
 // Register Telegram routes
 const telegramRoutes = createTelegramRoutes();
 app.use('/api/telegram', telegramRoutes);
+
+// Register user data management routes (GDPR compliance)
+app.use(userDataRoutes);
 
 // Initialize metrics service (loaded dynamically in endpoints)
 import('./services/MetricsService.js').then(() => {
