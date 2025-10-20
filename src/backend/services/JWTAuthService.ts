@@ -140,10 +140,12 @@ export class JWTAuthService {
     setSecureCookies(res: Response, accessToken: string, refreshToken: string) {
         // Using Express cookie-parser with sameSite: 'none' for cross-site support
         // between alpha.sniff.agency (frontend) and api.sniff.agency (backend)
+        // domain: '.sniff.agency' allows cookies to be shared across all subdomains
         res.cookie('access_token', accessToken, {
             httpOnly: true,
             secure: true, // Required for sameSite: 'none'
             sameSite: 'none', // Allow cross-site cookies
+            domain: '.sniff.agency', // Share across subdomains
             path: '/',
             maxAge: 15 * 60 * 1000 // 15 minutes in milliseconds
         });
@@ -152,6 +154,7 @@ export class JWTAuthService {
             httpOnly: true,
             secure: true, // Required for sameSite: 'none'
             sameSite: 'none', // Allow cross-site cookies
+            domain: '.sniff.agency', // Share across subdomains
             path: '/',
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
         });
@@ -170,11 +173,13 @@ export class JWTAuthService {
     clearSecureCookies(res: Response) {
         res.clearCookie('access_token', { 
             path: '/',
+            domain: '.sniff.agency',
             secure: true,
             sameSite: 'none'
         });
         res.clearCookie('refresh_token', { 
             path: '/',
+            domain: '.sniff.agency',
             secure: true,
             sameSite: 'none'
         });
