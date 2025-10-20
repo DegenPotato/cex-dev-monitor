@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 interface TelegramAccount {
   configured: boolean;
@@ -53,7 +54,9 @@ interface ContractDetection {
 
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
+  const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
   const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'settings'>('sniffer');
+  const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
   const [availableChats, setAvailableChats] = useState<any[]>([]);
@@ -83,6 +86,45 @@ export function TelegramSnifferTab() {
   
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
+
+  // WebSocket listeners for chat fetch progress
+  useEffect(() => {
+    const unsubscribe1 = subscribe('telegram_chat_fetch_started', () => {
+      setFetchProgress({ saved: 0, total: 0 });
+      setMessage({ type: 'info', text: 'Fetching chats from Telegram...' });
+    });
+
+    const unsubscribe2 = subscribe('telegram_chat_fetch_fetched', (data: any) => {
+      setFetchProgress({ saved: 0, total: data.totalChats });
+      setMessage({ type: 'info', text: `Fetched ${data.totalChats} chats, saving to database...` });
+    });
+
+    const unsubscribe3 = subscribe('telegram_chat_fetch_progress', (data: any) => {
+      setFetchProgress({ saved: data.saved, total: data.total });
+      loadMonitoredChats(); // Reload chat list
+    });
+
+    const unsubscribe4 = subscribe('telegram_chat_fetch_complete', (data: any) => {
+      setFetchProgress(null);
+      setMessage({ type: 'success', text: `Successfully saved ${data.savedCount}/${data.totalChats} chats!` });
+      loadMonitoredChats();
+      setLoading(false);
+    });
+
+    const unsubscribe5 = subscribe('telegram_chat_fetch_error', (data: any) => {
+      setFetchProgress(null);
+      setMessage({ type: 'error', text: `Error: ${data.error}` });
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe1();
+      unsubscribe2();
+      unsubscribe3();
+      unsubscribe4();
+      unsubscribe5();
+    };
+  }, [subscribe]);
 
   // Load account status when authentication changes
   useEffect(() => {
@@ -600,6 +642,32 @@ export function TelegramSnifferTab() {
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 Fetch All Chats
               </button>
+
+              {/* Real-time Progress Indicator */}
+              {fetchProgress && (
+                <div className="mt-3 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-cyan-300">
+                      {fetchProgress.total > 0 
+                        ? `Saving chats: ${fetchProgress.saved} / ${fetchProgress.total}` 
+                        : 'Fetching from Telegram...'}
+                    </span>
+                    <span className="text-xs text-cyan-400 font-medium">
+                      {fetchProgress.total > 0 
+                        ? `${Math.round((fetchProgress.saved / fetchProgress.total) * 100)}%`
+                        : '...'}
+                    </span>
+                  </div>
+                  {fetchProgress.total > 0 && (
+                    <div className="w-full bg-black/30 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-300"
+                        style={{ width: `${(fetchProgress.saved / fetchProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

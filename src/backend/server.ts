@@ -373,6 +373,27 @@ solanaMonitor.on('dev_wallet_found', (data) => {
   console.log(`🔥 DEV WALLET DISCOVERED: ${data.address.slice(0, 8)}... (${data.tokensDeployed} tokens)`);
 });
 
+// Telegram chat fetch progress events
+telegramClientService.on('chat_fetch_started', (data) => {
+  broadcast('telegram_chat_fetch_started', data);
+});
+
+telegramClientService.on('chat_fetch_fetched', (data) => {
+  broadcast('telegram_chat_fetch_fetched', data);
+});
+
+telegramClientService.on('chat_fetch_progress', (data) => {
+  broadcast('telegram_chat_fetch_progress', data);
+});
+
+telegramClientService.on('chat_fetch_complete', (data) => {
+  broadcast('telegram_chat_fetch_complete', data);
+});
+
+telegramClientService.on('chat_fetch_error', (data) => {
+  broadcast('telegram_chat_fetch_error', data);
+});
+
 // API Routes
 
 // Get config

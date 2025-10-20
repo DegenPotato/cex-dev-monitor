@@ -264,35 +264,77 @@ export function createTelegramRoutes() {
         });
       }
 
-      // Fetch chats from Telegram using active client
-      const chats = await telegramClientService.fetchUserChats(userId);
-      
-      // Save/update chats in database
-      let savedCount = 0;
-      for (const chat of chats) {
-        try {
-          await telegramService.saveMonitoredChat(userId, {
-            chatId: chat.chatId,
-            chatName: chat.chatName,
-            chatType: chat.chatType,
-            username: chat.username,
-            inviteLink: chat.inviteLink,
-            isActive: false // Inactive by default, user must configure and activate
-          });
-          savedCount++;
-        } catch (error) {
-          console.error(`Failed to save chat ${chat.chatId}:`, error);
-        }
-      }
-
+      // Return immediately - process in background
       res.json({
         success: true,
-        message: `Fetched and saved ${savedCount} chats`,
-        totalFetched: chats.length,
-        chats: chats
+        message: 'Chat fetching started in background. Check monitored chats for updates.',
+        status: 'processing'
       });
+
+      // Process chats in background (don't await)
+      (async () => {
+        try {
+          console.log(`📥 [Telegram] Starting background chat fetch for user ${userId}...`);
+          
+          // Emit start event
+          telegramClientService.emit('chat_fetch_started', { userId, timestamp: Date.now() });
+          
+          // Fetch chats from Telegram using active client
+          const chats = await telegramClientService.fetchUserChats(userId);
+          
+          // Emit fetched event
+          telegramClientService.emit('chat_fetch_fetched', { userId, totalChats: chats.length, timestamp: Date.now() });
+          
+          // Save/update chats in database
+          let savedCount = 0;
+          for (const chat of chats) {
+            try {
+              await telegramService.saveMonitoredChat(userId, {
+                chatId: chat.chatId,
+                chatName: chat.chatName,
+                chatType: chat.chatType,
+                username: chat.username,
+                inviteLink: chat.inviteLink,
+                isActive: false // Inactive by default, user must configure and activate
+              });
+              savedCount++;
+              
+              // Emit progress every 10 chats
+              if (savedCount % 10 === 0) {
+                console.log(`  📊 [Telegram] Saved ${savedCount}/${chats.length} chats for user ${userId}`);
+                telegramClientService.emit('chat_fetch_progress', { 
+                  userId, 
+                  saved: savedCount, 
+                  total: chats.length,
+                  timestamp: Date.now()
+                });
+              }
+            } catch (error) {
+              console.error(`Failed to save chat ${chat.chatId}:`, error);
+            }
+          }
+          
+          console.log(`✅ [Telegram] Completed: Saved ${savedCount}/${chats.length} chats for user ${userId}`);
+          
+          // Emit completion event
+          telegramClientService.emit('chat_fetch_complete', { 
+            userId, 
+            savedCount, 
+            totalChats: chats.length,
+            timestamp: Date.now()
+          });
+        } catch (error: any) {
+          console.error('[Telegram] Background chat fetch error:', error);
+          telegramClientService.emit('chat_fetch_error', { 
+            userId, 
+            error: error.message,
+            timestamp: Date.now()
+          });
+        }
+      })();
+      
     } catch (error: any) {
-      console.error('[Telegram] Error fetching chats:', error);
+      console.error('[Telegram] Error starting chat fetch:', error);
       res.status(500).json({ error: error.message });
     }
   });
