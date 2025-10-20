@@ -1,17 +1,33 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Bot, User, Check, RefreshCw, Radio, Settings as SettingsIcon, Eye, EyeOff } from 'lucide-react';
+import { 
+  MessageSquare, 
+  Settings as SettingsIcon, 
+  Bot, 
+  User, 
+  Radio, 
+  Check, 
+  Send, 
+  Eye,
+  EyeOff,
+  AlertCircle,
+  X,
+  Trash2,
+  RefreshCw
+} from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 
 interface TelegramAccount {
   configured: boolean;
   verified: boolean;
+  connected?: boolean; // Live connection status
   apiId?: string;
   apiHash?: string;
   phoneNumber?: string;
   botToken?: string;
   botUsername?: string;
   lastConnectedAt?: number;
+  isVerified?: boolean;
 }
 
 interface MonitoredChat {
@@ -353,6 +369,74 @@ export function TelegramSnifferTab() {
     }
   };
 
+  const handleDeleteUserAccount = async () => {
+    if (!confirm('Are you sure you want to disconnect your Telegram user account? You will need to re-authenticate to use it again.')) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      if (!isAuthenticated) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/user-account`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        setMessage({ type: 'success', text: 'User account disconnected successfully' });
+        // Reset form fields
+        setApiId('');
+        setApiHash('');
+        setPhoneNumber('');
+        setVerificationCode('');
+        setTwoFAPassword('');
+        setAuthStep('idle');
+        await loadAccountStatus();
+      } else {
+        const error = await response.json();
+        setMessage({ type: 'error', text: error.error || 'Failed to disconnect account' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteBotAccount = async () => {
+    if (!confirm('Are you sure you want to remove your Telegram bot account?')) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      if (!isAuthenticated) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/bot-account`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        setMessage({ type: 'success', text: 'Bot account removed successfully' });
+        setBotToken('');
+        await loadAccountStatus();
+      } else {
+        const error = await response.json();
+        setMessage({ type: 'error', text: error.error || 'Failed to remove bot account' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load chats and detections when switching sections
   useEffect(() => {
     if (activeSection === 'chats') {
@@ -425,13 +509,119 @@ export function TelegramSnifferTab() {
 
       {/* Content */}
       {activeSection === 'settings' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* User Account Configuration */}
+        <div className="space-y-6">
+          {/* Account Overview */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
-            <div className="flex items-center gap-3 mb-4">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Connected Accounts Overview</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* User Account Summary */}
+              <div className="bg-black/40 border border-cyan-500/10 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-cyan-400" />
+                    <span className="font-medium text-cyan-300">User Account</span>
+                  </div>
+                  {userAccount?.connected ? (
+                    <span className="px-2 py-1 bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs font-bold">
+                      LIVE
+                    </span>
+                  ) : userAccount?.verified ? (
+                    <span className="px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
+                      READY
+                    </span>
+                  ) : userAccount?.configured ? (
+                    <span className="px-2 py-1 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-400 text-xs font-bold">
+                      PENDING
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400 text-xs font-bold">
+                      NOT SET
+                    </span>
+                  )}
+                </div>
+                
+                {userAccount?.configured ? (
+                  <div className="space-y-1 text-sm">
+                    <p className="text-gray-400">Phone: <span className="text-gray-300">{userAccount.phoneNumber}</span></p>
+                    {userAccount.connected && (
+                      <p className="text-gray-400">Status: <span className="text-cyan-400">Connected & Monitoring</span></p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Configure account to monitor chats</p>
+                )}
+              </div>
+
+              {/* Bot Account Summary */}
+              <div className="bg-black/40 border border-cyan-500/10 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-cyan-400" />
+                    <span className="font-medium text-cyan-300">Bot Account</span>
+                  </div>
+                  {botAccount?.verified ? (
+                    <span className="px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
+                      VERIFIED
+                    </span>
+                  ) : botAccount?.configured ? (
+                    <span className="px-2 py-1 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-400 text-xs font-bold">
+                      PENDING
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400 text-xs font-bold">
+                      NOT SET
+                    </span>
+                  )}
+                </div>
+                
+                {botAccount?.configured ? (
+                  <div className="space-y-1 text-sm">
+                    {botAccount.botUsername ? (
+                      <p className="text-gray-400">Username: <span className="text-gray-300">@{botAccount.botUsername}</span></p>
+                    ) : (
+                      <p className="text-gray-400">Username: <span className="text-gray-500">Not verified</span></p>
+                    )}
+                    {botAccount.verified && (
+                      <p className="text-gray-400">Status: <span className="text-green-400">Ready to send</span></p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Configure bot for notifications</p>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Status Message */}
+            <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <p className="text-sm text-blue-300">
+                {userAccount?.connected && botAccount?.verified ? (
+                  <><strong>✅ All Systems Active:</strong> Monitoring chats and ready to send notifications</>
+                ) : userAccount?.connected ? (
+                  <><strong>🟡 Partially Active:</strong> Monitoring active, but bot not configured for notifications</>
+                ) : botAccount?.verified ? (
+                  <><strong>🟡 Bot Ready:</strong> Can send notifications, but not monitoring chats</>
+                ) : (
+                  <><strong>⚡ Get Started:</strong> Configure your accounts below to start monitoring Telegram</>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Configuration Forms */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* User Account Configuration */}
+            <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+              <div className="flex items-center gap-3 mb-4">
               <User className="w-6 h-6 text-cyan-400" />
               <h3 className="text-xl font-bold text-cyan-300">User Account</h3>
-              {userAccount?.verified && (
+              {userAccount?.connected && (
+                <span className="ml-auto px-2 py-1 bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs font-bold flex items-center gap-1">
+                  <Radio className="w-3 h-3 animate-pulse" />
+                  CONNECTED
+                </span>
+              )}
+              {userAccount?.verified && !userAccount?.connected && (
                 <span className="ml-auto px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold flex items-center gap-1">
                   <Check className="w-3 h-3" />
                   VERIFIED
@@ -493,6 +683,19 @@ export function TelegramSnifferTab() {
               >
                 {loading ? 'Saving...' : 'Save User Account'}
               </button>
+
+              {/* Disconnect button */}
+              {userAccount?.configured && (
+                <button
+                  type="button"
+                  onClick={handleDeleteUserAccount}
+                  disabled={loading}
+                  className="w-full px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Disconnect Account
+                </button>
+              )}
             </form>
 
             {/* Authentication Flow */}
@@ -642,6 +845,19 @@ export function TelegramSnifferTab() {
                   </button>
                 )}
               </div>
+
+              {/* Delete bot button */}
+              {botAccount?.configured && (
+                <button
+                  type="button"
+                  onClick={handleDeleteBotAccount}
+                  disabled={loading}
+                  className="w-full mt-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Remove Bot Account
+                </button>
+              )}
             </form>
 
             <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
@@ -649,6 +865,7 @@ export function TelegramSnifferTab() {
                 <strong>Note:</strong> Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="underline">@BotFather</a> on Telegram
               </p>
             </div>
+          </div>
           </div>
         </div>
       )}
