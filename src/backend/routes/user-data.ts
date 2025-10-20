@@ -12,7 +12,7 @@ interface AuthenticatedRequest extends Request {
 /**
  * Get user's data summary (what will be deleted)
  */
-router.get('/api/user/data-summary', authService.authenticateRoute, async (req: any, res: any) => {
+router.get('/api/user/data-summary', authService.requireSecureAuth(), async (req: any, res: any) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
@@ -62,7 +62,7 @@ router.get('/api/user/data-summary', authService.authenticateRoute, async (req: 
 /**
  * Delete specific data type
  */
-router.delete('/api/user/data/:type', authService.authenticateRoute, async (req: any, res: any) => {
+router.delete('/api/user/data/:type', authService.requireSecureAuth(), async (req: any, res: any) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const dataType = req.params.type;
@@ -120,7 +120,7 @@ router.delete('/api/user/data/:type', authService.authenticateRoute, async (req:
 /**
  * Delete ALL user data (nuclear option)
  */
-router.delete('/api/user/data/all', authService.authenticateRoute, async (req: any, res: any) => {
+router.delete('/api/user/data/all', authService.requireSecureAuth(), async (req: any, res: any) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const confirmCode = req.body.confirmCode;
@@ -188,7 +188,7 @@ router.delete('/api/user/data/all', authService.authenticateRoute, async (req: a
 /**
  * Export user data (GDPR compliance)
  */
-router.get('/api/user/data/export', authService.authenticateRoute, async (req: any, res: any) => {
+router.get('/api/user/data/export', authService.requireSecureAuth(), async (req: any, res: any) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
