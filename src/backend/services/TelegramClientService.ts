@@ -797,6 +797,8 @@ export class TelegramClientService extends EventEmitter {
         offsetPeer: new Api.InputPeerEmpty(),
       });
       
+      console.log(`📊 [Telegram] client.getDialogs() returned ${dialogs.length} dialogs`);
+      
       const chatsList = [];
       
       for (const dialog of dialogs) {
