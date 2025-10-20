@@ -48,61 +48,79 @@ export class TelegramClientService extends EventEmitter {
     super();
     this.encryptionKey = process.env.TELEGRAM_ENCRYPTION_KEY || 'default-key-change-in-production';
     
-    // Restore active sessions on startup
-    this.restoreActiveSessions().catch(err => {
-      console.error('❌ [Telegram] Failed to restore active sessions:', err);
+    console.log('✅ [Telegram] TelegramClientService initialized');
+    
+    // Restore all saved sessions on startup
+    this.restoreAllSessions().catch(err => {
+      console.error('❌ [Telegram] Failed to restore sessions:', err);
     });
   }
 
   /**
-   * Restore active sessions from database on server startup
+   * Restore all saved sessions from database on server startup
    */
-  private async restoreActiveSessions() {
+  async restoreAllSessions() {
+    console.log('🔄 [Telegram] Restoring saved sessions...');
+    
     try {
-      const { queryAll } = await import('../database/helpers.js');
+      const { queryAll, execute } = await import('../database/helpers.js');
       
       // Get all verified accounts with session strings
       const accounts = await queryAll(
-        'SELECT user_id, api_id, api_hash, phone_number, session_string FROM telegram_user_accounts WHERE is_verified = 1 AND session_string IS NOT NULL',
-        []
-      ) as Array<{ user_id: number; api_id: number; api_hash: string; phone_number: string; session_string: string }>;
-
-      console.log(`🔄 [Telegram] Restoring ${accounts.length} active sessions...`);
-
+        'SELECT user_id, api_id, api_hash, phone_number, session_string FROM telegram_user_accounts WHERE is_verified = 1 AND session_string IS NOT NULL'
+      ) as any[];
+      
+      if (!accounts || accounts.length === 0) {
+        console.log('  ℹ️ No saved sessions to restore');
+        return;
+      }
+      
+      console.log(`  📦 Found ${accounts.length} saved session(s)`);
+      
       for (const account of accounts) {
         try {
-          // Decrypt session string
+          const userId = account.user_id;
           const sessionString = this.decrypt(account.session_string);
           
+          console.log(`  🔄 Restoring session for user ${userId}...`);
+          
           // Create client with saved session
-          const session = new StringSession(sessionString);
-          const client = new TelegramClient(session, account.api_id, account.api_hash, {
+          const stringSession = new StringSession(sessionString);
+          const client = new TelegramClient(stringSession, parseInt(account.api_id), account.api_hash, {
             connectionRetries: 5,
           });
-
-          // Connect
+          
+          // Connect the client
           await client.connect();
-
-          // Check if session is still valid
+          
+          // Verify the session is still valid by getting user info
           const me = await client.getMe();
           
-          console.log(`✅ [Telegram] Restored session for user ${account.user_id} (${me.username || me.phone})`);
-
           // Store active client
-          this.activeClients.set(account.user_id, client);
+          this.activeClients.set(userId, client);
           
           // Start monitoring
-          await this.startMonitoring(account.user_id, client);
-
+          await this.startMonitoring(userId, client);
+          
+          console.log(`  ✅ Session restored for user ${userId} (@${me.username || me.firstName})`);
+          
+          // Update last connected timestamp
+          await execute(
+            'UPDATE telegram_user_accounts SET last_connected_at = ?, updated_at = ? WHERE user_id = ?',
+            [Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), userId]
+          );
+          
         } catch (error: any) {
-          console.error(`❌ [Telegram] Failed to restore session for user ${account.user_id}:`, error.message);
-          // Don't throw - continue with other accounts
+          console.error(`  ❌ Failed to restore session for user ${account.user_id}:`, error.message);
+          // Don't throw - continue with other sessions
         }
       }
-
-      console.log(`✅ [Telegram] Session restoration complete. ${this.activeClients.size} active connections.`);
-    } catch (error) {
-      console.error('❌ [Telegram] Error in restoreActiveSessions:', error);
+      
+      console.log(`✅ [Telegram] Session restoration complete. ${this.activeClients.size} client(s) connected`);
+      
+    } catch (error: any) {
+      console.error('❌ [Telegram] Error in restoreAllSessions:', error);
+      throw error;
     }
   }
 
