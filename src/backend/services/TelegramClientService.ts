@@ -746,12 +746,44 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Fetch user's chats/dialogs with COMPREHENSIVE details
+   * Fetch user chats
    */
   async fetchUserChats(userId: number) {
-    const client = this.activeClients.get(userId);
+    let client = this.activeClients.get(userId);
+    
+    // If no active client, try to restore from database
     if (!client) {
-      throw new Error('No active client connection for this user');
+      console.log(`⚠️  [Telegram] No active client for user ${userId}, attempting to restore session...`);
+      
+      try {
+        const { queryOne } = await import('../database/helpers.js');
+        const account = await queryOne(
+          'SELECT user_id, api_id, api_hash, phone_number, session_string FROM telegram_user_accounts WHERE user_id = ? AND is_verified = 1 AND session_string IS NOT NULL',
+          [userId]
+        ) as any;
+        
+        if (!account) {
+          throw new Error('No authenticated Telegram account found. Please authenticate first.');
+        }
+        
+        // Restore the session
+        const decrypted = this.decrypt(account.session_string);
+        const session = new StringSession(decrypted);
+        client = new TelegramClient(session, parseInt(account.api_id), account.api_hash, {
+          connectionRetries: 5,
+        });
+        
+        await client.connect();
+        const me = await client.getMe();
+        
+        // Store the restored client
+        this.activeClients.set(userId, client);
+        
+        console.log(`✅ [Telegram] Session restored for user ${userId} (@${me.username || me.firstName})`);
+        
+      } catch (error: any) {
+        throw new Error(`Failed to restore Telegram session: ${error.message}`);
+      }
     }
 
     try {

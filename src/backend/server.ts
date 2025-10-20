@@ -40,6 +40,7 @@ import { createTelegramRoutes } from './routes/telegram.js';
 import userDataRoutes from './routes/user-data.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
+import { telegramClientService } from './services/TelegramClientService.js';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -2632,6 +2633,14 @@ httpServer.listen(PORT, async () => {
   const authMaintenance = new AuthMaintenanceService();
   authMaintenance.start(30);
   console.log(`🔧 Auth maintenance service started`);
+  
+  // Restore all Telegram sessions from database
+  try {
+    await telegramClientService.restoreAllSessions();
+    console.log(`📱 Telegram sessions restored`);
+  } catch (error: any) {
+    console.error(`❌ Failed to restore Telegram sessions:`, error.message);
+  }
   
   // DISABLED auto-start - use manual controls
   console.log(`⏸️  Auto-start DISABLED - Use /api/monitoring/start to begin`);
