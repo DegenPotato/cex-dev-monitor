@@ -261,24 +261,23 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Compute SRP password hash for 2FA
+   * Compute SRP password hash for 2FA using telegram's built-in helper
    */
   private async computePasswordHash(
     passwordInfo: any, // Api.account.Password
-    _passwordStr: string
+    password: string
   ): Promise<any> { // Api.InputCheckPasswordSRP
-    // This is a simplified version - in production, use proper SRP implementation
-    const pwdInfo = passwordInfo as any;
-    const srpId = pwdInfo.srpId;
+    // Use telegram's built-in SRP computation
+    const { computeCheck } = await import('telegram/Password.js');
     
-    // For now, we'll use the simpler password check
-    // In production, implement full SRP protocol with passwordStr
-    // TODO: Implement proper SRP protocol using passwordStr
-    return new Api.InputCheckPasswordSRP({
-      srpId: srpId || BigInt(0),
-      A: Buffer.from(''), // Computed A value
-      M1: Buffer.from('') // Computed M1 value
-    });
+    try {
+      // computeCheck handles all the SRP protocol complexity
+      const passwordHash = await computeCheck(passwordInfo, password);
+      return passwordHash;
+    } catch (error) {
+      console.error('❌ [Telegram] SRP computation failed:', error);
+      throw new Error('Failed to compute password hash');
+    }
   }
 
   /**
