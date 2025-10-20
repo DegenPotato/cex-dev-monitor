@@ -63,7 +63,7 @@ export class TelegramClientService extends EventEmitter {
     console.log('🔄 [Telegram] Restoring saved sessions...');
     
     try {
-      const { queryAll, execute } = await import('../database/helpers.js');
+      const { queryAll } = await import('../database/helpers.js');
       
       // Get all verified accounts with session strings
       const accounts = await queryAll(
