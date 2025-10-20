@@ -803,10 +803,9 @@ export class TelegramClientService extends EventEmitter {
       const me = await client.getMe();
       console.log(`👤 [Telegram] Fetching dialogs for @${me.username || me.firstName} (ID: ${me.id})`);
       
-      // Get all dialogs (chats) - simplified call
-      const dialogs = await client.getDialogs({
-        limit: 100
-      });
+      // Get ALL dialogs (chats) - no limit to fetch everything
+      console.log('📥 [Telegram] Fetching all dialogs (this may take a minute)...');
+      const dialogs = await client.getDialogs();
       
       console.log(`📊 [Telegram] client.getDialogs() returned ${dialogs.length} dialogs`);
       
@@ -853,25 +852,11 @@ export class TelegramClientService extends EventEmitter {
             restrictions = entity.restriction;
           }
           
-          // Try to get invite link
-          try {
-            if (entity.username) {
-              inviteLink = `https://t.me/${entity.username}`;
-            } else if (entity.adminRights?.inviteUsers) {
-              const result = await client.invoke(
-                new Api.messages.ExportChatInvite({
-                  peer: entity,
-                  legacyRevokePermanent: false
-                })
-              );
-              
-              if (result.className === 'ChatInviteExported') {
-                inviteLink = result.link;
-              }
-            }
-          } catch (error) {
-            // Silently fail
+          // Get invite link (skip expensive API call to avoid flood wait)
+          if (entity.username) {
+            inviteLink = `https://t.me/${entity.username}`;
           }
+          // Skip ExportChatInvite to avoid flood wait - can be fetched later if needed
         }
 
         // Get last message info
