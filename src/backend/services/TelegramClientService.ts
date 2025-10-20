@@ -803,12 +803,9 @@ export class TelegramClientService extends EventEmitter {
       const me = await client.getMe();
       console.log(`👤 [Telegram] Fetching dialogs for @${me.username || me.firstName} (ID: ${me.id})`);
       
-      // Get all dialogs (chats) with more data
-      const dialogs = await client.getDialogs({ 
-        limit: 500,  // Increased limit
-        offsetDate: 0,
-        offsetId: 0,
-        offsetPeer: new Api.InputPeerEmpty(),
+      // Get all dialogs (chats) - simplified call
+      const dialogs = await client.getDialogs({
+        limit: 100
       });
       
       console.log(`📊 [Telegram] client.getDialogs() returned ${dialogs.length} dialogs`);
