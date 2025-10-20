@@ -45,8 +45,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ 
+  server: httpServer,
+  path: '/ws'
+});
+
+// Start Telegram Redis Stream Consumer (if enabled)
+if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
+  import('./services/TelegramStreamConsumer.js').then(({ telegramStreamConsumer }) => {
+    telegramStreamConsumer.setWebSocketServer(wss);
+    telegramStreamConsumer.startConsuming();
+    console.log('✅ Telegram stream consumer started');
+  }).catch(err => {
+    console.error('Failed to start Telegram stream consumer:', err);
+  });
+}
 
 // CORS configuration - allow specific origins for cookie-based auth
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
@@ -121,6 +135,70 @@ app.use('/api/database', databaseRoutes);
 // Register Telegram routes
 const telegramRoutes = createTelegramRoutes();
 app.use('/api/telegram', telegramRoutes);
+
+// Initialize metrics service (loaded dynamically in endpoints)
+import('./services/MetricsService.js').then(() => {
+  console.log('📊 Metrics service initialized');
+}).catch(err => console.error('Failed to load metrics service:', err));
+
+// Comprehensive metrics endpoint
+app.get('/api/metrics', (_req, res) => {
+  import('./services/MetricsService.js').then(({ metricsService }) => {
+    res.json(metricsService.getMetrics());
+  }).catch(() => {
+    res.status(500).json({ error: 'Metrics service not available' });
+  });
+});
+
+// Metrics history endpoint
+app.get('/api/metrics/history', (_req, res) => {
+  import('./services/MetricsService.js').then(({ metricsService }) => {
+    res.json(metricsService.getHistory());
+  }).catch(() => {
+    res.status(500).json({ error: 'Metrics service not available' });
+  });
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', (_req, res) => {
+  import('./services/MetricsService.js').then(({ metricsService }) => {
+    res.set('Content-Type', 'text/plain');
+    res.send(metricsService.getPrometheusMetrics());
+  }).catch(() => {
+    res.status(500).send('# Metrics service not available');
+  });
+});
+
+// Metrics endpoint for Telegram stream (legacy, kept for compatibility)
+app.get('/api/metrics/telegram-stream', (_req, res) => {
+  if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
+    import('./services/TelegramStreamConsumer.js').then(({ telegramStreamConsumer }) => {
+      res.json(telegramStreamConsumer.getMetrics());
+    }).catch(() => {
+      res.status(500).json({ error: 'Stream consumer not available' });
+    });
+  } else {
+    res.status(404).json({ error: 'Telegram stream disabled' });
+  }
+});
+
+// Health check endpoint with detailed status
+app.get('/api/health', (_req, res) => {
+  import('./services/MetricsService.js').then(({ metricsService }) => {
+    const metrics = metricsService.getMetrics();
+    const status = metrics.health.overall === 'healthy' ? 200 : 
+                  metrics.health.overall === 'degraded' ? 206 : 503;
+    res.status(status).json({
+      status: metrics.health.overall,
+      services: metrics.health.services,
+      alerts: metrics.health.alerts.slice(-10),
+      uptime: metrics.system.uptime,
+      timestamp: metrics.timestamp
+    });
+  }).catch(() => {
+    res.status(503).json({ status: 'unhealthy', error: 'Metrics service not available' });
+  });
+});
 
 // Create auth service for protecting specific routes
 const authService = new SecureAuthService();
@@ -2542,7 +2620,7 @@ app.get('/', (_req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, async () => {
+httpServer.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);
   

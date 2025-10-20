@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { TelegramUserService } from '../services/TelegramUserService.js';
+import { telegramClientService } from '../services/TelegramClientService.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 // Extend Express Request type to include user property from auth middleware
@@ -83,31 +84,81 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Verify user account (would connect via Telethon in Python service)
-   * This endpoint would trigger the Python script to connect
+   * Start authentication - sends verification code to phone
    */
-  router.post('/user-account/verify', authenticateToken, async (req, res) => {
+  router.post('/user-account/start-auth', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      // const { code } = req.body; // Verification code from Telegram (for future use)
+      
+      // Get credentials from database
+      const account = await telegramService.getUserAccount(userId);
+      if (!account) {
+        return res.status(400).json({ error: 'Please save your credentials first' });
+      }
 
-      // In a real implementation, this would:
-      // 1. Get user credentials from DB
-      // 2. Send to Python service via IPC/HTTP
-      // 3. Python service connects with Telethon
-      // 4. Returns session string
-      // 5. Save session string to DB
+      // Start authentication flow with GramJS
+      const result = await telegramClientService.startAuth(
+        userId,
+        account.apiId,
+        account.apiHash,
+        account.phoneNumber
+      );
 
-      // For now, just mark as verified
-      await telegramService.updateUserAccountVerification(userId, true);
-
-      res.json({ 
-        success: true, 
-        message: 'Account verified successfully',
-        note: 'Full verification requires Python Telethon integration'
-      });
+      res.json(result);
     } catch (error: any) {
-      console.error('[Telegram] Error verifying user account:', error);
+      console.error('[Telegram] Error starting auth:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Verify the code sent to phone
+   */
+  router.post('/user-account/verify-code', authenticateToken, async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { code } = req.body;
+
+      if (!code) {
+        return res.status(400).json({ error: 'Verification code is required' });
+      }
+
+      const result = await telegramClientService.verifyCode(userId, code);
+      
+      // If connected successfully, update database
+      if (result.success && result.status === 'connected') {
+        await telegramService.updateUserAccountVerification(userId, true);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Telegram] Error verifying code:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Verify 2FA password
+   */
+  router.post('/user-account/verify-2fa', authenticateToken, async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { password } = req.body;
+
+      if (!password) {
+        return res.status(400).json({ error: '2FA password is required' });
+      }
+
+      const result = await telegramClientService.verify2FA(userId, password);
+      
+      // If connected successfully, update database
+      if (result.success && result.status === 'connected') {
+        await telegramService.updateUserAccountVerification(userId, true);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Telegram] Error verifying 2FA:', error);
       res.status(500).json({ error: error.message });
     }
   });

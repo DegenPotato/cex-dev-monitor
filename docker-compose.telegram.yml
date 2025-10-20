@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Redis for message streaming
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - telegram-net
+
+  # Go Telegram Listener (High Performance)
+  telegram-listener:
+    build:
+      context: ./telegram-listener
+      dockerfile: Dockerfile
+    environment:
+      - API_ID=${TELEGRAM_API_ID:-26373394}
+      - API_HASH=${TELEGRAM_API_HASH}
+      - PHONE=${TELEGRAM_PHONE}
+      - REDIS_ADDR=redis:6379
+      - SESSION_FILE=/data/telegram.session
+    volumes:
+      - telegram-session:/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - telegram-net
+
+  # Optional: Redis Commander for monitoring
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - telegram-net
+
+volumes:
+  redis-data:
+  telegram-session:
+
+networks:
+  telegram-net:
+    driver: bridge

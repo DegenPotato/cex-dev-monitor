@@ -48,8 +48,14 @@ export function TelegramSnifferTab() {
   const [showApiHash, setShowApiHash] = useState(false);
   const [showBotToken, setShowBotToken] = useState(false);
   
+  // Authentication flow states
+  const [authStep, setAuthStep] = useState<'idle' | 'code_sent' | 'awaiting_2fa' | 'connected'>('idle');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [twoFAPassword, setTwoFAPassword] = useState('');
+  const [show2FAPassword, setShow2FAPassword] = useState(false);
+  
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
 
   // Load account status
   useEffect(() => {
@@ -143,11 +149,126 @@ export function TelegramSnifferTab() {
       });
 
       if (response.ok) {
-        setMessage({ type: 'success', text: 'User account configured successfully!' });
+        setMessage({ type: 'success', text: 'User account configured successfully! Click "Start Authentication" to connect.' });
         await loadAccountStatus();
       } else {
         const error = await response.json();
         setMessage({ type: 'error', text: error.error || 'Failed to save account' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartAuth = async () => {
+    setLoading(true);
+    setMessage(null);
+    setAuthStep('idle');
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Not authenticated' });
+        return;
+      }
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/user-account/start-auth`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        if (data.status === 'connected') {
+          setAuthStep('connected');
+          setMessage({ type: 'success', text: `Already authenticated! Welcome ${data.user.firstName}` });
+          await loadAccountStatus();
+        } else if (data.status === 'code_sent') {
+          setAuthStep('code_sent');
+          setMessage({ type: 'info', text: data.message });
+        }
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to start authentication' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/user-account/verify-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ code: verificationCode })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        if (data.status === 'connected') {
+          setAuthStep('connected');
+          setMessage({ type: 'success', text: `Successfully authenticated! Welcome ${data.user.firstName}` });
+          await loadAccountStatus();
+          setVerificationCode('');
+        } else if (data.status === 'awaiting_2fa') {
+          setAuthStep('awaiting_2fa');
+          setMessage({ type: 'info', text: data.message });
+        }
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Invalid verification code' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/user-account/verify-2fa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: twoFAPassword })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.status === 'connected') {
+        setAuthStep('connected');
+        setMessage({ type: 'success', text: `Successfully authenticated with 2FA! Welcome ${data.user.firstName}` });
+        await loadAccountStatus();
+        setTwoFAPassword('');
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Invalid 2FA password' });
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message });
@@ -275,6 +396,8 @@ export function TelegramSnifferTab() {
         <div className={`mb-4 p-4 rounded-lg border ${
           message.type === 'success' 
             ? 'bg-green-500/10 border-green-500/30 text-green-400'
+            : message.type === 'info'
+            ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
             : 'bg-red-500/10 border-red-500/30 text-red-400'
         }`}>
           {message.text}
@@ -389,6 +512,80 @@ export function TelegramSnifferTab() {
                 {loading ? 'Saving...' : 'Save User Account'}
               </button>
             </form>
+
+            {/* Authentication Flow */}
+            {userAccount?.configured && !userAccount?.verified && (
+              <div className="mt-4 space-y-4">
+                {authStep === 'idle' && (
+                  <button
+                    onClick={handleStartAuth}
+                    disabled={loading}
+                    className="w-full px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 font-medium transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Starting...' : 'Start Authentication'}
+                  </button>
+                )}
+
+                {authStep === 'code_sent' && (
+                  <form onSubmit={handleVerifyCode} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Verification Code
+                      </label>
+                      <input
+                        type="text"
+                        value={verificationCode}
+                        onChange={(e) => setVerificationCode(e.target.value)}
+                        placeholder="Enter the code sent to your Telegram"
+                        className="w-full px-4 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading || !verificationCode}
+                      className="w-full px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 font-medium transition-all disabled:opacity-50"
+                    >
+                      {loading ? 'Verifying...' : 'Verify Code'}
+                    </button>
+                  </form>
+                )}
+
+                {authStep === 'awaiting_2fa' && (
+                  <form onSubmit={handleVerify2FA} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        2FA Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={show2FAPassword ? "text" : "password"}
+                          value={twoFAPassword}
+                          onChange={(e) => setTwoFAPassword(e.target.value)}
+                          placeholder="Enter your 2FA password"
+                          className="w-full px-4 py-2 pr-10 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShow2FAPassword(!show2FAPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-400"
+                        >
+                          {show2FAPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading || !twoFAPassword}
+                      className="w-full px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 font-medium transition-all disabled:opacity-50"
+                    >
+                      {loading ? 'Verifying...' : 'Verify 2FA Password'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
               <p className="text-xs text-blue-300">
