@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { queryOne, queryAll, execute, saveDatabase } from '../database/helpers.js';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
 
 /**
  * Telegram User Service
@@ -80,19 +80,18 @@ export class TelegramUserService {
       ]);
     }
 
-    saveDatabase();
     return { success: true };
   }
 
   /**
    * Get Telegram user account credentials
    */
-  getUserAccount(userId: number) {
-    const account = this.db.prepare(`
+  async getUserAccount(userId: number) {
+    const account = await queryOne(`
       SELECT id, api_id, api_hash, phone_number, session_string, is_verified, last_connected_at
       FROM telegram_user_accounts 
       WHERE user_id = ?
-    `).get(userId) as any;
+    `, [userId]) as any;
 
     if (!account) return null;
 
@@ -110,20 +109,21 @@ export class TelegramUserService {
   /**
    * Update user account verification status
    */
-  updateUserAccountVerification(userId: number, isVerified: boolean, sessionString?: string) {
+  async updateUserAccountVerification(userId: number, isVerified: boolean, sessionString?: string) {
     const encryptedSession = sessionString ? this.encrypt(sessionString) : null;
+    const now = Math.floor(Date.now() / 1000);
     
-    this.db.prepare(`
+    await execute(`
       UPDATE telegram_user_accounts 
       SET is_verified = ?, session_string = ?, last_connected_at = ?, updated_at = ?
       WHERE user_id = ?
-    `).run(
+    `, [
       isVerified ? 1 : 0,
       encryptedSession,
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000),
+      now,
+      now,
       userId
-    );
+    ]);
 
     return { success: true };
   }
@@ -131,36 +131,37 @@ export class TelegramUserService {
   /**
    * Save or update Telegram bot account credentials
    */
-  saveBotAccount(userId: number, credentials: {
+  async saveBotAccount(userId: number, credentials: {
     botToken: string;
     botUsername?: string;
   }) {
-    const existing = this.db.prepare('SELECT id FROM telegram_bot_accounts WHERE user_id = ?').get(userId);
+    const existing = await queryOne('SELECT id FROM telegram_bot_accounts WHERE user_id = ?', [userId]);
     
     const encryptedToken = this.encrypt(credentials.botToken);
+    const now = Math.floor(Date.now() / 1000);
 
     if (existing) {
-      this.db.prepare(`
+      await execute(`
         UPDATE telegram_bot_accounts 
         SET bot_token = ?, bot_username = ?, updated_at = ?
         WHERE user_id = ?
-      `).run(
+      `, [
         encryptedToken,
         credentials.botUsername || null,
-        Math.floor(Date.now() / 1000),
+        now,
         userId
-      );
+      ]);
     } else {
-      this.db.prepare(`
+      await execute(`
         INSERT INTO telegram_bot_accounts (user_id, bot_token, bot_username, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?)
-      `).run(
+      `, [
         userId,
         encryptedToken,
         credentials.botUsername || null,
-        Math.floor(Date.now() / 1000),
-        Math.floor(Date.now() / 1000)
-      );
+        now,
+        now
+      ]);
     }
 
     return { success: true };
@@ -169,12 +170,12 @@ export class TelegramUserService {
   /**
    * Get Telegram bot account credentials
    */
-  getBotAccount(userId: number) {
-    const account = this.db.prepare(`
+  async getBotAccount(userId: number) {
+    const account = await queryOne(`
       SELECT id, bot_token, bot_username, is_verified, last_connected_at
       FROM telegram_bot_accounts 
       WHERE user_id = ?
-    `).get(userId) as any;
+    `, [userId]) as any;
 
     if (!account) return null;
 
@@ -190,18 +191,20 @@ export class TelegramUserService {
   /**
    * Update bot account verification status
    */
-  updateBotAccountVerification(userId: number, isVerified: boolean, botUsername?: string) {
-    this.db.prepare(`
+  async updateBotAccountVerification(userId: number, isVerified: boolean, botUsername?: string) {
+    const now = Math.floor(Date.now() / 1000);
+    
+    await execute(`
       UPDATE telegram_bot_accounts 
       SET is_verified = ?, bot_username = ?, last_connected_at = ?, updated_at = ?
       WHERE user_id = ?
-    `).run(
+    `, [
       isVerified ? 1 : 0,
       botUsername || null,
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000),
+      now,
+      now,
       userId
-    );
+    ]);
 
     return { success: true };
   }
@@ -209,7 +212,7 @@ export class TelegramUserService {
   /**
    * Save monitored chat configuration
    */
-  saveMonitoredChat(userId: number, chat: {
+  async saveMonitoredChat(userId: number, chat: {
     chatId: string;
     chatName?: string;
     chatType?: string;
@@ -217,35 +220,37 @@ export class TelegramUserService {
     monitoredUserIds?: number[];
     monitoredKeywords?: string[];
   }) {
-    const existing = this.db.prepare(
-      'SELECT id FROM telegram_monitored_chats WHERE user_id = ? AND chat_id = ?'
-    ).get(userId, chat.chatId);
+    const existing = await queryOne(
+      'SELECT id FROM telegram_monitored_chats WHERE user_id = ? AND chat_id = ?',
+      [userId, chat.chatId]
+    );
 
     const monitoredUserIdsJson = chat.monitoredUserIds ? JSON.stringify(chat.monitoredUserIds) : null;
     const monitoredKeywordsJson = chat.monitoredKeywords ? JSON.stringify(chat.monitoredKeywords) : null;
+    const now = Math.floor(Date.now() / 1000);
 
     if (existing) {
-      this.db.prepare(`
+      await execute(`
         UPDATE telegram_monitored_chats 
         SET chat_name = ?, chat_type = ?, forward_to_chat_id = ?, 
             monitored_user_ids = ?, monitored_keywords = ?, updated_at = ?
         WHERE user_id = ? AND chat_id = ?
-      `).run(
+      `, [
         chat.chatName || null,
         chat.chatType || null,
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
-        Math.floor(Date.now() / 1000),
+        now,
         userId,
         chat.chatId
-      );
+      ]);
     } else {
-      this.db.prepare(`
+      await execute(`
         INSERT INTO telegram_monitored_chats 
         (user_id, chat_id, chat_name, chat_type, forward_to_chat_id, monitored_user_ids, monitored_keywords, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         userId,
         chat.chatId,
         chat.chatName || null,
@@ -253,9 +258,9 @@ export class TelegramUserService {
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
-        Math.floor(Date.now() / 1000),
-        Math.floor(Date.now() / 1000)
-      );
+        now,
+        now
+      ]);
     }
 
     return { success: true };
@@ -264,12 +269,12 @@ export class TelegramUserService {
   /**
    * Get all monitored chats for a user
    */
-  getMonitoredChats(userId: number) {
-    const chats = this.db.prepare(`
+  async getMonitoredChats(userId: number) {
+    const chats = await queryAll(`
       SELECT * FROM telegram_monitored_chats 
       WHERE user_id = ? AND is_active = 1
       ORDER BY created_at DESC
-    `).all(userId) as any[];
+    `, [userId]) as any[];
 
     return chats.map(chat => ({
       id: chat.id,
@@ -288,17 +293,17 @@ export class TelegramUserService {
   /**
    * Toggle monitored chat active status
    */
-  toggleMonitoredChat(userId: number, chatId: string, isActive: boolean) {
-    this.db.prepare(`
+  async toggleMonitoredChat(userId: number, chatId: string, isActive: boolean) {
+    await execute(`
       UPDATE telegram_monitored_chats 
       SET is_active = ?, updated_at = ?
       WHERE user_id = ? AND chat_id = ?
-    `).run(
+    `, [
       isActive ? 1 : 0,
       Math.floor(Date.now() / 1000),
       userId,
       chatId
-    );
+    ]);
 
     return { success: true };
   }
@@ -306,11 +311,11 @@ export class TelegramUserService {
   /**
    * Delete monitored chat
    */
-  deleteMonitoredChat(userId: number, chatId: string) {
-    this.db.prepare(`
+  async deleteMonitoredChat(userId: number, chatId: string) {
+    await execute(`
       DELETE FROM telegram_monitored_chats 
       WHERE user_id = ? AND chat_id = ?
-    `).run(userId, chatId);
+    `, [userId, chatId]);
 
     return { success: true };
   }
@@ -318,7 +323,7 @@ export class TelegramUserService {
   /**
    * Save detected contract from Telegram
    */
-  saveDetectedContract(data: {
+  async saveDetectedContract(data: {
     userId: number;
     chatId: string;
     messageId: number;
@@ -330,12 +335,14 @@ export class TelegramUserService {
     messageText: string;
     forwarded?: boolean;
   }) {
-    this.db.prepare(`
+    const now = Math.floor(Date.now() / 1000);
+    
+    await execute(`
       INSERT INTO telegram_detected_contracts 
       (user_id, chat_id, message_id, sender_id, sender_username, contract_address, 
        detection_type, original_format, message_text, forwarded, detected_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       data.userId,
       data.chatId,
       data.messageId,
@@ -346,9 +353,9 @@ export class TelegramUserService {
       data.originalFormat,
       data.messageText,
       data.forwarded ? 1 : 0,
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000)
-    );
+      now,
+      now
+    ]);
 
     return { success: true };
   }
@@ -356,13 +363,13 @@ export class TelegramUserService {
   /**
    * Get detected contracts for a user
    */
-  getDetectedContracts(userId: number, limit: number = 100) {
-    const contracts = this.db.prepare(`
+  async getDetectedContracts(userId: number, limit: number = 100) {
+    const contracts = await queryAll(`
       SELECT * FROM telegram_detected_contracts 
       WHERE user_id = ?
       ORDER BY detected_at DESC
       LIMIT ?
-    `).all(userId, limit) as any[];
+    `, [userId, limit]) as any[];
 
     return contracts.map(contract => ({
       id: contract.id,
@@ -382,13 +389,13 @@ export class TelegramUserService {
   /**
    * Check if contract was already detected (deduplication)
    */
-  isContractDetected(userId: number, contractAddress: string, withinDays: number = 30): boolean {
+  async isContractDetected(userId: number, contractAddress: string, withinDays: number = 30): Promise<boolean> {
     const cutoffTime = Math.floor(Date.now() / 1000) - (withinDays * 24 * 60 * 60);
     
-    const result = this.db.prepare(`
+    const result = await queryOne(`
       SELECT COUNT(*) as count FROM telegram_detected_contracts 
       WHERE user_id = ? AND contract_address = ? AND detected_at > ?
-    `).get(userId, contractAddress, cutoffTime) as any;
+    `, [userId, contractAddress, cutoffTime]) as any;
 
     return result.count > 0;
   }
@@ -396,10 +403,10 @@ export class TelegramUserService {
   /**
    * Get account status summary
    */
-  getAccountStatus(userId: number) {
-    const userAccount = this.getUserAccount(userId);
-    const botAccount = this.getBotAccount(userId);
-    const monitoredChats = this.getMonitoredChats(userId);
+  async getAccountStatus(userId: number) {
+    const userAccount = await this.getUserAccount(userId);
+    const botAccount = await this.getBotAccount(userId);
+    const monitoredChats = await this.getMonitoredChats(userId);
 
     return {
       userAccount: userAccount ? {

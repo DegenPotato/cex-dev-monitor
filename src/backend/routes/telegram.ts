@@ -19,10 +19,10 @@ export function createTelegramRoutes() {
   /**
    * Get account status (user account, bot account, monitored chats)
    */
-  router.get('/status', authenticateToken, (req, res) => {
+  router.get('/status', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const status = telegramService.getAccountStatus(userId);
+      const status = await telegramService.getAccountStatus(userId);
       res.json(status);
     } catch (error: any) {
       console.error('[Telegram] Error getting status:', error);
@@ -33,7 +33,7 @@ export function createTelegramRoutes() {
   /**
    * Save user account credentials
    */
-  router.post('/user-account', authenticateToken, (req, res) => {
+  router.post('/user-account', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { apiId, apiHash, phoneNumber } = req.body;
@@ -42,7 +42,7 @@ export function createTelegramRoutes() {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      const result = telegramService.saveUserAccount(userId, {
+      const result = await telegramService.saveUserAccount(userId, {
         apiId,
         apiHash,
         phoneNumber
@@ -58,10 +58,10 @@ export function createTelegramRoutes() {
   /**
    * Get user account credentials (returns masked sensitive data)
    */
-  router.get('/user-account', authenticateToken, (req, res) => {
+  router.get('/user-account', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const account = telegramService.getUserAccount(userId);
+      const account = await telegramService.getUserAccount(userId);
 
       if (!account) {
         return res.json({ configured: false });
@@ -99,7 +99,7 @@ export function createTelegramRoutes() {
       // 5. Save session string to DB
 
       // For now, just mark as verified
-      telegramService.updateUserAccountVerification(userId, true);
+      await telegramService.updateUserAccountVerification(userId, true);
 
       res.json({ 
         success: true, 
@@ -115,7 +115,7 @@ export function createTelegramRoutes() {
   /**
    * Save bot account credentials
    */
-  router.post('/bot-account', authenticateToken, (req, res) => {
+  router.post('/bot-account', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { botToken } = req.body;
@@ -124,7 +124,7 @@ export function createTelegramRoutes() {
         return res.status(400).json({ error: 'Bot token is required' });
       }
 
-      const result = telegramService.saveBotAccount(userId, { botToken });
+      const result = await telegramService.saveBotAccount(userId, { botToken });
       res.json(result);
     } catch (error: any) {
       console.error('[Telegram] Error saving bot account:', error);
@@ -135,10 +135,10 @@ export function createTelegramRoutes() {
   /**
    * Get bot account credentials (returns masked token)
    */
-  router.get('/bot-account', authenticateToken, (req, res) => {
+  router.get('/bot-account', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const account = telegramService.getBotAccount(userId);
+      const account = await telegramService.getBotAccount(userId);
 
       if (!account) {
         return res.json({ configured: false });
@@ -163,7 +163,7 @@ export function createTelegramRoutes() {
   router.post('/bot-account/verify', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const account = telegramService.getBotAccount(userId);
+      const account = await telegramService.getBotAccount(userId);
 
       if (!account) {
         return res.status(404).json({ error: 'Bot account not configured' });
@@ -181,7 +181,7 @@ export function createTelegramRoutes() {
       }
 
       // Update verification status and username
-      telegramService.updateBotAccountVerification(userId, true, data.result.username);
+      await telegramService.updateBotAccountVerification(userId, true, data.result.username);
 
       res.json({
         success: true,
@@ -201,7 +201,7 @@ export function createTelegramRoutes() {
   router.post('/fetch-chats', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const account = telegramService.getUserAccount(userId);
+      const account = await telegramService.getUserAccount(userId);
 
       if (!account || !account.isVerified) {
         return res.status(400).json({ 
@@ -230,10 +230,10 @@ export function createTelegramRoutes() {
   /**
    * Get monitored chats
    */
-  router.get('/monitored-chats', authenticateToken, (req, res) => {
+  router.get('/monitored-chats', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const chats = telegramService.getMonitoredChats(userId);
+      const chats = await telegramService.getMonitoredChats(userId);
       res.json(chats);
     } catch (error: any) {
       console.error('[Telegram] Error getting monitored chats:', error);
@@ -244,7 +244,7 @@ export function createTelegramRoutes() {
   /**
    * Add/Update monitored chat
    */
-  router.post('/monitored-chats', authenticateToken, (req, res) => {
+  router.post('/monitored-chats', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId, chatName, chatType, forwardToChatId, monitoredUserIds, monitoredKeywords } = req.body;
@@ -253,7 +253,7 @@ export function createTelegramRoutes() {
         return res.status(400).json({ error: 'Chat ID is required' });
       }
 
-      const result = telegramService.saveMonitoredChat(userId, {
+      const result = await telegramService.saveMonitoredChat(userId, {
         chatId,
         chatName,
         chatType,
@@ -272,13 +272,13 @@ export function createTelegramRoutes() {
   /**
    * Toggle monitored chat active status
    */
-  router.patch('/monitored-chats/:chatId/toggle', authenticateToken, (req, res) => {
+  router.patch('/monitored-chats/:chatId/toggle', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
       const { isActive } = req.body;
 
-      const result = telegramService.toggleMonitoredChat(userId, chatId, isActive);
+      const result = await telegramService.toggleMonitoredChat(userId, chatId, isActive);
       res.json(result);
     } catch (error: any) {
       console.error('[Telegram] Error toggling monitored chat:', error);
@@ -289,12 +289,12 @@ export function createTelegramRoutes() {
   /**
    * Delete monitored chat
    */
-  router.delete('/monitored-chats/:chatId', authenticateToken, (req, res) => {
+  router.delete('/monitored-chats/:chatId', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
 
-      const result = telegramService.deleteMonitoredChat(userId, chatId);
+      const result = await telegramService.deleteMonitoredChat(userId, chatId);
       res.json(result);
     } catch (error: any) {
       console.error('[Telegram] Error deleting monitored chat:', error);
@@ -305,12 +305,12 @@ export function createTelegramRoutes() {
   /**
    * Get detected contracts
    */
-  router.get('/detected-contracts', authenticateToken, (req, res) => {
+  router.get('/detected-contracts', authenticateToken, async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const limit = parseInt(req.query.limit as string) || 100;
       
-      const contracts = telegramService.getDetectedContracts(userId, limit);
+      const contracts = await telegramService.getDetectedContracts(userId, limit);
       res.json(contracts);
     } catch (error: any) {
       console.error('[Telegram] Error getting detected contracts:', error);
