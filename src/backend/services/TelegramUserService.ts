@@ -110,20 +110,35 @@ export class TelegramUserService {
    * Update user account verification status
    */
   async updateUserAccountVerification(userId: number, isVerified: boolean, sessionString?: string) {
-    const encryptedSession = sessionString ? this.encrypt(sessionString) : null;
     const now = Math.floor(Date.now() / 1000);
     
-    await execute(`
-      UPDATE telegram_user_accounts 
-      SET is_verified = ?, session_string = ?, last_connected_at = ?, updated_at = ?
-      WHERE user_id = ?
-    `, [
-      isVerified ? 1 : 0,
-      encryptedSession,
-      now,
-      now,
-      userId
-    ]);
+    // Only update session_string if explicitly provided
+    if (sessionString !== undefined) {
+      const encryptedSession = this.encrypt(sessionString);
+      await execute(`
+        UPDATE telegram_user_accounts 
+        SET is_verified = ?, session_string = ?, last_connected_at = ?, updated_at = ?
+        WHERE user_id = ?
+      `, [
+        isVerified ? 1 : 0,
+        encryptedSession,
+        now,
+        now,
+        userId
+      ]);
+    } else {
+      // Don't touch session_string, just update verification status
+      await execute(`
+        UPDATE telegram_user_accounts 
+        SET is_verified = ?, last_connected_at = ?, updated_at = ?
+        WHERE user_id = ?
+      `, [
+        isVerified ? 1 : 0,
+        now,
+        now,
+        userId
+      ]);
+    }
 
     return { success: true };
   }
