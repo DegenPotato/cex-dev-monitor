@@ -52,10 +52,12 @@ interface ContractDetection {
 
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
-  const [activeSection, setActiveSection] = useState<'settings' | 'chats' | 'detections'>('settings');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'settings'>('sniffer');
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
+  const [availableChats, setAvailableChats] = useState<MonitoredChat[]>([]);
   const [monitoredChats, setMonitoredChats] = useState<MonitoredChat[]>([]);
+  const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [detections, setDetections] = useState<ContractDetection[]>([]);
   
   // Form states
@@ -345,22 +347,27 @@ export function TelegramSnifferTab() {
 
   const handleFetchChats = async () => {
     setLoading(true);
-    setMessage(null);
-
     try {
-      if (!isAuthenticated) return;
-
       const response = await fetch(`${config.apiUrl}/api/telegram/fetch-chats`, {
         method: 'POST',
         credentials: 'include'
       });
-
-      if (response.ok) {
-        setMessage({ type: 'success', text: 'Chats fetched successfully!' });
-        await loadMonitoredChats();
+      const data = await response.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: data.message });
+        // Set available chats from the response
+        if (data.chats) {
+          setAvailableChats(data.chats.map((chat: any) => ({
+            ...chat,
+            id: chat.chatId, // Use chatId as id for consistency
+            isActive: false // Default to inactive for new chats
+          })));
+        }
+        loadMonitoredChats();
+        // Switch to sniffer tab to show fetched chats
+        setActiveSection('sniffer');
       } else {
-        const error = await response.json();
-        setMessage({ type: 'error', text: error.error || 'Failed to fetch chats' });
+        setMessage({ type: 'error', text: data.error || 'Failed to fetch chats' });
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message });
@@ -439,10 +446,15 @@ export function TelegramSnifferTab() {
 
   // Load chats and detections when switching sections
   useEffect(() => {
-    if (activeSection === 'chats') {
+    if (activeSection === 'monitored') {
       loadMonitoredChats();
     } else if (activeSection === 'detections') {
       loadDetections();
+    } else if (activeSection === 'sniffer') {
+      // Load available chats if we have them
+      if (availableChats.length === 0) {
+        loadMonitoredChats(); // For now, show monitored chats in the sniffer too
+      }
     }
   }, [activeSection]);
 
@@ -473,26 +485,26 @@ export function TelegramSnifferTab() {
       {/* Section Tabs */}
       <div className="flex gap-2 mb-6 bg-black/40 backdrop-blur-xl p-1.5 rounded-xl border border-cyan-500/20">
         <button
-          onClick={() => setActiveSection('settings')}
+          onClick={() => setActiveSection('sniffer')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-            activeSection === 'settings'
-              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
-              : 'text-gray-400 hover:text-cyan-300'
-          }`}
-        >
-          <SettingsIcon className="w-4 h-4" />
-          Account Settings
-        </button>
-        <button
-          onClick={() => setActiveSection('chats')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-            activeSection === 'chats'
+            activeSection === 'sniffer'
               ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          Monitored Chats
+          Sniffer
+        </button>
+        <button
+          onClick={() => setActiveSection('monitored')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+            activeSection === 'monitored'
+              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+              : 'text-gray-400 hover:text-cyan-300'
+          }`}
+        >
+          <Radio className="w-4 h-4" />
+          Monitored
         </button>
         <button
           onClick={() => setActiveSection('detections')}
@@ -502,12 +514,205 @@ export function TelegramSnifferTab() {
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          <Radio className="w-4 h-4" />
+          <Check className="w-4 h-4" />
           Detections
+        </button>
+        <button
+          onClick={() => setActiveSection('settings')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+            activeSection === 'settings'
+              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+              : 'text-gray-400 hover:text-cyan-300'
+          }`}
+        >
+          <SettingsIcon className="w-4 h-4" />
+          Settings
         </button>
       </div>
 
       {/* Content */}
+      {/* Main Sniffer Interface */}
+      {activeSection === 'sniffer' && (
+        <div className="space-y-6">
+          {/* Status Bar */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${userAccount?.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                  <span className="text-sm text-gray-400">
+                    {userAccount?.connected ? 'Connected' : 'Not Connected'}
+                  </span>
+                </div>
+                {userAccount?.connected && (
+                  <span className="text-sm text-gray-400">
+                    Monitoring: <span className="text-cyan-400 font-bold">{monitoredChats.filter(c => c.isActive).length}</span> active chats
+                  </span>
+                )}
+              </div>
+              
+              {/* Fetch Chats Button */}
+              <button
+                onClick={handleFetchChats}
+                disabled={loading || !userAccount?.verified}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 font-medium transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Fetch All Chats
+              </button>
+            </div>
+          </div>
+
+          {/* Available Chats Section */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-cyan-300">Available Chats</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (selectedChats.size === availableChats.length) {
+                      setSelectedChats(new Set());
+                    } else {
+                      setSelectedChats(new Set(availableChats.map(c => c.chatId)));
+                    }
+                  }}
+                  className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-400 text-sm font-medium transition-all"
+                >
+                  {selectedChats.size === availableChats.length ? 'Deselect All' : 'Select All'}
+                </button>
+                {selectedChats.size > 0 && (
+                  <button
+                    className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                  >
+                    Configure Selected ({selectedChats.size})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!userAccount?.verified ? (
+              <div className="text-center py-12 text-gray-400">
+                <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Connect your Telegram account first</p>
+                <p className="text-sm mt-2">Go to Settings tab to configure your account</p>
+              </div>
+            ) : availableChats.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No chats loaded</p>
+                <p className="text-sm mt-2">Click "Fetch All Chats" to load your Telegram conversations</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                {availableChats.map((chat) => {
+                  const isSelected = selectedChats.has(chat.chatId);
+                  const isMonitored = monitoredChats.some(m => m.chatId === chat.chatId && m.isActive);
+                  
+                  return (
+                    <div
+                      key={chat.chatId}
+                      className={`bg-black/40 border rounded-lg p-4 transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'border-purple-500/40 shadow-lg shadow-purple-500/10' 
+                          : 'border-cyan-500/10 hover:border-cyan-500/20'
+                      }`}
+                      onClick={() => {
+                        const newSelected = new Set(selectedChats);
+                        if (isSelected) {
+                          newSelected.delete(chat.chatId);
+                        } else {
+                          newSelected.add(chat.chatId);
+                        }
+                        setSelectedChats(newSelected);
+                      }}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="mt-1 w-4 h-4 text-purple-600 bg-black/40 border-purple-500/40 rounded focus:ring-purple-500 focus:ring-2"
+                          />
+                          <div className="flex-1">
+                            <h4 className="font-medium text-white">
+                              {chat.chatName || chat.chatId}
+                            </h4>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-400">{chat.chatType}</span>
+                              {chat.username && (
+                                <span className="text-xs text-cyan-400">@{chat.username}</span>
+                              )}
+                              {isMonitored && (
+                                <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
+                                  MONITORING
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 ml-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Toggle monitoring for this specific chat
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                              isMonitored
+                                ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400'
+                                : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400'
+                            }`}
+                          >
+                            {isMonitored ? 'Stop' : 'Start'}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Open configuration modal for this chat
+                            }}
+                            className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all"
+                          >
+                            <SettingsIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                className="flex flex-col items-center gap-2 p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-all"
+              >
+                <Radio className="w-6 h-6 text-purple-400" />
+                <span className="text-sm text-purple-400 font-medium">Monitor All Chats</span>
+                <span className="text-xs text-gray-400">Start monitoring everything</span>
+              </button>
+              <button
+                className="flex flex-col items-center gap-2 p-4 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg transition-all"
+              >
+                <MessageSquare className="w-6 h-6 text-cyan-400" />
+                <span className="text-sm text-cyan-400 font-medium">Configure Keywords</span>
+                <span className="text-xs text-gray-400">Set global search terms</span>
+              </button>
+              <button
+                className="flex flex-col items-center gap-2 p-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg transition-all"
+              >
+                <Bot className="w-6 h-6 text-green-400" />
+                <span className="text-sm text-green-400 font-medium">Setup Auto-Forward</span>
+                <span className="text-xs text-gray-400">Forward detections to bot</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeSection === 'settings' && (
         <div className="space-y-6">
           {/* Account Overview */}
@@ -870,188 +1075,199 @@ export function TelegramSnifferTab() {
         </div>
       )}
 
-      {activeSection === 'chats' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-cyan-300">Monitored Chats</h3>
-            <button
-              onClick={handleFetchChats}
-              disabled={loading || !userAccount?.verified}
-              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 font-medium transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              Fetch My Chats
-            </button>
+      {activeSection === 'monitored' && (
+        <div className="space-y-6">
+          {/* Active Monitoring Overview */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-cyan-300">Active Monitoring</h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  Currently monitoring {monitoredChats.filter(c => c.isActive).length} of {monitoredChats.length} configured chats
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+                >
+                  Pause All
+                </button>
+                <button
+                  className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                >
+                  Resume All
+                </button>
+              </div>
+            </div>
           </div>
 
-          {!userAccount?.verified && (
-            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-4">
-              <p className="text-yellow-300 text-sm">
-                Please configure and verify your user account first to fetch chats.
-              </p>
-            </div>
-          )}
-
-          {monitoredChats.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No monitored chats yet</p>
-              <p className="text-sm">Click "Fetch My Chats" to load your Telegram conversations</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3">
-              {monitoredChats.map((chat) => (
-                <div key={chat.id} className="bg-black/20 backdrop-blur-sm rounded-lg border border-cyan-500/20 p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-white">{chat.chatName || chat.chatId}</h4>
-                      <div className="space-y-1 mt-1">
-                        <p className="text-sm text-gray-400">
-                          Type: <span className="text-gray-300">{chat.chatType}</span>
-                        </p>
-                        <p className="text-sm text-gray-400">
-                          ID: <span className="font-mono text-gray-300">{chat.chatId}</span>
-                        </p>
-                        {chat.username && (
-                          <p className="text-sm text-gray-400">
-                            Username: <a href={`https://t.me/${chat.username}`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">@{chat.username}</a>
-                          </p>
-                        )}
-                        {chat.inviteLink && (
-                          <p className="text-sm text-gray-400">
-                            Invite Link: <a href={chat.inviteLink} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate max-w-xs inline-block align-bottom">{chat.inviteLink}</a>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        chat.isActive
-                          ? 'bg-green-500/20 border border-green-500/30 text-green-400'
-                          : 'bg-gray-500/20 border border-gray-500/30 text-gray-400'
-                      }`}>
-                        {chat.isActive ? 'ACTIVE' : 'INACTIVE'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Configuration Section */}
-                  <div className="mt-4 pt-4 border-t border-cyan-500/10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {/* Monitored Keywords */}
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                          Keywords to Monitor
-                        </label>
-                        <div className="text-sm text-gray-300">
-                          {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {chat.monitoredKeywords.map((keyword, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400 text-xs">
-                                  {keyword}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-gray-500 text-xs">No keywords set - monitoring all messages</span>
-                          )}
+          {/* Monitored Chats */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            {monitoredChats.filter(c => c.isActive).length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No active monitoring</p>
+                <p className="text-sm mt-2">Go to Sniffer tab to select and configure chats</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {monitoredChats.filter(c => c.isActive).map((chat) => (
+                  <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                          <h4 className="font-medium text-white">{chat.chatName || chat.chatId}</h4>
                         </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {chat.chatType} • {chat.username ? `@${chat.username}` : `ID: ${chat.chatId}`}
+                        </p>
                       </div>
-
-                      {/* Monitored Users */}
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                          Monitored User IDs
-                        </label>
-                        <div className="text-sm text-gray-300">
-                          {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {chat.monitoredUserIds.map((userId, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded text-purple-400 text-xs font-mono">
-                                  {userId}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-gray-500 text-xs">No specific users - monitoring all</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 mt-3">
                       <button
-                        className="flex-1 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all"
+                        className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
                       >
-                        Configure
-                      </button>
-                      <button
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                          chat.isActive
-                            ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400'
-                            : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400'
-                        }`}
-                      >
-                        {chat.isActive ? 'Deactivate' : 'Activate'}
+                        Pause
                       </button>
                     </div>
+                    
+                    {/* Active Configuration */}
+                    <div className="space-y-2 text-xs">
+                      {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Keywords:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {chat.monitoredKeywords.slice(0, 3).map((kw, idx) => (
+                              <span key={idx} className="px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400">
+                                {kw}
+                              </span>
+                            ))}
+                            {chat.monitoredKeywords.length > 3 && (
+                              <span className="text-gray-400">+{chat.monitoredKeywords.length - 3} more</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Users:</span>
+                          <span className="text-purple-400">{chat.monitoredUserIds.length} specific users</span>
+                        </div>
+                      )}
+                      
+                      {(!chat.monitoredKeywords || chat.monitoredKeywords.length === 0) && 
+                       (!chat.monitoredUserIds || chat.monitoredUserIds.length === 0) && (
+                        <span className="text-gray-500">Monitoring all messages</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {activeSection === 'detections' && (
-        <div>
-          <h3 className="text-xl font-bold text-cyan-300 mb-4">Detected Contracts</h3>
-
-          {detections.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No contract detections yet</p>
-              <p className="text-sm">Contracts will appear here when detected in monitored chats</p>
+        <div className="space-y-6">
+          {/* Detection Stats */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-cyan-400">{detections.length}</p>
+                <p className="text-xs text-gray-400">Total Detections</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-400">
+                  {detections.filter(d => d.detectionType === 'standard').length}
+                </p>
+                <p className="text-xs text-gray-400">Standard</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-yellow-400">
+                  {detections.filter(d => d.detectionType === 'obfuscated').length}
+                </p>
+                <p className="text-xs text-gray-400">Obfuscated</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-400">
+                  {detections.filter(d => d.detectionType === 'split').length}
+                </p>
+                <p className="text-xs text-gray-400">Split</p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {detections.map((detection) => (
-                <div key={detection.id} className="bg-black/20 backdrop-blur-sm rounded-lg border border-cyan-500/20 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <code className="text-cyan-400 font-mono text-sm">{detection.contractAddress}</code>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                          detection.detectionType === 'standard'
-                            ? 'bg-green-500/20 text-green-400'
-                            : detection.detectionType === 'obfuscated'
-                            ? 'bg-yellow-500/20 text-yellow-400'
-                            : 'bg-purple-500/20 text-purple-400'
-                        }`}>
-                          {detection.detectionType.toUpperCase()}
-                        </span>
-                        {detection.senderUsername && (
-                          <span className="text-xs text-gray-400">from @{detection.senderUsername}</span>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          {new Date(detection.detectedAt * 1000).toLocaleString()}
-                        </span>
+          </div>
+
+          {/* Detections List */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Recent Detections</h3>
+            
+            {detections.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Check className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No contract detections yet</p>
+                <p className="text-sm mt-2">Contracts will appear here when detected in monitored chats</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {detections.slice(0, 10).map((detection) => (
+                  <div key={detection.id} className="bg-black/40 border border-cyan-500/10 rounded-lg p-4 hover:border-cyan-500/20 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <code className="text-cyan-400 font-mono text-sm">{detection.contractAddress}</code>
+                          <button
+                            className="p-1 hover:bg-cyan-500/20 rounded transition-all"
+                            title="Copy address"
+                          >
+                            <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className={`px-2 py-0.5 rounded font-bold ${
+                            detection.detectionType === 'standard'
+                              ? 'bg-green-500/20 text-green-400'
+                              : detection.detectionType === 'obfuscated'
+                              ? 'bg-yellow-500/20 text-yellow-400'
+                              : 'bg-purple-500/20 text-purple-400'
+                          }`}>
+                            {detection.detectionType.toUpperCase()}
+                          </span>
+                          {detection.senderUsername && (
+                            <span className="text-gray-400">
+                              From: <span className="text-cyan-400">@{detection.senderUsername}</span>
+                            </span>
+                          )}
+                          <span className="text-gray-500">
+                            {new Date(detection.detectedAt * 1000).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all flex items-center gap-1"
+                          title="View on Solscan"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">View</span>
+                        </button>
                       </div>
                     </div>
-                    <a
-                      href={`https://solscan.io/token/${detection.contractAddress}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded text-cyan-400 text-sm transition-all"
-                    >
-                      View
-                    </a>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+            
+            {detections.length > 10 && (
+              <div className="text-center mt-4">
+                <button className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all">
+                  Load More ({detections.length - 10} remaining)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
