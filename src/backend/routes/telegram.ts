@@ -127,10 +127,8 @@ export function createTelegramRoutes() {
 
       const result = await telegramClientService.verifyCode(userId, code);
       
-      // If connected successfully, update database
-      if (result.success && result.status === 'connected') {
-        await telegramService.updateUserAccountVerification(userId, true);
-      }
+      // Session is already saved by TelegramClientService.saveSession()
+      // No need to update again here as it would overwrite the session string
 
       res.json(result);
     } catch (error: any) {
@@ -153,10 +151,8 @@ export function createTelegramRoutes() {
 
       const result = await telegramClientService.verify2FA(userId, password);
       
-      // If connected successfully, update database
-      if (result.success && result.status === 'connected') {
-        await telegramService.updateUserAccountVerification(userId, true);
-      }
+      // Session is already saved by TelegramClientService.saveSession()
+      // No need to update again here as it would overwrite the session string
 
       res.json(result);
     } catch (error: any) {

@@ -1062,16 +1062,29 @@ export function TelegramSnifferTab() {
             </form>
 
             {/* Authentication Flow */}
-            {userAccount?.configured && !userAccount?.verified && (
+            {userAccount?.configured && (
               <div className="mt-4 space-y-4">
                 {authStep === 'idle' && (
-                  <button
-                    onClick={handleStartAuth}
-                    disabled={loading}
-                    className="w-full px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 font-medium transition-all disabled:opacity-50"
-                  >
-                    {loading ? 'Starting...' : 'Start Authentication'}
-                  </button>
+                  <>
+                    {!userAccount?.verified ? (
+                      <button
+                        onClick={handleStartAuth}
+                        disabled={loading}
+                        className="w-full px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 font-medium transition-all disabled:opacity-50"
+                      >
+                        {loading ? 'Starting...' : 'Start Authentication'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStartAuth}
+                        disabled={loading}
+                        className="w-full px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        {loading ? 'Reconnecting...' : 'Reconnect Account'}
+                      </button>
+                    )}
+                  </>
                 )}
 
                 {authStep === 'code_sent' && (
@@ -1132,6 +1145,19 @@ export function TelegramSnifferTab() {
                     </button>
                   </form>
                 )}
+              </div>
+            )}
+
+            {/* Connection Status Info */}
+            {userAccount?.verified && (
+              <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-xs text-green-300">
+                  {userAccount?.connected ? (
+                    <><strong>✅ Connected:</strong> Your account is actively monitoring Telegram. Session is saved and will persist.</>
+                  ) : (
+                    <><strong>⚠️ Verified but Not Connected:</strong> Click "Reconnect Account" above to establish live connection.</>
+                  )}
+                </p>
               </div>
             )}
 
