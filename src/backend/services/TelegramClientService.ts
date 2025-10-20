@@ -99,16 +99,13 @@ export class TelegramClientService extends EventEmitter {
           // Store active client
           this.activeClients.set(userId, client);
           
+          // Refresh user profile data
+          await this.saveUserProfile(userId, client);
+          
           // Start monitoring
           await this.startMonitoring(userId, client);
           
           console.log(`  ✅ Session restored for user ${userId} (@${me.username || me.firstName})`);
-          
-          // Update last connected timestamp
-          await execute(
-            'UPDATE telegram_user_accounts SET last_connected_at = ?, updated_at = ? WHERE user_id = ?',
-            [Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), userId]
-          );
           
         } catch (error: any) {
           console.error(`  ❌ Failed to restore session for user ${account.user_id}:`, error.message);
@@ -238,6 +235,9 @@ export class TelegramClientService extends EventEmitter {
       session.status = 'connected';
       this.activeClients.set(userId, client);
       
+      // Save comprehensive user profile
+      await this.saveUserProfile(userId, client);
+      
       // Start monitoring
       await this.startMonitoring(userId, client);
 
@@ -310,6 +310,9 @@ export class TelegramClientService extends EventEmitter {
       
       session.status = 'connected';
       this.activeClients.set(userId, client);
+      
+      // Save comprehensive user profile
+      await this.saveUserProfile(userId, client);
       
       // Start monitoring
       await this.startMonitoring(userId, client);
@@ -499,6 +502,202 @@ export class TelegramClientService extends EventEmitter {
       'UPDATE telegram_user_accounts SET session_string = ?, is_verified = 1, last_connected_at = ?, updated_at = ? WHERE user_id = ?',
       [encrypted, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), userId]
     );
+  }
+
+  /**
+   * Save comprehensive user profile data to database
+   */
+  private async saveUserProfile(userId: number, client: any) {
+    try {
+      // Get complete user info
+      const me = await client.getMe();
+      
+      // Get full user details
+      const fullUser = await client.invoke(
+        new Api.users.GetFullUser({
+          id: me
+        })
+      );
+      
+      const now = Math.floor(Date.now() / 1000);
+      
+      // Extract photo info
+      let photoId = null;
+      let photoDcId = null;
+      let photoHasVideo = false;
+      if (me.photo && me.photo.photoId) {
+        photoId = me.photo.photoId.toString();
+        photoDcId = me.photo.dcId;
+        photoHasVideo = me.photo.hasVideo || false;
+      }
+      
+      // Extract status info
+      let statusType = 'offline';
+      let statusWasOnline = null;
+      let statusExpires = null;
+      if (me.status) {
+        if (me.status.className === 'UserStatusOnline') {
+          statusType = 'online';
+          statusExpires = me.status.expires;
+        } else if (me.status.className === 'UserStatusOffline') {
+          statusType = 'offline';
+          statusWasOnline = me.status.wasOnline;
+        } else if (me.status.className === 'UserStatusRecently') {
+          statusType = 'recently';
+        } else if (me.status.className === 'UserStatusLastWeek') {
+          statusType = 'within_week';
+        } else if (me.status.className === 'UserStatusLastMonth') {
+          statusType = 'within_month';
+        } else if (me.status.className === 'UserStatusEmpty') {
+          statusType = 'long_ago';
+        }
+      }
+      
+      // Extract restrictions
+      let restrictionReason = null;
+      let restrictionPlatform = null;
+      let restrictionText = null;
+      if (me.restrictionReason && me.restrictionReason.length > 0) {
+        restrictionReason = JSON.stringify(me.restrictionReason);
+        restrictionPlatform = me.restrictionReason[0]?.platform;
+        restrictionText = me.restrictionReason[0]?.text;
+      }
+      
+      // Extract emoji status
+      let emojiStatusDocumentId = null;
+      let emojiStatusUntil = null;
+      if (me.emojiStatus) {
+        emojiStatusDocumentId = me.emojiStatus.documentId?.toString();
+        emojiStatusUntil = me.emojiStatus.until;
+      }
+      
+      // Get about/bio from fullUser
+      let about = null;
+      let commonChatsCount = null;
+      if (fullUser && fullUser.fullUser) {
+        about = fullUser.fullUser.about;
+        commonChatsCount = fullUser.fullUser.commonChatsCount;
+      }
+      
+      // Store raw profile data as JSON backup
+      const profileDataRaw = JSON.stringify({
+        me: {
+          id: me.id?.toString(),
+          firstName: me.firstName,
+          lastName: me.lastName,
+          username: me.username,
+          phone: me.phone,
+          bot: me.bot,
+          verified: me.verified,
+          restricted: me.restricted,
+          scam: me.scam,
+          fake: me.fake,
+          premium: me.premium,
+          support: me.support,
+          self: me.self,
+          langCode: me.langCode,
+          photo: me.photo,
+          status: me.status,
+          emojiStatus: me.emojiStatus,
+          storiesHidden: me.storiesHidden,
+          storiesUnavailable: me.storiesUnavailable,
+          contact: me.contact,
+          mutualContact: me.mutualContact,
+        },
+        fullUser: fullUser?.fullUser ? {
+          about: fullUser.fullUser.about,
+          commonChatsCount: fullUser.fullUser.commonChatsCount,
+          botInfo: fullUser.fullUser.botInfo,
+        } : null,
+        fetchedAt: now
+      });
+      
+      // Update database with comprehensive profile data
+      await execute(`
+        UPDATE telegram_user_accounts SET
+          telegram_user_id = ?,
+          first_name = ?,
+          last_name = ?,
+          username = ?,
+          phone = ?,
+          language_code = ?,
+          photo_id = ?,
+          photo_dc_id = ?,
+          photo_has_video = ?,
+          access_hash = ?,
+          is_bot = ?,
+          is_verified_telegram = ?,
+          is_restricted = ?,
+          is_scam = ?,
+          is_fake = ?,
+          is_premium = ?,
+          is_support = ?,
+          is_self = ?,
+          restriction_reason = ?,
+          restriction_platform = ?,
+          restriction_text = ?,
+          status_type = ?,
+          status_was_online = ?,
+          status_expires = ?,
+          stories_hidden = ?,
+          stories_unavailable = ?,
+          has_contact = ?,
+          mutual_contact = ?,
+          emoji_status_document_id = ?,
+          emoji_status_until = ?,
+          about = ?,
+          common_chats_count = ?,
+          dc_id = ?,
+          profile_fetched_at = ?,
+          profile_data_raw = ?,
+          updated_at = ?
+        WHERE user_id = ?
+      `, [
+        me.id?.toString(),
+        me.firstName || null,
+        me.lastName || null,
+        me.username || null,
+        me.phone || null,
+        me.langCode || null,
+        photoId,
+        photoDcId,
+        photoHasVideo ? 1 : 0,
+        me.accessHash?.toString() || null,
+        me.bot ? 1 : 0,
+        me.verified ? 1 : 0,
+        me.restricted ? 1 : 0,
+        me.scam ? 1 : 0,
+        me.fake ? 1 : 0,
+        me.premium ? 1 : 0,
+        me.support ? 1 : 0,
+        me.self ? 1 : 0,
+        restrictionReason,
+        restrictionPlatform,
+        restrictionText,
+        statusType,
+        statusWasOnline,
+        statusExpires,
+        me.storiesHidden ? 1 : 0,
+        me.storiesUnavailable ? 1 : 0,
+        me.contact ? 1 : 0,
+        me.mutualContact ? 1 : 0,
+        emojiStatusDocumentId,
+        emojiStatusUntil,
+        about,
+        commonChatsCount,
+        fullUser?.fullUser?.dcId || null,
+        now,
+        profileDataRaw,
+        now,
+        userId
+      ]);
+      
+      console.log(`✅ [Telegram] Saved comprehensive profile for user ${userId} (@${me.username || me.firstName})`);
+      
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Failed to save user profile for ${userId}:`, error.message);
+      // Don't throw - profile save failure shouldn't break authentication
+    }
   }
 
   /**
