@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Bot, User, Check, RefreshCw, Radio, Settings as SettingsIcon, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
+import { useAuth } from '../contexts/AuthContext';
 
 interface TelegramAccount {
   configured: boolean;
@@ -34,6 +35,7 @@ interface ContractDetection {
 }
 
 export function TelegramSnifferTab() {
+  const { isAuthenticated } = useAuth();
   const [activeSection, setActiveSection] = useState<'settings' | 'chats' | 'detections'>('settings');
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -57,20 +59,19 @@ export function TelegramSnifferTab() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
 
-  // Load account status
+  // Load account status when authentication changes
   useEffect(() => {
-    loadAccountStatus();
-  }, []);
+    if (isAuthenticated) {
+      loadAccountStatus();
+    }
+  }, [isAuthenticated]);
 
   const loadAccountStatus = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/status`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include' // Send cookies for authentication
       });
 
       if (response.ok) {
@@ -85,13 +86,10 @@ export function TelegramSnifferTab() {
 
   const loadMonitoredChats = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -105,13 +103,10 @@ export function TelegramSnifferTab() {
 
   const loadDetections = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/detected-contracts?limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -129,8 +124,7 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
+      if (!isAuthenticated) {
         setMessage({ type: 'error', text: 'Not authenticated' });
         return;
       }
@@ -138,9 +132,9 @@ export function TelegramSnifferTab() {
       const response = await fetch(`${config.apiUrl}/api/telegram/user-account`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({
           apiId,
           apiHash,
@@ -168,17 +162,14 @@ export function TelegramSnifferTab() {
     setAuthStep('idle');
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
+      if (!isAuthenticated) {
         setMessage({ type: 'error', text: 'Not authenticated' });
         return;
       }
 
       const response = await fetch(`${config.apiUrl}/api/telegram/user-account/start-auth`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -208,15 +199,14 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/user-account/verify-code`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ code: verificationCode })
       });
 
@@ -248,15 +238,14 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/user-account/verify-2fa`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ password: twoFAPassword })
       });
 
@@ -283,8 +272,7 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
+      if (!isAuthenticated) {
         setMessage({ type: 'error', text: 'Not authenticated' });
         return;
       }
@@ -292,9 +280,9 @@ export function TelegramSnifferTab() {
       const response = await fetch(`${config.apiUrl}/api/telegram/bot-account`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ botToken })
       });
 
@@ -317,14 +305,11 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/bot-account/verify`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -347,14 +332,11 @@ export function TelegramSnifferTab() {
     setMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       const response = await fetch(`${config.apiUrl}/api/telegram/fetch-chats`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
