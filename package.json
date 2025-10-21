@@ -10,6 +10,9 @@
     "build": "NODE_OPTIONS='--max-old-space-size=2048' tsc && vite build",
     "build:backend": "tsc -p tsconfig.backend.json",
     "preview": "vite preview",
+    "migrate": "node run-all-migrations.mjs",
+    "migrate:status": "node migration-status.mjs",
+    "migrate:reset": "node migration-reset.mjs",
     "migrate:pool-address": "tsx src/backend/scripts/migrate-migrated-pool-address.ts"
   },
   "dependencies": {

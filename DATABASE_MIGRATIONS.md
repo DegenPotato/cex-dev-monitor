@@ -4,6 +4,50 @@
 
 Automated, tracked, and idempotent database migration system using `sql.js` for SQLite.
 
+## ⚠️ CRITICAL: Database Technology
+
+**WE USE `sql.js` - NOT `sqlite3` CLI OR `better-sqlite3`!**
+
+### Why sql.js?
+
+- **In-memory SQLite** compiled to WebAssembly
+- **No native dependencies** - works everywhere (Vercel, DigitalOcean, any platform)
+- **JavaScript API** - Access via `getDb()`, `queryOne()`, `execute()`
+- **Browser compatible** - Can run in frontend if needed
+- **Cross-platform** - Works on Windows, Linux, macOS without compilation
+
+### Common Mistakes to Avoid
+
+❌ **DO NOT USE:**
+```bash
+# These will NOT work!
+sqlite3 monitor.db "SELECT * FROM users;"
+npm install better-sqlite3
+```
+
+✅ **ALWAYS USE:**
+```bash
+# Our JavaScript-based tools
+node run-all-migrations.mjs
+node migration-reset.mjs
+```
+
+### Why Not sqlite3 CLI?
+
+The `sqlite3` command-line tool:
+- Requires native binaries (not portable)
+- Not available in serverless environments
+- Different API than our code uses
+- Cannot access the same in-memory database instance
+
+### Why Not better-sqlite3?
+
+The `better-sqlite3` package:
+- Requires native compilation (node-gyp)
+- Different API than sql.js
+- Would break frontend builds
+- Not compatible with WebAssembly
+
 ## Architecture
 
 ```
@@ -274,13 +318,46 @@ ALTER TABLE users DROP COLUMN feature_column; -- Not supported in SQLite
 ### Force Re-run Migration
 
 **Problem:** Need to re-run a specific migration  
-**Solution:** Delete from `_migrations` table:
+**Solution:** Use the migration reset helper:
 
-```sql
-DELETE FROM _migrations WHERE filename = '008_problematic_migration.sql';
+```bash
+# ❌ WRONG - This uses sqlite3 CLI which we don't have!
+sqlite3 monitor.db "DELETE FROM _migrations WHERE filename = '008_problematic_migration.sql';"
+
+# ✅ CORRECT - Use our JavaScript helper
+node migration-reset.mjs 008_problematic_migration.sql
+
+# Then re-run all migrations
+node run-all-migrations.mjs
 ```
 
-Then run migrations again.
+**What migration-reset.mjs does:**
+```javascript
+// Opens database using sql.js
+// Deletes the migration record
+// Saves the database
+// Allows the migration to re-run
+```
+
+**Example workflow for fixing a failed migration:**
+```bash
+# 1. Migration fails during deployment
+# 2. Fix the SQL in the migration file
+# 3. Commit and push the fix
+# 4. SSH to server
+ssh -i "path/to/key" user@server
+cd /var/www/cex-monitor
+git pull
+
+# 5. Reset the failed migration
+node migration-reset.mjs 007_telegram_multi_account_forwarding.sql
+
+# 6. Re-run migrations
+node run-all-migrations.mjs
+
+# 7. Restart server
+pm2 restart cex-monitor
+```
 
 ## CI/CD Integration
 
@@ -362,6 +439,129 @@ try {
 - **Isolated execution:** Each migration in separate context
 - **Audit trail:** `_migrations` table logs all changes
 - **Rollback support:** Can create reverse migrations
+
+## Common Pitfalls & Solutions
+
+### Pitfall #1: Using Wrong Database Tool
+
+❌ **Problem:**
+```bash
+sqlite3 monitor.db "DELETE FROM _migrations WHERE..."
+# Error: sqlite3: command not found (or wrong database instance)
+```
+
+✅ **Solution:**
+```bash
+node migration-reset.mjs <filename>
+```
+
+**Why:** We use sql.js (WebAssembly), not native sqlite3 CLI.
+
+---
+
+### Pitfall #2: Referencing Non-Existent Columns
+
+❌ **Problem:**
+```sql
+-- Migration fails because telegram_user_id doesn't exist yet
+UPDATE telegram_monitored_chats 
+SET telegram_account_id = (
+  SELECT telegram_user_id FROM telegram_user_accounts...
+);
+```
+
+✅ **Solution:**
+```sql
+-- Just add the column, populate it in application code
+ALTER TABLE telegram_monitored_chats 
+ADD COLUMN telegram_account_id INTEGER;
+
+-- Or check if column exists first (more complex)
+```
+
+**Why:** Migrations can't assume database state. Columns added in one migration might not exist if it's a fresh database or the prior migration was never applied.
+
+---
+
+### Pitfall #3: Creating TypeScript Migration Runners
+
+❌ **Problem:**
+```
+src/backend/database/run-migration.ts
+// Gets compiled by TypeScript, breaks frontend build!
+// Error: Cannot find module 'better-sqlite3'
+```
+
+✅ **Solution:**
+```bash
+# Use .mjs files (not compiled by TypeScript)
+run-all-migrations.mjs
+migration-reset.mjs
+```
+
+**Why:** TypeScript compiles everything in `src/`, including migration runners. Use `.mjs` files in project root instead.
+
+---
+
+### Pitfall #4: Forgetting Migration Tracking
+
+❌ **Problem:**
+```bash
+# Migration fails with error
+# Fix the SQL, deploy again
+# Still fails! System thinks it already ran!
+```
+
+✅ **Solution:**
+```bash
+# Reset the migration first
+node migration-reset.mjs failed-migration.sql
+# Then re-run
+node run-all-migrations.mjs
+```
+
+**Why:** Once a migration filename is in `_migrations` table, it's marked as "applied" even if it partially failed.
+
+---
+
+### Pitfall #5: Not Testing Locally First
+
+❌ **Problem:**
+```bash
+git push && deploy
+# Migration fails in production
+# Database is now in inconsistent state
+```
+
+✅ **Solution:**
+```bash
+# Test locally first
+node run-all-migrations.mjs
+# Verify tables exist
+# THEN commit and deploy
+```
+
+**Why:** Easier to fix migration issues locally than in production.
+
+---
+
+### Pitfall #6: Modifying Applied Migrations
+
+❌ **Problem:**
+```sql
+-- Edit migrations/005_add_feature.sql after it's deployed
+-- Changes don't apply! System thinks it's already done
+```
+
+✅ **Solution:**
+```bash
+# Create a NEW migration to fix it
+migrations/008_fix_feature.sql
+```
+
+**Why:** Applied migrations are tracked by filename. Changing content doesn't trigger re-run.
+
+---
 
 ## Future Enhancements
 

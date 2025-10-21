@@ -40,6 +40,7 @@ console.log(`📁 Found ${migrationFiles.length} migration file(s)`);
 
 let appliedCount = 0;
 let skippedCount = 0;
+const migrationTimings = [];
 
 for (const filename of migrationFiles) {
   // Skip if already applied
@@ -50,6 +51,7 @@ for (const filename of migrationFiles) {
   }
 
   console.log(`\n▶️  APPLYING: ${filename}`);
+  const migrationStartTime = Date.now();
   
   try {
     // Read SQL file
@@ -92,7 +94,10 @@ for (const filename of migrationFiles) {
     const now = Math.floor(Date.now() / 1000);
     db.run('INSERT INTO _migrations (filename, applied_at) VALUES (?, ?)', [filename, now]);
     
-    console.log(`   ✅ SUCCESS: ${successCount}/${statements.length} statements executed`);
+    const migrationTime = Date.now() - migrationStartTime;
+    migrationTimings.push({ filename, time: migrationTime });
+    
+    console.log(`   ✅ SUCCESS: ${successCount}/${statements.length} statements executed (${migrationTime}ms)`);
     appliedCount++;
     
   } catch (err) {
@@ -114,4 +119,21 @@ console.log(`✅ Migration complete!`);
 console.log(`   Applied: ${appliedCount}`);
 console.log(`   Skipped: ${skippedCount}`);
 console.log(`   Total:   ${migrationFiles.length}`);
+
+if (migrationTimings.length > 0) {
+  const totalTime = migrationTimings.reduce((sum, m) => sum + m.time, 0);
+  const avgTime = Math.round(totalTime / migrationTimings.length);
+  
+  console.log(`\n⏱️  Performance:`);
+  console.log(`   Total time: ${totalTime}ms`);
+  console.log(`   Average: ${avgTime}ms per migration`);
+  
+  if (migrationTimings.length > 1) {
+    console.log(`\n📊 Breakdown:`);
+    migrationTimings.forEach(m => {
+      console.log(`   ${m.filename}: ${m.time}ms`);
+    });
+  }
+}
+
 console.log('='.repeat(60));
