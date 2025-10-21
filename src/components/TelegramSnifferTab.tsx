@@ -68,7 +68,7 @@ interface ContractDetection {
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'settings'>('sniffer');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'sniffers' | 'detections' | 'forwards' | 'settings'>('sniffer');
   const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -698,7 +698,7 @@ export function TelegramSnifferTab() {
   
   // Load chats and detections when switching sections
   useEffect(() => {
-    if (activeSection === 'monitored') {
+    if (activeSection === 'sniffers') {
       loadMonitoredChats();
     } else if (activeSection === 'detections') {
       loadDetections();
@@ -750,14 +750,14 @@ export function TelegramSnifferTab() {
           Available Chats ({availableChats.length})
         </button>
         <button
-          onClick={() => setActiveSection('monitored')}
+          onClick={() => setActiveSection('sniffers')}
           className={`px-6 py-3 font-medium transition-all ${
-            activeSection === 'monitored' 
+            activeSection === 'sniffers' 
               ? 'text-cyan-400 border-b-2 border-cyan-400' 
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          Monitored ({monitoredChats.filter(c => c.isActive).length})
+          Active Sniffers ({monitoredChats.filter(c => c.isActive).length})
         </button>
         <button
           onClick={() => setActiveSection('detections')}
@@ -1771,7 +1771,7 @@ export function TelegramSnifferTab() {
         </div>
       )}
 
-      {activeSection === 'monitored' && (
+      {activeSection === 'sniffers' && (
         <div className="space-y-6">
           {/* Active Monitoring Overview */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
@@ -1802,8 +1802,8 @@ export function TelegramSnifferTab() {
             {monitoredChats.filter(c => c.isActive).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No active monitoring</p>
-                <p className="text-sm mt-2">Go to Sniffer tab to select and configure chats</p>
+                <p>No active sniffers</p>
+                <p className="text-sm mt-2">Go to Available Chats tab to select and configure chats</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1829,7 +1829,13 @@ export function TelegramSnifferTab() {
                           History
                         </button>
                         <button
-                          onClick={() => {/* TODO: Open configuration modal */}}
+                          onClick={() => {
+                            setConfigChat(chat as any);
+                            setConfigKeywords(chat.monitoredKeywords?.join(', ') || '');
+                            setConfigUserIds(chat.monitoredUserIds?.join(', ') || '');
+                            setConfigForwardTo(chat.forwardToChatId || '');
+                            setConfigModalOpen(true);
+                          }}
                           className="px-2 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded text-cyan-400 text-xs font-medium transition-all flex items-center gap-1"
                           title="Configure monitoring"
                         >
