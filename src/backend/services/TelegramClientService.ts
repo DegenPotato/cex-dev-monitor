@@ -423,6 +423,9 @@ export class TelegramClientService extends EventEmitter {
           }
         }
 
+        // Auto-cache message to history
+        await this.cacheMessageToHistory(userId, chatId!, message, client);
+
         // Extract contract addresses
         const contracts = this.extractContracts(message.message);
         console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
@@ -760,6 +763,49 @@ export class TelegramClientService extends EventEmitter {
       monitoredKeywords: chat.monitored_keywords ? JSON.parse(chat.monitored_keywords) : [],
       monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : []
     }));
+  }
+
+  /**
+   * Cache message to history table (real-time)
+   */
+  private async cacheMessageToHistory(userId: number, chatId: string, message: any, client: any) {
+    try {
+      // Extract contract addresses from message
+      const contracts = this.extractContracts(message.message);
+      const hasContract = contracts.length > 0;
+      const detectedContracts = hasContract ? JSON.stringify(contracts.map(c => c.address)) : null;
+
+      // Get sender info
+      const senderUsername = await this.getSenderUsername(client, message.senderId);
+      const sender = message.senderId ? await client.getEntity(message.senderId).catch(() => null) : null;
+
+      await execute(`
+        INSERT OR REPLACE INTO telegram_message_history 
+        (user_id, chat_id, message_id, message_text, message_date, 
+         sender_id, sender_username, sender_name, is_bot,
+         has_media, media_type, has_contract, detected_contracts,
+         fetched_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        userId,
+        chatId,
+        message.id,
+        message.message || null,
+        Math.floor(message.date),
+        message.senderId?.toString() || null,
+        senderUsername,
+        sender ? (sender.firstName || sender.title || null) : null,
+        sender?.bot ? 1 : 0,
+        message.media ? 1 : 0,
+        message.media?.className || null,
+        hasContract ? 1 : 0,
+        detectedContracts,
+        Math.floor(Date.now() / 1000),
+        Math.floor(Date.now() / 1000)
+      ]);
+    } catch (error) {
+      console.error(`   ❌ Failed to cache message to history:`, error);
+    }
   }
 
   /**

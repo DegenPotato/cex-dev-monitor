@@ -357,7 +357,7 @@ export function createTelegramRoutes() {
   router.post('/monitored-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const { chatId, chatName, chatType, forwardToChatId, monitoredUserIds, monitoredKeywords } = req.body;
+      const { chatId, chatName, chatType, forwardToChatId, monitoredUserIds, monitoredKeywords, initialHistoryLimit } = req.body;
 
       if (!chatId) {
         return res.status(400).json({ error: 'Chat ID is required' });
@@ -371,6 +371,35 @@ export function createTelegramRoutes() {
         monitoredUserIds,
         monitoredKeywords
       });
+
+      // If initialHistoryLimit is provided, fetch history in background
+      if (initialHistoryLimit && initialHistoryLimit > 0) {
+        const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
+        
+        // Start fetching in background (don't wait for it)
+        telegramHistoryService.fetchAndStoreChatHistory(userId, chatId, initialHistoryLimit, (fetched, total) => {
+          telegramClientService.emit('history_fetch_progress', {
+            userId,
+            chatId,
+            fetched,
+            total
+          });
+        }).then(fetchResult => {
+          telegramClientService.emit('history_fetch_complete', {
+            userId,
+            chatId,
+            ...fetchResult
+          });
+        }).catch(error => {
+          telegramClientService.emit('history_fetch_error', {
+            userId,
+            chatId,
+            error: error.message
+          });
+        });
+
+        console.log(`📚 [Telegram] Started fetching ${initialHistoryLimit} messages for chat ${chatId}`);
+      }
 
       res.json(result);
     } catch (error: any) {
@@ -528,7 +557,7 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
-      const { monitoredKeywords, monitoredUserIds, forwardToChatId, isActive } = req.body;
+      const { monitoredKeywords, monitoredUserIds, forwardToChatId, isActive, initialHistoryLimit } = req.body;
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {
@@ -537,6 +566,35 @@ export function createTelegramRoutes() {
         forwardToChatId,
         isActive
       });
+
+      // If initialHistoryLimit is provided, fetch history in background
+      if (initialHistoryLimit && initialHistoryLimit > 0) {
+        const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
+        
+        // Start fetching in background (don't wait for it)
+        telegramHistoryService.fetchAndStoreChatHistory(userId, chatId, initialHistoryLimit, (fetched, total) => {
+          telegramClientService.emit('history_fetch_progress', {
+            userId,
+            chatId,
+            fetched,
+            total
+          });
+        }).then(fetchResult => {
+          telegramClientService.emit('history_fetch_complete', {
+            userId,
+            chatId,
+            ...fetchResult
+          });
+        }).catch(error => {
+          telegramClientService.emit('history_fetch_error', {
+            userId,
+            chatId,
+            error: error.message
+          });
+        });
+
+        console.log(`📚 [Telegram] Started fetching ${initialHistoryLimit} messages for chat ${chatId}`);
+      }
 
       res.json({
         success: true,

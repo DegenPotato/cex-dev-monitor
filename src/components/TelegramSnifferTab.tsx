@@ -101,6 +101,7 @@ export function TelegramSnifferTab() {
   const [configUserIds, setConfigUserIds] = useState('');
   const [configForwardTo, setConfigForwardTo] = useState('');
   const [configContractDetection, setConfigContractDetection] = useState(true);
+  const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
 
   // Chat history viewing state
   const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string} | null>(null);
@@ -1821,6 +1822,30 @@ export function TelegramSnifferTab() {
                 </button>
               </div>
 
+              {/* Initial History Fetch */}
+              <div>
+                <label className="block text-sm font-medium text-cyan-300 mb-2">
+                  Fetch Chat History (Initial Setup)
+                </label>
+                <select
+                  value={configInitialHistory}
+                  onChange={(e) => setConfigInitialHistory(parseInt(e.target.value))}
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
+                >
+                  <option value={0}>Don't fetch history (real-time only)</option>
+                  <option value={100}>Last 100 messages</option>
+                  <option value={500}>Last 500 messages</option>
+                  <option value={1000}>Last 1,000 messages</option>
+                  <option value={2500}>Last 2,500 messages</option>
+                  <option value={5000}>Last 5,000 messages</option>
+                  <option value={10000}>Last 10,000 messages</option>
+                  <option value={999999}>Entire Chat History (All)</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-2">
+                  💡 All future messages will be cached automatically. This is only for old messages.
+                </p>
+              </div>
+
               {/* Forward To Chat */}
               <div>
                 <label className="block text-sm font-medium text-cyan-300 mb-2">
@@ -1859,6 +1884,7 @@ export function TelegramSnifferTab() {
                         monitoredKeywords: configKeywords ? configKeywords.split(',').map(k => k.trim()).filter(k => k) : [],
                         monitoredUserIds: configUserIds ? configUserIds.split(',').map(u => u.trim()).filter(u => u) : [],
                         forwardToChatId: configForwardTo || null,
+                        initialHistoryLimit: configInitialHistory,
                         isActive: true
                       })
                     });
