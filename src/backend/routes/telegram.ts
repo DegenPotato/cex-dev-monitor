@@ -429,6 +429,33 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Bulk delete monitored chats
+   */
+  router.post('/monitored-chats/bulk-delete', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatIds } = req.body; // Array of chat IDs or 'all'
+
+      if (chatIds === 'all') {
+        // Delete all chats for this user
+        await telegramService.deleteAllMonitoredChats(userId);
+        res.json({ success: true, message: 'All chats deleted' });
+      } else if (Array.isArray(chatIds) && chatIds.length > 0) {
+        // Delete specific chats
+        for (const chatId of chatIds) {
+          await telegramService.deleteMonitoredChat(userId, chatId);
+        }
+        res.json({ success: true, message: `Deleted ${chatIds.length} chats` });
+      } else {
+        res.status(400).json({ error: 'Invalid chatIds parameter' });
+      }
+    } catch (error: any) {
+      console.error('[Telegram] Error bulk deleting chats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Get detected contracts
    */
   router.get('/detected-contracts', authService.requireSecureAuth(), async (req, res) => {

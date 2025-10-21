@@ -346,6 +346,18 @@ export class TelegramUserService {
   }
 
   /**
+   * Delete all monitored chats for a user
+   */
+  async deleteAllMonitoredChats(userId: number) {
+    await execute(`
+      DELETE FROM telegram_monitored_chats 
+      WHERE user_id = ?
+    `, [userId]);
+
+    return { success: true };
+  }
+
+  /**
    * Save detected contract from Telegram
    */
   async saveDetectedContract(data: {
