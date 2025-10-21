@@ -521,19 +521,31 @@ export class TelegramClientService extends EventEmitter {
                   }
                 }
                 
-                const forwardMessage = `🚨 **Token Detected**\n\n` +
-                  `📍 **CA:** \`${contract.address}\`\n` +
-                  `📊 **Type:** ${contract.type}\n` +
-                  `👤 **From:** ${message.senderId ? `@${await this.getSenderUsername(client, message.senderId) || message.senderId}` : 'Unknown'}\n` +
-                  `💬 **Chat:** ${monitoredChat.chatName || chatId}\n` +
-                  `🕐 **Time:** ${new Date().toLocaleTimeString()}\n\n` +
-                  `📝 **Message:**\n${message.message.substring(0, 500)}${message.message.length > 500 ? '...' : ''}\n\n` +
-                  `🔍 [Solscan](https://solscan.io/token/${contract.address}) | ` +
-                  `📈 [GMGN](https://gmgn.ai/sol/${contract.address})`;
+                // Just send the raw contract address like the Python script does
+                const forwardMessage = contract.address;
                 
-                await forwardClient.sendMessage(monitoredChat.forwardToChatId, { 
-                  message: forwardMessage,
-                  parseMode: 'markdown'
+                // Parse the forward target - handle different ID formats
+                let forwardTarget: any = monitoredChat.forwardToChatId;
+                
+                // Convert string to appropriate type for telegram library
+                if (typeof forwardTarget === 'string') {
+                  // If it starts with @ it's a username, leave as string
+                  if (!forwardTarget.startsWith('@')) {
+                    // It's a numeric ID - parse it
+                    if (forwardTarget.startsWith('-')) {
+                      // Group/channel ID (negative number)
+                      forwardTarget = parseInt(forwardTarget);
+                    } else {
+                      // User/bot ID - keep as string for BigInt handling in library
+                      // The library will handle conversion internally
+                      forwardTarget = forwardTarget;
+                    }
+                  }
+                }
+                
+                // Send using the selected forward account (user or bot)
+                await forwardClient.sendMessage(forwardTarget, { 
+                  message: forwardMessage
                 });
                 
                 wasForwarded = true;
@@ -1288,7 +1300,7 @@ export class TelegramClientService extends EventEmitter {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         userId,
-        null, // rule_id - null for contract auto-forwards
+        0, // rule_id - use 0 for contract auto-forwards (NOT NULL constraint)
         data.sourceChatId,
         data.sourceChatName || null,
         data.messageId ? parseInt(data.messageId) : null, // source_message_id
