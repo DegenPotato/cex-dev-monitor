@@ -496,6 +496,48 @@ export class TelegramClientService extends EventEmitter {
         // Emit contract detection events and auto-forward
         if (contracts.length > 0) {
           for (const contract of contracts) {
+            let wasForwarded = false;
+            
+            // Try to forward first
+            if (monitoredChat.forwardToChatId) {
+              try {
+                // Determine which client to use for forwarding
+                let forwardClient = client; // Default to detection client
+                
+                if (monitoredChat.forwardAccountId && monitoredChat.forwardAccountId !== userId) {
+                  // Use a different account for forwarding
+                  const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
+                  if (forwardAccount) {
+                    forwardClient = forwardAccount;
+                    console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId}`);
+                  } else {
+                    console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
+                  }
+                }
+                
+                const forwardMessage = `🚨 **Token Detected**\n\n` +
+                  `📍 **CA:** \`${contract.address}\`\n` +
+                  `📊 **Type:** ${contract.type}\n` +
+                  `👤 **From:** ${message.senderId ? `@${await this.getSenderUsername(client, message.senderId) || message.senderId}` : 'Unknown'}\n` +
+                  `💬 **Chat:** ${monitoredChat.chatName || chatId}\n` +
+                  `🕐 **Time:** ${new Date().toLocaleTimeString()}\n\n` +
+                  `📝 **Message:**\n${message.message.substring(0, 500)}${message.message.length > 500 ? '...' : ''}\n\n` +
+                  `🔍 [Solscan](https://solscan.io/token/${contract.address}) | ` +
+                  `📈 [GMGN](https://gmgn.ai/sol/${contract.address})`;
+                
+                await forwardClient.sendMessage(monitoredChat.forwardToChatId, { 
+                  message: forwardMessage,
+                  parseMode: 'markdown'
+                });
+                
+                wasForwarded = true;
+                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId}`);
+              } catch (error) {
+                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, error);
+              }
+            }
+            
+            // Save detection with forwarding status
             await this.saveDetectedContract(userId, {
               chatId: chatId!,
               messageId: message.id,
@@ -504,7 +546,8 @@ export class TelegramClientService extends EventEmitter {
               contractAddress: contract.address,
               detectionType: contract.type,
               originalFormat: contract.original,
-              messageText: message.message
+              messageText: message.message,
+              forwarded: wasForwarded
             });
 
             this.emit('contract_detected', {
@@ -519,6 +562,20 @@ export class TelegramClientService extends EventEmitter {
             // Auto-forward if configured
             if (monitoredChat.forwardToChatId) {
               try {
+                // Determine which client to use for forwarding
+                let forwardClient = client; // Default to detection client
+                
+                if (monitoredChat.forwardAccountId && monitoredChat.forwardAccountId !== userId) {
+                  // Use a different account for forwarding
+                  const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
+                  if (forwardAccount) {
+                    forwardClient = forwardAccount;
+                    console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId}`);
+                  } else {
+                    console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
+                  }
+                }
+                
                 const forwardMessage = `🚨 **Token Detected**\n\n` +
                   `📍 **CA:** \`${contract.address}\`\n` +
                   `📊 **Type:** ${contract.type}\n` +
@@ -529,7 +586,7 @@ export class TelegramClientService extends EventEmitter {
                   `🔍 [Solscan](https://solscan.io/token/${contract.address}) | ` +
                   `📈 [GMGN](https://gmgn.ai/sol/${contract.address})`;
                 
-                await client.sendMessage(monitoredChat.forwardToChatId, { 
+                await forwardClient.sendMessage(monitoredChat.forwardToChatId, { 
                   message: forwardMessage,
                   parseMode: 'markdown'
                 });
@@ -564,9 +621,27 @@ export class TelegramClientService extends EventEmitter {
    * Extract contract addresses from text
    */
   private extractContracts(text: string): Array<{address: string, type: string, original: string}> {
-    const contracts = [];
+    const contracts: Array<{address: string, type: string, original: string}> = [];
     
-    // Remove URLs to avoid matching addresses within links (from Python version)
+    // FIRST: Extract ANY Solana address from ANY URL before removing them!
+    const urlPattern = /https?:\/\/[^\s]+/g;
+    const urls = text.match(urlPattern) || [];
+    for (const url of urls) {
+      // Extract ANY valid Solana address from the URL (32-44 chars, base58)
+      const addressMatches = url.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g) || [];
+      for (const addr of addressMatches) {
+        if (this.isValidSolanaAddress(addr) && !contracts.find(c => c.address === addr)) {
+          contracts.push({
+            address: addr,
+            type: 'url',
+            original: url
+          });
+          console.log(`   🔗 Extracted from URL: ${addr.substring(0, 8)}...`);
+        }
+      }
+    }
+    
+    // NOW remove URLs to avoid matching addresses within other links
     const textClean = text.replace(/https?:\/\/\S+/g, '');
     
     // Check standard format
@@ -1445,8 +1520,27 @@ export class TelegramClientService extends EventEmitter {
     const client = this.activeClients.get(userId);
     return {
       connected: !!client,
-      client
+      client: client || null
     };
+  }
+
+  /**
+   * Get all connected accounts (for forwarding account selection)
+   */
+  getConnectedAccounts(userId: number): Array<{ id: number; name: string; phone?: string }> {
+    const accounts: Array<{ id: number; name: string; phone?: string }> = [];
+    
+    // Check if this user has an active connection
+    if (this.activeClients.has(userId)) {
+      const session = this.sessions.get(userId);
+      accounts.push({
+        id: userId,
+        name: 'Main Account',
+        phone: session?.phoneNumber
+      });
+    }
+    
+    return accounts;
   }
 
   /**

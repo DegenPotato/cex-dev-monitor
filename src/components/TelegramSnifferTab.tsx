@@ -52,9 +52,12 @@ interface MonitoredChat {
 interface ContractDetection {
   id: number;
   chatId: string;
+  chatName?: string;
   contractAddress: string;
-  detectionType: 'standard' | 'obfuscated' | 'split';
   senderUsername?: string;
+  detectionType: 'standard' | 'obfuscated' | 'split' | 'url';
+  forwarded: boolean;
+  forwardedTo?: string;
   detectedAt: number;
 }
 
@@ -100,8 +103,12 @@ export function TelegramSnifferTab() {
   const [configKeywords, setConfigKeywords] = useState('');
   const [configUserIds, setConfigUserIds] = useState('');
   const [configForwardTo, setConfigForwardTo] = useState('');
+  const [configForwardAccountId, setConfigForwardAccountId] = useState<number | null>(null);
   const [configContractDetection, setConfigContractDetection] = useState(true);
   const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
+  
+  // Available telegram accounts for forwarding
+  const [telegramAccounts, setTelegramAccounts] = useState<Array<{ id: number; name: string; phone?: string }>>([]);
 
   // Chat history viewing state
   const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string} | null>(null);
@@ -151,6 +158,7 @@ export function TelegramSnifferTab() {
       loadAccountStatus();
       loadMonitoredChats(); // Load existing chats from database
       loadDetections(); // Load existing detections
+      loadTelegramAccounts(); // Load available accounts for forwarding
     }
   }, [isAuthenticated]);
 
@@ -169,6 +177,23 @@ export function TelegramSnifferTab() {
       }
     } catch (error) {
       console.error('Failed to load account status:', error);
+    }
+  };
+
+  const loadTelegramAccounts = async () => {
+    try {
+      if (!isAuthenticated) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/accounts`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const accounts = await response.json();
+        setTelegramAccounts(accounts);
+      }
+    } catch (error) {
+      console.error('Failed to load telegram accounts:', error);
     }
   };
 
@@ -1585,7 +1610,7 @@ export function TelegramSnifferTab() {
         <div className="space-y-6">
           {/* Detection Stats */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="text-center">
                 <p className="text-2xl font-bold text-cyan-400">{detections.length}</p>
                 <p className="text-xs text-gray-400">Total Detections</p>
@@ -1607,6 +1632,28 @@ export function TelegramSnifferTab() {
                   {detections.filter(d => d.detectionType === 'split').length}
                 </p>
                 <p className="text-xs text-gray-400">Split</p>
+              </div>
+            </div>
+            
+            {/* Forwarding Stats */}
+            <div className="border-t border-cyan-500/20 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-400">
+                  {detections.filter(d => d.forwarded).length}
+                </p>
+                <p className="text-xs text-gray-400">Forwarded</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-orange-400">
+                  {detections.filter(d => d.forwardedTo && !d.forwarded).length}
+                </p>
+                <p className="text-xs text-gray-400">Pending Forward</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-gray-400">
+                  {detections.filter(d => !d.forwardedTo).length}
+                </p>
+                <p className="text-xs text-gray-400">No Forward Config</p>
               </div>
             </div>
           </div>
@@ -1644,13 +1691,25 @@ export function TelegramSnifferTab() {
                               ? 'bg-green-500/20 text-green-400'
                               : detection.detectionType === 'obfuscated'
                               ? 'bg-yellow-500/20 text-yellow-400'
+                              : detection.detectionType === 'url'
+                              ? 'bg-blue-500/20 text-blue-400'
                               : 'bg-purple-500/20 text-purple-400'
                           }`}>
                             {detection.detectionType.toUpperCase()}
                           </span>
+                          {detection.chatName && (
+                            <span className="text-gray-400">
+                              Chat: <span className="text-yellow-400">{detection.chatName}</span>
+                            </span>
+                          )}
                           {detection.senderUsername && (
                             <span className="text-gray-400">
                               From: <span className="text-cyan-400">@{detection.senderUsername}</span>
+                            </span>
+                          )}
+                          {detection.forwarded && (
+                            <span className="px-2 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
+                              ✓ Forwarded
                             </span>
                           )}
                           <span className="text-gray-500">
@@ -1875,21 +1934,50 @@ export function TelegramSnifferTab() {
                 </p>
               </div>
 
-              {/* Forward To Chat */}
-              <div>
-                <label className="block text-sm font-medium text-cyan-300 mb-2">
-                  Forward Messages To (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={configForwardTo}
-                  onChange={(e) => setConfigForwardTo(e.target.value)}
-                  placeholder="Enter chat ID or @username"
-                  className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
-                />
-                <p className="text-xs text-gray-400 mt-2">
-                  Detected messages will be automatically forwarded to this chat
-                </p>
+              {/* Forward Configuration */}
+              <div className="space-y-4 p-4 bg-black/20 rounded-lg border border-yellow-500/20">
+                <h4 className="text-sm font-medium text-yellow-300">Auto-Forward Settings (Optional)</h4>
+                
+                {/* Forward To Chat */}
+                <div>
+                  <label className="block text-sm font-medium text-cyan-300 mb-2">
+                    Destination Chat
+                  </label>
+                  <input
+                    type="text"
+                    value={configForwardTo}
+                    onChange={(e) => setConfigForwardTo(e.target.value)}
+                    placeholder="Enter chat ID or @username"
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Auto-forward detected contracts to this chat
+                  </p>
+                </div>
+                
+                {/* Forward Account Selector */}
+                {configForwardTo && telegramAccounts.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-cyan-300 mb-2">
+                      Forward Using Account
+                    </label>
+                    <select
+                      value={configForwardAccountId || ''}
+                      onChange={(e) => setConfigForwardAccountId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
+                    >
+                      <option value="">Same as detection account</option>
+                      {telegramAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}{acc.phone ? ` (${acc.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Choose which account sends the forwarded messages
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1913,6 +2001,7 @@ export function TelegramSnifferTab() {
                         monitoredKeywords: configKeywords ? configKeywords.split(',').map(k => k.trim()).filter(k => k) : [],
                         monitoredUserIds: configUserIds ? configUserIds.split(',').map(u => u.trim()).filter(u => u) : [],
                         forwardToChatId: configForwardTo || null,
+                        forwardAccountId: configForwardAccountId,
                         initialHistoryLimit: configInitialHistory,
                         isActive: true
                       })

@@ -235,6 +235,7 @@ export class TelegramUserService {
     inviteLink?: string | null;
     isActive?: boolean;
     forwardToChatId?: string;
+    forwardAccountId?: number; // Which account to use for forwarding
     monitoredUserIds?: number[];
     monitoredKeywords?: string[];
     telegramAccountId?: number; // Which Telegram account this chat belongs to
@@ -252,7 +253,7 @@ export class TelegramUserService {
       await execute(`
         UPDATE telegram_monitored_chats 
         SET chat_name = ?, chat_type = ?, username = ?, invite_link = ?,
-            is_active = ?, forward_to_chat_id = ?, 
+            is_active = ?, forward_to_chat_id = ?, forward_account_id = ?,
             monitored_user_ids = ?, monitored_keywords = ?,
             telegram_account_id = ?, updated_at = ?
         WHERE user_id = ? AND chat_id = ?
@@ -263,6 +264,7 @@ export class TelegramUserService {
         chat.inviteLink || null,
         chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 1,
         chat.forwardToChatId || null,
+        chat.forwardAccountId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
         chat.telegramAccountId || null,
@@ -273,8 +275,8 @@ export class TelegramUserService {
     } else {
       await execute(`
         INSERT INTO telegram_monitored_chats 
-        (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, forward_to_chat_id, monitored_user_ids, monitored_keywords, telegram_account_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, forward_to_chat_id, forward_account_id, monitored_user_ids, monitored_keywords, telegram_account_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         userId,
         chat.chatId,
@@ -284,6 +286,7 @@ export class TelegramUserService {
         chat.inviteLink || null,
         chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 0,
         chat.forwardToChatId || null,
+        chat.forwardAccountId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
         chat.telegramAccountId || null,
@@ -362,6 +365,7 @@ export class TelegramUserService {
       chatType: chat.chat_type,
       telegramAccountId: chat.telegram_account_id,
       forwardToChatId: chat.forward_to_chat_id,
+      forwardAccountId: chat.forward_account_id,
       monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : [],
       monitoredKeywords: chat.monitored_keywords ? JSON.parse(chat.monitored_keywords) : [],
       isActive: chat.is_active === 1,
@@ -419,6 +423,7 @@ export class TelegramUserService {
     monitoredKeywords?: string[];
     monitoredUserIds?: number[];
     forwardToChatId?: string | null;
+    forwardAccountId?: number | null;
     isActive?: boolean;
   }) {
     const monitoredKeywordsJson = config.monitoredKeywords ? JSON.stringify(config.monitoredKeywords) : null;
@@ -430,6 +435,7 @@ export class TelegramUserService {
       SET monitored_keywords = ?,
           monitored_user_ids = ?,
           forward_to_chat_id = ?,
+          forward_account_id = ?,
           is_active = ?,
           updated_at = ?
       WHERE user_id = ? AND chat_id = ?
@@ -437,6 +443,7 @@ export class TelegramUserService {
       monitoredKeywordsJson,
       monitoredUserIdsJson,
       config.forwardToChatId !== undefined ? config.forwardToChatId : null,
+      config.forwardAccountId !== undefined ? config.forwardAccountId : null,
       config.isActive !== undefined ? (config.isActive ? 1 : 0) : 1,
       now,
       userId,
@@ -498,15 +505,22 @@ export class TelegramUserService {
    */
   async getDetectedContracts(userId: number, limit: number = 100) {
     const contracts = await queryAll(`
-      SELECT * FROM telegram_detected_contracts 
-      WHERE user_id = ?
-      ORDER BY detected_at DESC
+      SELECT 
+        dc.*,
+        mc.chat_name,
+        mc.forward_to_chat_id,
+        mc.forward_account_id
+      FROM telegram_detected_contracts dc
+      LEFT JOIN telegram_monitored_chats mc ON dc.chat_id = mc.chat_id AND dc.user_id = mc.user_id
+      WHERE dc.user_id = ?
+      ORDER BY dc.detected_at DESC
       LIMIT ?
     `, [userId, limit]) as any[];
 
     return contracts.map(contract => ({
       id: contract.id,
       chatId: contract.chat_id,
+      chatName: contract.chat_name,
       messageId: contract.message_id,
       senderId: contract.sender_id,
       senderUsername: contract.sender_username,
@@ -515,6 +529,7 @@ export class TelegramUserService {
       originalFormat: contract.original_format,
       messageText: contract.message_text,
       forwarded: contract.forwarded === 1,
+      forwardedTo: contract.forward_to_chat_id,
       detectedAt: contract.detected_at
     }));
   }

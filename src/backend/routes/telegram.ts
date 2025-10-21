@@ -20,6 +20,24 @@ export function createTelegramRoutes() {
   const telegramService = new TelegramUserService();
 
   /**
+   * Get all connected Telegram accounts for the user
+   */
+  router.get('/accounts', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      
+      // Get connection status from TelegramClientService
+      const { telegramClientService } = await import('../services/TelegramClientService.js');
+      const accounts = telegramClientService.getConnectedAccounts(userId);
+      
+      res.json(accounts);
+    } catch (error: any) {
+      console.error('Failed to get accounts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Get account status (user account, bot account, monitored chats)
    */
   router.get('/status', authService.requireSecureAuth(), async (req, res) => {
