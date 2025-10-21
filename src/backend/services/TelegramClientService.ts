@@ -727,37 +727,19 @@ export class TelegramClientService extends EventEmitter {
         return { isValid: true, actualTokens: [address] };
       }
       
-      // SLOW PATH: Check if it's a liquidity pool (requires parsing)
-      const LP_PROGRAMS: { [key: string]: string } = {
-        '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'Raydium V4',
-        'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK': 'Raydium CLMM',
-        'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc': 'Orca Whirlpool',
-        'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C': 'Raydium CPMM',
-        'EewxydAPCCVuNEyrVN68PuSYdQ7wKn27V9Gjeoi8dy3S': 'Pump.fun',
-        '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P': 'Pump.fun Bonding'
-      };
+      // ALTERNATIVE PATH: Check GeckoTerminal if it's an LP
+      console.log(`   🦎 Checking GeckoTerminal for pool info: ${address.substring(0, 8)}...`);
+      const lpTokens = await this.checkGeckoTerminalPool(address);
       
-      const isLiquidityPool = ownerStr in LP_PROGRAMS;
-      
-      if (isLiquidityPool) {
-        const lpType = LP_PROGRAMS[ownerStr];
-        console.log(`   🏊 LP detected: ${address.substring(0, 8)}... (${lpType}, dataLen: ${dataLength})`);
-        
-        // Extract token mints from LP
-        const tokens = await this.extractTokensFromLP(ownerStr, accountInfo);
+      if (lpTokens.length > 0) {
         const elapsed = Date.now() - startTime;
-        
-        if (tokens.length > 0) {
-          console.log(`   📤 Extracted ${tokens.length} token(s) from LP in ${elapsed}ms: ${tokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
-          return { isValid: true, actualTokens: tokens };
-        } else {
-          console.log(`   ⚠️  Failed to extract tokens from LP after ${elapsed}ms (data length: ${dataLength})`);
-          return { isValid: false, actualTokens: [] };
-        }
+        console.log(`   📤 GeckoTerminal confirmed LP, extracted ${lpTokens.length} token(s) in ${elapsed}ms: ${lpTokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
+        return { isValid: true, actualTokens: lpTokens };
       }
       
-      // Log FULL owner address for unknown types to help identify new LP programs
-      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (owner: ${ownerStr}, len: ${dataLength})`);
+      // Not a token mint or LP
+      const elapsed = Date.now() - startTime;
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (${elapsed}ms)`);
       return { isValid: false, actualTokens: [] };
     } catch (error) {
       const elapsed = Date.now() - startTime;
@@ -767,78 +749,46 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Extract token mint addresses from a liquidity pool
+   * Check GeckoTerminal to see if address is a pool, and extract token(s)
    */
-  private async extractTokensFromLP(programId: string, accountInfo: any): Promise<string[]> {
+  private async checkGeckoTerminalPool(address: string): Promise<string[]> {
     try {
-      const data = accountInfo.data;
-      const WSOL = 'So11111111111111111111111111111111111111112';
+      const response = await fetch(
+        `https://api.geckoterminal.com/api/v2/networks/solana/pools/${address}`,
+        { headers: { 'Accept': 'application/json' } }
+      );
       
-      // Raydium V4 (offset 400, 432)
-      if (programId === '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8') {
-        if (data.length >= 464) {
-          const tokenAMint = new PublicKey(data.slice(400, 432)).toString();
-          const tokenBMint = new PublicKey(data.slice(432, 464)).toString();
-          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
-        }
+      if (!response.ok) {
+        return []; // Not a pool
       }
       
-      // Raydium CPMM (offset 8, 40)
-      if (programId === 'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C') {
-        if (data.length >= 72) {
-          const tokenAMint = new PublicKey(data.slice(8, 40)).toString();
-          const tokenBMint = new PublicKey(data.slice(40, 72)).toString();
-          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
-        }
-      }
+      const data = await response.json();
+      const pool = data?.data;
       
-      // Pump.fun Bonding Curve (offset 8 for mint)
-      if (programId === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') {
-        if (data.length >= 40) {
-          const tokenMint = new PublicKey(data.slice(8, 40)).toString();
-          return [tokenMint];
-        }
-      }
+      if (!pool) return [];
       
-      // Try generic scan for valid PublicKeys in data (fallback)
-      console.log(`   🔍 Attempting generic token extraction from unknown LP structure (${data.length} bytes)...`);
+      // Extract token addresses from pool
       const tokens: string[] = [];
+      const baseToken = pool.relationships?.base_token?.data?.id;
+      const quoteToken = pool.relationships?.quote_token?.data?.id;
       
-      // Scan data in 32-byte chunks looking for valid PublicKeys
-      for (let offset = 0; offset <= data.length - 32; offset += 8) {
-        try {
-          const potentialKey = new PublicKey(data.slice(offset, offset + 32)).toString();
-          
-          // Check if it looks like a token mint (not WSOL, not system program, etc)
-          if (potentialKey !== WSOL && 
-              potentialKey !== '11111111111111111111111111111111' &&
-              potentialKey.length >= 32 &&
-              !tokens.includes(potentialKey)) {
-            
-            // Quick validation: check if it's actually a token mint
-            const validation = await this.solanaConnection.withProxy(async conn => {
-              try {
-                const accInfo = await conn.getAccountInfo(new PublicKey(potentialKey));
-                return accInfo?.owner.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && accInfo?.data.length === 82;
-              } catch {
-                return false;
-              }
-            });
-            
-            if (validation) {
-              console.log(`   ✅ Found token at offset ${offset}: ${potentialKey.substring(0, 8)}...`);
-              tokens.push(potentialKey);
-              if (tokens.length >= 2) break; // Max 2 tokens per LP
-            }
-          }
-        } catch {
-          // Invalid PublicKey, continue scanning
+      // GeckoTerminal IDs are in format "solana_<address>"
+      if (baseToken) {
+        const baseAddress = baseToken.replace('solana_', '');
+        tokens.push(baseAddress);
+      }
+      if (quoteToken) {
+        const quoteAddress = quoteToken.replace('solana_', '');
+        // Filter out WSOL (common quote)
+        const WSOL = 'So11111111111111111111111111111111111111112';
+        if (quoteAddress !== WSOL) {
+          tokens.push(quoteAddress);
         }
       }
       
       return tokens;
     } catch (error) {
-      console.error(`   ❌ Failed to extract tokens from LP:`, error);
+      // Silent fail - not a pool or API error
       return [];
     }
   }
