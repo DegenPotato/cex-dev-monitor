@@ -45,16 +45,31 @@ export class TelegramHistoryService {
       // Import Telegram API
       const { Api } = await import('telegram');
 
+      // Resolve the chat entity first
+      let peerEntity;
+      try {
+        peerEntity = await client.getEntity(chatId);
+        console.log(`  ✅ Resolved chat entity: ${peerEntity.title || peerEntity.username || chatId}`);
+      } catch (error: any) {
+        console.error(`  ❌ Failed to resolve chat entity for ${chatId}:`, error.message);
+        return {
+          success: false,
+          messagesFetched: 0,
+          apiCalls: 0,
+          error: `Could not find chat: ${error.message}`
+        };
+      }
+
       while (hasMore && messages.length < limit) {
         const startTime = Date.now();
         
         try {
           console.log(`  📡 Fetching batch ${apiCalls + 1} (offset: ${offsetId})...`);
           
-          // Make the API call
+          // Make the API call with resolved peer entity
           const result = await client.invoke(
             new Api.messages.GetHistory({
-              peer: chatId,
+              peer: peerEntity,
               limit: Math.min(batchSize, limit - messages.length),
               offsetId: offsetId,
               offsetDate: 0,
