@@ -536,14 +536,9 @@ export class TelegramClientService extends EventEmitter {
                       // Group/channel ID (negative number)
                       forwardTarget = parseInt(forwardTarget);
                     } else {
-                      // User/bot ID - needs BigInt for large IDs
-                      try {
-                        // For user IDs, try using BigInt
-                        forwardTarget = BigInt(forwardTarget);
-                      } catch {
-                        // If BigInt fails, keep as string
-                        forwardTarget = forwardTarget;
-                      }
+                      // User/bot ID - KEEP AS STRING (telegram library handles it)
+                      // Don't convert to number or BigInt - the library expects string for user IDs
+                      forwardTarget = forwardTarget;
                     }
                   }
                 }
