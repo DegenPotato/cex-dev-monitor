@@ -728,14 +728,19 @@ export class TelegramClientService extends EventEmitter {
       }
       
       // SLOW PATH: Check if it's a liquidity pool (requires parsing)
-      const RAYDIUM_V4 = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
-      const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
-      const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
+      const LP_PROGRAMS: { [key: string]: string } = {
+        '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'Raydium V4',
+        'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK': 'Raydium CLMM',
+        'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc': 'Orca Whirlpool',
+        'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C': 'Raydium CPMM',
+        'EewxydAPCCVuNEyrVN68PuSYdQ7wKn27V9Gjeoi8dy3S': 'Pump.fun',
+        '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P': 'Pump.fun Bonding'
+      };
       
-      const isLiquidityPool = [RAYDIUM_V4, RAYDIUM_CLMM, ORCA_WHIRLPOOL].includes(ownerStr);
+      const isLiquidityPool = ownerStr in LP_PROGRAMS;
       
       if (isLiquidityPool) {
-        const lpType = ownerStr === RAYDIUM_V4 ? 'Raydium V4' : ownerStr === RAYDIUM_CLMM ? 'Raydium CLMM' : 'Orca';
+        const lpType = LP_PROGRAMS[ownerStr];
         console.log(`   🏊 LP detected: ${address.substring(0, 8)}... (${lpType}, dataLen: ${dataLength})`);
         
         // Extract token mints from LP
@@ -751,7 +756,8 @@ export class TelegramClientService extends EventEmitter {
         }
       }
       
-      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (owner: ${ownerStr.substring(0, 8)}..., len: ${dataLength})`);
+      // Log FULL owner address for unknown types to help identify new LP programs
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (owner: ${ownerStr}, len: ${dataLength})`);
       return { isValid: false, actualTokens: [] };
     } catch (error) {
       const elapsed = Date.now() - startTime;
@@ -766,25 +772,71 @@ export class TelegramClientService extends EventEmitter {
   private async extractTokensFromLP(programId: string, accountInfo: any): Promise<string[]> {
     try {
       const data = accountInfo.data;
+      const WSOL = 'So11111111111111111111111111111111111111112';
       
-      // Raydium V4 pool structure (simplified)
+      // Raydium V4 (offset 400, 432)
       if (programId === '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8') {
-        // Token A mint at offset 400 (32 bytes)
-        // Token B mint at offset 432 (32 bytes)
         if (data.length >= 464) {
           const tokenAMint = new PublicKey(data.slice(400, 432)).toString();
           const tokenBMint = new PublicKey(data.slice(432, 464)).toString();
-          
-          // Filter out SOL/WSOL (common quote token)
-          const WSOL = 'So11111111111111111111111111111111111111112';
-          const tokens = [tokenAMint, tokenBMint].filter(t => t !== WSOL);
-          return tokens;
+          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
         }
       }
       
-      // For other LP types, we could add more parsing logic here
-      // For now, return empty if we can't parse
-      return [];
+      // Raydium CPMM (offset 8, 40)
+      if (programId === 'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C') {
+        if (data.length >= 72) {
+          const tokenAMint = new PublicKey(data.slice(8, 40)).toString();
+          const tokenBMint = new PublicKey(data.slice(40, 72)).toString();
+          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
+        }
+      }
+      
+      // Pump.fun Bonding Curve (offset 8 for mint)
+      if (programId === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') {
+        if (data.length >= 40) {
+          const tokenMint = new PublicKey(data.slice(8, 40)).toString();
+          return [tokenMint];
+        }
+      }
+      
+      // Try generic scan for valid PublicKeys in data (fallback)
+      console.log(`   🔍 Attempting generic token extraction from unknown LP structure (${data.length} bytes)...`);
+      const tokens: string[] = [];
+      
+      // Scan data in 32-byte chunks looking for valid PublicKeys
+      for (let offset = 0; offset <= data.length - 32; offset += 8) {
+        try {
+          const potentialKey = new PublicKey(data.slice(offset, offset + 32)).toString();
+          
+          // Check if it looks like a token mint (not WSOL, not system program, etc)
+          if (potentialKey !== WSOL && 
+              potentialKey !== '11111111111111111111111111111111' &&
+              potentialKey.length >= 32 &&
+              !tokens.includes(potentialKey)) {
+            
+            // Quick validation: check if it's actually a token mint
+            const validation = await this.solanaConnection.withProxy(async conn => {
+              try {
+                const accInfo = await conn.getAccountInfo(new PublicKey(potentialKey));
+                return accInfo?.owner.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && accInfo?.data.length === 82;
+              } catch {
+                return false;
+              }
+            });
+            
+            if (validation) {
+              console.log(`   ✅ Found token at offset ${offset}: ${potentialKey.substring(0, 8)}...`);
+              tokens.push(potentialKey);
+              if (tokens.length >= 2) break; // Max 2 tokens per LP
+            }
+          }
+        } catch {
+          // Invalid PublicKey, continue scanning
+        }
+      }
+      
+      return tokens;
     } catch (error) {
       console.error(`   ❌ Failed to extract tokens from LP:`, error);
       return [];
