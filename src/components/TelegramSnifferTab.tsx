@@ -68,7 +68,7 @@ interface ContractDetection {
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const [activeSection, setActiveSection] = useState<'sniffer' | 'sniffers' | 'detections' | 'forwards' | 'settings'>('sniffer');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'settings'>('sniffer');
   const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -698,7 +698,7 @@ export function TelegramSnifferTab() {
   
   // Load chats and detections when switching sections
   useEffect(() => {
-    if (activeSection === 'sniffers') {
+    if (activeSection === 'monitored') {
       loadMonitoredChats();
     } else if (activeSection === 'detections') {
       loadDetections();
@@ -714,7 +714,8 @@ export function TelegramSnifferTab() {
   }, [activeSection]);
 
   return (
-    <div className="p-6">
+    <>
+      <div className="p-6">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -750,14 +751,14 @@ export function TelegramSnifferTab() {
           Available Chats ({availableChats.length})
         </button>
         <button
-          onClick={() => setActiveSection('sniffers')}
+          onClick={() => setActiveSection('monitored')}
           className={`px-6 py-3 font-medium transition-all ${
-            activeSection === 'sniffers' 
+            activeSection === 'monitored' 
               ? 'text-cyan-400 border-b-2 border-cyan-400' 
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          Active Sniffers ({monitoredChats.filter(c => c.isActive).length})
+          Monitored ({monitoredChats.filter(c => c.isActive).length})
         </button>
         <button
           onClick={() => setActiveSection('detections')}
@@ -1771,7 +1772,7 @@ export function TelegramSnifferTab() {
         </div>
       )}
 
-      {activeSection === 'sniffers' && (
+      {activeSection === 'monitored' && (
         <div className="space-y-6">
           {/* Active Monitoring Overview */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
@@ -1802,13 +1803,13 @@ export function TelegramSnifferTab() {
             {monitoredChats.filter(c => c.isActive).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No active sniffers</p>
-                <p className="text-sm mt-2">Go to Available Chats tab to select and configure chats</p>
+                <p>No active monitoring</p>
+                <p className="text-sm mt-2">Go to Sniffer tab to select and configure chats</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {monitoredChats.filter(c => c.isActive).map((chat) => (
-                  <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4 hover:border-green-500/40 transition-all">
+                  <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
@@ -1823,102 +1824,52 @@ export function TelegramSnifferTab() {
                         <button
                           onClick={() => setSelectedHistoryChat({ id: chat.chatId, name: chat.chatName || chat.chatId })}
                           className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded text-purple-400 text-xs font-medium transition-all flex items-center gap-1"
-                          title="View message history"
                         >
                           <History className="w-3 h-3" />
                           History
                         </button>
                         <button
-                          onClick={() => {
-                            setConfigChat(chat as any);
-                            setConfigKeywords(chat.monitoredKeywords?.join(', ') || '');
-                            setConfigUserIds(chat.monitoredUserIds?.join(', ') || '');
-                            setConfigForwardTo(chat.forwardToChatId || '');
-                            setConfigModalOpen(true);
-                          }}
-                          className="px-2 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded text-cyan-400 text-xs font-medium transition-all flex items-center gap-1"
-                          title="Configure monitoring"
-                        >
-                          <SettingsIcon className="w-3 h-3" />
-                          Configure
-                        </button>
-                        <button
                           className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
-                          title="Pause monitoring"
                         >
                           Pause
                         </button>
                       </div>
                     </div>
                     
-                    {/* Comprehensive Insights */}
-                    <div className="space-y-3">
-                      {/* Configuration Summary */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 ? (
-                          <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/30 rounded text-cyan-400 flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {chat.monitoredUserIds.length} users
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400">
-                            All users
-                          </span>
-                        )}
-                        
-                        {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 ? (
-                          <span className="px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400">
-                            {chat.monitoredKeywords.length} keywords
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400">
-                            All messages
-                          </span>
-                        )}
-                        
-                        {chat.forwardToChatId && (
-                          <span className="px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 flex items-center gap-1">
-                            <ExternalLink className="w-3 h-3" />
-                            Auto-forward
-                          </span>
-                        )}
-                        
-                        {chat.forwardAccountId && (
-                          <span className="px-2 py-1 bg-orange-500/20 border border-orange-500/30 rounded text-orange-400">
-                            Custom account
-                          </span>
-                        )}
-                      </div>
+                    {/* Active Configuration */}
+                    <div className="space-y-2 text-xs">
+                      {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Keywords:</span>
+                          <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                              <span>Type: {chat.chatType}</span>
+                              {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
+                                <span className="text-cyan-400">• Tracking {chat.monitoredUserIds.length} users</span>
+                              )}
+                              {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
+                                <span className="text-purple-400">• {chat.monitoredKeywords.length} keywords</span>
+                              )}
+                              {chat.forwardToChatId && (
+                                <span className="text-green-400 flex items-center gap-1">
+                                  • 📤 Auto-forward{chat.forwardAccountId ? ' (custom account)' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-700/50">
-                        <div className="text-center">
-                          <p className="text-lg font-bold text-cyan-400">
-                            {detections.filter(d => d.chatId === chat.chatId).length}
-                          </p>
-                          <p className="text-[10px] text-gray-500">Detections</p>
+                      {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Users:</span>
+                          <span className="text-purple-400">{chat.monitoredUserIds.length} specific users</span>
                         </div>
-                        <div className="text-center">
-                          <p className="text-lg font-bold text-green-400">
-                            {detections.filter(d => d.chatId === chat.chatId && d.forwarded).length}
-                          </p>
-                          <p className="text-[10px] text-gray-500">Forwarded</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-lg font-bold text-purple-400">
-                            {Math.round((detections.filter(d => d.chatId === chat.chatId && d.forwarded).length / Math.max(detections.filter(d => d.chatId === chat.chatId).length, 1)) * 100)}%
-                          </p>
-                          <p className="text-[10px] text-gray-500">Success Rate</p>
-                        </div>
-                      </div>
+                      )}
                       
-                      {/* Forward Target */}
-                      {chat.forwardToChatId && (
-                        <div className="text-xs text-gray-500 flex items-center gap-2 pt-2 border-t border-gray-700/50">
-                          <ExternalLink className="w-3 h-3" />
-                          <span>Forwarding to:</span>
-                          <span className="text-cyan-400 font-mono">{chat.forwardToChatId}</span>
-                        </div>
+                      {(!chat.monitoredKeywords || chat.monitoredKeywords.length === 0) && 
+                       (!chat.monitoredUserIds || chat.monitoredUserIds.length === 0) && (
+                        <span className="text-gray-500">Monitoring all messages</span>
                       )}
                     </div>
                   </div>
@@ -2259,8 +2210,9 @@ export function TelegramSnifferTab() {
           </div>
         </div>
       )}
+      </div>
 
-      {/* Configuration Modal */}
+      {/* Configuration Modal - Rendered outside main container */}
       {configModalOpen && configChat && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -2542,7 +2494,7 @@ export function TelegramSnifferTab() {
           onClose={() => setSelectedHistoryChat(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 
