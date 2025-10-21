@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Copy,
   ExternalLink,
-  Clock,
   AlertCircle
 } from 'lucide-react';
 import { config } from '../config';

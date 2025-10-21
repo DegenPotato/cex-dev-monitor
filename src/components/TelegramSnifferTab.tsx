@@ -15,11 +15,13 @@ import {
   ExternalLink,
   Copy,
   Users,
-  Shield
+  Shield,
+  History
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import TelegramChatHistory from './TelegramChatHistory';
 
 interface TelegramAccount {
   configured: boolean;
@@ -99,6 +101,9 @@ export function TelegramSnifferTab() {
   const [configUserIds, setConfigUserIds] = useState('');
   const [configForwardTo, setConfigForwardTo] = useState('');
   const [configContractDetection, setConfigContractDetection] = useState(true);
+
+  // Chat history viewing state
+  const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string} | null>(null);
 
   // WebSocket listeners for chat fetch progress
   useEffect(() => {
@@ -1521,11 +1526,20 @@ export function TelegramSnifferTab() {
                           {chat.chatType} • {chat.username ? `@${chat.username}` : `ID: ${chat.chatId}`}
                         </p>
                       </div>
-                      <button
-                        className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
-                      >
-                        Pause
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedHistoryChat({ id: chat.chatId, name: chat.chatName || chat.chatId })}
+                          className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded text-purple-400 text-xs font-medium transition-all flex items-center gap-1"
+                        >
+                          <History className="w-3 h-3" />
+                          History
+                        </button>
+                        <button
+                          className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
+                        >
+                          Pause
+                        </button>
+                      </div>
                     </div>
                     
                     {/* Active Configuration */}
@@ -1870,6 +1884,16 @@ export function TelegramSnifferTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Chat History Viewer Modal */}
+      {selectedHistoryChat && (
+        <TelegramChatHistory
+          chatId={selectedHistoryChat.id}
+          chatName={selectedHistoryChat.name}
+          isOpen={!!selectedHistoryChat}
+          onClose={() => setSelectedHistoryChat(null)}
+        />
       )}
     </div>
   );
