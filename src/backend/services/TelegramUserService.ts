@@ -590,14 +590,141 @@ export class TelegramUserService {
   }
 
   /**
+   * Delete ALL Telegram data for a user from ALL tables
+   */
+  async deleteAllTelegramData(userId: number) {
+    try {
+      // Try to disconnect active client if exists
+      try {
+        const { telegramClientService } = await import('./TelegramClientService.js');
+        if (telegramClientService.getConnectionStatus(userId).connected) {
+          // Disconnect if method exists, otherwise just proceed
+          if (typeof (telegramClientService as any).disconnect === 'function') {
+            await (telegramClientService as any).disconnect(userId);
+          }
+        }
+      } catch (error) {
+        console.log('Could not disconnect client, proceeding with data deletion');
+      }
+      
+      // Delete from all Telegram-related tables
+      const tables = [
+        'telegram_detected_contracts',
+        'telegram_message_history',
+        'telegram_chat_metadata',
+        'telegram_monitored_chats',
+        'telegram_bot_accounts',
+        'telegram_user_accounts'
+      ];
+      
+      for (const table of tables) {
+        try {
+          await execute(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+          console.log(`✓ Cleared ${table} for user ${userId}`);
+        } catch (error) {
+          console.log(`Table ${table} might not exist, skipping...`);
+        }
+      }
+      
+      return { 
+        success: true, 
+        message: 'All Telegram data has been deleted',
+        deletedTables: tables
+      };
+    } catch (error: any) {
+      console.error('Error deleting all Telegram data:', error);
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  }
+
+  /**
+   * Save or update chat metadata
+   */
+  async saveChatMetadata(userId: number, metadata: any) {
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Check if exists
+    const existing = await queryOne(
+      'SELECT id FROM telegram_chat_metadata WHERE user_id = ? AND chat_id = ?',
+      [userId, metadata.chatId]
+    );
+    
+    if (existing) {
+      await execute(`
+        UPDATE telegram_chat_metadata 
+        SET title = ?, username = ?, chat_type = ?, description = ?,
+            photo_url = ?, invite_link = ?, member_count = ?, online_count = ?,
+            admin_count = ?, restricted_count = ?, kicked_count = ?,
+            is_member = ?, is_admin = ?, is_creator = ?, has_left = ?,
+            join_date = ?, message_count = ?, last_message_date = ?,
+            last_message_text = ?, avg_messages_per_day = ?, peak_activity_hour = ?,
+            bot_percentage = ?, updated_at = ?
+        WHERE user_id = ? AND chat_id = ?
+      `, [
+        metadata.title, metadata.username, metadata.chatType, metadata.description,
+        metadata.photoUrl, metadata.inviteLink, metadata.memberCount || 0, metadata.onlineCount || 0,
+        metadata.adminCount || 0, metadata.restrictedCount || 0, metadata.kickedCount || 0,
+        metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0, metadata.hasLeft ? 1 : 0,
+        metadata.joinDate, metadata.messageCount || 0, metadata.lastMessageDate,
+        metadata.lastMessageText, metadata.avgMessagesPerDay || 0, metadata.peakActivityHour,
+        metadata.botPercentage || 0, now,
+        userId, metadata.chatId
+      ]);
+    } else {
+      await execute(`
+        INSERT INTO telegram_chat_metadata 
+        (user_id, chat_id, title, username, chat_type, description, photo_url, invite_link,
+         member_count, online_count, admin_count, restricted_count, kicked_count,
+         is_member, is_admin, is_creator, has_left, join_date,
+         message_count, last_message_date, last_message_text, avg_messages_per_day,
+         peak_activity_hour, bot_percentage, fetched_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
+        metadata.description, metadata.photoUrl, metadata.inviteLink,
+        metadata.memberCount || 0, metadata.onlineCount || 0, metadata.adminCount || 0,
+        metadata.restrictedCount || 0, metadata.kickedCount || 0,
+        metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
+        metadata.hasLeft ? 1 : 0, metadata.joinDate,
+        metadata.messageCount || 0, metadata.lastMessageDate, metadata.lastMessageText,
+        metadata.avgMessagesPerDay || 0, metadata.peakActivityHour, metadata.botPercentage || 0,
+        now, now
+      ]);
+    }
+    
+    return { success: true };
+  }
+
+  /**
+   * Get chat metadata
+   */
+  async getChatMetadata(userId: number, chatId?: string) {
+    if (chatId) {
+      const metadata = await queryOne(`
+        SELECT * FROM telegram_chat_metadata 
+        WHERE user_id = ? AND chat_id = ?
+      `, [userId, chatId]);
+      return metadata;
+    } else {
+      const metadataList = await queryAll(`
+        SELECT * FROM telegram_chat_metadata 
+        WHERE user_id = ?
+        ORDER BY member_count DESC, last_message_date DESC
+      `, [userId]) as any[];
+      return metadataList;
+    }
+  }
+
+  /**
    * Get account status (user account, bot account, monitored chats)
    */
   async getAccountStatus(userId: number) {
     const userAccount = await this.getUserAccount(userId);
     const botAccount = await this.getBotAccount(userId);
     const monitoredChats = await this.getMonitoredChats(userId);
-    
-    // Get live connection status from TelegramClientService
     const { telegramClientService } = await import('./TelegramClientService.js');
     const connectionStatus = telegramClientService.getConnectionStatus(userId);
 

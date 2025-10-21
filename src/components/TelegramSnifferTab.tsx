@@ -16,7 +16,8 @@ import {
   Copy,
   Users,
   Shield,
-  History
+  History,
+  AlertTriangle
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -53,6 +54,8 @@ interface ContractDetection {
   id: number;
   chatId: string;
   chatName?: string;
+  chatPhotoUrl?: string;
+  chatType?: string;
   contractAddress: string;
   senderUsername?: string;
   detectionType: 'standard' | 'obfuscated' | 'split' | 'url';
@@ -914,6 +917,30 @@ export function TelegramSnifferTab() {
                             onChange={() => {}}
                             className="mt-1 w-4 h-4 text-purple-600 bg-black/40 border-purple-500/40 rounded focus:ring-purple-500 focus:ring-2"
                           />
+                          
+                          {/* Profile Photo or Icon */}
+                          {chat.photoUrl ? (
+                            <img 
+                              src={chat.photoUrl} 
+                              alt={chat.chatName}
+                              className="w-12 h-12 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                              chat.chatType === 'channel' ? 'bg-purple-500/20' : 
+                              chat.chatType === 'bot' ? 'bg-blue-500/20' : 
+                              'bg-cyan-500/20'
+                            }`}>
+                              {chat.chatType === 'channel' ? (
+                                <Radio className="w-6 h-6 text-purple-400" />
+                              ) : chat.chatType === 'bot' ? (
+                                <Bot className="w-6 h-6 text-blue-400" />
+                              ) : (
+                                <MessageSquare className="w-6 h-6 text-cyan-400" />
+                              )}
+                            </div>
+                          )}
+                          
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-medium text-white">
@@ -934,22 +961,65 @@ export function TelegramSnifferTab() {
                                   MONITORING
                                 </span>
                               )}
+                              {chat.contractsDetected30d > 0 && (
+                                <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-400 text-xs font-bold">
+                                  {chat.contractsDetected30d} CAs
+                                </span>
+                              )}
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                            
+                            {/* Primary Stats Row */}
+                            <div className="flex flex-wrap items-center gap-3 mb-2">
                               <span className="text-xs text-gray-400">{chat.chatType}{chat.chatSubtype ? ` • ${chat.chatSubtype}` : ''}</span>
                               {chat.username && (
                                 <span className="text-xs text-cyan-400">@{chat.username}</span>
                               )}
+                              {chat.memberCount > 0 && (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {chat.memberCount?.toLocaleString() || chat.participantsCount?.toLocaleString()}
+                                  {chat.onlineCount > 0 && (
+                                    <span className="text-green-400"> ({chat.onlineCount.toLocaleString()} online)</span>
+                                  )}
+                                </span>
+                              )}
                               {chat.isScam && (
                                 <span className="text-xs text-red-400">⚠ Scam</span>
                               )}
-                              {chat.participantsCount && (
-                                <span className="text-xs text-gray-400 flex items-center gap-1">
-                                  <Users className="w-3 h-3" />
-                                  {chat.participantsCount.toLocaleString()}
-                                </span>
-                              )}
                             </div>
+                            
+                            {/* Activity Insights */}
+                            {(chat.avgMessagesPerDay || chat.peakActivityHour !== undefined || chat.botPercentage > 0) && (
+                              <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
+                                {chat.avgMessagesPerDay > 0 && (
+                                  <span className="text-gray-400">
+                                    📊 {Math.round(chat.avgMessagesPerDay)} msgs/day
+                                  </span>
+                                )}
+                                {chat.peakActivityHour !== undefined && (
+                                  <span className="text-gray-400">
+                                    🕐 Peak: {chat.peakActivityHour}:00
+                                  </span>
+                                )}
+                                {chat.botPercentage > 0 && (
+                                  <span className={`${chat.botPercentage > 50 ? 'text-orange-400' : 'text-gray-400'}`}>
+                                    🤖 {Math.round(chat.botPercentage)}% bots
+                                  </span>
+                                )}
+                                {chat.lastMessageDate && (
+                                  <span className="text-gray-400">
+                                    Last active: {new Date(chat.lastMessageDate * 1000).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Description Preview */}
+                            {chat.description && (
+                              <p className="text-xs text-gray-400 line-clamp-2 mb-2">
+                                {chat.description}
+                              </p>
+                            )}
                             
                             {/* Quick Actions Row */}
                             <div className="flex items-center gap-2 mt-2">
@@ -1501,6 +1571,85 @@ export function TelegramSnifferTab() {
             </div>
           </div>
           </div>
+
+          {/* Danger Zone */}
+          <div className="bg-red-500/10 backdrop-blur-sm rounded-xl border border-red-500/30 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-400" />
+              <h3 className="text-xl font-bold text-red-400">Danger Zone</h3>
+            </div>
+            
+            <p className="text-sm text-gray-400 mb-4">
+              These actions are irreversible and will permanently delete your data.
+            </p>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-black/40 border border-red-500/20 rounded-lg">
+                <h4 className="font-medium text-red-300 mb-2">Delete All Telegram Data</h4>
+                <p className="text-sm text-gray-400 mb-3">
+                  This will permanently delete ALL your Telegram data from the database including:
+                </p>
+                <ul className="text-xs text-gray-500 ml-4 mb-3 list-disc">
+                  <li>All monitored chats configuration</li>
+                  <li>All detected contracts history</li>
+                  <li>All message history and metadata</li>
+                  <li>Your Telegram account connections</li>
+                  <li>Bot account configuration</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    const confirmText = prompt(
+                      'This will DELETE ALL your Telegram data permanently!\n\n' +
+                      'Type "DELETE ALL" to confirm:'
+                    );
+                    
+                    if (confirmText === 'DELETE ALL') {
+                      try {
+                        setLoading(true);
+                        const response = await fetch(`${config.apiUrl}/api/telegram/delete-all-data`, {
+                          method: 'DELETE',
+                          credentials: 'include'
+                        });
+                        
+                        if (response.ok) {
+                          const result = await response.json();
+                          setMessage({ type: 'success', text: result.message || 'All Telegram data deleted successfully' });
+                          
+                          // Reset all state
+                          setUserAccount(null);
+                          setBotAccount(null);
+                          setAvailableChats([]);
+                          setMonitoredChats([]);
+                          setDetections([]);
+                          setSelectedChats(new Set());
+                          
+                          // Clear form fields
+                          setApiId('');
+                          setApiHash('');
+                          setPhoneNumber('');
+                          setBotToken('');
+                        } else {
+                          const error = await response.json();
+                          setMessage({ type: 'error', text: error.error || 'Failed to delete data' });
+                        }
+                      } catch (error) {
+                        setMessage({ type: 'error', text: 'Error deleting Telegram data' });
+                      } finally {
+                        setLoading(false);
+                      }
+                    } else if (confirmText !== null) {
+                      setMessage({ type: 'info', text: 'Deletion cancelled - confirmation text did not match' });
+                    }
+                  }}
+                  disabled={loading}
+                  className="w-full px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete All Telegram Data
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1686,17 +1835,40 @@ export function TelegramSnifferTab() {
                           </button>
                         </div>
                         <div className="flex items-center gap-3 text-xs">
-                          <span className={`px-2 py-0.5 rounded font-bold ${
-                            detection.detectionType === 'standard'
-                              ? 'bg-green-500/20 text-green-400'
-                              : detection.detectionType === 'obfuscated'
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : detection.detectionType === 'url'
-                              ? 'bg-blue-500/20 text-blue-400'
-                              : 'bg-purple-500/20 text-purple-400'
-                          }`}>
-                            {detection.detectionType.toUpperCase()}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {detection.chatPhotoUrl ? (
+                              <img 
+                                src={detection.chatPhotoUrl} 
+                                alt={detection.chatName}
+                                className="w-10 h-10 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                detection.chatType === 'channel' ? 'bg-purple-500/20' : 
+                                detection.chatType === 'bot' ? 'bg-blue-500/20' : 
+                                'bg-cyan-500/20'
+                              }`}>
+                                {detection.chatType === 'channel' ? (
+                                  <Radio className="w-5 h-5 text-purple-400" />
+                                ) : detection.chatType === 'bot' ? (
+                                  <Bot className="w-5 h-5 text-blue-400" />
+                                ) : (
+                                  <MessageSquare className="w-5 h-5 text-cyan-400" />
+                                )}
+                              </div>
+                            )}
+                            <span className={`px-2 py-0.5 rounded font-bold ${
+                              detection.detectionType === 'standard'
+                                ? 'bg-green-500/20 text-green-400'
+                                : detection.detectionType === 'obfuscated'
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : detection.detectionType === 'url'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-purple-500/20 text-purple-400'
+                            }`}>
+                              {detection.detectionType.toUpperCase()}
+                            </span>
+                          </div>
                           {detection.chatName && (
                             <span className="text-gray-400">
                               Chat: <span className="text-yellow-400">{detection.chatName}</span>

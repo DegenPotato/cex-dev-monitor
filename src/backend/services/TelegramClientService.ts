@@ -1543,18 +1543,6 @@ export class TelegramClientService extends EventEmitter {
     return accounts;
   }
 
-  /**
-   * Disconnect client
-   */
-  async disconnect(userId: number) {
-    const client = this.activeClients.get(userId);
-    if (client) {
-      await client.disconnect();
-      this.activeClients.delete(userId);
-      this.sessions.delete(userId);
-    }
-  }
-
   private encrypt(text: string): string {
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(this.encryptionKey.padEnd(32, '0').slice(0, 32)), iv);

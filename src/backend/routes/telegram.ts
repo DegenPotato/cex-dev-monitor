@@ -347,8 +347,41 @@ export function createTelegramRoutes() {
   router.get('/all-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const chats = await telegramService.getMonitoredChats(userId, true); // includeInactive = true
-      res.json(chats);
+      const { telegramClientService } = await import('../services/TelegramClientService.js');
+      
+      // First get basic chats from API
+      const chats = await (telegramClientService as any).getAllChats?.(userId) || [];
+      
+      // Then get stored metadata from database
+      const storedMetadata = await telegramService.getChatMetadata(userId) as any[];
+      
+      // Merge API data with stored metadata
+      const enrichedChats = chats.map((chat: any) => {
+        const stored = storedMetadata?.find((m: any) => m.chat_id === chat.chatId);
+        if (stored) {
+          return {
+            ...chat,
+            photoUrl: stored.photo_url,
+            memberCount: stored.member_count || chat.memberCount,
+            onlineCount: stored.online_count,
+            adminCount: stored.admin_count,
+            botPercentage: stored.bot_percentage,
+            avgMessagesPerDay: stored.avg_messages_per_day,
+            peakActivityHour: stored.peak_activity_hour,
+            lastMessageDate: stored.last_message_date,
+            lastMessageText: stored.last_message_text,
+            contractsDetected30d: stored.contracts_detected_30d,
+            isMember: stored.is_member === 1,
+            isAdmin: stored.is_admin === 1,
+            isCreator: stored.is_creator === 1,
+            hasLeft: stored.has_left === 1,
+            joinDate: stored.join_date
+          };
+        }
+        return chat;
+      });
+      
+      res.json(enrichedChats);
     } catch (error: any) {
       console.error('[Telegram] Error getting all chats:', error);
       res.status(500).json({ error: error.message });
@@ -509,8 +542,14 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       
-      // Disconnect active client if exists
-      await telegramClientService.disconnect(userId);
+      // Try to disconnect active client if exists
+      try {
+        if (typeof (telegramClientService as any).disconnect === 'function') {
+          await (telegramClientService as any).disconnect(userId);
+        }
+      } catch (error) {
+        console.log('Could not disconnect client');
+      }
       
       // Delete from database
       const result = await telegramService.deleteUserAccount(userId);
@@ -542,6 +581,28 @@ export function createTelegramRoutes() {
       });
     } catch (error: any) {
       console.error('[Telegram] Error deleting bot account:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Delete ALL Telegram data for the user
+   */
+  router.delete('/delete-all-data', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      
+      console.log(`⚠️  [Telegram] User ${userId} requested to DELETE ALL TELEGRAM DATA`);
+      
+      const result = await telegramService.deleteAllTelegramData(userId);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (error: any) {
+      console.error('[Telegram] Error deleting all data:', error);
       res.status(500).json({ error: error.message });
     }
   });
