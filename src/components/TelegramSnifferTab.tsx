@@ -11,7 +11,11 @@ import {
   X,
   Trash2,
   RefreshCw,
-  Search
+  Search,
+  ExternalLink,
+  Copy,
+  Users,
+  Shield
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -871,27 +875,71 @@ export function TelegramSnifferTab() {
                             className="mt-1 w-4 h-4 text-purple-600 bg-black/40 border-purple-500/40 rounded focus:ring-purple-500 focus:ring-2"
                           />
                           <div className="flex-1">
-                            <h4 className="font-medium text-white">
-                              {chat.chatName || chat.chatId}
-                            </h4>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
-                              <span className="text-xs text-gray-400">{chat.chatType}{chat.chatSubtype ? ` • ${chat.chatSubtype}` : ''}</span>
-                              {chat.username && (
-                                <span className="text-xs text-cyan-400">@{chat.username}</span>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium text-white">
+                                {chat.chatName || chat.chatId}
+                              </h4>
+                              {chat.chatType === 'bot' && (
+                                <span className="px-1.5 py-0.5 bg-purple-500/20 border border-purple-500/40 rounded text-purple-400 text-xs font-bold flex items-center gap-1">
+                                  <Bot className="w-3 h-3" /> BOT
+                                </span>
                               )}
                               {chat.isVerified && (
-                                <span className="text-xs text-blue-400">✓ Verified</span>
-                              )}
-                              {chat.isScam && (
-                                <span className="text-xs text-red-400">⚠ Scam</span>
-                              )}
-                              {chat.participantsCount && (
-                                <span className="text-xs text-gray-400">{chat.participantsCount.toLocaleString()} members</span>
+                                <span title="Verified">
+                                  <Shield className="w-4 h-4 text-blue-400" />
+                                </span>
                               )}
                               {isMonitored && (
                                 <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
                                   MONITORING
                                 </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-400">{chat.chatType}{chat.chatSubtype ? ` • ${chat.chatSubtype}` : ''}</span>
+                              {chat.username && (
+                                <span className="text-xs text-cyan-400">@{chat.username}</span>
+                              )}
+                              {chat.isScam && (
+                                <span className="text-xs text-red-400">⚠ Scam</span>
+                              )}
+                              {chat.participantsCount && (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {chat.participantsCount.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Quick Actions Row */}
+                            <div className="flex items-center gap-2 mt-2">
+                              {chat.inviteLink && (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(chat.inviteLink, '_blank');
+                                    }}
+                                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors"
+                                    title="Open in Telegram"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    Open
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(chat.inviteLink);
+                                      setMessage({ type: 'success', text: 'Link copied!' });
+                                      setTimeout(() => setMessage(null), 2000);
+                                    }}
+                                    className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1 transition-colors"
+                                    title="Copy invite link"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    Copy Link
+                                  </button>
+                                </>
                               )}
                             </div>
                             
