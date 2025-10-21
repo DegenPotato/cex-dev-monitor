@@ -548,5 +548,80 @@ export function createTelegramRoutes() {
     }
   });
 
+  /**
+   * Fetch and cache chat history
+   */
+  router.post('/chats/:chatId/fetch-history', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      const { limit = 1000 } = req.body;
+
+      // Import the history service
+      const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
+
+      // Start fetching in background
+      res.json({
+        success: true,
+        message: 'History fetch started. Progress will be sent via WebSocket.'
+      });
+
+      // Fetch history asynchronously
+      telegramHistoryService.fetchAndStoreChatHistory(userId, chatId, limit, (fetched, total) => {
+        // Emit progress via WebSocket
+        telegramClientService.emit('history_fetch_progress', {
+          userId,
+          chatId,
+          fetched,
+          total
+        });
+      }).then(result => {
+        telegramClientService.emit('history_fetch_complete', {
+          userId,
+          chatId,
+          ...result
+        });
+      }).catch(error => {
+        telegramClientService.emit('history_fetch_error', {
+          userId,
+          chatId,
+          error: error.message
+        });
+      });
+
+    } catch (error: any) {
+      console.error('[Telegram] Error starting history fetch:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get cached chat history
+   */
+  router.get('/chats/:chatId/history', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      // Import the history service
+      const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
+
+      const messages = await telegramHistoryService.getCachedHistory(userId, chatId, limit, offset);
+      const status = await telegramHistoryService.getFetchStatus(userId, chatId);
+
+      res.json({
+        success: true,
+        messages,
+        fetchStatus: status,
+        hasMore: messages.length === limit
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting cached history:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 }

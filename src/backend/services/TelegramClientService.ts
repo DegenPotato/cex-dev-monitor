@@ -1032,13 +1032,20 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Get active client for a user
+   */
+  async getClient(userId: number): Promise<any | null> {
+    return this.activeClients.get(userId) || null;
+  }
+
+  /**
    * Get connection status for a user
    */
-  getConnectionStatus(userId: number): { connected: boolean; client?: any } {
+  getConnectionStatus(userId: number): { connected: boolean; client: any | null } {
     const client = this.activeClients.get(userId);
     return {
       connected: !!client,
-      client: client
+      client
     };
   }
 
