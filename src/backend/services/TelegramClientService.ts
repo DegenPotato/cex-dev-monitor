@@ -537,18 +537,72 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Extract CA from platform URLs (gmgn, dexscreener, birdeye, etc.)
+   */
+  private extractCAFromURL(url: string): string | null {
+    try {
+      // gmgn.ai/sol/ADDRESS
+      if (url.includes('gmgn.ai/sol/')) {
+        const match = url.match(/gmgn\.ai\/sol\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
+        return match ? match[1] : null;
+      }
+      
+      // dexscreener.com/solana/ADDRESS
+      if (url.includes('dexscreener.com/solana/')) {
+        const match = url.match(/dexscreener\.com\/solana\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
+        return match ? match[1] : null;
+      }
+      
+      // birdeye.so/token/ADDRESS
+      if (url.includes('birdeye.so/token/')) {
+        const match = url.match(/birdeye\.so\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
+        return match ? match[1] : null;
+      }
+      
+      // pump.fun/ADDRESS or pump.fun/coin/ADDRESS
+      if (url.includes('pump.fun')) {
+        const match = url.match(/pump\.fun\/(?:coin\/)?([1-9A-HJ-NP-Za-km-z]{32,44})/);
+        return match ? match[1] : null;
+      }
+      
+      // solscan.io/token/ADDRESS
+      if (url.includes('solscan.io/token/')) {
+        const match = url.match(/solscan\.io\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
+        return match ? match[1] : null;
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Extract contract addresses from text
    */
   private extractContracts(text: string): Array<{address: string, type: string, original: string}> {
     const contracts = [];
     
-    // Remove URLs to avoid matching addresses within links (from Python version)
+    // FIRST: Extract CAs from known platform URLs before removing them
+    const urlMatches = text.match(/https?:\/\/\S+/g) || [];
+    for (const url of urlMatches) {
+      const caFromUrl = this.extractCAFromURL(url);
+      if (caFromUrl) {
+        contracts.push({
+          address: caFromUrl,
+          type: 'url',
+          original: url
+        });
+      }
+    }
+    
+    // THEN: Remove URLs to avoid matching random addresses within other links
     const textClean = text.replace(/https?:\/\/\S+/g, '');
     
     // Check standard format
     const standardMatches = textClean.match(SOL_PATTERN) || [];
     for (const match of standardMatches) {
-      if (this.isValidSolanaAddress(match)) {
+      if (this.isValidSolanaAddress(match) && !contracts.find(c => c.address === match)) {
         contracts.push({
           address: match,
           type: 'standard',
