@@ -24,20 +24,22 @@ export function createForwardDestinationRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       
-      // Get all chats from telegram_chat_metadata that can be forwarded to
+      // Get all chats from telegram_monitored_chats (where fetched chats are stored)
+      // Left join with metadata for additional info if available
       const targets = await queryAll(`
         SELECT 
-          chat_id,
-          title as chat_name,
-          username,
-          chat_type,
-          invite_link,
-          member_count,
-          updated_at
-        FROM telegram_chat_metadata
-        WHERE user_id = ?
-          AND chat_type IN ('user', 'group', 'supergroup', 'channel', 'bot', 'private')
-        ORDER BY title
+          tmc.chat_id,
+          COALESCE(tcm.title, tmc.chat_name) as chat_name,
+          COALESCE(tcm.username, tmc.username) as username,
+          COALESCE(tcm.chat_type, tmc.chat_type) as chat_type,
+          COALESCE(tcm.invite_link, tmc.invite_link) as invite_link,
+          tcm.member_count,
+          tmc.updated_at
+        FROM telegram_monitored_chats tmc
+        LEFT JOIN telegram_chat_metadata tcm 
+          ON tmc.user_id = tcm.user_id AND tmc.chat_id = tcm.chat_id
+        WHERE tmc.user_id = ?
+        ORDER BY chat_name
       `, [userId]);
       
       res.json(targets || []);
