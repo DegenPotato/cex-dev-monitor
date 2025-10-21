@@ -1280,18 +1280,20 @@ export class TelegramClientService extends EventEmitter {
     detectedAt: number;
   }) {
     try {
+      const now = Math.floor(Date.now() / 1000);
       await execute(`
         INSERT INTO telegram_forwarding_history
-        (user_id, source_chat_id, source_chat_name, message_id, contract_address,
-         detection_type, target_chat_id, target_chat_name, detection_account_id,
-         forward_account_id, forward_account_phone, forward_status, error_message,
-         forward_latency_ms, detected_at, forwarded_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, rule_id, source_chat_id, source_chat_name, source_message_id, 
+         contract_address, detection_type, target_chat_id, target_chat_name, 
+         detection_account_id, forward_account_id, forward_account_phone, 
+         status, error_message, response_time_ms, detected_at, forwarded_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         userId,
+        null, // rule_id - null for contract auto-forwards
         data.sourceChatId,
         data.sourceChatName || null,
-        data.messageId,
+        data.messageId ? parseInt(data.messageId) : null, // source_message_id
         data.contractAddress,
         data.detectionType,
         data.targetChatId,
@@ -1299,12 +1301,12 @@ export class TelegramClientService extends EventEmitter {
         data.detectionAccountId,
         data.forwardAccountId,
         data.forwardAccountPhone || null,
-        data.status,
+        data.status, // maps to 'status' column
         data.errorMessage || null,
-        data.latencyMs || null,
+        data.latencyMs || null, // maps to 'response_time_ms' column
         data.detectedAt,
-        data.status === 'success' ? Math.floor(Date.now() / 1000) : null,
-        Math.floor(Date.now() / 1000)
+        data.status === 'success' ? now : null,
+        now
       ]);
 
       // Emit forwarding event for real-time updates

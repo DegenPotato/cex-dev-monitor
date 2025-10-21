@@ -824,16 +824,16 @@ export function createTelegramRoutes() {
       
       let query = `
         SELECT * FROM telegram_forwarding_history 
-        WHERE user_id = ?
+        WHERE user_id = ? AND contract_address IS NOT NULL
       `;
       const params: any[] = [userId];
       
       if (status) {
-        query += ` AND forward_status = ?`;
+        query += ` AND status = ?`;
         params.push(status);
       }
       
-      query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+      query += ` ORDER BY forwarded_at DESC LIMIT ? OFFSET ?`;
       params.push(limit, offset);
       
       const { queryAll } = await import('../database/helpers.js');
@@ -861,23 +861,24 @@ export function createTelegramRoutes() {
       
       const { queryAll, queryOne } = await import('../database/helpers.js');
       
-      // Get summary stats
+      // Get summary stats (only for contract forwards)
       const summary = await queryOne(`
         SELECT 
           COUNT(*) as total_forwards,
-          SUM(CASE WHEN forward_status = 'success' THEN 1 ELSE 0 END) as successful,
-          SUM(CASE WHEN forward_status = 'failed' THEN 1 ELSE 0 END) as failed,
-          SUM(CASE WHEN forward_status = 'pending' THEN 1 ELSE 0 END) as pending,
-          AVG(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as avg_latency_ms,
-          MIN(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as min_latency_ms,
-          MAX(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as max_latency_ms,
+          SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+          SUM(CASE WHEN status = 'rate_limited' THEN 1 ELSE 0 END) as pending,
+          AVG(CASE WHEN status = 'success' THEN response_time_ms ELSE NULL END) as avg_latency_ms,
+          MIN(CASE WHEN status = 'success' THEN response_time_ms ELSE NULL END) as min_latency_ms,
+          MAX(CASE WHEN status = 'success' THEN response_time_ms ELSE NULL END) as max_latency_ms,
           COUNT(DISTINCT contract_address) as unique_contracts,
           COUNT(DISTINCT source_chat_id) as unique_source_chats,
           COUNT(DISTINCT target_chat_id) as unique_target_chats,
           COUNT(DISTINCT forward_account_id) as unique_forward_accounts
         FROM telegram_forwarding_history 
         WHERE user_id = ? 
-        AND created_at >= ?
+        AND contract_address IS NOT NULL
+        AND forwarded_at >= ?
       `, [userId, Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)]) as any;
       
       // Get top forwarded contracts
@@ -885,10 +886,11 @@ export function createTelegramRoutes() {
         SELECT 
           contract_address,
           COUNT(*) as forward_count,
-          MAX(created_at) as last_forwarded
+          MAX(forwarded_at) as last_forwarded
         FROM telegram_forwarding_history
         WHERE user_id = ?
-        AND created_at >= ?
+        AND contract_address IS NOT NULL
+        AND forwarded_at >= ?
         GROUP BY contract_address
         ORDER BY forward_count DESC
         LIMIT 10
@@ -897,13 +899,14 @@ export function createTelegramRoutes() {
       // Get hourly distribution
       const hourlyStats = await queryAll(`
         SELECT 
-          strftime('%H', created_at, 'unixepoch') as hour,
+          strftime('%H', forwarded_at, 'unixepoch') as hour,
           COUNT(*) as forwards,
-          AVG(forward_latency_ms) as avg_latency
+          AVG(response_time_ms) as avg_latency
         FROM telegram_forwarding_history
         WHERE user_id = ?
-        AND created_at >= ?
-        AND forward_status = 'success'
+        AND contract_address IS NOT NULL
+        AND forwarded_at >= ?
+        AND status = 'success'
         GROUP BY hour
         ORDER BY hour
       `, [userId, Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)]);

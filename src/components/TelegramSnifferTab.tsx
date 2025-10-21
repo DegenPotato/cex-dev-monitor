@@ -2163,19 +2163,19 @@ export function TelegramSnifferTab() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            forward.forward_status === 'success' 
+                            forward.status === 'success' 
                               ? 'bg-green-500/20 text-green-400' 
-                              : forward.forward_status === 'failed'
+                              : forward.status === 'failed'
                               ? 'bg-red-500/20 text-red-400'
                               : 'bg-yellow-500/20 text-yellow-400'
                           }`}>
-                            {forward.forward_status === 'success' ? '✓ Success' : forward.forward_status === 'failed' ? '✗ Failed' : '⏳ Pending'}
+                            {forward.status === 'success' ? '✓ Success' : forward.status === 'failed' ? '✗ Failed' : '⏳ Pending'}
                           </span>
                           <span className="font-mono text-sm text-cyan-400">
                             {forward.contract_address.substring(0, 8)}...{forward.contract_address.slice(-6)}
                           </span>
-                          {forward.forward_latency_ms && (
-                            <span className="text-xs text-gray-500">{forward.forward_latency_ms}ms</span>
+                          {forward.response_time_ms && (
+                            <span className="text-xs text-gray-500">{forward.response_time_ms}ms</span>
                           )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-gray-400">
@@ -2188,7 +2188,7 @@ export function TelegramSnifferTab() {
                         )}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {new Date((forward.forwarded_at || forward.created_at) * 1000).toLocaleTimeString()}
+                        {new Date(forward.forwarded_at * 1000).toLocaleTimeString()}
                       </div>
                     </div>
                   </div>
