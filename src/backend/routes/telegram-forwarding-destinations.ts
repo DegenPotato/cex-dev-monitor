@@ -96,27 +96,29 @@ export function createForwardDestinationRoutes() {
         return res.status(400).json({ error: 'destinations must be an array' });
       }
       
+      // FIRST: Clear all existing destinations for this source chat
+      // This ensures we have a clean slate and removed destinations are actually removed
+      await execute(`
+        DELETE FROM telegram_forward_destinations
+        WHERE user_id = ? AND source_chat_id = ?
+      `, [userId, sourceChatId]);
+      
       const now = Math.floor(Date.now() / 1000);
       const added = [];
       
+      // THEN: Insert all new destinations
       for (const dest of destinations) {
         try {
-          // Insert or update destination
           await execute(`
-            INSERT OR REPLACE INTO telegram_forward_destinations (
+            INSERT INTO telegram_forward_destinations (
               user_id, source_chat_id, target_chat_id, target_chat_name, 
               forward_account_id, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 1, 
-              COALESCE((SELECT created_at FROM telegram_forward_destinations 
-                WHERE user_id = ? AND source_chat_id = ? AND target_chat_id = ?), ?),
-              ?
-            )
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
           `, [
             userId, sourceChatId, dest.targetChatId, 
             dest.targetChatName || dest.targetChatId,
             dest.forwardAccountId || null,
-            userId, sourceChatId, dest.targetChatId, now,
-            now
+            now, now
           ]);
           
           added.push(dest.targetChatId);
