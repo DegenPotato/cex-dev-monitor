@@ -864,8 +864,13 @@ export class TelegramClientService extends EventEmitter {
         let restrictions = null;
         
         if (entity.className === 'User') {
-          chatType = 'private';
-          chatSubtype = entity.bot ? 'bot' : 'user';
+          if (entity.bot) {
+            chatType = 'bot';
+            chatSubtype = 'bot_account';
+          } else {
+            chatType = 'private';
+            chatSubtype = 'user';
+          }
         } else if (entity.className === 'Chat') {
           chatType = 'group';
           chatSubtype = 'legacy_group';
@@ -932,6 +937,7 @@ export class TelegramClientService extends EventEmitter {
           inviteLink: inviteLink,
           
           // Status flags
+          isBot: entity.bot || false,
           isVerified: entity.verified || false,
           isScam: entity.scam || false,
           isFake: entity.fake || false,

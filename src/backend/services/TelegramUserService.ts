@@ -296,6 +296,55 @@ export class TelegramUserService {
   }
 
   /**
+   * Save multiple monitored chats efficiently (batch operation)
+   */
+  async saveMonitoredChatsBatch(userId: number, chats: Array<{
+    chatId: string;
+    chatName?: string;
+    chatType?: string;
+    username?: string;
+    inviteLink?: string;
+    isActive?: boolean;
+    telegramAccountId?: number;
+  }>) {
+    if (chats.length === 0) return { success: true, savedCount: 0 };
+
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Use INSERT OR REPLACE (UPSERT) for efficient batch operation
+    // This is much faster than individual SELECT + INSERT/UPDATE
+    const values = chats.map(chat => [
+      userId,
+      chat.chatId,
+      chat.chatName || null,
+      chat.chatType || null,
+      chat.username || null,
+      chat.inviteLink || null,
+      chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 0,
+      null, // forward_to_chat_id
+      null, // monitored_user_ids
+      null, // monitored_keywords
+      chat.telegramAccountId || null,
+      now, // created_at
+      now  // updated_at
+    ]);
+
+    // Build batch INSERT OR REPLACE statement
+    const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const flatValues = values.flat();
+
+    await execute(`
+      INSERT OR REPLACE INTO telegram_monitored_chats 
+      (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, 
+       forward_to_chat_id, monitored_user_ids, monitored_keywords, telegram_account_id,
+       created_at, updated_at)
+      VALUES ${placeholders}
+    `, flatValues);
+
+    return { success: true, savedCount: chats.length };
+  }
+
+  /**
    * Get all monitored chats for a user
    */
   async getMonitoredChats(userId: number, includeInactive: boolean = false) {

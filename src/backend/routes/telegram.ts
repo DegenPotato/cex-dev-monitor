@@ -285,41 +285,25 @@ export function createTelegramRoutes() {
           // Emit fetched event
           telegramClientService.emit('chat_fetch_fetched', { userId, totalChats: chats.length, timestamp: Date.now() });
           
-          // Save/update chats in database
-          let savedCount = 0;
-          for (const chat of chats) {
-            try {
-              await telegramService.saveMonitoredChat(userId, {
-                chatId: chat.chatId,
-                chatName: chat.chatName,
-                chatType: chat.chatType,
-                username: chat.username,
-                inviteLink: chat.inviteLink,
-                isActive: false // Inactive by default, user must configure and activate
-              });
-              savedCount++;
-              
-              // Emit progress every 10 chats
-              if (savedCount % 10 === 0) {
-                console.log(`  📊 [Telegram] Saved ${savedCount}/${chats.length} chats for user ${userId}`);
-                telegramClientService.emit('chat_fetch_progress', { 
-                  userId, 
-                  saved: savedCount, 
-                  total: chats.length,
-                  timestamp: Date.now()
-                });
-              }
-            } catch (error) {
-              console.error(`Failed to save chat ${chat.chatId}:`, error);
-            }
-          }
+          // Save/update chats in database (BATCH OPERATION for efficiency)
+          console.log(`💾 [Telegram] Saving ${chats.length} chats to database (batch operation)...`);
           
-          console.log(`✅ [Telegram] Completed: Saved ${savedCount}/${chats.length} chats for user ${userId}`);
+          // Use efficient batch operation: 1 query instead of 1,672!
+          const result = await telegramService.saveMonitoredChatsBatch(userId, chats.map(chat => ({
+            chatId: chat.chatId,
+            chatName: chat.chatName,
+            chatType: chat.chatType,
+            username: chat.username,
+            inviteLink: chat.inviteLink || undefined,
+            isActive: false // Inactive by default, user must configure and activate
+          })));
+          
+          console.log(`✅ [Telegram] Completed: Saved ${result.savedCount}/${chats.length} chats for user ${userId}`);
           
           // Emit completion event
           telegramClientService.emit('chat_fetch_complete', { 
             userId, 
-            savedCount, 
+            savedCount: result.savedCount, 
             totalChats: chats.length,
             timestamp: Date.now()
           });
