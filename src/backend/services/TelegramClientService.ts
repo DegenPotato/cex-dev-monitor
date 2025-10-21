@@ -951,9 +951,15 @@ export class TelegramClientService extends EventEmitter {
         let statistics = null;
 
         // Build comprehensive chat object
+        // For channels/supergroups, add -100 prefix (required for API calls)
+        let formattedChatId = entity.id.toString();
+        if (entity.className === 'Channel') {
+          formattedChatId = `-100${entity.id.toString()}`;
+        }
+        
         const chatData = {
           // Core identifiers
-          chatId: entity.id.toString(),
+          chatId: formattedChatId,
           accessHash: entity.accessHash?.toString(),
           
           // Basic info

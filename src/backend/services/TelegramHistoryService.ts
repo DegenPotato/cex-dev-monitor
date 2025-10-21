@@ -30,6 +30,14 @@ export class TelegramHistoryService {
         return { success: false, messagesFetched: 0, apiCalls: 0, error: 'No active Telegram client' };
       }
 
+      // Normalize chatId format - ensure channels have -100 prefix
+      // If it's a numeric ID without prefix and looks like a channel (> 1000000000), add -100
+      let normalizedChatId = chatId;
+      if (!chatId.startsWith('-') && parseInt(chatId) > 1000000000) {
+        normalizedChatId = `-100${chatId}`;
+        console.log(`  🔧 Normalized chatId: ${chatId} → ${normalizedChatId}`);
+      }
+
       // Check when we last fetched
       const fetchStatus = await queryOne(
         'SELECT * FROM telegram_chat_fetch_status WHERE user_id = ? AND chat_id = ?',
@@ -48,10 +56,10 @@ export class TelegramHistoryService {
       // Resolve the chat entity first
       let peerEntity;
       try {
-        peerEntity = await client.getEntity(chatId);
-        console.log(`  ✅ Resolved chat entity: ${peerEntity.title || peerEntity.username || chatId}`);
+        peerEntity = await client.getEntity(normalizedChatId);
+        console.log(`  ✅ Resolved chat entity: ${peerEntity.title || peerEntity.username || normalizedChatId}`);
       } catch (error: any) {
-        console.error(`  ❌ Failed to resolve chat entity for ${chatId}:`, error.message);
+        console.error(`  ❌ Failed to resolve chat entity for ${normalizedChatId}:`, error.message);
         return {
           success: false,
           messagesFetched: 0,

@@ -554,8 +554,13 @@ export function createTelegramRoutes() {
   router.post('/chats/:chatId/fetch-history', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const { chatId } = req.params;
+      let { chatId } = req.params;
       const { limit = 1000 } = req.body;
+
+      // Decode URI component (handles URL encoding)
+      chatId = decodeURIComponent(chatId);
+      
+      console.log(`📚 [History] Fetch request for chat: ${chatId} (user ${userId})`);
 
       // Import the history service
       const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
