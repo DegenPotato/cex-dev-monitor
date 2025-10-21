@@ -312,13 +312,14 @@ export async function initDatabase() {
       forward_latency INTEGER,
       forward_error TEXT,
       processed_action TEXT, -- 'forwarded', 'skipped_duplicate', 'skipped_not_first', etc.
-      FOREIGN KEY (contract_address) REFERENCES token_mints(mint_address),
-      INDEX idx_contract (contract_address),
-      INDEX idx_chat (chat_id),
-      INDEX idx_detected_at (detected_at),
-      INDEX idx_message_timestamp (message_timestamp),
-      INDEX idx_first_mention (chat_id, contract_address, is_first_mention)
+      FOREIGN KEY (contract_address) REFERENCES token_mints(mint_address)
     );
+    
+    CREATE INDEX IF NOT EXISTS idx_telegram_detections_contract ON telegram_detections(contract_address);
+    CREATE INDEX IF NOT EXISTS idx_telegram_detections_chat ON telegram_detections(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_telegram_detections_detected_at ON telegram_detections(detected_at);
+    CREATE INDEX IF NOT EXISTS idx_telegram_detections_message_timestamp ON telegram_detections(message_timestamp);
+    CREATE INDEX IF NOT EXISTS idx_telegram_detections_first_mention ON telegram_detections(chat_id, contract_address, is_first_mention);
     
     CREATE TABLE IF NOT EXISTS telegram_chat_configs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -334,9 +335,10 @@ export async function initDatabase() {
       min_time_between_duplicates INTEGER DEFAULT 0, -- Min seconds between duplicate forwards
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
-      UNIQUE(chat_id, user_id),
-      INDEX idx_chat_user (chat_id, user_id)
+      UNIQUE(chat_id, user_id)
     );
+    
+    CREATE INDEX IF NOT EXISTS idx_telegram_chat_configs_chat_user ON telegram_chat_configs(chat_id, user_id);
     
     CREATE TABLE IF NOT EXISTS contract_first_mentions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -347,10 +349,11 @@ export async function initDatabase() {
       detected_at INTEGER NOT NULL,
       is_backlog_scan BOOLEAN DEFAULT 0,
       scan_completed_at INTEGER,
-      UNIQUE(contract_address, chat_id),
-      INDEX idx_contract_chat (contract_address, chat_id),
-      INDEX idx_timestamp (message_timestamp)
+      UNIQUE(contract_address, chat_id)
     );
+    
+    CREATE INDEX IF NOT EXISTS idx_contract_first_mentions_contract_chat ON contract_first_mentions(contract_address, chat_id);
+    CREATE INDEX IF NOT EXISTS idx_contract_first_mentions_timestamp ON contract_first_mentions(message_timestamp);
 
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
