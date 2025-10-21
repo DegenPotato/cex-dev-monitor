@@ -41,10 +41,18 @@ export class TelegramSnifferService extends BaseSnifferService {
    * Fetch available Telegram chats with comprehensive data
    */
   async fetchAvailableChats(_options?: any): Promise<UnifiedChatData[]> {
-    const telegramChats = await telegramClientService.fetchUserChats(this.userId);
-    
-    // Transform Telegram data to unified format
-    return telegramChats.map(chat => this.transformToUnifiedFormat(chat));
+    try {
+      // Use TelegramClientService to get actual chats from Telegram
+      const telegramChats = await telegramClientService.getUserChatsComprehensive(this.userId);
+      
+      // Convert to unified format
+      const unifiedChats = telegramChats.map((chat: any) => this.transformToUnifiedFormat(chat));
+      
+      return unifiedChats;
+    } catch (error) {
+      console.log('Failed to fetch Telegram chats:', error);
+      return [];
+    }
   }
   
   /**

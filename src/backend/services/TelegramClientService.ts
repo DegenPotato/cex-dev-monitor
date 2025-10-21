@@ -15,16 +15,26 @@ let Api: any;
 let StringSession: any;
 let NewMessage: any;
 
-// Load telegram modules dynamically
-(async () => {
+// Track module loading status
+let modulesLoaded = false;
+const modulesLoadedPromise = (async () => {
   const telegram = await import('telegram');
   TelegramClient = telegram.TelegramClient;
   Api = telegram.Api;
-  const sessions = await import('telegram/sessions');
+  // StringSession is in telegram/sessions/index.js
+  const sessions = await import('telegram/sessions/index.js');
   StringSession = sessions.StringSession;
-  const events = await import('telegram/events');
+  const events = await import('telegram/events/index.js');
   NewMessage = events.NewMessage;
+  modulesLoaded = true;
 })();
+
+// Helper to ensure modules are loaded
+async function ensureModulesLoaded() {
+  if (!modulesLoaded) {
+    await modulesLoadedPromise;
+  }
+}
 
 interface AuthSession {
   userId: number;
@@ -66,10 +76,81 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Initialize the service on startup
+   */
+  async initialize() {
+    console.log('📱 Initializing Telegram Client Service...');
+    
+    // Ensure telegram modules are loaded
+    await ensureModulesLoaded();
+    
+    try {
+      const { queryAll } = await import('../database/helpers.js');
+      
+      // Get all verified accounts with session strings
+      const accounts = await queryAll(
+        'SELECT user_id, api_id, api_hash, phone_number, session_string FROM telegram_user_accounts WHERE is_verified = 1 AND session_string IS NOT NULL'
+      ) as any[];
+      
+      if (!accounts || accounts.length === 0) {
+        console.log('  ℹ️ No saved sessions to restore');
+        return;
+      }
+      
+      console.log(`  📦 Found ${accounts.length} saved session(s)`);
+      
+      for (const account of accounts) {
+        try {
+          const userId = account.user_id;
+          const sessionString = this.decrypt(account.session_string);
+          
+          console.log(`  🔄 Restoring session for user ${userId}...`);
+          
+          // Create client with saved session
+          const stringSession = new StringSession(sessionString);
+          const client = new TelegramClient(stringSession, parseInt(account.api_id), account.api_hash, {
+            connectionRetries: 5,
+          });
+          
+          // Connect the client
+          await client.connect();
+          
+          // Verify the session is still valid by getting user info
+          const me = await client.getMe();
+          
+          // Store active client
+          this.activeClients.set(userId, client);
+          
+          // Refresh user profile data
+          await this.saveUserProfile(userId, client);
+          
+          // Start monitoring
+          await this.startMonitoring(userId, client);
+          
+          console.log(`  ✅ Session restored for user ${userId} (@${me.username || me.firstName})`);
+          
+        } catch (error: any) {
+          console.error(`  ❌ Failed to restore session for user ${account.user_id}:`, error.message);
+          // Don't throw - continue with other sessions
+        }
+      }
+      
+      console.log(`✅ [Telegram] Session restoration complete. ${this.activeClients.size} client(s) connected`);
+      
+    } catch (error: any) {
+      console.error('❌ [Telegram] Error in restoreAllSessions:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Restore all saved sessions from database on server startup
    */
   async restoreAllSessions() {
     console.log('🔄 [Telegram] Restoring saved sessions...');
+    
+    // Ensure telegram modules are loaded
+    await ensureModulesLoaded();
     
     try {
       const { queryAll } = await import('../database/helpers.js');
@@ -135,6 +216,9 @@ export class TelegramClientService extends EventEmitter {
    */
   async startAuth(userId: number, apiId: string, apiHash: string, phoneNumber: string): Promise<any> {
     try {
+      // Ensure telegram modules are loaded
+      await ensureModulesLoaded();
+      
       // Check if there's an existing session string in DB
       const existingSession = await queryOne(
         'SELECT session_string FROM telegram_user_accounts WHERE user_id = ?',
@@ -1256,14 +1340,15 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Fetch user chats
    */
-  async fetchUserChats(userId: number) {
+  async getUserChatsComprehensive(userId: number): Promise<any[]> {
+    // Get or restore the client for this user
     let client = this.activeClients.get(userId);
-    
-    // If no active client, try to restore from database
     if (!client) {
-      console.log(`⚠️  [Telegram] No active client for user ${userId}, attempting to restore session...`);
-      
+      // If no active client, try to restore from saved session
       try {
+        // Ensure telegram modules are loaded
+        await ensureModulesLoaded();
+        
         const { queryOne } = await import('../database/helpers.js');
         const account = await queryOne(
           'SELECT user_id, api_id, api_hash, phone_number, session_string FROM telegram_user_accounts WHERE user_id = ? AND is_verified = 1 AND session_string IS NOT NULL',

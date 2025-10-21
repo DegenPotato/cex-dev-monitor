@@ -298,7 +298,7 @@ export function createTelegramRoutes() {
           telegramClientService.emit('chat_fetch_started', { userId, timestamp: Date.now() });
           
           // Fetch chats from Telegram using active client
-          const chats = await telegramClientService.fetchUserChats(userId);
+          const chats = await telegramClientService.getUserChatsComprehensive(userId);
           
           // Emit fetched event
           telegramClientService.emit('chat_fetch_fetched', { userId, totalChats: chats.length, timestamp: Date.now() });
@@ -307,7 +307,7 @@ export function createTelegramRoutes() {
           console.log(`💾 [Telegram] Saving ${chats.length} chats to database (batch operation)...`);
           
           // Use efficient batch operation: 1 query instead of 1,672!
-          const result = await telegramService.saveMonitoredChatsBatch(userId, chats.map(chat => ({
+          const result = await telegramService.saveMonitoredChatsBatch(userId, chats.map((chat: any) => ({
             chatId: chat.chatId,
             chatName: chat.chatName,
             chatType: chat.chatType,
