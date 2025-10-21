@@ -237,6 +237,7 @@ export class TelegramUserService {
     forwardToChatId?: string;
     monitoredUserIds?: number[];
     monitoredKeywords?: string[];
+    telegramAccountId?: number; // Which Telegram account this chat belongs to
   }) {
     const existing = await queryOne(
       'SELECT id FROM telegram_monitored_chats WHERE user_id = ? AND chat_id = ?',
@@ -252,7 +253,8 @@ export class TelegramUserService {
         UPDATE telegram_monitored_chats 
         SET chat_name = ?, chat_type = ?, username = ?, invite_link = ?,
             is_active = ?, forward_to_chat_id = ?, 
-            monitored_user_ids = ?, monitored_keywords = ?, updated_at = ?
+            monitored_user_ids = ?, monitored_keywords = ?,
+            telegram_account_id = ?, updated_at = ?
         WHERE user_id = ? AND chat_id = ?
       `, [
         chat.chatName || null,
@@ -263,6 +265,7 @@ export class TelegramUserService {
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
+        chat.telegramAccountId || null,
         now,
         userId,
         chat.chatId
@@ -270,8 +273,8 @@ export class TelegramUserService {
     } else {
       await execute(`
         INSERT INTO telegram_monitored_chats 
-        (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, forward_to_chat_id, monitored_user_ids, monitored_keywords, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, forward_to_chat_id, monitored_user_ids, monitored_keywords, telegram_account_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         userId,
         chat.chatId,
@@ -283,6 +286,7 @@ export class TelegramUserService {
         chat.forwardToChatId || null,
         monitoredUserIdsJson,
         monitoredKeywordsJson,
+        chat.telegramAccountId || null,
         now,
         now
       ]);
@@ -306,6 +310,7 @@ export class TelegramUserService {
       chatId: chat.chat_id,
       chatName: chat.chat_name,
       chatType: chat.chat_type,
+      telegramAccountId: chat.telegram_account_id,
       forwardToChatId: chat.forward_to_chat_id,
       monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : [],
       monitoredKeywords: chat.monitored_keywords ? JSON.parse(chat.monitored_keywords) : [],

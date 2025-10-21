@@ -140,6 +140,10 @@ app.use('/api/database', databaseRoutes);
 const telegramRoutes = createTelegramRoutes();
 app.use('/api/telegram', telegramRoutes);
 
+// Register Telegram forwarding routes
+import telegramForwardingRoutes from './routes/telegram-forwarding.js';
+app.use('/api/telegram/forwarding', telegramForwardingRoutes);
+
 // Register user data management routes (GDPR compliance)
 app.use(userDataRoutes);
 
