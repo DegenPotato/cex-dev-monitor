@@ -1175,20 +1175,18 @@ export class TelegramClientService extends EventEmitter {
    */
   private async getMonitoredChats(userId: number): Promise<any[]> {
     const chats = await queryAll(
-      'SELECT chat_id, chat_name, is_active, monitored_keywords, monitored_user_ids FROM telegram_monitored_chats WHERE user_id = ? AND is_active = 1',
+      'SELECT chat_id, chat_name, is_active, monitored_keywords, monitored_user_ids, forward_to_chat_id, forward_account_id FROM telegram_monitored_chats WHERE user_id = ? AND is_active = 1',
       [userId]
     ) as any[];
-    
-    console.log(`📋 [Telegram] Loaded ${chats.length} active monitored chats for user ${userId}`);
-    chats.forEach(chat => {
-      console.log(`   ✓ ${chat.chat_name || chat.chat_id} (${chat.chat_id})`);
-    });
-    
+
     return chats.map(chat => ({
       chatId: chat.chat_id,
       chatName: chat.chat_name,
+      isActive: chat.is_active === 1,
       monitoredKeywords: chat.monitored_keywords ? JSON.parse(chat.monitored_keywords) : [],
-      monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : []
+      monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : [],
+      forwardToChatId: chat.forward_to_chat_id,
+      forwardAccountId: chat.forward_account_id
     }));
   }
 
