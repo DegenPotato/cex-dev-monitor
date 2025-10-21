@@ -46,6 +46,8 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
   const [fetchStatus, setFetchStatus] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [fetchLimit, setFetchLimit] = useState(1000);
+  const [showLimitSelector, setShowLimitSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -85,24 +87,26 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
     };
   }, [chatId, subscribe]);
 
-  const loadCachedMessages = async () => {
+  const loadCachedMessages = async (resetOffset = false) => {
     setLoading(true);
     try {
+      const currentOffset = resetOffset ? 0 : offset;
       const response = await fetch(
-        `${config.apiUrl}/api/telegram/chats/${encodeURIComponent(chatId)}/history?limit=100&offset=${offset}`,
+        `${config.apiUrl}/api/telegram/chats/${encodeURIComponent(chatId)}/history?limit=50&offset=${currentOffset}`,
         { credentials: 'include' }
       );
 
       if (response.ok) {
         const data = await response.json();
-        if (offset === 0) {
+        if (resetOffset || offset === 0) {
           setMessages(data.messages);
+          setOffset(data.messages.length);
         } else {
           setMessages(prev => [...prev, ...data.messages]);
+          setOffset(prev => prev + data.messages.length);
         }
         setFetchStatus(data.fetchStatus);
         setHasMore(data.hasMore);
-        setOffset(prev => prev + data.messages.length);
       }
     } catch (error) {
       console.error('Error loading cached messages:', error);
@@ -111,9 +115,10 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
     }
   };
 
-  const fetchNewHistory = async (limit: number = 1000) => {
+  const fetchNewHistory = async () => {
     setFetching(true);
-    setFetchProgress({ fetched: 0, total: limit });
+    setFetchProgress({ fetched: 0, total: fetchLimit });
+    setShowLimitSelector(false);
 
     try {
       const response = await fetch(
@@ -122,7 +127,7 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ limit })
+          body: JSON.stringify({ limit: fetchLimit })
         }
       );
 
@@ -135,6 +140,16 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
     }
   };
 
+  const limitOptions = [
+    { value: 100, label: 'Last 100 messages' },
+    { value: 500, label: 'Last 500 messages' },
+    { value: 1000, label: 'Last 1,000 messages' },
+    { value: 5000, label: 'Last 5,000 messages' },
+    { value: 10000, label: 'Last 10,000 messages' },
+    { value: 50000, label: 'Last 50,000 messages' },
+    { value: 999999, label: 'Entire History (All)' }
+  ];
+
   const copyContract = (contract: string) => {
     navigator.clipboard.writeText(contract);
   };
@@ -146,16 +161,6 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatFullDate = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
   };
 
   const handleScroll = useCallback(() => {
@@ -184,30 +189,66 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
           </div>
           <div className="flex items-center gap-2">
             {fetchStatus && (
-              <div className="text-xs text-gray-400 mr-4">
-                {fetchStatus.total_messages_fetched} messages cached
-                {fetchStatus.last_fetched_at && (
-                  <span className="ml-2">
-                    (last: {formatFullDate(fetchStatus.last_fetched_at)})
-                  </span>
-                )}
+              <div className="text-xs text-gray-400 mr-4 space-y-1">
+                <div>
+                  💾 <strong>{fetchStatus.total_messages_fetched.toLocaleString()}</strong> cached in DB
+                </div>
+                <div>
+                  👁️ <strong>{messages.length.toLocaleString()}</strong> loaded in view
+                  {hasMore && <span className="text-cyan-400 ml-1">(scroll up ↑ for older)</span>}
+                </div>
               </div>
             )}
+            <div className="relative">
+              <button
+                onClick={() => setShowLimitSelector(!showLimitSelector)}
+                disabled={fetching}
+                className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all disabled:opacity-50"
+                title="Fetch messages"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              
+              {/* Limit Selector Dropdown */}
+              {showLimitSelector && (
+                <div className="absolute right-0 top-full mt-2 bg-gray-900 border border-cyan-500/40 rounded-lg shadow-2xl z-10 min-w-[240px]">
+                  <div className="p-2 border-b border-cyan-500/20">
+                    <p className="text-xs text-gray-400 mb-2">Select how many messages to fetch:</p>
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {limitOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFetchLimit(option.value);
+                          fetchNewHistory();
+                        }}
+                        className={`w-full text-left px-4 py-2 hover:bg-cyan-500/10 transition-colors ${
+                          fetchLimit === option.value ? 'bg-cyan-500/20 text-cyan-300' : 'text-gray-300'
+                        }`}
+                      >
+                        <span className="text-sm">{option.label}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          ({option.value.toLocaleString()})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="p-2 border-t border-cyan-500/20">
+                    <button
+                      onClick={() => setShowLimitSelector(false)}
+                      className="w-full px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm text-gray-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
-              onClick={() => fetchNewHistory(1000)}
-              disabled={fetching}
-              className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all disabled:opacity-50"
-              title="Fetch new messages"
-            >
-              <Download className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                setOffset(0);
-                loadCachedMessages();
-              }}
+              onClick={() => loadCachedMessages(true)}
               className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 transition-all"
-              title="Refresh view"
+              title="Refresh and load latest messages"
             >
               <RefreshCw className="w-5 h-5" />
             </button>
@@ -224,7 +265,9 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
         {fetching && (
           <div className="border-b border-cyan-500/20 p-3 bg-cyan-500/10">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-cyan-300">Fetching messages...</span>
+              <span className="text-sm text-cyan-300">
+                Fetching {fetchLimit === 999999 ? 'entire history' : `last ${fetchLimit.toLocaleString()} messages`}...
+              </span>
               <span className="text-sm text-cyan-400">
                 {fetchProgress.fetched} / {fetchProgress.total}
               </span>
@@ -249,12 +292,21 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
               <div className="text-center">
                 <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-400">No messages cached yet</p>
-                <button
-                  onClick={() => fetchNewHistory(500)}
-                  className="mt-4 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400"
-                >
-                  Fetch Last 500 Messages
-                </button>
+                <p className="text-xs text-gray-500 mt-2 mb-4">Click the download icon above to fetch messages</p>
+                <div className="space-y-2">
+                  {limitOptions.slice(0, 4).map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setFetchLimit(option.value);
+                        fetchNewHistory();
+                      }}
+                      className="block w-full px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
