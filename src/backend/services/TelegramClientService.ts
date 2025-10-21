@@ -413,20 +413,39 @@ export class TelegramClientService extends EventEmitter {
         console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})`);
         console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
 
-        // Check if message is from filtered user (if filters exist)
+        // Auto-cache ALL messages from monitored chats (before filters)
+        await this.cacheMessageToHistory(userId, chatId!, message, client);
+
+        // Apply filters for contract detection
+        let shouldDetectContracts = true;
+        
+        // Check user ID filter (if configured)
         if (cachedFilters.length > 0) {
           const senderId = message.senderId?.toString();
           const isFilteredUser = cachedFilters.some(id => id.toString() === senderId);
           if (!isFilteredUser) {
-            console.log(`   ⏭️  Skipped: sender ${senderId} not in filter list`);
-            return;
+            console.log(`   ⏭️  Skipped contract detection: sender ${senderId} not in user filter list`);
+            shouldDetectContracts = false;
+          }
+        }
+        
+        // Check keyword filter (if configured) - only if still eligible for detection
+        if (shouldDetectContracts && monitoredChat.monitoredKeywords && monitoredChat.monitoredKeywords.length > 0) {
+          const hasKeyword = monitoredChat.monitoredKeywords.some((keyword: string) => 
+            message.message.toLowerCase().includes(keyword.toLowerCase())
+          );
+          if (!hasKeyword) {
+            console.log(`   ⏭️  Skipped contract detection: no matching keywords`);
+            shouldDetectContracts = false;
           }
         }
 
-        // Auto-cache message to history
-        await this.cacheMessageToHistory(userId, chatId!, message, client);
+        // Skip contract detection if filters didn't pass (message still cached above)
+        if (!shouldDetectContracts) {
+          return;
+        }
 
-        // Extract contract addresses
+        // Extract contract addresses (only if passed filters)
         const contracts = this.extractContracts(message.message);
         console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
         
