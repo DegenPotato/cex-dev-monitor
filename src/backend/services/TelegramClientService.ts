@@ -452,11 +452,18 @@ export class TelegramClientService extends EventEmitter {
         if (potentialContracts.length > 0) {
           console.log(`   🔍 Found ${potentialContracts.length} potential addresses, validating on-chain...`);
           
-          // Validate each address is actually a token mint
+          // Validate each address and extract tokens from LPs
           for (const contract of potentialContracts) {
-            const isValid = await this.isTokenMint(contract.address);
-            if (isValid) {
-              contracts.push(contract);
+            const validation = await this.validateAndExtractToken(contract.address);
+            if (validation.isValid) {
+              // For each extracted token (could be 1 for direct mint, or multiple from LP)
+              for (const tokenAddress of validation.actualTokens) {
+                contracts.push({
+                  address: tokenAddress,
+                  type: contract.type,
+                  original: contract.original
+                });
+              }
             }
           }
           
@@ -691,9 +698,10 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Validate if address is a token mint (not just a wallet)
+   * Validate if address is a token mint, and extract token from LP if needed
+   * Returns: { isValid: boolean, actualTokens: string[] }
    */
-  private async isTokenMint(address: string): Promise<boolean> {
+  private async validateAndExtractToken(address: string): Promise<{ isValid: boolean, actualTokens: string[] }> {
     try {
       const publicKey = new PublicKey(address);
       
@@ -704,26 +712,78 @@ export class TelegramClientService extends EventEmitter {
       
       if (!accountInfo) {
         console.log(`   ⚠️  Address ${address.substring(0, 8)}... has no account data (likely invalid/wallet)`);
-        return false;
+        return { isValid: false, actualTokens: [] };
       }
       
-      // Check if account is owned by Token Program (SPL Token)
       const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
       const isTokenAccount = accountInfo.owner.toString() === TOKEN_PROGRAM_ID;
-      
-      // Check data length - token mints have 82 bytes of data
       const isMintAccount = accountInfo.data.length === 82;
       
+      // Case 1: It's a token mint - return it directly
       if (isTokenAccount && isMintAccount) {
         console.log(`   ✅ Verified token mint: ${address.substring(0, 8)}...`);
-        return true;
+        return { isValid: true, actualTokens: [address] };
       }
       
-      console.log(`   ⏭️  ${address.substring(0, 8)}... is not a token mint (wallet or other account type)`);
-      return false;
+      // Case 2: Check if it's a liquidity pool (Raydium, Orca, etc.)
+      // Common LP program IDs
+      const RAYDIUM_V4 = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
+      const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
+      const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
+      
+      const ownerStr = accountInfo.owner.toString();
+      const isLiquidityPool = [RAYDIUM_V4, RAYDIUM_CLMM, ORCA_WHIRLPOOL].includes(ownerStr);
+      
+      if (isLiquidityPool) {
+        console.log(`   🏊 Detected liquidity pool: ${address.substring(0, 8)}... (${ownerStr === RAYDIUM_V4 ? 'Raydium V4' : ownerStr === RAYDIUM_CLMM ? 'Raydium CLMM' : 'Orca'})`);
+        
+        // Extract token mints from LP
+        const tokens = await this.extractTokensFromLP(ownerStr, accountInfo);
+        if (tokens.length > 0) {
+          console.log(`   📤 Extracted tokens from LP: ${tokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
+          return { isValid: true, actualTokens: tokens };
+        } else {
+          console.log(`   ⚠️  Failed to extract tokens from LP`);
+          return { isValid: false, actualTokens: [] };
+        }
+      }
+      
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is not a token mint or LP (wallet or other account type)`);
+      return { isValid: false, actualTokens: [] };
     } catch (error) {
       console.error(`   ❌ Failed to validate ${address.substring(0, 8)}...:`, error);
-      return false; // If we can't validate, reject it
+      return { isValid: false, actualTokens: [] };
+    }
+  }
+
+  /**
+   * Extract token mint addresses from a liquidity pool
+   */
+  private async extractTokensFromLP(programId: string, accountInfo: any): Promise<string[]> {
+    try {
+      const data = accountInfo.data;
+      
+      // Raydium V4 pool structure (simplified)
+      if (programId === '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8') {
+        // Token A mint at offset 400 (32 bytes)
+        // Token B mint at offset 432 (32 bytes)
+        if (data.length >= 464) {
+          const tokenAMint = new PublicKey(data.slice(400, 432)).toString();
+          const tokenBMint = new PublicKey(data.slice(432, 464)).toString();
+          
+          // Filter out SOL/WSOL (common quote token)
+          const WSOL = 'So11111111111111111111111111111111111111112';
+          const tokens = [tokenAMint, tokenBMint].filter(t => t !== WSOL);
+          return tokens;
+        }
+      }
+      
+      // For other LP types, we could add more parsing logic here
+      // For now, return empty if we can't parse
+      return [];
+    } catch (error) {
+      console.error(`   ❌ Failed to extract tokens from LP:`, error);
+      return [];
     }
   }
 
