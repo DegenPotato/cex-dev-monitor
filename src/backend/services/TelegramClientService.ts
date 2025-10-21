@@ -415,6 +415,16 @@ export class TelegramClientService extends EventEmitter {
 
         // Auto-cache ALL messages from monitored chats (before filters)
         await this.cacheMessageToHistory(userId, chatId!, message, client);
+        
+        // Emit real-time update for frontend
+        this.emit('message_cached', {
+          userId,
+          chatId,
+          messageId: message.id,
+          text: message.message,
+          senderId: message.senderId?.toString(),
+          date: message.date
+        });
 
         // Apply user ID filter first (if configured)
         if (cachedFilters.length > 0) {

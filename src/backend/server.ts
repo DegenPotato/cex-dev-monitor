@@ -400,6 +400,11 @@ telegramClientService.on('chat_fetch_error', (data) => {
   broadcast('telegram_chat_fetch_error', data);
 });
 
+// Real-time message caching event
+telegramClientService.on('message_cached', (data) => {
+  broadcast('telegram_message_cached', data);
+});
+
 // API Routes
 
 // Get config

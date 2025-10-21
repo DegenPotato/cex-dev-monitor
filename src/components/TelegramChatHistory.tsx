@@ -83,10 +83,34 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
       }
     });
 
+    // Real-time message updates
+    const unsubMessage = subscribe('telegram_message_cached', (data: any) => {
+      if (data.chatId === chatId) {
+        // Add new message to the top of the list in real-time
+        const newMessage: Message = {
+          id: data.messageId,
+          message_id: data.messageId,
+          message_text: data.text,
+          message_date: data.date,
+          sender_id: data.senderId,
+          sender_username: null,
+          sender_name: null,
+          is_bot: 0,
+          is_forwarded: 0,
+          has_media: 0,
+          media_type: null,
+          has_contract: 0,
+          detected_contracts: []
+        };
+        setMessages(prev => [newMessage, ...prev]);
+      }
+    });
+
     return () => {
       unsubProgress();
       unsubComplete();
       unsubError();
+      unsubMessage();
     };
   }, [chatId, subscribe]);
 
