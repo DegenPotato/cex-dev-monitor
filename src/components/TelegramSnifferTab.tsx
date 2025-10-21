@@ -116,6 +116,7 @@ export function TelegramSnifferTab() {
   const [configForwardAccountId, setConfigForwardAccountId] = useState<number | null>(null);
   const [configContractDetection, setConfigContractDetection] = useState(true);
   const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
+  const [configDuplicateStrategy, setConfigDuplicateStrategy] = useState<string>('first_only_no_backlog');
   
   // Available telegram accounts for forwarding
   const [telegramAccounts, setTelegramAccounts] = useState<Array<{ id: number; name: string; phone?: string }>>([]);
@@ -2375,6 +2376,28 @@ export function TelegramSnifferTab() {
                 </p>
               </div>
 
+              {/* Duplicate CA Handling Strategy */}
+              <div>
+                <label className="block text-sm font-medium text-cyan-300 mb-2">
+                  Duplicate Contract Handling
+                </label>
+                <select
+                  value={configDuplicateStrategy}
+                  onChange={(e) => setConfigDuplicateStrategy(e.target.value)}
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
+                >
+                  <option value="first_only_no_backlog">Buy First Call Only (No backlog history)</option>
+                  <option value="first_only_with_backlog">Buy First Call Only (With backlog history)</option>
+                  <option value="buy_any_call">Buy Any Call (No backlog history)</option>
+                  <option value="custom" disabled>More to follow...</option>
+                </select>
+                <div className="text-xs text-gray-400 mt-2 space-y-1">
+                  <p>📌 <b>First Only (No backlog):</b> Only forward the first time you see a CA (default)</p>
+                  <p>📜 <b>First Only (With backlog):</b> Scan chat history to find actual first mention</p>
+                  <p>🔁 <b>Buy Any Call:</b> Forward every time the CA is mentioned</p>
+                </div>
+              </div>
+
               {/* Forward Configuration */}
               <div className="space-y-4 p-4 bg-black/20 rounded-lg border border-yellow-500/20">
                 <h4 className="text-sm font-medium text-yellow-300">Auto-Forward Settings (Optional)</h4>
@@ -2464,6 +2487,19 @@ export function TelegramSnifferTab() {
                     });
 
                     if (response.ok) {
+                      // Also save duplicate strategy configuration
+                      await fetch(`${config.apiUrl}/api/telegram/chat-config`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          chatId: configChat.chatId,
+                          duplicateStrategy: configDuplicateStrategy,
+                          backlogScanDepth: configDuplicateStrategy === 'first_only_with_backlog' ? 1000 : 0,
+                          backlogTimeLimit: 86400
+                        })
+                      });
+                      
                       setMessage({ type: 'success', text: 'Configuration saved successfully!' });
                       setConfigModalOpen(false);
                       await loadMonitoredChats();
