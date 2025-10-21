@@ -412,6 +412,13 @@ export class TelegramUserService {
   }
 
   /**
+   * Toggle monitoring status for a chat (alias for clearer API)
+   */
+  async toggleChatMonitoring(userId: number, chatId: string, isActive: boolean) {
+    return this.toggleMonitoredChat(userId, chatId, isActive);
+  }
+
+  /**
    * Save detected contract from Telegram
    */
   async saveDetectedContract(data: {

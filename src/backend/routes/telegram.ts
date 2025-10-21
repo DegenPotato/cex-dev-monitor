@@ -499,5 +499,55 @@ export function createTelegramRoutes() {
     }
   });
 
+  /**
+   * Toggle monitoring for a specific chat
+   */
+  router.post('/monitored-chats/:chatId/toggle', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      const { isActive } = req.body;
+
+      await telegramService.toggleChatMonitoring(userId, chatId, isActive);
+      
+      res.json({
+        success: true,
+        isActive,
+        message: isActive ? 'Monitoring started' : 'Monitoring stopped'
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error toggling chat monitoring:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Configure monitoring for a specific chat
+   */
+  router.post('/monitored-chats/:chatId/configure', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      const { monitoredKeywords, monitoredUserIds, forwardToChatId, isActive } = req.body;
+
+      // Save monitoring configuration
+      await telegramService.saveMonitoredChat(userId, {
+        chatId,
+        monitoredKeywords,
+        monitoredUserIds,
+        forwardToChatId,
+        isActive
+      });
+
+      res.json({
+        success: true,
+        message: 'Configuration saved successfully'
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error configuring chat:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 }
