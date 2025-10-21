@@ -1808,7 +1808,7 @@ export function TelegramSnifferTab() {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {monitoredChats.filter(c => c.isActive).map((chat) => (
-                  <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4">
+                  <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4 hover:border-green-500/40 transition-all">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
@@ -1823,52 +1823,96 @@ export function TelegramSnifferTab() {
                         <button
                           onClick={() => setSelectedHistoryChat({ id: chat.chatId, name: chat.chatName || chat.chatId })}
                           className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded text-purple-400 text-xs font-medium transition-all flex items-center gap-1"
+                          title="View message history"
                         >
                           <History className="w-3 h-3" />
                           History
                         </button>
                         <button
+                          onClick={() => {/* TODO: Open configuration modal */}}
+                          className="px-2 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded text-cyan-400 text-xs font-medium transition-all flex items-center gap-1"
+                          title="Configure monitoring"
+                        >
+                          <SettingsIcon className="w-3 h-3" />
+                          Configure
+                        </button>
+                        <button
                           className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
+                          title="Pause monitoring"
                         >
                           Pause
                         </button>
                       </div>
                     </div>
                     
-                    {/* Active Configuration */}
-                    <div className="space-y-2 text-xs">
-                      {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Keywords:</span>
-                          <div className="flex flex-wrap gap-1">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                              <span>Type: {chat.chatType}</span>
-                              {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
-                                <span className="text-cyan-400">• Tracking {chat.monitoredUserIds.length} users</span>
-                              )}
-                              {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
-                                <span className="text-purple-400">• {chat.monitoredKeywords.length} keywords</span>
-                              )}
-                              {chat.forwardToChatId && (
-                                <span className="text-green-400 flex items-center gap-1">
-                                  • 📤 Auto-forward{chat.forwardAccountId ? ' (custom account)' : ''}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                    {/* Comprehensive Insights */}
+                    <div className="space-y-3">
+                      {/* Configuration Summary */}
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 ? (
+                          <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/30 rounded text-cyan-400 flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {chat.monitoredUserIds.length} users
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400">
+                            All users
+                          </span>
+                        )}
+                        
+                        {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 ? (
+                          <span className="px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400">
+                            {chat.monitoredKeywords.length} keywords
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/30 rounded text-gray-400">
+                            All messages
+                          </span>
+                        )}
+                        
+                        {chat.forwardToChatId && (
+                          <span className="px-2 py-1 bg-green-500/20 border border-green-500/30 rounded text-green-400 flex items-center gap-1">
+                            <ExternalLink className="w-3 h-3" />
+                            Auto-forward
+                          </span>
+                        )}
+                        
+                        {chat.forwardAccountId && (
+                          <span className="px-2 py-1 bg-orange-500/20 border border-orange-500/30 rounded text-orange-400">
+                            Custom account
+                          </span>
+                        )}
+                      </div>
                       
-                      {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Users:</span>
-                          <span className="text-purple-400">{chat.monitoredUserIds.length} specific users</span>
+                      {/* Stats Grid */}
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-700/50">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-cyan-400">
+                            {detections.filter(d => d.chatId === chat.chatId).length}
+                          </p>
+                          <p className="text-[10px] text-gray-500">Detections</p>
                         </div>
-                      )}
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-green-400">
+                            {detections.filter(d => d.chatId === chat.chatId && d.forwarded).length}
+                          </p>
+                          <p className="text-[10px] text-gray-500">Forwarded</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-purple-400">
+                            {Math.round((detections.filter(d => d.chatId === chat.chatId && d.forwarded).length / Math.max(detections.filter(d => d.chatId === chat.chatId).length, 1)) * 100)}%
+                          </p>
+                          <p className="text-[10px] text-gray-500">Success Rate</p>
+                        </div>
+                      </div>
                       
-                      {(!chat.monitoredKeywords || chat.monitoredKeywords.length === 0) && 
-                       (!chat.monitoredUserIds || chat.monitoredUserIds.length === 0) && (
-                        <span className="text-gray-500">Monitoring all messages</span>
+                      {/* Forward Target */}
+                      {chat.forwardToChatId && (
+                        <div className="text-xs text-gray-500 flex items-center gap-2 pt-2 border-t border-gray-700/50">
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Forwarding to:</span>
+                          <span className="text-cyan-400 font-mono">{chat.forwardToChatId}</span>
+                        </div>
                       )}
                     </div>
                   </div>
