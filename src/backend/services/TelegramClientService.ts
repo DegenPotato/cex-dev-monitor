@@ -1013,15 +1013,6 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Get user filters from database
-   */
-  private async getUserFilters(_userId: number): Promise<number[]> {
-    // For now, return your hardcoded filters
-    // Later this can come from database
-    return [448480473]; // From your Python script
-  }
-
-  /**
    * Save detected contract to database
    */
   private async saveDetectedContract(userId: number, data: any) {
@@ -1111,32 +1102,20 @@ export class TelegramClientService extends EventEmitter {
       
       // Fetch dialogs with FloodWait handling
       while (retryCount < maxRetries) {
-        const startTime = Date.now();
         try {
           // Fetch all dialogs at once (GramJS handles pagination internally)
           dialogs = await client.getDialogs({ limit: undefined });
           
-          // Track successful API call
-          const responseTime = Date.now() - startTime;
-          apiProviderTracker.trackCall('telegram', 'getDialogs', true, responseTime, 200);
-          
           break; // Success, exit retry loop
         } catch (error: any) {
-          const responseTime = Date.now() - startTime;
-          
           // Handle FloodWait errors
           if (error.errorMessage === 'FLOOD') {
             const waitSeconds = error.seconds || 60;
             console.warn(`⚠️  [Telegram] FloodWait error! Waiting ${waitSeconds} seconds before retry...`);
             
-            // Track as rate limit hit
-            apiProviderTracker.trackCall('telegram', 'getDialogs', false, responseTime, 429, `FloodWait: ${waitSeconds}s`);
-            
             await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
             retryCount++;
           } else {
-            // Track other errors
-            apiProviderTracker.trackCall('telegram', 'getDialogs', false, responseTime, 500, error.message);
             throw error; // Re-throw non-FloodWait errors
           }
         }
