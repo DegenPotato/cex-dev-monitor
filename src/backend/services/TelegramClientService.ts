@@ -52,8 +52,8 @@ const SOL_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 const SOL_PATTERN_WITH_SPECIALS = /[1-9A-HJ-NP-Za-km-z]{8,}[-_.\s]{1,2}[1-9A-HJ-NP-Za-km-z]{8,}(?:[-_.\s]{1,2}[1-9A-HJ-NP-Za-km-z]{8,})*/g;
 
 export class TelegramClientService extends EventEmitter {
-  private sessions: Map<number, AuthSession> = new Map();
-  private activeClients: Map<number, any> = new Map(); // TelegramClient instances
+  private authSessions: Map<number, AuthSession> = new Map();
+  private activeClients: Map<string | number, any> = new Map(); // TelegramClient instances (key: userId for users, 'bot_userId' for bots)
   private encryptionKey: string;
   private solanaConnection: ProxiedSolanaConnection;
 
@@ -118,8 +118,9 @@ export class TelegramClientService extends EventEmitter {
           // Verify the session is still valid by getting user info
           const me = await client.getMe();
           
-          // Store active client
-          this.activeClients.set(userId, client);
+          // Store active client with appropriate key (bot_ prefix for bots)
+          const clientKey = me.bot ? `bot_${userId}` : userId;
+          this.activeClients.set(clientKey, client);
           
           // Refresh user profile data
           await this.saveUserProfile(userId, client);
@@ -186,8 +187,9 @@ export class TelegramClientService extends EventEmitter {
           // Verify the session is still valid by getting user info
           const me = await client.getMe();
           
-          // Store active client
-          this.activeClients.set(userId, client);
+          // Store active client with appropriate key (bot_ prefix for bots)
+          const clientKey = me.bot ? `bot_${userId}` : userId;
+          this.activeClients.set(clientKey, client);
           
           // Refresh user profile data
           await this.saveUserProfile(userId, client);
@@ -241,7 +243,7 @@ export class TelegramClientService extends EventEmitter {
         client,
         status: 'idle'
       };
-      this.sessions.set(userId, authSession);
+      this.authSessions.set(userId, authSession);
 
       // Connect to Telegram
       await client.connect();
@@ -252,7 +254,8 @@ export class TelegramClientService extends EventEmitter {
           const me = await client.getMe();
           if (me) {
             authSession.status = 'connected';
-            this.activeClients.set(userId, client);
+            const clientKey = me.bot ? `bot_${userId}` : userId;
+            this.activeClients.set(clientKey, client);
             await this.startMonitoring(userId, client);
             
             return {
@@ -303,7 +306,7 @@ export class TelegramClientService extends EventEmitter {
    * Verify the code sent to phone
    */
   async verifyCode(userId: number, code: string): Promise<any> {
-    const session = this.sessions.get(userId);
+    const session = this.authSessions.get(userId);
     if (!session || !session.client) {
       return {
         success: false,
@@ -328,7 +331,9 @@ export class TelegramClientService extends EventEmitter {
       await this.saveSession(userId, sessionString);
       
       session.status = 'connected';
-      this.activeClients.set(userId, client);
+      const me = await client.getMe();
+      const clientKey = me.bot ? `bot_${userId}` : userId;
+      this.activeClients.set(clientKey, client);
       
       // Save comprehensive user profile
       await this.saveUserProfile(userId, client);
@@ -372,7 +377,7 @@ export class TelegramClientService extends EventEmitter {
    * Verify 2FA password
    */
   async verify2FA(userId: number, password: string): Promise<any> {
-    const session = this.sessions.get(userId);
+    const session = this.authSessions.get(userId);
     if (!session || !session.client) {
       return {
         success: false,
@@ -404,7 +409,9 @@ export class TelegramClientService extends EventEmitter {
       await this.saveSession(userId, sessionString);
       
       session.status = 'connected';
-      this.activeClients.set(userId, client);
+      const me = await client.getMe();
+      const clientKey = me.bot ? `bot_${userId}` : userId;
+      this.activeClients.set(clientKey, client);
       
       // Save comprehensive user profile
       await this.saveUserProfile(userId, client);
@@ -412,7 +419,6 @@ export class TelegramClientService extends EventEmitter {
       // Start monitoring
       await this.startMonitoring(userId, client);
 
-      const me = await client.getMe();
       return {
         success: true,
         status: 'connected',
@@ -1379,8 +1385,9 @@ export class TelegramClientService extends EventEmitter {
         await client.connect();
         const me = await client.getMe();
         
-        // Store the restored client
-        this.activeClients.set(userId, client);
+        // Store the restored client with appropriate key
+        const clientKey = me.bot ? `bot_${userId}` : userId;
+        this.activeClients.set(clientKey, client);
         
         console.log(`✅ [Telegram] Session restored for user ${userId} (@${me.username || me.firstName})`);
         
