@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   MessageSquare, 
   Bot, 
@@ -168,9 +169,9 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col">
+  const modalContent = (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+      <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
         
         {/* Header */}
         <div className="border-b border-cyan-500/20 p-4 flex items-center justify-between">
@@ -367,6 +368,9 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
       </div>
     </div>
   );
+
+  // Render modal at document.body level to escape parent overflow constraints
+  return createPortal(modalContent, document.body);
 }
 
 export default TelegramChatHistory;
