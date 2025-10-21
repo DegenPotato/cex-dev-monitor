@@ -702,10 +702,11 @@ export class TelegramClientService extends EventEmitter {
    * Returns: { isValid: boolean, actualTokens: string[] }
    */
   private async validateAndExtractToken(address: string): Promise<{ isValid: boolean, actualTokens: string[] }> {
+    const startTime = Date.now();
     try {
       const publicKey = new PublicKey(address);
       
-      // Get account info
+      // Get account info (single RPC call)
       const accountInfo = await this.solanaConnection.withProxy(conn => 
         conn.getAccountInfo(publicKey)
       );
@@ -715,43 +716,46 @@ export class TelegramClientService extends EventEmitter {
         return { isValid: false, actualTokens: [] };
       }
       
-      const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-      const isTokenAccount = accountInfo.owner.toString() === TOKEN_PROGRAM_ID;
-      const isMintAccount = accountInfo.data.length === 82;
+      const ownerStr = accountInfo.owner.toString();
+      const dataLength = accountInfo.data.length;
       
-      // Case 1: It's a token mint - return it directly
-      if (isTokenAccount && isMintAccount) {
-        console.log(`   ✅ Verified token mint: ${address.substring(0, 8)}...`);
+      // FAST PATH: Check if it's a token mint FIRST (lowest latency)
+      const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+      if (ownerStr === TOKEN_PROGRAM_ID && dataLength === 82) {
+        const elapsed = Date.now() - startTime;
+        console.log(`   ✅ Token mint verified in ${elapsed}ms: ${address.substring(0, 8)}...`);
         return { isValid: true, actualTokens: [address] };
       }
       
-      // Case 2: Check if it's a liquidity pool (Raydium, Orca, etc.)
-      // Common LP program IDs
+      // SLOW PATH: Check if it's a liquidity pool (requires parsing)
       const RAYDIUM_V4 = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
       const RAYDIUM_CLMM = 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK';
       const ORCA_WHIRLPOOL = 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc';
       
-      const ownerStr = accountInfo.owner.toString();
       const isLiquidityPool = [RAYDIUM_V4, RAYDIUM_CLMM, ORCA_WHIRLPOOL].includes(ownerStr);
       
       if (isLiquidityPool) {
-        console.log(`   🏊 Detected liquidity pool: ${address.substring(0, 8)}... (${ownerStr === RAYDIUM_V4 ? 'Raydium V4' : ownerStr === RAYDIUM_CLMM ? 'Raydium CLMM' : 'Orca'})`);
+        const lpType = ownerStr === RAYDIUM_V4 ? 'Raydium V4' : ownerStr === RAYDIUM_CLMM ? 'Raydium CLMM' : 'Orca';
+        console.log(`   🏊 LP detected: ${address.substring(0, 8)}... (${lpType}, dataLen: ${dataLength})`);
         
         // Extract token mints from LP
         const tokens = await this.extractTokensFromLP(ownerStr, accountInfo);
+        const elapsed = Date.now() - startTime;
+        
         if (tokens.length > 0) {
-          console.log(`   📤 Extracted tokens from LP: ${tokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
+          console.log(`   📤 Extracted ${tokens.length} token(s) from LP in ${elapsed}ms: ${tokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
           return { isValid: true, actualTokens: tokens };
         } else {
-          console.log(`   ⚠️  Failed to extract tokens from LP`);
+          console.log(`   ⚠️  Failed to extract tokens from LP after ${elapsed}ms (data length: ${dataLength})`);
           return { isValid: false, actualTokens: [] };
         }
       }
       
-      console.log(`   ⏭️  ${address.substring(0, 8)}... is not a token mint or LP (wallet or other account type)`);
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (owner: ${ownerStr.substring(0, 8)}..., len: ${dataLength})`);
       return { isValid: false, actualTokens: [] };
     } catch (error) {
-      console.error(`   ❌ Failed to validate ${address.substring(0, 8)}...:`, error);
+      const elapsed = Date.now() - startTime;
+      console.error(`   ❌ Validation failed after ${elapsed}ms for ${address.substring(0, 8)}...:`, error);
       return { isValid: false, actualTokens: [] };
     }
   }
