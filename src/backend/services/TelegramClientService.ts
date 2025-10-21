@@ -583,17 +583,26 @@ export class TelegramClientService extends EventEmitter {
           return;
         }
         
-        // Emit contract detection events and auto-forward
+        // Log detected tokens to database
         if (contracts.length > 0) {
           for (const contract of contracts) {
+            // Log to token_mints table (upsert)
+            await this.logTokenMint(contract.address, {
+              platform: 'pumpfun',
+              firstSeenSource: 'telegram',
+              chatName: monitoredChat.chatName,
+              chatId: chatId
+            });
+            
             let wasForwarded = false;
+            let forwardLatency: number | undefined;
+            let forwardError: string | undefined;
             
             // Try to forward first
             if (monitoredChat.forwardToChatId) {
               const forwardStartTime = Date.now();
               let forwardAccountId = userId;
               let forwardAccountPhone = '';
-              let forwardError = null;
               
               try {
                 // Determine which client to use for forwarding
@@ -675,7 +684,7 @@ export class TelegramClientService extends EventEmitter {
                 });
                 
                 wasForwarded = true;
-                const forwardLatency = Date.now() - forwardStartTime;
+                forwardLatency = Date.now() - forwardStartTime;
                 console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId} in ${forwardLatency}ms`);
                 
                 // Log successful forward
@@ -728,6 +737,25 @@ export class TelegramClientService extends EventEmitter {
               originalFormat: contract.original,
               messageText: message.message,
               forwarded: wasForwarded
+            });
+            
+            // Log comprehensive detection data
+            await this.logTelegramDetection({
+              contractAddress: contract.address,
+              chatId: chatId!,
+              chatName: monitoredChat.chatName,
+              chatUsername: monitoredChat.username,
+              messageId: message.id.toString(),
+              messageText: message.message.substring(0, 500),
+              senderId: message.senderId?.toJSNumber(),
+              senderUsername,
+              detectionType: contract.type,
+              detectedByUserId: userId,
+              detectedAt: Math.floor(Date.now() / 1000),
+              forwarded: wasForwarded,
+              forwardedTo: wasForwarded ? monitoredChat.forwardToChatId : undefined,
+              forwardLatency,
+              forwardError
             });
 
             // Emit complete detection data for real-time updates
@@ -1671,6 +1699,119 @@ export class TelegramClientService extends EventEmitter {
     });
     
     return accounts;
+  }
+
+  /**
+   * Log token mint to database
+   */
+  private async logTokenMint(contractAddress: string, data: {
+    platform?: string;
+    firstSeenSource?: string;
+    chatName?: string;
+    chatId?: string;
+  }) {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      
+      // Check if token already exists
+      const existing = await queryOne(`
+        SELECT id, telegram_mentions FROM token_mints WHERE mint_address = ?
+      `, [contractAddress]);
+      
+      if (!existing) {
+        // Insert new token
+        await execute(`
+          INSERT INTO token_mints (
+            mint_address, 
+            creator_address, 
+            platform, 
+            timestamp,
+            first_seen_source, 
+            first_seen_at, 
+            telegram_mentions
+          ) VALUES (?, ?, ?, ?, ?, ?, 1)
+        `, [
+          contractAddress,
+          'unknown', // We'll fetch this from chain later
+          data.platform || 'pumpfun',
+          now,
+          data.firstSeenSource || 'telegram',
+          now
+        ]);
+        console.log(`   📝 New token logged: ${contractAddress.substring(0, 8)}...`);
+      } else {
+        // Update mention count
+        await execute(`
+          UPDATE token_mints 
+          SET telegram_mentions = telegram_mentions + 1,
+              last_updated = ?
+          WHERE mint_address = ?
+        `, [now, contractAddress]);
+      }
+    } catch (error: any) {
+      console.error(`   ❌ Failed to log token mint:`, error.message);
+    }
+  }
+
+  /**
+   * Log Telegram detection to database
+   */
+  private async logTelegramDetection(data: {
+    contractAddress: string;
+    chatId: string;
+    chatName?: string;
+    chatUsername?: string;
+    messageId: string;
+    messageText: string;
+    senderId?: number;
+    senderUsername?: string;
+    detectionType: string;
+    detectedByUserId: number;
+    detectedAt: number;
+    forwarded?: boolean;
+    forwardedTo?: string;
+    forwardLatency?: number;
+    forwardError?: string;
+  }) {
+    try {
+      await execute(`
+        INSERT INTO telegram_detections (
+          contract_address,
+          chat_id,
+          chat_name,
+          chat_username,
+          message_id,
+          message_text,
+          sender_id,
+          sender_username,
+          detection_type,
+          detected_by_user_id,
+          detected_at,
+          forwarded,
+          forwarded_to,
+          forward_latency,
+          forward_error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        data.contractAddress,
+        data.chatId,
+        data.chatName || null,
+        data.chatUsername || null,
+        data.messageId,
+        data.messageText,
+        data.senderId || null,
+        data.senderUsername || null,
+        data.detectionType,
+        data.detectedByUserId,
+        data.detectedAt,
+        data.forwarded ? 1 : 0,
+        data.forwardedTo || null,
+        data.forwardLatency || null,
+        data.forwardError || null
+      ]);
+    } catch (error: any) {
+      console.error(`   ❌ Failed to log Telegram detection:`, error.message);
+    }
   }
 
   private encrypt(text: string): string {

@@ -284,7 +284,34 @@ export async function initDatabase() {
       current_mcap REAL,
       ath_mcap REAL,
       last_updated INTEGER,
-      metadata TEXT
+      metadata TEXT,
+      first_seen_source TEXT, -- 'telegram', 'wallet_monitor', 'manual'
+      first_seen_at INTEGER,
+      telegram_mentions INTEGER DEFAULT 0,
+      wallet_transactions INTEGER DEFAULT 0
+    );
+    
+    CREATE TABLE IF NOT EXISTS telegram_detections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contract_address TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      chat_name TEXT,
+      chat_username TEXT,
+      message_id TEXT,
+      message_text TEXT,
+      sender_id INTEGER,
+      sender_username TEXT,
+      detection_type TEXT, -- 'standard', 'obfuscated', 'split', 'url'
+      detected_by_user_id INTEGER NOT NULL,
+      detected_at INTEGER NOT NULL,
+      forwarded BOOLEAN DEFAULT 0,
+      forwarded_to TEXT,
+      forward_latency INTEGER,
+      forward_error TEXT,
+      FOREIGN KEY (contract_address) REFERENCES token_mints(mint_address),
+      INDEX idx_contract (contract_address),
+      INDEX idx_chat (chat_id),
+      INDEX idx_detected_at (detected_at)
     );
 
     CREATE TABLE IF NOT EXISTS users (
