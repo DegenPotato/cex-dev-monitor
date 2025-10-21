@@ -144,6 +144,10 @@ app.use('/api/telegram', telegramRoutes);
 import telegramForwardingRoutes from './routes/telegram-forwarding.js';
 app.use('/api/telegram/forwarding', telegramForwardingRoutes);
 
+// Register token routes
+import tokenRoutes from './routes/tokens.js';
+app.use('/api/tokens', tokenRoutes);
+
 // Register user data management routes (GDPR compliance)
 app.use(userDataRoutes);
 

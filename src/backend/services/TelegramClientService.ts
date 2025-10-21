@@ -585,7 +585,42 @@ export class TelegramClientService extends EventEmitter {
         
         // Log detected tokens to database
         if (contracts.length > 0) {
+          // Get chat configuration for duplicate handling
+          const chatConfig = await this.getChatConfig(userId, chatId!);
+          
           for (const contract of contracts) {
+            // Check duplicate strategy
+            const shouldProcess = await this.shouldProcessContract(
+              contract.address, 
+              chatId!, 
+              message,
+              chatConfig.duplicate_strategy
+            );
+            
+            if (!shouldProcess.process) {
+              console.log(`   ⏭️  Skipping ${contract.address.substring(0, 8)}... - Reason: ${shouldProcess.reason}`);
+              
+              // Still log the detection but mark as skipped
+              await this.logTelegramDetection({
+                contractAddress: contract.address,
+                chatId: chatId!,
+                chatName: monitoredChat.chatName,
+                chatUsername: monitoredChat.username,
+                messageId: message.id.toString(),
+                messageText: message.message.substring(0, 500),
+                messageTimestamp: message.date,
+                senderId: message.senderId?.toJSNumber(),
+                senderUsername: await this.getSenderUsername(client, message.senderId),
+                detectionType: contract.type,
+                detectedByUserId: userId,
+                detectedAt: Math.floor(Date.now() / 1000),
+                isFirstMention: false,
+                isBacklog: false,
+                processedAction: shouldProcess.reason
+              });
+              continue; // Skip to next contract
+            }
+            
             // Log to token_mints table (upsert)
             await this.logTokenMint(contract.address, {
               platform: 'pumpfun',
@@ -594,12 +629,18 @@ export class TelegramClientService extends EventEmitter {
               chatId: chatId
             });
             
+            // Mark as first mention if applicable
+            if (shouldProcess.isFirst) {
+              await this.markFirstMention(contract.address, chatId!, message);
+            }
+            
             let wasForwarded = false;
             let forwardLatency: number | undefined;
             let forwardError: string | undefined;
+            let processedAction = shouldProcess.reason || 'detected';
             
             // Try to forward first
-            if (monitoredChat.forwardToChatId) {
+            if (monitoredChat.forwardToChatId && shouldProcess.forward) {
               const forwardStartTime = Date.now();
               let forwardAccountId = userId;
               let forwardAccountPhone = '';
@@ -747,15 +788,18 @@ export class TelegramClientService extends EventEmitter {
               chatUsername: monitoredChat.username,
               messageId: message.id.toString(),
               messageText: message.message.substring(0, 500),
+              messageTimestamp: message.date,
               senderId: message.senderId?.toJSNumber(),
               senderUsername,
               detectionType: contract.type,
               detectedByUserId: userId,
               detectedAt: Math.floor(Date.now() / 1000),
+              isFirstMention: shouldProcess.isFirst,
               forwarded: wasForwarded,
               forwardedTo: wasForwarded ? monitoredChat.forwardToChatId : undefined,
               forwardLatency,
-              forwardError
+              forwardError,
+              processedAction: wasForwarded ? 'forwarded' : processedAction
             });
 
             // Emit complete detection data for real-time updates
@@ -1702,6 +1746,234 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Get chat configuration for duplicate handling
+   */
+  private async getChatConfig(userId: number, chatId: string): Promise<any> {
+    const config = await queryOne(`
+      SELECT * FROM telegram_chat_configs 
+      WHERE user_id = ? AND chat_id = ?
+    `, [userId, chatId]);
+    
+    if (!config) {
+      // Create default config
+      const now = Math.floor(Date.now() / 1000);
+      await execute(`
+        INSERT INTO telegram_chat_configs (
+          chat_id, user_id, duplicate_strategy, 
+          backlog_scan_depth, backlog_time_limit, 
+          min_time_between_duplicates, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [chatId, userId, 'first_only_no_backlog', 1000, 86400, 0, now, now]);
+      
+      return {
+        duplicate_strategy: 'first_only_no_backlog',
+        backlog_scan_depth: 1000,
+        backlog_time_limit: 86400,
+        min_time_between_duplicates: 0
+      };
+    }
+    
+    return config;
+  }
+
+  /**
+   * Check if we should process this contract based on duplicate strategy
+   */
+  private async shouldProcessContract(
+    contractAddress: string, 
+    chatId: string, 
+    message: any,
+    strategy: string
+  ): Promise<{ process: boolean; forward: boolean; isFirst: boolean; reason?: string }> {
+    // Check if this contract has been seen before in this chat
+    const firstMention = await queryOne(`
+      SELECT * FROM contract_first_mentions 
+      WHERE contract_address = ? AND chat_id = ?
+    `, [contractAddress, chatId]);
+    
+    switch (strategy) {
+      case 'buy_any_call':
+        // Process every mention
+        return { 
+          process: true, 
+          forward: true, 
+          isFirst: !firstMention,
+          reason: undefined
+        };
+        
+      case 'first_only_no_backlog':
+        // Only process if this is the first time we've seen it (default behavior)
+        if (firstMention) {
+          return { 
+            process: false, 
+            forward: false, 
+            isFirst: false,
+            reason: 'skipped_duplicate_no_backlog'
+          };
+        }
+        return { 
+          process: true, 
+          forward: true, 
+          isFirst: true
+        };
+        
+      case 'first_only_with_backlog':
+        // Process only first mention, but scan history to find the actual first
+        if (firstMention) {
+          // Check if this is older than the recorded first mention
+          if (message.date < (firstMention as any).message_timestamp) {
+            // This is an older mention, update the first mention record
+            return { 
+              process: true, 
+              forward: true, 
+              isFirst: true,
+              reason: 'older_first_mention_found'
+            };
+          }
+          return { 
+            process: false, 
+            forward: false, 
+            isFirst: false,
+            reason: 'skipped_duplicate_with_backlog'
+          };
+        }
+        // First time seeing this, but we should scan history
+        // This will be handled by the backlog scanner
+        return { 
+          process: true, 
+          forward: true, 
+          isFirst: true
+        };
+        
+      default:
+        // Default to safe behavior
+        return { 
+          process: true, 
+          forward: true, 
+          isFirst: !firstMention
+        };
+    }
+  }
+
+  /**
+   * Mark a contract as first mentioned in a chat
+   */
+  private async markFirstMention(contractAddress: string, chatId: string, message: any) {
+    const now = Math.floor(Date.now() / 1000);
+    try {
+      await execute(`
+        INSERT OR REPLACE INTO contract_first_mentions (
+          contract_address, chat_id, message_id, 
+          message_timestamp, detected_at, is_backlog_scan
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `, [
+        contractAddress, 
+        chatId, 
+        message.id.toString(),
+        message.date,
+        now,
+        0
+      ]);
+    } catch (error: any) {
+      console.error(`Failed to mark first mention:`, error.message);
+    }
+  }
+
+  /**
+   * Detect and validate contracts in a message
+   */
+  private async detectContractsInMessage(messageText: string): Promise<any[]> {
+    const potentialContracts = this.extractContracts(messageText);
+    const validContracts = [];
+    
+    for (const contract of potentialContracts) {
+      const validation = await this.validateAndExtractToken(contract.address);
+      if (validation.isValid) {
+        for (const tokenAddress of validation.actualTokens) {
+          validContracts.push({
+            address: tokenAddress,
+            type: contract.type,
+            original: contract.original
+          });
+        }
+      }
+    }
+    
+    return validContracts;
+  }
+
+  /**
+   * Scan chat history for historical mentions of contracts
+   */
+  async scanChatHistory(userId: number, chatId: string, depth: number = 1000) {
+    const client = this.activeClients.get(userId);
+    if (!client) {
+      throw new Error('No active Telegram client');
+    }
+    
+    console.log(`📜 [Telegram] Scanning history for chat ${chatId} (depth: ${depth})`);
+    
+    try {
+      const messages = await client.getMessages(chatId, { limit: depth });
+      const contracts: Map<string, any> = new Map();
+      
+      for (const message of messages) {
+        if (!message.message) continue;
+        
+        // Detect contracts in historical message
+        const detectedContracts = await this.detectContractsInMessage(message.message);
+        
+        for (const contract of detectedContracts) {
+          // Store the oldest mention of each contract
+          if (!contracts.has(contract.address) || 
+              message.date < contracts.get(contract.address).date) {
+            contracts.set(contract.address, {
+              ...contract,
+              message,
+              date: message.date
+            });
+          }
+        }
+      }
+      
+      console.log(`   📊 Found ${contracts.size} unique contracts in ${messages.length} messages`);
+      
+      // Mark all historical first mentions
+      for (const [address, data] of contracts) {
+        await this.markFirstMention(address, chatId, data.message);
+        
+        // Log as backlog detection
+        await this.logTelegramDetection({
+          contractAddress: address,
+          chatId,
+          messageId: data.message.id.toString(),
+          messageText: data.message.message.substring(0, 500),
+          messageTimestamp: data.date,
+          senderId: data.message.senderId?.toJSNumber(),
+          detectionType: data.type,
+          detectedByUserId: userId,
+          detectedAt: Math.floor(Date.now() / 1000),
+          isFirstMention: true,
+          isBacklog: true,
+          processedAction: 'backlog_scan'
+        });
+      }
+      
+      // Mark scan as completed
+      await execute(`
+        UPDATE contract_first_mentions 
+        SET scan_completed_at = ? 
+        WHERE chat_id = ?
+      `, [Math.floor(Date.now() / 1000), chatId]);
+      
+      return contracts;
+    } catch (error: any) {
+      console.error(`   ❌ Failed to scan chat history:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Log token mint to database
    */
   private async logTokenMint(contractAddress: string, data: {
@@ -1763,15 +2035,19 @@ export class TelegramClientService extends EventEmitter {
     chatUsername?: string;
     messageId: string;
     messageText: string;
+    messageTimestamp?: number;
     senderId?: number;
     senderUsername?: string;
     detectionType: string;
     detectedByUserId: number;
     detectedAt: number;
+    isFirstMention?: boolean;
+    isBacklog?: boolean;
     forwarded?: boolean;
     forwardedTo?: string;
     forwardLatency?: number;
     forwardError?: string;
+    processedAction?: string;
   }) {
     try {
       await execute(`
@@ -1782,16 +2058,20 @@ export class TelegramClientService extends EventEmitter {
           chat_username,
           message_id,
           message_text,
+          message_timestamp,
           sender_id,
           sender_username,
           detection_type,
           detected_by_user_id,
           detected_at,
+          is_first_mention,
+          is_backlog,
           forwarded,
           forwarded_to,
           forward_latency,
-          forward_error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          forward_error,
+          processed_action
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         data.contractAddress,
         data.chatId,
@@ -1799,15 +2079,19 @@ export class TelegramClientService extends EventEmitter {
         data.chatUsername || null,
         data.messageId,
         data.messageText,
+        data.messageTimestamp || Math.floor(Date.now() / 1000),
         data.senderId || null,
         data.senderUsername || null,
         data.detectionType,
         data.detectedByUserId,
         data.detectedAt,
+        data.isFirstMention ? 1 : 0,
+        data.isBacklog ? 1 : 0,
         data.forwarded ? 1 : 0,
         data.forwardedTo || null,
         data.forwardLatency || null,
-        data.forwardError || null
+        data.forwardError || null,
+        data.processedAction || null
       ]);
     } catch (error: any) {
       console.error(`   ❌ Failed to log Telegram detection:`, error.message);

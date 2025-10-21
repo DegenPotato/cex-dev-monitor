@@ -304,14 +304,52 @@ export async function initDatabase() {
       detection_type TEXT, -- 'standard', 'obfuscated', 'split', 'url'
       detected_by_user_id INTEGER NOT NULL,
       detected_at INTEGER NOT NULL,
+      message_timestamp INTEGER NOT NULL, -- Original message timestamp from Telegram
+      is_first_mention BOOLEAN DEFAULT 0, -- Is this the first mention in this chat?
+      is_backlog BOOLEAN DEFAULT 0, -- Was this detected from historical backlog?
       forwarded BOOLEAN DEFAULT 0,
       forwarded_to TEXT,
       forward_latency INTEGER,
       forward_error TEXT,
+      processed_action TEXT, -- 'forwarded', 'skipped_duplicate', 'skipped_not_first', etc.
       FOREIGN KEY (contract_address) REFERENCES token_mints(mint_address),
       INDEX idx_contract (contract_address),
       INDEX idx_chat (chat_id),
-      INDEX idx_detected_at (detected_at)
+      INDEX idx_detected_at (detected_at),
+      INDEX idx_message_timestamp (message_timestamp),
+      INDEX idx_first_mention (chat_id, contract_address, is_first_mention)
+    );
+    
+    CREATE TABLE IF NOT EXISTS telegram_chat_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      duplicate_strategy TEXT DEFAULT 'first_only_no_backlog',
+      -- 'first_only_with_backlog': Process first mention, scan history
+      -- 'first_only_no_backlog': Process first new mention only (current default)
+      -- 'buy_any_call': Process every mention
+      -- 'custom': Future custom rules
+      backlog_scan_depth INTEGER DEFAULT 1000, -- How many messages to scan back
+      backlog_time_limit INTEGER DEFAULT 86400, -- Max seconds to scan back (24h default)
+      min_time_between_duplicates INTEGER DEFAULT 0, -- Min seconds between duplicate forwards
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(chat_id, user_id),
+      INDEX idx_chat_user (chat_id, user_id)
+    );
+    
+    CREATE TABLE IF NOT EXISTS contract_first_mentions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contract_address TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      message_timestamp INTEGER NOT NULL,
+      detected_at INTEGER NOT NULL,
+      is_backlog_scan BOOLEAN DEFAULT 0,
+      scan_completed_at INTEGER,
+      UNIQUE(contract_address, chat_id),
+      INDEX idx_contract_chat (contract_address, chat_id),
+      INDEX idx_timestamp (message_timestamp)
     );
 
     CREATE TABLE IF NOT EXISTS users (

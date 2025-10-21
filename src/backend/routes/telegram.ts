@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import { TelegramUserService } from '../services/TelegramUserService.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+import { execute } from '../database/helpers.js';
 
 const authService = new SecureAuthService();
 
@@ -920,6 +921,63 @@ export function createTelegramRoutes() {
       });
     } catch (error: any) {
       console.error('[Telegram] Error getting forwarding stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Update chat duplicate strategy configuration
+   */
+  router.post('/chat-config', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { 
+        chatId, 
+        duplicateStrategy, 
+        backlogScanDepth, 
+        backlogTimeLimit,
+        minTimeBetweenDuplicates 
+      } = req.body;
+      
+      if (!chatId || !duplicateStrategy) {
+        return res.status(400).json({ 
+          error: 'chatId and duplicateStrategy are required' 
+        });
+      }
+      
+      const now = Math.floor(Date.now() / 1000);
+      
+      await execute(`
+        INSERT OR REPLACE INTO telegram_chat_configs (
+          chat_id, user_id, duplicate_strategy, 
+          backlog_scan_depth, backlog_time_limit, 
+          min_time_between_duplicates, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 
+          COALESCE((SELECT created_at FROM telegram_chat_configs WHERE chat_id = ? AND user_id = ?), ?),
+          ?
+        )
+      `, [
+        chatId, userId, duplicateStrategy,
+        backlogScanDepth || 1000,
+        backlogTimeLimit || 86400,
+        minTimeBetweenDuplicates || 0,
+        chatId, userId, now,
+        now
+      ]);
+      
+      // If strategy is first_only_with_backlog, trigger a history scan
+      if (duplicateStrategy === 'first_only_with_backlog') {
+        // Scan in the background
+        telegramClientService.scanChatHistory(userId, chatId, backlogScanDepth || 1000)
+          .catch(err => console.error(`Failed to scan history for ${chatId}:`, err));
+      }
+      
+      res.json({ 
+        success: true,
+        message: 'Chat configuration updated successfully'
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error updating chat config:', error);
       res.status(500).json({ error: error.message });
     }
   });
