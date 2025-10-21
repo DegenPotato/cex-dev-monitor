@@ -287,6 +287,34 @@ export class TelegramHistoryService {
   }
 
   /**
+   * Delete cached history for a chat
+   */
+  async deleteHistory(userId: number, chatId: string): Promise<{ messagesDeleted: number }> {
+    try {
+      console.log(`🗑️  [TelegramHistory] Deleting history for chat ${chatId} (user ${userId})`);
+
+      // Delete all messages for this chat
+      await execute(`
+        DELETE FROM telegram_message_history 
+        WHERE user_id = ? AND chat_id = ?
+      `, [userId, chatId]);
+
+      // Delete fetch status
+      await execute(`
+        DELETE FROM telegram_chat_fetch_status 
+        WHERE user_id = ? AND chat_id = ?
+      `, [userId, chatId]);
+
+      console.log(`  ✅ Deleted chat history from database`);
+
+      return { messagesDeleted: 1 }; // Success indicator
+    } catch (error: any) {
+      console.error('❌ [TelegramHistory] Delete error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Validate Solana address
    */
   private isValidSolanaAddress(address: string): boolean {

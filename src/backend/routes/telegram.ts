@@ -628,5 +628,34 @@ export function createTelegramRoutes() {
     }
   });
 
+  /**
+   * Delete cached chat history
+   */
+  router.delete('/chats/:chatId/history', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      let { chatId } = req.params;
+
+      // Decode URI component
+      chatId = decodeURIComponent(chatId);
+      
+      console.log(`🗑️  [History] Delete request for chat: ${chatId} (user ${userId})`);
+
+      // Import the history service
+      const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
+
+      const result = await telegramHistoryService.deleteHistory(userId, chatId);
+
+      res.json({
+        success: true,
+        messagesDeleted: result.messagesDeleted,
+        message: 'Chat history deleted successfully'
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error deleting history:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 }

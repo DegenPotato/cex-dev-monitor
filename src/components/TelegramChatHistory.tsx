@@ -9,7 +9,8 @@ import {
   RefreshCw,
   Copy,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { config } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -48,6 +49,8 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
   const [offset, setOffset] = useState(0);
   const [fetchLimit, setFetchLimit] = useState(1000);
   const [showLimitSelector, setShowLimitSelector] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +140,31 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
     } catch (error) {
       console.error('Error fetching history:', error);
       setFetching(false);
+    }
+  };
+
+  const deleteHistory = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/telegram/chats/${encodeURIComponent(chatId)}/history`,
+        {
+          method: 'DELETE',
+          credentials: 'include'
+        }
+      );
+
+      if (response.ok) {
+        setMessages([]);
+        setFetchStatus(null);
+        setOffset(0);
+        setHasMore(false);
+        setShowDeleteConfirm(false);
+      }
+    } catch (error) {
+      console.error('Error deleting history:', error);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -252,6 +280,15 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
             >
               <RefreshCw className="w-5 h-5" />
             </button>
+            {fetchStatus && fetchStatus.total_messages_fetched > 0 && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 transition-all"
+                title="Delete cached history"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
@@ -417,6 +454,43 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
             </>
           )}
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        {showDeleteConfirm && (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-500/40 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+              <div className="flex items-start gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-1" />
+                <div>
+                  <h3 className="text-lg font-bold text-red-300 mb-2">Delete Chat History?</h3>
+                  <p className="text-sm text-gray-300 mb-1">
+                    This will permanently delete <strong className="text-red-400">{fetchStatus?.total_messages_fetched.toLocaleString()}</strong> cached messages from the database.
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    You can re-fetch them from Telegram anytime.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-all"
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteHistory}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? 'Deleting...' : 'Delete Forever'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
