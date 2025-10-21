@@ -797,6 +797,22 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Get detected contracts
+   */
+  router.get('/detections', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const limit = parseInt(req.query.limit as string) || 100;
+      
+      const detections = await telegramService.getDetectedContracts(userId, limit);
+      res.json(detections);
+    } catch (error: any) {
+      console.error('[Telegram] Error getting detections:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Get forwarding history
    */
   router.get('/forwarding/history', authService.requireSecureAuth(), async (req, res) => {
