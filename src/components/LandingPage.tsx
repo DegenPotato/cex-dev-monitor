@@ -22,9 +22,9 @@ export function LandingPage() {
     
     // If a universe was specifically selected, go there
     if (selectedUniverse === 'spaces-manager') {
-      // Redirect to Spaces Manager (external app)
-      console.log('🌌 Redirecting to Spaces Manager...');
-      window.location.href = 'https://spaces-manager.example.com'; // Update with actual URL
+      // Show The Matrix (demo for friends)
+      console.log('🔮 Entering The Matrix...');
+      setCurrentUniverse('matrix');
       return;
     } else if (selectedUniverse === 'matrix') {
       console.log('🔮 Entering The Matrix...');
