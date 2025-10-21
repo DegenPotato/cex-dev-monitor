@@ -1660,11 +1660,40 @@ export function TelegramSnifferTab() {
                       </div>
                       <div className="flex gap-2">
                         <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(detection.contractAddress);
+                            // Show a brief toast notification
+                            const toast = document.createElement('div');
+                            toast.className = 'fixed bottom-4 right-4 px-4 py-2 bg-green-500/20 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium z-50';
+                            toast.textContent = 'Copied!';
+                            document.body.appendChild(toast);
+                            setTimeout(() => toast.remove(), 2000);
+                          }}
+                          className="px-3 py-1.5 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/40 rounded-lg text-gray-400 text-sm font-medium transition-all flex items-center gap-1"
+                          title="Copy address"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                          <span className="hidden sm:inline">Copy</span>
+                        </button>
+                        <button 
+                          onClick={() => window.open(`https://solscan.io/token/${detection.contractAddress}`, '_blank')}
                           className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all flex items-center gap-1"
                           title="View on Solscan"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span className="hidden sm:inline">View</span>
+                        </button>
+                        <button 
+                          onClick={() => window.open(`https://gmgn.ai/sol/${detection.contractAddress}`, '_blank')}
+                          className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-400 text-sm font-medium transition-all flex items-center gap-1"
+                          title="View on GMGN"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                          </svg>
+                          <span className="hidden sm:inline">GMGN</span>
                         </button>
                       </div>
                     </div>

@@ -493,7 +493,7 @@ export class TelegramClientService extends EventEmitter {
           return;
         }
         
-        // Emit contract detection events
+        // Emit contract detection events and auto-forward
         if (contracts.length > 0) {
           for (const contract of contracts) {
             await this.saveDetectedContract(userId, {
@@ -515,6 +515,30 @@ export class TelegramClientService extends EventEmitter {
               sender: message.senderId?.toString(),
               message: message.message
             });
+            
+            // Auto-forward if configured
+            if (monitoredChat.forwardToChatId) {
+              try {
+                const forwardMessage = `🚨 **Token Detected**\n\n` +
+                  `📍 **CA:** \`${contract.address}\`\n` +
+                  `📊 **Type:** ${contract.type}\n` +
+                  `👤 **From:** ${message.senderId ? `@${await this.getSenderUsername(client, message.senderId) || message.senderId}` : 'Unknown'}\n` +
+                  `💬 **Chat:** ${monitoredChat.chatName || chatId}\n` +
+                  `🕐 **Time:** ${new Date().toLocaleTimeString()}\n\n` +
+                  `📝 **Message:**\n${message.message.substring(0, 500)}${message.message.length > 500 ? '...' : ''}\n\n` +
+                  `🔍 [Solscan](https://solscan.io/token/${contract.address}) | ` +
+                  `📈 [GMGN](https://gmgn.ai/sol/${contract.address})`;
+                
+                await client.sendMessage(monitoredChat.forwardToChatId, { 
+                  message: forwardMessage,
+                  parseMode: 'markdown'
+                });
+                
+                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId}`);
+              } catch (error) {
+                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, error);
+              }
+            }
           }
         }
 
@@ -537,72 +561,18 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Extract CA from platform URLs (gmgn, dexscreener, birdeye, etc.)
-   */
-  private extractCAFromURL(url: string): string | null {
-    try {
-      // gmgn.ai/sol/ADDRESS
-      if (url.includes('gmgn.ai/sol/')) {
-        const match = url.match(/gmgn\.ai\/sol\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
-        return match ? match[1] : null;
-      }
-      
-      // dexscreener.com/solana/ADDRESS
-      if (url.includes('dexscreener.com/solana/')) {
-        const match = url.match(/dexscreener\.com\/solana\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
-        return match ? match[1] : null;
-      }
-      
-      // birdeye.so/token/ADDRESS
-      if (url.includes('birdeye.so/token/')) {
-        const match = url.match(/birdeye\.so\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
-        return match ? match[1] : null;
-      }
-      
-      // pump.fun/ADDRESS or pump.fun/coin/ADDRESS
-      if (url.includes('pump.fun')) {
-        const match = url.match(/pump\.fun\/(?:coin\/)?([1-9A-HJ-NP-Za-km-z]{32,44})/);
-        return match ? match[1] : null;
-      }
-      
-      // solscan.io/token/ADDRESS
-      if (url.includes('solscan.io/token/')) {
-        const match = url.match(/solscan\.io\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
-        return match ? match[1] : null;
-      }
-      
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Extract contract addresses from text
    */
   private extractContracts(text: string): Array<{address: string, type: string, original: string}> {
     const contracts = [];
     
-    // FIRST: Extract CAs from known platform URLs before removing them
-    const urlMatches = text.match(/https?:\/\/\S+/g) || [];
-    for (const url of urlMatches) {
-      const caFromUrl = this.extractCAFromURL(url);
-      if (caFromUrl) {
-        contracts.push({
-          address: caFromUrl,
-          type: 'url',
-          original: url
-        });
-      }
-    }
-    
-    // THEN: Remove URLs to avoid matching random addresses within other links
+    // Remove URLs to avoid matching addresses within links (from Python version)
     const textClean = text.replace(/https?:\/\/\S+/g, '');
     
     // Check standard format
     const standardMatches = textClean.match(SOL_PATTERN) || [];
     for (const match of standardMatches) {
-      if (this.isValidSolanaAddress(match) && !contracts.find(c => c.address === match)) {
+      if (this.isValidSolanaAddress(match)) {
         contracts.push({
           address: match,
           type: 'standard',
@@ -781,19 +751,37 @@ export class TelegramClientService extends EventEmitter {
         return { isValid: true, actualTokens: [address] };
       }
       
-      // ALTERNATIVE PATH: Check GeckoTerminal if it's an LP
-      console.log(`   🦎 Checking GeckoTerminal for pool info: ${address.substring(0, 8)}...`);
-      const lpTokens = await this.checkGeckoTerminalPool(address);
+      // SLOW PATH: Check if it's a liquidity pool (requires parsing)
+      const LP_PROGRAMS: { [key: string]: string } = {
+        '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'Raydium V4',
+        'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK': 'Raydium CLMM',
+        'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc': 'Orca Whirlpool',
+        'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C': 'Raydium CPMM',
+        'EewxydAPCCVuNEyrVN68PuSYdQ7wKn27V9Gjeoi8dy3S': 'Pump.fun',
+        '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P': 'Pump.fun Bonding'
+      };
       
-      if (lpTokens.length > 0) {
+      const isLiquidityPool = ownerStr in LP_PROGRAMS;
+      
+      if (isLiquidityPool) {
+        const lpType = LP_PROGRAMS[ownerStr];
+        console.log(`   🏊 LP detected: ${address.substring(0, 8)}... (${lpType}, dataLen: ${dataLength})`);
+        
+        // Extract token mints from LP
+        const tokens = await this.extractTokensFromLP(ownerStr, accountInfo);
         const elapsed = Date.now() - startTime;
-        console.log(`   📤 GeckoTerminal confirmed LP, extracted ${lpTokens.length} token(s) in ${elapsed}ms: ${lpTokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
-        return { isValid: true, actualTokens: lpTokens };
+        
+        if (tokens.length > 0) {
+          console.log(`   📤 Extracted ${tokens.length} token(s) from LP in ${elapsed}ms: ${tokens.map(t => t.substring(0, 8) + '...').join(', ')}`);
+          return { isValid: true, actualTokens: tokens };
+        } else {
+          console.log(`   ⚠️  Failed to extract tokens from LP after ${elapsed}ms (data length: ${dataLength})`);
+          return { isValid: false, actualTokens: [] };
+        }
       }
       
-      // Not a token mint or LP
-      const elapsed = Date.now() - startTime;
-      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (${elapsed}ms)`);
+      // Log FULL owner address for unknown types to help identify new LP programs
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is wallet/other (owner: ${ownerStr}, len: ${dataLength})`);
       return { isValid: false, actualTokens: [] };
     } catch (error) {
       const elapsed = Date.now() - startTime;
@@ -803,46 +791,78 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
-   * Check GeckoTerminal to see if address is a pool, and extract token(s)
+   * Extract token mint addresses from a liquidity pool
    */
-  private async checkGeckoTerminalPool(address: string): Promise<string[]> {
+  private async extractTokensFromLP(programId: string, accountInfo: any): Promise<string[]> {
     try {
-      const response = await fetch(
-        `https://api.geckoterminal.com/api/v2/networks/solana/pools/${address}`,
-        { headers: { 'Accept': 'application/json' } }
-      );
+      const data = accountInfo.data;
+      const WSOL = 'So11111111111111111111111111111111111111112';
       
-      if (!response.ok) {
-        return []; // Not a pool
+      // Raydium V4 (offset 400, 432)
+      if (programId === '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8') {
+        if (data.length >= 464) {
+          const tokenAMint = new PublicKey(data.slice(400, 432)).toString();
+          const tokenBMint = new PublicKey(data.slice(432, 464)).toString();
+          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
+        }
       }
       
-      const data = await response.json();
-      const pool = data?.data;
+      // Raydium CPMM (offset 8, 40)
+      if (programId === 'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C') {
+        if (data.length >= 72) {
+          const tokenAMint = new PublicKey(data.slice(8, 40)).toString();
+          const tokenBMint = new PublicKey(data.slice(40, 72)).toString();
+          return [tokenAMint, tokenBMint].filter(t => t !== WSOL);
+        }
+      }
       
-      if (!pool) return [];
+      // Pump.fun Bonding Curve (offset 8 for mint)
+      if (programId === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') {
+        if (data.length >= 40) {
+          const tokenMint = new PublicKey(data.slice(8, 40)).toString();
+          return [tokenMint];
+        }
+      }
       
-      // Extract token addresses from pool
+      // Try generic scan for valid PublicKeys in data (fallback)
+      console.log(`   🔍 Attempting generic token extraction from unknown LP structure (${data.length} bytes)...`);
       const tokens: string[] = [];
-      const baseToken = pool.relationships?.base_token?.data?.id;
-      const quoteToken = pool.relationships?.quote_token?.data?.id;
       
-      // GeckoTerminal IDs are in format "solana_<address>"
-      if (baseToken) {
-        const baseAddress = baseToken.replace('solana_', '');
-        tokens.push(baseAddress);
-      }
-      if (quoteToken) {
-        const quoteAddress = quoteToken.replace('solana_', '');
-        // Filter out WSOL (common quote)
-        const WSOL = 'So11111111111111111111111111111111111111112';
-        if (quoteAddress !== WSOL) {
-          tokens.push(quoteAddress);
+      // Scan data in 32-byte chunks looking for valid PublicKeys
+      for (let offset = 0; offset <= data.length - 32; offset += 8) {
+        try {
+          const potentialKey = new PublicKey(data.slice(offset, offset + 32)).toString();
+          
+          // Check if it looks like a token mint (not WSOL, not system program, etc)
+          if (potentialKey !== WSOL && 
+              potentialKey !== '11111111111111111111111111111111' &&
+              potentialKey.length >= 32 &&
+              !tokens.includes(potentialKey)) {
+            
+            // Quick validation: check if it's actually a token mint
+            const validation = await this.solanaConnection.withProxy(async conn => {
+              try {
+                const accInfo = await conn.getAccountInfo(new PublicKey(potentialKey));
+                return accInfo?.owner.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && accInfo?.data.length === 82;
+              } catch {
+                return false;
+              }
+            });
+            
+            if (validation) {
+              console.log(`   ✅ Found token at offset ${offset}: ${potentialKey.substring(0, 8)}...`);
+              tokens.push(potentialKey);
+              if (tokens.length >= 2) break; // Max 2 tokens per LP
+            }
+          }
+        } catch {
+          // Invalid PublicKey, continue scanning
         }
       }
       
       return tokens;
     } catch (error) {
-      // Silent fail - not a pool or API error
+      console.error(`   ❌ Failed to extract tokens from LP:`, error);
       return [];
     }
   }
