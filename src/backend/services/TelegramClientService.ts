@@ -597,9 +597,19 @@ export class TelegramClientService extends EventEmitter {
                   // Use a different account for forwarding
                   const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
                   if (forwardAccount) {
-                    forwardClient = forwardAccount;
-                    forwardAccountId = monitoredChat.forwardAccountId;
-                    console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId}`);
+                    // Check if this is a bot account (bots can't message arbitrary users)
+                    try {
+                      const forwardMe = await forwardAccount.getMe();
+                      if (forwardMe.bot) {
+                        console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} is a bot, cannot forward to users. Using detection account instead.`);
+                      } else {
+                        forwardClient = forwardAccount;
+                        forwardAccountId = monitoredChat.forwardAccountId;
+                        console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId} (@${forwardMe.username})`);
+                      }
+                    } catch (error) {
+                      console.log(`   ⚠️  Could not verify forward account type, using detection account`);
+                    }
                   } else {
                     console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
                   }
@@ -1616,15 +1626,17 @@ export class TelegramClientService extends EventEmitter {
   getConnectedAccounts(userId: number): Array<{ id: number; name: string; phone?: string }> {
     const accounts: Array<{ id: number; name: string; phone?: string }> = [];
     
-    // Check if this user has an active connection
-    if (this.activeClients.has(userId)) {
-      const session = this.sessions.get(userId);
-      accounts.push({
-        id: userId,
-        name: 'Main Account',
-        phone: session?.phoneNumber
-      });
-    }
+    // Add all active clients for this user
+    this.activeClients.forEach((_client, activeUserId) => {
+      if (activeUserId === userId) {
+        // Get stored account info
+        accounts.push({
+          id: userId,
+          name: `Account ${userId}`,
+          phone: undefined
+        });
+      }
+    });
     
     return accounts;
   }
