@@ -666,8 +666,7 @@ export function TelegramSnifferTab() {
 
   // Filter and search chats
   const filteredChats = useMemo(() => {
-    // Filter out bots - they should only be accounts, not monitored chats
-    let filtered = availableChats.filter(chat => chat.chatType !== 'bot');
+    let filtered = availableChats;
     
     // Apply search query
     if (searchQuery) {

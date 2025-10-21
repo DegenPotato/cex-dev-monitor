@@ -306,13 +306,8 @@ export function createTelegramRoutes() {
           // Save/update chats in database (BATCH OPERATION for efficiency)
           console.log(`💾 [Telegram] Saving ${chats.length} chats to database (batch operation)...`);
           
-          // Filter out bot chats - bots should only be accounts, not monitored chats
-          const validChats = chats.filter((chat: any) => chat.chatType !== 'bot');
-          
-          console.log(`💾 [Telegram] Filtered ${chats.length - validChats.length} bot chats, saving ${validChats.length} valid chats...`);
-          
           // Use efficient batch operation: 1 query instead of 1,672!
-          const result = await telegramService.saveMonitoredChatsBatch(userId, validChats.map((chat: any) => ({
+          const result = await telegramService.saveMonitoredChatsBatch(userId, chats.map((chat: any) => ({
             chatId: chat.chatId,
             chatName: chat.chatName,
             chatType: chat.chatType,
@@ -321,13 +316,13 @@ export function createTelegramRoutes() {
             isActive: false // Inactive by default, user must configure and activate
           })));
           
-          console.log(`✅ [Telegram] Completed: Saved ${result.savedCount}/${validChats.length} chats for user ${userId}`);
+          console.log(`✅ [Telegram] Completed: Saved ${result.savedCount}/${chats.length} chats for user ${userId}`);
           
           // Emit completion event
           telegramClientService.emit('chat_fetch_complete', { 
             userId, 
             savedCount: result.savedCount, 
-            totalChats: validChats.length,
+            totalChats: chats.length,
             timestamp: Date.now()
           });
         } catch (error: any) {
@@ -643,8 +638,6 @@ export function createTelegramRoutes() {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
       const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit } = req.body;
-
-      console.log(`🔧 [Telegram] Configuring chat ${chatId} for user ${userId}:`, { monitoredUserIds, monitoredKeywords, forwardToChatId });
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {

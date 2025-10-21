@@ -430,8 +430,6 @@ export class TelegramUserService {
     const monitoredUserIdsJson = config.monitoredUserIds ? JSON.stringify(config.monitoredUserIds) : null;
     const now = Math.floor(Date.now() / 1000);
 
-    console.log(`📝 [DB] Updating chat config - userId: ${userId}, chatId: ${chatId}, userIds: ${monitoredUserIdsJson}`);
-
     await execute(`
       UPDATE telegram_monitored_chats 
       SET monitored_keywords = ?,
