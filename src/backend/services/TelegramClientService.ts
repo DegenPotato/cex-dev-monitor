@@ -536,14 +536,20 @@ export class TelegramClientService extends EventEmitter {
                       // Group/channel ID (negative number)
                       forwardTarget = parseInt(forwardTarget);
                     } else {
-                      // User/bot ID - keep as string for BigInt handling in library
-                      // The library will handle conversion internally
-                      forwardTarget = forwardTarget;
+                      // User/bot ID - needs BigInt for large IDs
+                      try {
+                        // For user IDs, try using BigInt
+                        forwardTarget = BigInt(forwardTarget);
+                      } catch {
+                        // If BigInt fails, keep as string
+                        forwardTarget = forwardTarget;
+                      }
                     }
                   }
                 }
                 
                 // Send using the selected forward account (user or bot)
+                // If entity resolution fails, the error will be caught in the outer try/catch
                 await forwardClient.sendMessage(forwardTarget, { 
                   message: forwardMessage
                 });
@@ -1234,7 +1240,7 @@ export class TelegramClientService extends EventEmitter {
         data.errorMessage || null,
         data.latencyMs || null, // maps to 'response_time_ms' column
         data.detectedAt,
-        data.status === 'success' ? now : null,
+        now, // Always set forwarded_at (NOT NULL constraint)
         now
       ]);
 
