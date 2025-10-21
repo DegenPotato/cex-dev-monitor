@@ -32,11 +32,11 @@ export function createForwardDestinationRoutes() {
           username,
           chat_type,
           invite_link,
-          participants_count,
-          created_at
+          member_count,
+          updated_at
         FROM telegram_chat_metadata
         WHERE user_id = ?
-          AND chat_type IN ('user', 'group', 'channel', 'bot')
+          AND chat_type IN ('user', 'group', 'supergroup', 'channel', 'bot', 'private')
         ORDER BY title
       `, [userId]);
       
