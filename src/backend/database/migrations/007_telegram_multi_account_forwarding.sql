@@ -9,16 +9,8 @@ ADD COLUMN telegram_account_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_telegram_monitored_chats_account 
 ON telegram_monitored_chats(telegram_account_id);
 
--- Update existing chats to use the user's primary telegram account
--- (Assumes telegram_user_id from telegram_user_accounts is the account identifier)
-UPDATE telegram_monitored_chats 
-SET telegram_account_id = (
-  SELECT telegram_user_id 
-  FROM telegram_user_accounts 
-  WHERE telegram_user_accounts.user_id = telegram_monitored_chats.user_id 
-  LIMIT 1
-)
-WHERE telegram_account_id IS NULL;
+-- Note: telegram_account_id will be set automatically when chats are fetched
+-- No need to backfill existing data
 
 -- Create forwarding rules table for auto-forwarding messages
 CREATE TABLE IF NOT EXISTS telegram_forwarding_rules (
