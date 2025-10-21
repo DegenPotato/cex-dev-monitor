@@ -599,22 +599,40 @@ export class TelegramClientService extends EventEmitter {
                 // Determine which client to use for forwarding
                 let forwardClient = client; // Default to detection client
                 
-                if (monitoredChat.forwardAccountId && monitoredChat.forwardAccountId !== userId) {
-                  // Use a different account for forwarding
-                  const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
+                // If a specific forward account is configured
+                if (monitoredChat.forwardAccountId) {
+                  // Always try to get the user account (non-bot) first for forwarding
+                  let forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
+                  if (!forwardAccount) {
+                    // Try with bot_ prefix
+                    forwardAccount = this.activeClients.get(`bot_${monitoredChat.forwardAccountId}`);
+                  }
+                  
                   if (forwardAccount) {
                     // Check if this is a bot account (bots can't message arbitrary users)
                     try {
                       const forwardMe = await forwardAccount.getMe();
                       if (forwardMe.bot) {
-                        console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} is a bot, cannot forward to users. Using detection account instead.`);
+                        console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} is a bot, cannot forward to users. Trying detection account.`);
+                        // If detection client is also not a bot, use it
+                        const detectionMe = await client.getMe();
+                        if (!detectionMe.bot) {
+                          forwardClient = client;
+                          forwardAccountId = userId;
+                        } else {
+                          console.log(`   ⚠️  Detection account is also a bot! Cannot forward to user.`);
+                          throw new Error('No valid user account available for forwarding to users');
+                        }
                       } else {
                         forwardClient = forwardAccount;
                         forwardAccountId = monitoredChat.forwardAccountId;
-                        console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId} (@${forwardMe.username})`);
+                        console.log(`   📤 Using account for forwarding: User ${monitoredChat.forwardAccountId} (@${forwardMe.username})`);
                       }
-                    } catch (error) {
-                      console.log(`   ⚠️  Could not verify forward account type, using detection account`);
+                    } catch (error: any) {
+                      if (error.message?.includes('No valid user account')) {
+                        throw error;
+                      }
+                      console.log(`   ⚠️  Could not verify forward account type: ${error.message}`);
                     }
                   } else {
                     console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
