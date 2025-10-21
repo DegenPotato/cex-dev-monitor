@@ -311,8 +311,9 @@ export class TelegramUserService {
 
     const now = Math.floor(Date.now() / 1000);
     
-    // Use INSERT OR REPLACE (UPSERT) for efficient batch operation
-    // This is much faster than individual SELECT + INSERT/UPDATE
+    // Use INSERT OR IGNORE for batch operation
+    // This only inserts NEW chats and preserves existing configurations
+    // For updates to existing chats, use saveMonitoredChat() individually
     const values = chats.map(chat => [
       userId,
       chat.chatId,
@@ -321,20 +322,20 @@ export class TelegramUserService {
       chat.username || null,
       chat.inviteLink || null,
       chat.isActive !== undefined ? (chat.isActive ? 1 : 0) : 0,
-      null, // forward_to_chat_id
-      null, // monitored_user_ids
-      null, // monitored_keywords
+      null, // forward_to_chat_id (only for new chats)
+      null, // monitored_user_ids (only for new chats)
+      null, // monitored_keywords (only for new chats)
       chat.telegramAccountId || null,
       now, // created_at
       now  // updated_at
     ]);
 
-    // Build batch INSERT OR REPLACE statement
+    // Build batch INSERT OR IGNORE statement (won't overwrite existing configs)
     const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
     const flatValues = values.flat();
 
     await execute(`
-      INSERT OR REPLACE INTO telegram_monitored_chats 
+      INSERT OR IGNORE INTO telegram_monitored_chats 
       (user_id, chat_id, chat_name, chat_type, username, invite_link, is_active, 
        forward_to_chat_id, monitored_user_ids, monitored_keywords, telegram_account_id,
        created_at, updated_at)
