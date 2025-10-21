@@ -796,5 +796,114 @@ export function createTelegramRoutes() {
     }
   });
 
+  /**
+   * Get forwarding history
+   */
+  router.get('/forwarding/history', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const status = req.query.status as string | undefined;
+      
+      let query = `
+        SELECT * FROM telegram_forwarding_history 
+        WHERE user_id = ?
+      `;
+      const params: any[] = [userId];
+      
+      if (status) {
+        query += ` AND forward_status = ?`;
+        params.push(status);
+      }
+      
+      query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
+      
+      const { queryAll } = await import('../database/helpers.js');
+      const history = await queryAll(query, params);
+      
+      res.json({
+        success: true,
+        history,
+        limit,
+        offset
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting forwarding history:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get forwarding statistics
+   */
+  router.get('/forwarding/stats', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const days = parseInt(req.query.days as string) || 7;
+      
+      const { queryAll, queryOne } = await import('../database/helpers.js');
+      
+      // Get summary stats
+      const summary = await queryOne(`
+        SELECT 
+          COUNT(*) as total_forwards,
+          SUM(CASE WHEN forward_status = 'success' THEN 1 ELSE 0 END) as successful,
+          SUM(CASE WHEN forward_status = 'failed' THEN 1 ELSE 0 END) as failed,
+          SUM(CASE WHEN forward_status = 'pending' THEN 1 ELSE 0 END) as pending,
+          AVG(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as avg_latency_ms,
+          MIN(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as min_latency_ms,
+          MAX(CASE WHEN forward_status = 'success' THEN forward_latency_ms ELSE NULL END) as max_latency_ms,
+          COUNT(DISTINCT contract_address) as unique_contracts,
+          COUNT(DISTINCT source_chat_id) as unique_source_chats,
+          COUNT(DISTINCT target_chat_id) as unique_target_chats,
+          COUNT(DISTINCT forward_account_id) as unique_forward_accounts
+        FROM telegram_forwarding_history 
+        WHERE user_id = ? 
+        AND created_at >= ?
+      `, [userId, Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)]) as any;
+      
+      // Get top forwarded contracts
+      const topContracts = await queryAll(`
+        SELECT 
+          contract_address,
+          COUNT(*) as forward_count,
+          MAX(created_at) as last_forwarded
+        FROM telegram_forwarding_history
+        WHERE user_id = ?
+        AND created_at >= ?
+        GROUP BY contract_address
+        ORDER BY forward_count DESC
+        LIMIT 10
+      `, [userId, Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)]);
+      
+      // Get hourly distribution
+      const hourlyStats = await queryAll(`
+        SELECT 
+          strftime('%H', created_at, 'unixepoch') as hour,
+          COUNT(*) as forwards,
+          AVG(forward_latency_ms) as avg_latency
+        FROM telegram_forwarding_history
+        WHERE user_id = ?
+        AND created_at >= ?
+        AND forward_status = 'success'
+        GROUP BY hour
+        ORDER BY hour
+      `, [userId, Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)]);
+      
+      res.json({
+        success: true,
+        period_days: days,
+        summary,
+        topContracts,
+        hourlyDistribution: hourlyStats
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting forwarding stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 }

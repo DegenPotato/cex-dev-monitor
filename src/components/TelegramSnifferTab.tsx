@@ -68,7 +68,7 @@ interface ContractDetection {
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'settings'>('sniffer');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'settings'>('sniffer');
   const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -76,6 +76,10 @@ export function TelegramSnifferTab() {
   const [monitoredChats, setMonitoredChats] = useState<MonitoredChat[]>([]);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [detections, setDetections] = useState<ContractDetection[]>([]);
+  
+  // Forwarding history and stats
+  const [forwardingHistory, setForwardingHistory] = useState<any[]>([]);
+  const [forwardingStats, setForwardingStats] = useState<any>(null);
   
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -171,6 +175,15 @@ export function TelegramSnifferTab() {
       setLoading(false);
     });
 
+    // Subscribe to forwarding events
+    const unsubscribe7 = subscribe('telegram_forward_logged', (data: any) => {
+      console.log('📤 Forward event received:', data);
+      // Reload forwarding history when new forward happens
+      if (activeSection === 'forwards') {
+        loadForwardingHistory();
+      }
+    });
+
     return () => {
       unsubscribe1();
       unsubscribe2();
@@ -178,8 +191,9 @@ export function TelegramSnifferTab() {
       unsubscribe4();
       unsubscribe5();
       unsubscribe6();
+      unsubscribe7();
     };
-  }, [subscribe]);
+  }, [subscribe, activeSection]);
 
   // Load account status and chats when authentication changes
   useEffect(() => {
@@ -261,16 +275,50 @@ export function TelegramSnifferTab() {
     try {
       if (!isAuthenticated) return;
 
-      const response = await fetch(`${config.apiUrl}/api/telegram/detected-contracts?limit=50`, {
+      const response = await fetch(`${config.apiUrl}/api/telegram/detections`, {
         credentials: 'include'
       });
 
       if (response.ok) {
-        const contracts = await response.json();
-        setDetections(contracts);
+        const data = await response.json();
+        setDetections(data);
       }
     } catch (error) {
       console.error('Failed to load detections:', error);
+    }
+  };
+
+  const loadForwardingHistory = async () => {
+    try {
+      if (!isAuthenticated) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/forwarding/history?limit=50`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setForwardingHistory(data.history || []);
+      }
+    } catch (error) {
+      console.error('Failed to load forwarding history:', error);
+    }
+  };
+
+  const loadForwardingStats = async () => {
+    try {
+      if (!isAuthenticated) return;
+
+      const response = await fetch(`${config.apiUrl}/api/telegram/forwarding/stats?days=7`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setForwardingStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to load forwarding stats:', error);
     }
   };
 
@@ -659,6 +707,9 @@ export function TelegramSnifferTab() {
       if (availableChats.length === 0) {
         loadMonitoredChats(); // For now, show monitored chats in the sniffer too
       }
+    } else if (activeSection === 'forwards') {
+      loadForwardingHistory();
+      loadForwardingStats();
     }
   }, [activeSection]);
 
@@ -686,40 +737,47 @@ export function TelegramSnifferTab() {
         </div>
       )}
 
-      {/* Section Tabs */}
-      <div className="flex gap-2 mb-6 bg-black/40 backdrop-blur-xl p-1.5 rounded-xl border border-cyan-500/20">
+      {/* Tab Navigation */}
+      <div className="flex gap-2 mb-6 border-b border-cyan-500/20">
         <button
           onClick={() => setActiveSection('sniffer')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-            activeSection === 'sniffer'
-              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'sniffer' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          <MessageSquare className="w-4 h-4" />
-          Sniffer
+          Available Chats ({availableChats.length})
         </button>
         <button
           onClick={() => setActiveSection('monitored')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-            activeSection === 'monitored'
-              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'monitored' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          <Radio className="w-4 h-4" />
-          Monitored
+          Monitored ({monitoredChats.filter(c => c.isActive).length})
         </button>
         <button
           onClick={() => setActiveSection('detections')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-            activeSection === 'detections'
-              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'detections' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          <Check className="w-4 h-4" />
-          Detections
+          Detections ({detections.length})
+        </button>
+        <button
+          onClick={() => setActiveSection('forwards')}
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'forwards' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
+              : 'text-gray-400 hover:text-cyan-300'
+          }`}
+        >
+          Forwards 📤
         </button>
         <button
           onClick={() => setActiveSection('settings')}
@@ -2004,6 +2062,142 @@ export function TelegramSnifferTab() {
                 <button className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-sm font-medium transition-all">
                   Load More ({detections.length - 10} remaining)
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Forwards Tab */}
+      {activeSection === 'forwards' && (
+        <div className="space-y-6">
+          {/* Forwarding Stats */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Forwarding Statistics (Last 7 Days)</h3>
+            
+            {forwardingStats ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-black/40 rounded-lg p-4 border border-cyan-500/10">
+                  <div className="text-sm text-gray-400 mb-1">Total Forwards</div>
+                  <div className="text-2xl font-bold text-white">{forwardingStats.summary?.total_forwards || 0}</div>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-green-400">Success</span>
+                      <span className="text-green-400">{forwardingStats.summary?.successful || 0}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-red-400">Failed</span>
+                      <span className="text-red-400">{forwardingStats.summary?.failed || 0}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-black/40 rounded-lg p-4 border border-cyan-500/10">
+                  <div className="text-sm text-gray-400 mb-1">Success Rate</div>
+                  <div className="text-2xl font-bold text-cyan-400">
+                    {forwardingStats.summary?.total_forwards > 0 
+                      ? Math.round((forwardingStats.summary.successful / forwardingStats.summary.total_forwards) * 100)
+                      : 0}%
+                  </div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    Avg latency: {Math.round(forwardingStats.summary?.avg_latency_ms || 0)}ms
+                  </div>
+                </div>
+                
+                <div className="bg-black/40 rounded-lg p-4 border border-cyan-500/10">
+                  <div className="text-sm text-gray-400 mb-1">Unique Contracts</div>
+                  <div className="text-2xl font-bold text-purple-400">{forwardingStats.summary?.unique_contracts || 0}</div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    From {forwardingStats.summary?.unique_source_chats || 0} chats
+                  </div>
+                </div>
+                
+                <div className="bg-black/40 rounded-lg p-4 border border-cyan-500/10">
+                  <div className="text-sm text-gray-400 mb-1">Accounts Used</div>
+                  <div className="text-2xl font-bold text-blue-400">{forwardingStats.summary?.unique_forward_accounts || 0}</div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    To {forwardingStats.summary?.unique_target_chats || 0} targets
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-400 text-center py-8">Loading statistics...</div>
+            )}
+          </div>
+          
+          {/* Top Forwarded Contracts */}
+          {forwardingStats?.topContracts && forwardingStats.topContracts.length > 0 && (
+            <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+              <h3 className="text-xl font-bold text-cyan-300 mb-4">Top Forwarded Contracts</h3>
+              <div className="space-y-2">
+                {forwardingStats.topContracts.slice(0, 5).map((contract: any, index: number) => (
+                  <div key={contract.contract_address} className="flex items-center justify-between bg-black/40 rounded-lg p-3 border border-cyan-500/10">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-gray-500">#{index + 1}</span>
+                      <div>
+                        <div className="font-mono text-sm text-cyan-400">{contract.contract_address.substring(0, 8)}...{contract.contract_address.slice(-6)}</div>
+                        <div className="text-xs text-gray-500">
+                          Last: {new Date(contract.last_forwarded * 1000).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-white">{contract.forward_count}</div>
+                      <div className="text-xs text-gray-400">forwards</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Recent Forwarding History */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Recent Forwards</h3>
+            
+            {forwardingHistory.length > 0 ? (
+              <div className="space-y-2">
+                {forwardingHistory.map((forward: any) => (
+                  <div key={forward.id} className="bg-black/40 rounded-lg p-4 border border-cyan-500/10">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            forward.forward_status === 'success' 
+                              ? 'bg-green-500/20 text-green-400' 
+                              : forward.forward_status === 'failed'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {forward.forward_status === 'success' ? '✓ Success' : forward.forward_status === 'failed' ? '✗ Failed' : '⏳ Pending'}
+                          </span>
+                          <span className="font-mono text-sm text-cyan-400">
+                            {forward.contract_address.substring(0, 8)}...{forward.contract_address.slice(-6)}
+                          </span>
+                          {forward.forward_latency_ms && (
+                            <span className="text-xs text-gray-500">{forward.forward_latency_ms}ms</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400">
+                          <span>From: <span className="text-white">{forward.source_chat_name || forward.source_chat_id}</span></span>
+                          <span>→</span>
+                          <span>To: <span className="text-white">{forward.target_chat_name || forward.target_chat_id}</span></span>
+                        </div>
+                        {forward.error_message && (
+                          <div className="text-xs text-red-400 mt-1">Error: {forward.error_message}</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date((forward.forwarded_at || forward.created_at) * 1000).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-400">No forwarding history yet</p>
+                <p className="text-sm text-gray-500 mt-2">Forwards will appear here when contracts are detected and forwarded</p>
               </div>
             )}
           </div>

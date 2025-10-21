@@ -500,6 +500,11 @@ export class TelegramClientService extends EventEmitter {
             
             // Try to forward first
             if (monitoredChat.forwardToChatId) {
+              const forwardStartTime = Date.now();
+              let forwardAccountId = userId;
+              let forwardAccountPhone = '';
+              let forwardError = null;
+              
               try {
                 // Determine which client to use for forwarding
                 let forwardClient = client; // Default to detection client
@@ -509,6 +514,7 @@ export class TelegramClientService extends EventEmitter {
                   const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
                   if (forwardAccount) {
                     forwardClient = forwardAccount;
+                    forwardAccountId = monitoredChat.forwardAccountId;
                     console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId}`);
                   } else {
                     console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
@@ -531,9 +537,44 @@ export class TelegramClientService extends EventEmitter {
                 });
                 
                 wasForwarded = true;
-                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId}`);
-              } catch (error) {
-                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, error);
+                const forwardLatency = Date.now() - forwardStartTime;
+                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId} in ${forwardLatency}ms`);
+                
+                // Log successful forward
+                await this.logForwardingHistory(userId, {
+                  sourceChatId: chatId!,
+                  sourceChatName: monitoredChat.chatName,
+                  messageId: message.id.toString(),
+                  contractAddress: contract.address,
+                  detectionType: contract.type,
+                  targetChatId: monitoredChat.forwardToChatId,
+                  detectionAccountId: userId,
+                  forwardAccountId,
+                  forwardAccountPhone,
+                  status: 'success',
+                  latencyMs: forwardLatency,
+                  detectedAt: Math.floor(Date.now() / 1000)
+                });
+              } catch (error: any) {
+                forwardError = error.message || 'Unknown error';
+                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, forwardError);
+                
+                // Log failed forward
+                await this.logForwardingHistory(userId, {
+                  sourceChatId: chatId!,
+                  sourceChatName: monitoredChat.chatName,
+                  messageId: message.id.toString(),
+                  contractAddress: contract.address,
+                  detectionType: contract.type,
+                  targetChatId: monitoredChat.forwardToChatId,
+                  detectionAccountId: userId,
+                  forwardAccountId,
+                  forwardAccountPhone,
+                  status: 'failed',
+                  errorMessage: forwardError,
+                  latencyMs: Date.now() - forwardStartTime,
+                  detectedAt: Math.floor(Date.now() / 1000)
+                });
               }
             }
             
@@ -1213,10 +1254,71 @@ export class TelegramClientService extends EventEmitter {
       data.detectionType,
       data.originalFormat,
       data.messageText,
-      0, // forwarded
+      data.forwarded ? 1 : 0,
       Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000)
     ]);
+  }
+
+  /**
+   * Log forwarding attempt to history
+   */
+  private async logForwardingHistory(userId: number, data: {
+    sourceChatId: string;
+    sourceChatName?: string;
+    messageId: string;
+    contractAddress: string;
+    detectionType: string;
+    targetChatId: string;
+    targetChatName?: string;
+    detectionAccountId: number;
+    forwardAccountId: number;
+    forwardAccountPhone?: string;
+    status: 'success' | 'failed' | 'pending';
+    errorMessage?: string;
+    latencyMs?: number;
+    detectedAt: number;
+  }) {
+    try {
+      await execute(`
+        INSERT INTO telegram_forwarding_history
+        (user_id, source_chat_id, source_chat_name, message_id, contract_address,
+         detection_type, target_chat_id, target_chat_name, detection_account_id,
+         forward_account_id, forward_account_phone, forward_status, error_message,
+         forward_latency_ms, detected_at, forwarded_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        userId,
+        data.sourceChatId,
+        data.sourceChatName || null,
+        data.messageId,
+        data.contractAddress,
+        data.detectionType,
+        data.targetChatId,
+        data.targetChatName || null,
+        data.detectionAccountId,
+        data.forwardAccountId,
+        data.forwardAccountPhone || null,
+        data.status,
+        data.errorMessage || null,
+        data.latencyMs || null,
+        data.detectedAt,
+        data.status === 'success' ? Math.floor(Date.now() / 1000) : null,
+        Math.floor(Date.now() / 1000)
+      ]);
+
+      // Emit forwarding event for real-time updates
+      this.emit('forward_logged', {
+        userId,
+        contractAddress: data.contractAddress,
+        status: data.status,
+        sourceChatName: data.sourceChatName,
+        targetChatId: data.targetChatId,
+        latencyMs: data.latencyMs
+      });
+    } catch (error) {
+      console.error('Failed to log forwarding history:', error);
+    }
   }
 
   /**

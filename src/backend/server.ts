@@ -419,6 +419,12 @@ telegramClientService.on('contract_detected', (data) => {
   });
 });
 
+// Real-time forwarding event
+telegramClientService.on('forward_logged', (data) => {
+  console.log('📤 Broadcasting forward event:', data.contractAddress, data.status);
+  broadcast('telegram_forward_logged', data);
+});
+
 // API Routes
 
 // Get config
