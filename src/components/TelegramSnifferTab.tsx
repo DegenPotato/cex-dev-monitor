@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   MessageSquare, 
   Settings as SettingsIcon, 
@@ -2212,8 +2213,8 @@ export function TelegramSnifferTab() {
       )}
       </div>
 
-      {/* Configuration Modal - Rendered outside main container */}
-      {configModalOpen && configChat && (
+      {/* Configuration Modal - Rendered via Portal */}
+      {configModalOpen && configChat && createPortal(
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
@@ -2482,7 +2483,8 @@ export function TelegramSnifferTab() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Chat History Viewer Modal */}
