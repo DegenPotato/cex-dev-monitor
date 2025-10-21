@@ -365,6 +365,10 @@ export class TelegramClientService extends EventEmitter {
    * Start monitoring for messages
    */
   private async startMonitoring(userId: number, client: any) { // TelegramClient 
+    // Get user info for logging
+    const me = await client.getMe();
+    const userIdentifier = `User ${userId} (@${me.username || me.firstName})`;
+    
     // Get monitored chats from database
     const chats = await this.getMonitoredChats(userId);
     const userFilters = await this.getUserFilters(userId);
@@ -384,13 +388,13 @@ export class TelegramClientService extends EventEmitter {
           chatId = message.peerId.chatId.toString();
         }
         
-        const isMonitoredChat = chats.some(c => c.chatId === chatId);
-        if (!isMonitoredChat) {
-          console.log(`⏭️  [Telegram] Message from unmonitored chat: ${chatId}`);
+        const monitoredChat = chats.find(c => c.chatId === chatId);
+        if (!monitoredChat) {
+          console.log(`⏭️  [Telegram:${userIdentifier}] Message from unmonitored chat: ${chatId}`);
           return;
         }
         
-        console.log(`📨 [Telegram] Message detected in monitored chat: ${chatId}`);
+        console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})`);
 
         // Check if message is from filtered user (if filters exist)
         if (userFilters.length > 0) {
