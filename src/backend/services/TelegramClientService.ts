@@ -914,26 +914,9 @@ export class TelegramClientService extends EventEmitter {
           };
         }
 
-        // Get full chat statistics if available
+        // Skip full chat statistics during bulk fetch to avoid FloodWait
+        // Statistics can be fetched later per-channel if needed
         let statistics = null;
-        if (entity.className === 'Channel' && entity.broadcast) {
-          try {
-            const stats = await client.invoke(
-              new Api.channels.GetFullChannel({
-                channel: entity
-              })
-            );
-            if (stats.fullChat.stats) {
-              statistics = {
-                followers: stats.fullChat.participantsCount,
-                messagesViewsCount: stats.fullChat.stats.viewsCount,
-                sharesCount: stats.fullChat.stats.forwardsCount
-              };
-            }
-          } catch (error) {
-            // Stats might not be available
-          }
-        }
 
         // Build comprehensive chat object
         const chatData = {
