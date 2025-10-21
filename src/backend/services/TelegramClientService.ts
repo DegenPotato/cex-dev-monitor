@@ -5,8 +5,9 @@
 
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
-import { apiProviderTracker } from './ApiProviderTracker.js';
 import { execute, queryOne, queryAll } from '../database/helpers.js';
+import { PublicKey } from '@solana/web3.js';
+import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 
 // Dynamic imports for telegram package
 let TelegramClient: any;
@@ -44,10 +45,17 @@ export class TelegramClientService extends EventEmitter {
   private sessions: Map<number, AuthSession> = new Map();
   private activeClients: Map<number, any> = new Map(); // TelegramClient instances
   private encryptionKey: string;
+  private solanaConnection: ProxiedSolanaConnection;
 
   constructor() {
     super();
     this.encryptionKey = process.env.TELEGRAM_ENCRYPTION_KEY || 'default-key-change-in-production';
+    this.solanaConnection = new ProxiedSolanaConnection(
+      'https://api.mainnet-beta.solana.com',
+      { commitment: 'confirmed' },
+      './proxies.txt',
+      'TelegramCA-Validator'
+    );
     
     console.log('✅ [Telegram] TelegramClientService initialized');
     
@@ -437,11 +445,27 @@ export class TelegramClientService extends EventEmitter {
         // Now detect either contracts OR keywords OR both
         let detectionTriggered = false;
         
-        // 1. Check for contract addresses
-        const contracts = this.extractContracts(message.message);
-        if (contracts.length > 0) {
-          console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
-          detectionTriggered = true;
+        // 1. Check for contract addresses with on-chain validation
+        const potentialContracts = this.extractContracts(message.message);
+        const contracts = [];
+        
+        if (potentialContracts.length > 0) {
+          console.log(`   🔍 Found ${potentialContracts.length} potential addresses, validating on-chain...`);
+          
+          // Validate each address is actually a token mint
+          for (const contract of potentialContracts) {
+            const isValid = await this.isTokenMint(contract.address);
+            if (isValid) {
+              contracts.push(contract);
+            }
+          }
+          
+          if (contracts.length > 0) {
+            console.log(`   ✅ Validated ${contracts.length} token mints: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
+            detectionTriggered = true;
+          } else {
+            console.log(`   ⏭️  No valid token mints found (all were wallets/invalid)`);
+          }
         }
         
         // 2. Check for keywords (if configured)
@@ -511,8 +535,11 @@ export class TelegramClientService extends EventEmitter {
   private extractContracts(text: string): Array<{address: string, type: string, original: string}> {
     const contracts = [];
     
+    // Remove URLs to avoid matching addresses within links (from Python version)
+    const textClean = text.replace(/https?:\/\/\S+/g, '');
+    
     // Check standard format
-    const standardMatches = text.match(SOL_PATTERN) || [];
+    const standardMatches = textClean.match(SOL_PATTERN) || [];
     for (const match of standardMatches) {
       if (this.isValidSolanaAddress(match)) {
         contracts.push({
@@ -524,7 +551,7 @@ export class TelegramClientService extends EventEmitter {
     }
 
     // Check obfuscated format
-    const obfuscatedMatches = text.match(SOL_PATTERN_WITH_SPECIALS) || [];
+    const obfuscatedMatches = textClean.match(SOL_PATTERN_WITH_SPECIALS) || [];
     for (const match of obfuscatedMatches) {
       const cleaned = match.replace(/[-_.\s]/g, '');
       if (this.isValidSolanaAddress(cleaned) && !contracts.find(c => c.address === cleaned)) {
@@ -536,21 +563,119 @@ export class TelegramClientService extends EventEmitter {
       }
     }
 
-    // Check for split contracts (address broken into 2-3 parts)
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length - 1; i++) {
-      const combined = lines[i].trim() + lines[i + 1].trim();
-      const cleanedCombined = combined.replace(/[-_.\s]/g, '');
-      if (this.isValidSolanaAddress(cleanedCombined) && !contracts.find(c => c.address === cleanedCombined)) {
-        contracts.push({
-          address: cleanedCombined,
-          type: 'split',
-          original: combined
-        });
+    // Check for split contracts (comprehensive detection from Python version)
+    if (contracts.length === 0) {
+      const splitContracts = this.findSplitContracts(textClean);
+      for (const split of splitContracts) {
+        if (!contracts.find(c => c.address === split.address)) {
+          contracts.push(split);
+        }
       }
     }
 
     return contracts;
+  }
+
+  /**
+   * Find contract addresses split into 2-3 parts (ported from Python)
+   */
+  private findSplitContracts(text: string): Array<{address: string, type: string, original: string}> {
+    const results: Array<{address: string, type: string, original: string}> = [];
+    const CA_FRAGMENT_PATTERN = /[1-9A-HJ-NP-Za-km-z]{8,}/g;
+    
+    // Find all potential CA fragments with their positions
+    const fragmentMatches: Array<{frag: string, pos: number}> = [];
+    let match;
+    while ((match = CA_FRAGMENT_PATTERN.exec(text)) !== null) {
+      fragmentMatches.push({ frag: match[0], pos: match.index });
+    }
+    
+    // Remove duplicates while preserving order
+    const uniqueFragments: Array<{frag: string, pos: number}> = [];
+    const seenFrags = new Set<string>();
+    for (const fm of fragmentMatches) {
+      if (!seenFrags.has(fm.frag)) {
+        seenFrags.add(fm.frag);
+        uniqueFragments.push(fm);
+      }
+    }
+    
+    if (uniqueFragments.length < 2) {
+      return results;
+    }
+    
+    // Identify fragments with "pump" markers
+    const endingFragments = new Set<string>();
+    for (const fm of uniqueFragments) {
+      if (fm.frag.toLowerCase().endsWith('pump')) {
+        endingFragments.add(fm.frag);
+      }
+      const textAfter = text.substring(fm.pos + fm.frag.length, fm.pos + fm.frag.length + 20).toLowerCase();
+      if (textAfter.includes('pumpfun') || textAfter.includes('pump.fun') || textAfter.includes('pump')) {
+        endingFragments.add(fm.frag);
+      }
+    }
+    
+    // Try 2-part combinations
+    for (let i = 0; i < uniqueFragments.length; i++) {
+      for (let j = 0; j < uniqueFragments.length; j++) {
+        if (i === j) continue;
+        
+        const fragI = uniqueFragments[i];
+        const fragJ = uniqueFragments[j];
+        let combined: string;
+        let fragmentsInfo: string;
+        
+        if (endingFragments.has(fragI.frag) && !endingFragments.has(fragJ.frag)) {
+          combined = fragJ.frag + fragI.frag;
+          fragmentsInfo = `${fragJ.frag} + ${fragI.frag}`;
+        } else if (endingFragments.has(fragJ.frag) && !endingFragments.has(fragI.frag)) {
+          combined = fragI.frag + fragJ.frag;
+          fragmentsInfo = `${fragI.frag} + ${fragJ.frag}`;
+        } else {
+          if (fragI.pos < fragJ.pos) {
+            combined = fragI.frag + fragJ.frag;
+            fragmentsInfo = `${fragI.frag} + ${fragJ.frag}`;
+          } else {
+            continue;
+          }
+        }
+        
+        if (this.isValidSolanaAddress(combined) && !results.find(r => r.address === combined)) {
+          results.push({ address: combined, type: 'split', original: fragmentsInfo });
+        }
+      }
+    }
+    
+    // Try 3-part combinations
+    for (let i = 0; i < uniqueFragments.length; i++) {
+      for (let j = 0; j < uniqueFragments.length; j++) {
+        for (let k = 0; k < uniqueFragments.length; k++) {
+          if (i === j || i === k || j === k) continue;
+          
+          const frags = [uniqueFragments[i], uniqueFragments[j], uniqueFragments[k]];
+          const endingInSet = frags.filter(f => endingFragments.has(f.frag));
+          
+          let ordered: Array<{frag: string, pos: number}>;
+          if (endingInSet.length > 0) {
+            const nonEnding = frags.filter(f => !endingFragments.has(f.frag)).sort((a, b) => a.pos - b.pos);
+            const ending = frags.filter(f => endingFragments.has(f.frag));
+            ordered = [...nonEnding, ...ending];
+          } else {
+            ordered = frags.sort((a, b) => a.pos - b.pos);
+          }
+          
+          const combined = ordered[0].frag + ordered[1].frag + ordered[2].frag;
+          
+          if (this.isValidSolanaAddress(combined) && !results.find(r => r.address === combined)) {
+            const fragmentsInfo = `${ordered[0].frag} + ${ordered[1].frag} + ${ordered[2].frag}`;
+            results.push({ address: combined, type: 'split', original: fragmentsInfo });
+          }
+        }
+      }
+    }
+    
+    return results;
   }
 
   /**
@@ -563,6 +688,43 @@ export class TelegramClientService extends EventEmitter {
     // Check for valid base58 characters
     const base58Regex = /^[1-9A-HJ-NP-Za-km-z]+$/;
     return base58Regex.test(address);
+  }
+
+  /**
+   * Validate if address is a token mint (not just a wallet)
+   */
+  private async isTokenMint(address: string): Promise<boolean> {
+    try {
+      const publicKey = new PublicKey(address);
+      
+      // Get account info
+      const accountInfo = await this.solanaConnection.withProxy(conn => 
+        conn.getAccountInfo(publicKey)
+      );
+      
+      if (!accountInfo) {
+        console.log(`   ⚠️  Address ${address.substring(0, 8)}... has no account data (likely invalid/wallet)`);
+        return false;
+      }
+      
+      // Check if account is owned by Token Program (SPL Token)
+      const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+      const isTokenAccount = accountInfo.owner.toString() === TOKEN_PROGRAM_ID;
+      
+      // Check data length - token mints have 82 bytes of data
+      const isMintAccount = accountInfo.data.length === 82;
+      
+      if (isTokenAccount && isMintAccount) {
+        console.log(`   ✅ Verified token mint: ${address.substring(0, 8)}...`);
+        return true;
+      }
+      
+      console.log(`   ⏭️  ${address.substring(0, 8)}... is not a token mint (wallet or other account type)`);
+      return false;
+    } catch (error) {
+      console.error(`   ❌ Failed to validate ${address.substring(0, 8)}...:`, error);
+      return false; // If we can't validate, reject it
+    }
   }
 
   /**
