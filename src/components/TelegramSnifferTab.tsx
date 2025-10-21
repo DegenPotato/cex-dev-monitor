@@ -98,6 +98,7 @@ export function TelegramSnifferTab() {
   
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
+  const [includeAccountsInDelete, setIncludeAccountsInDelete] = useState(false);
 
   // Configuration modal states
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -1593,20 +1594,52 @@ export function TelegramSnifferTab() {
                   <li>All monitored chats configuration</li>
                   <li>All detected contracts history</li>
                   <li>All message history and metadata</li>
-                  <li>Your Telegram account connections</li>
-                  <li>Bot account configuration</li>
+                  <li className={includeAccountsInDelete ? 'text-red-400 font-bold' : ''}>
+                    Your Telegram account connections {includeAccountsInDelete && '(WILL BE DELETED)'}
+                  </li>
+                  <li className={includeAccountsInDelete ? 'text-red-400 font-bold' : ''}>
+                    Bot account configuration {includeAccountsInDelete && '(WILL BE DELETED)'}
+                  </li>
                 </ul>
+                
+                {/* Toggle for including accounts */}
+                <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-yellow-500/20 mb-3">
+                  <div>
+                    <div className="font-medium text-yellow-300 text-sm">Also delete connected accounts?</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {includeAccountsInDelete 
+                        ? 'Will disconnect and remove all account credentials' 
+                        : 'Will keep accounts connected, only delete data'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIncludeAccountsInDelete(!includeAccountsInDelete)}
+                    className={`relative w-14 h-7 rounded-full transition-colors ${
+                      includeAccountsInDelete ? 'bg-red-500' : 'bg-gray-600'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                        includeAccountsInDelete ? 'translate-x-8' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                
                 <button
                   onClick={async () => {
                     const confirmText = prompt(
                       'This will DELETE ALL your Telegram data permanently!\n\n' +
+                      (includeAccountsInDelete 
+                        ? '⚠️ INCLUDING your account connections and credentials!\n\n' 
+                        : 'Your account connections will be kept.\n\n') +
                       'Type "DELETE ALL" to confirm:'
                     );
                     
                     if (confirmText === 'DELETE ALL') {
                       try {
                         setLoading(true);
-                        const response = await fetch(`${config.apiUrl}/api/telegram/delete-all-data`, {
+                        const response = await fetch(`${config.apiUrl}/api/telegram/delete-all-data?includeAccounts=${includeAccountsInDelete}`, {
                           method: 'DELETE',
                           credentials: 'include'
                         });
@@ -1615,19 +1648,21 @@ export function TelegramSnifferTab() {
                           const result = await response.json();
                           setMessage({ type: 'success', text: result.message || 'All Telegram data deleted successfully' });
                           
-                          // Reset all state
-                          setUserAccount(null);
-                          setBotAccount(null);
+                          // Reset data state (always)
                           setAvailableChats([]);
                           setMonitoredChats([]);
                           setDetections([]);
                           setSelectedChats(new Set());
                           
-                          // Clear form fields
-                          setApiId('');
-                          setApiHash('');
-                          setPhoneNumber('');
-                          setBotToken('');
+                          // Reset account state only if accounts were deleted
+                          if (includeAccountsInDelete) {
+                            setUserAccount(null);
+                            setBotAccount(null);
+                            setApiId('');
+                            setApiHash('');
+                            setPhoneNumber('');
+                            setBotToken('');
+                          }
                         } else {
                           const error = await response.json();
                           setMessage({ type: 'error', text: error.error || 'Failed to delete data' });

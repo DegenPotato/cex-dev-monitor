@@ -591,10 +591,11 @@ export function createTelegramRoutes() {
   router.delete('/delete-all-data', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
+      const includeAccounts = req.query.includeAccounts === 'true';
       
-      console.log(`⚠️  [Telegram] User ${userId} requested to DELETE ALL TELEGRAM DATA`);
+      console.log(`⚠️  [Telegram] User ${userId} requested to DELETE ALL TELEGRAM DATA (includeAccounts: ${includeAccounts})`);
       
-      const result = await telegramService.deleteAllTelegramData(userId);
+      const result = await telegramService.deleteAllTelegramData(userId, includeAccounts);
       
       if (result.success) {
         res.json(result);

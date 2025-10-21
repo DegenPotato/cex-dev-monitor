@@ -592,30 +592,38 @@ export class TelegramUserService {
   /**
    * Delete ALL Telegram data for a user from ALL tables
    */
-  async deleteAllTelegramData(userId: number) {
+  async deleteAllTelegramData(userId: number, includeAccounts: boolean = true) {
     try {
       // Try to disconnect active client if exists
-      try {
-        const { telegramClientService } = await import('./TelegramClientService.js');
-        if (telegramClientService.getConnectionStatus(userId).connected) {
-          // Disconnect if method exists, otherwise just proceed
-          if (typeof (telegramClientService as any).disconnect === 'function') {
-            await (telegramClientService as any).disconnect(userId);
+      if (includeAccounts) {
+        try {
+          const { telegramClientService } = await import('./TelegramClientService.js');
+          if (telegramClientService.getConnectionStatus(userId).connected) {
+            // Disconnect if method exists, otherwise just proceed
+            if (typeof (telegramClientService as any).disconnect === 'function') {
+              await (telegramClientService as any).disconnect(userId);
+            }
           }
+        } catch (error) {
+          console.log('Could not disconnect client, proceeding with data deletion');
         }
-      } catch (error) {
-        console.log('Could not disconnect client, proceeding with data deletion');
       }
       
-      // Delete from all Telegram-related tables
-      const tables = [
+      // Delete from Telegram data tables (always)
+      const dataTables = [
         'telegram_detected_contracts',
         'telegram_message_history',
         'telegram_chat_metadata',
-        'telegram_monitored_chats',
+        'telegram_monitored_chats'
+      ];
+      
+      // Delete from account tables (optional)
+      const accountTables = [
         'telegram_bot_accounts',
         'telegram_user_accounts'
       ];
+      
+      const tables = includeAccounts ? [...dataTables, ...accountTables] : dataTables;
       
       for (const table of tables) {
         try {
@@ -628,8 +636,11 @@ export class TelegramUserService {
       
       return { 
         success: true, 
-        message: 'All Telegram data has been deleted',
-        deletedTables: tables
+        message: includeAccounts 
+          ? 'All Telegram data and accounts have been deleted'
+          : 'All Telegram data has been deleted (accounts kept)',
+        deletedTables: tables,
+        accountsDeleted: includeAccounts
       };
     } catch (error: any) {
       console.error('Error deleting all Telegram data:', error);
