@@ -91,6 +91,15 @@ export function TelegramSnifferTab() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
 
+  // Configuration modal states
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configChat, setConfigChat] = useState<any | null>(null);
+  const [configMonitorMode, setConfigMonitorMode] = useState<'all' | 'users' | 'keywords'>('all');
+  const [configKeywords, setConfigKeywords] = useState('');
+  const [configUserIds, setConfigUserIds] = useState('');
+  const [configForwardTo, setConfigForwardTo] = useState('');
+  const [configContractDetection, setConfigContractDetection] = useState(true);
+
   // WebSocket listeners for chat fetch progress
   useEffect(() => {
     const unsubscribe1 = subscribe('telegram_chat_fetch_started', () => {
@@ -995,9 +1004,24 @@ export function TelegramSnifferTab() {
                         
                         <div className="flex items-center gap-2 ml-4">
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              // Toggle monitoring for this specific chat
+                              try {
+                                const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${chat.chatId}/toggle`, {
+                                  method: 'POST',
+                                  credentials: 'include',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ isActive: !isMonitored })
+                                });
+                                if (response.ok) {
+                                  setMessage({ type: 'success', text: `${isMonitored ? 'Stopped' : 'Started'} monitoring ${chat.chatName}` });
+                                  await loadMonitoredChats();
+                                } else {
+                                  setMessage({ type: 'error', text: 'Failed to toggle monitoring' });
+                                }
+                              } catch (error) {
+                                setMessage({ type: 'error', text: 'Error toggling monitoring' });
+                              }
                             }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                               isMonitored
@@ -1010,7 +1034,14 @@ export function TelegramSnifferTab() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Open configuration modal for this chat
+                              setConfigChat(chat);
+                              const monitored = monitoredChats.find(m => m.chatId === chat.chatId);
+                              if (monitored) {
+                                setConfigKeywords(monitored.monitoredKeywords?.join(', ') || '');
+                                setConfigUserIds(monitored.monitoredUserIds?.join(', ') || '');
+                                setConfigForwardTo(monitored.forwardToChatId || '');
+                              }
+                              setConfigModalOpen(true);
                             }}
                             className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all"
                           >
@@ -1634,6 +1665,209 @@ export function TelegramSnifferTab() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Configuration Modal */}
+      {configModalOpen && configChat && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gray-900/95 backdrop-blur-sm border-b border-cyan-500/20 p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold text-cyan-300 mb-2">Configure Monitoring</h3>
+                  <p className="text-gray-400">
+                    {configChat.chatName || configChat.chatId}
+                    {configChat.username && (
+                      <span className="ml-2 text-cyan-400">@{configChat.username}</span>
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setConfigModalOpen(false)}
+                  className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-red-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Monitor Mode */}
+              <div>
+                <label className="block text-sm font-medium text-cyan-300 mb-3">
+                  Monitoring Mode
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => setConfigMonitorMode('all')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      configMonitorMode === 'all'
+                        ? 'border-purple-500 bg-purple-500/20'
+                        : 'border-gray-700 bg-black/20 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <MessageSquare className="w-6 h-6 mx-auto mb-2 text-purple-400" />
+                      <div className="font-medium text-white">All Messages</div>
+                      <div className="text-xs text-gray-400 mt-1">Monitor everything</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setConfigMonitorMode('keywords')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      configMonitorMode === 'keywords'
+                        ? 'border-cyan-500 bg-cyan-500/20'
+                        : 'border-gray-700 bg-black/20 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <Search className="w-6 h-6 mx-auto mb-2 text-cyan-400" />
+                      <div className="font-medium text-white">Keywords</div>
+                      <div className="text-xs text-gray-400 mt-1">Specific terms only</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setConfigMonitorMode('users')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      configMonitorMode === 'users'
+                        ? 'border-green-500 bg-green-500/20'
+                        : 'border-gray-700 bg-black/20 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <User className="w-6 h-6 mx-auto mb-2 text-green-400" />
+                      <div className="font-medium text-white">Specific Users</div>
+                      <div className="text-xs text-gray-400 mt-1">Track user IDs</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Keywords (if mode is keywords) */}
+              {configMonitorMode === 'keywords' && (
+                <div>
+                  <label className="block text-sm font-medium text-cyan-300 mb-2">
+                    Keywords to Monitor
+                  </label>
+                  <input
+                    type="text"
+                    value={configKeywords}
+                    onChange={(e) => setConfigKeywords(e.target.value)}
+                    placeholder="contract, CA, token, pump (comma-separated)"
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Messages containing any of these keywords will be monitored
+                  </p>
+                </div>
+              )}
+
+              {/* User IDs (if mode is users) */}
+              {configMonitorMode === 'users' && (
+                <div>
+                  <label className="block text-sm font-medium text-cyan-300 mb-2">
+                    User IDs to Monitor
+                  </label>
+                  <input
+                    type="text"
+                    value={configUserIds}
+                    onChange={(e) => setConfigUserIds(e.target.value)}
+                    placeholder="123456789, 987654321 (comma-separated)"
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Only messages from these Telegram user IDs will be monitored
+                  </p>
+                </div>
+              )}
+
+              {/* Contract Detection Toggle */}
+              <div className="flex items-center justify-between p-4 bg-black/20 rounded-lg border border-purple-500/20">
+                <div>
+                  <div className="font-medium text-white">Contract Address Detection</div>
+                  <div className="text-sm text-gray-400 mt-1">
+                    Automatically detect Solana contract addresses
+                  </div>
+                </div>
+                <button
+                  onClick={() => setConfigContractDetection(!configContractDetection)}
+                  className={`relative w-14 h-7 rounded-full transition-colors ${
+                    configContractDetection ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                      configContractDetection ? 'translate-x-8' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Forward To Chat */}
+              <div>
+                <label className="block text-sm font-medium text-cyan-300 mb-2">
+                  Forward Messages To (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={configForwardTo}
+                  onChange={(e) => setConfigForwardTo(e.target.value)}
+                  placeholder="Enter chat ID or @username"
+                  className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  Detected messages will be automatically forwarded to this chat
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-gray-900/95 backdrop-blur-sm border-t border-cyan-500/20 p-6 flex gap-3">
+              <button
+                onClick={() => setConfigModalOpen(false)}
+                className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${configChat.chatId}/configure`, {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        monitoredKeywords: configKeywords ? configKeywords.split(',').map(k => k.trim()).filter(k => k) : [],
+                        monitoredUserIds: configUserIds ? configUserIds.split(',').map(u => u.trim()).filter(u => u) : [],
+                        forwardToChatId: configForwardTo || null,
+                        isActive: true
+                      })
+                    });
+
+                    if (response.ok) {
+                      setMessage({ type: 'success', text: 'Configuration saved successfully!' });
+                      setConfigModalOpen(false);
+                      await loadMonitoredChats();
+                    } else {
+                      setMessage({ type: 'error', text: 'Failed to save configuration' });
+                    }
+                  } catch (error) {
+                    setMessage({ type: 'error', text: 'Error saving configuration' });
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 rounded-lg text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Saving...' : 'Save & Start Monitoring'}
+              </button>
+            </div>
           </div>
         </div>
       )}
