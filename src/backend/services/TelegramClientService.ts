@@ -371,7 +371,6 @@ export class TelegramClientService extends EventEmitter {
     
     // Cache monitored chats and refresh periodically
     let cachedChats = await this.getMonitoredChats(userId);
-    let cachedFilters = await this.getUserFilters(userId);
     let lastRefresh = Date.now();
     
     // Refresh cache every 30 seconds
@@ -379,7 +378,6 @@ export class TelegramClientService extends EventEmitter {
       const now = Date.now();
       if (now - lastRefresh > 30000) {
         cachedChats = await this.getMonitoredChats(userId);
-        cachedFilters = await this.getUserFilters(userId);
         lastRefresh = now;
         console.log(`🔄 [Telegram:${userIdentifier}] Refreshed monitored chats (${cachedChats.length} chats)`);
       }
@@ -426,12 +424,12 @@ export class TelegramClientService extends EventEmitter {
           date: message.date
         });
 
-        // Apply user ID filter first (if configured)
-        if (cachedFilters.length > 0) {
+        // Apply user ID filter first (if configured for this chat)
+        if (monitoredChat.monitoredUserIds && monitoredChat.monitoredUserIds.length > 0) {
           const senderId = message.senderId?.toString();
-          const isFilteredUser = cachedFilters.some(id => id.toString() === senderId);
+          const isFilteredUser = monitoredChat.monitoredUserIds.some((id: string) => id.toString() === senderId);
           if (!isFilteredUser) {
-            console.log(`   ⏭️  Skipped detection: sender ${senderId} not in user filter list`);
+            console.log(`   ⏭️  Skipped detection: sender ${senderId} not in chat's user filter list`);
             return; // Skip all detection if user filter fails
           }
         }
