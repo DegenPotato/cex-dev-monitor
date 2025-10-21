@@ -639,23 +639,29 @@ export class TelegramClientService extends EventEmitter {
             let forwardError: string | undefined;
             let processedAction = shouldProcess.reason || 'detected';
             
-            // Try to forward first
-            if (monitoredChat.forwardToChatId && shouldProcess.forward) {
-              const forwardStartTime = Date.now();
-              let forwardAccountId = userId;
-              let forwardAccountPhone = '';
+            // Get all forward destinations for this chat
+            const forwardDestinations = await this.getForwardDestinations(userId, chatId!);
+            
+            // Try to forward to all configured destinations
+            if (forwardDestinations.length > 0 && shouldProcess.forward) {
+              const forwardResults = [];
+              
+              for (const destination of forwardDestinations) {
+                const forwardStartTime = Date.now();
+                let forwardAccountId = destination.forward_account_id || monitoredChat.forwardAccountId || userId;
+                let forwardAccountPhone = '';
               
               try {
                 // Determine which client to use for forwarding
                 let forwardClient = client; // Default to detection client
                 
-                // If a specific forward account is configured
-                if (monitoredChat.forwardAccountId) {
+                // If a specific forward account is configured for this destination
+                if (forwardAccountId && forwardAccountId !== userId) {
                   // Always try to get the user account (non-bot) first for forwarding
-                  let forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
+                  let forwardAccount = this.activeClients.get(forwardAccountId);
                   if (!forwardAccount) {
                     // Try with bot_ prefix
-                    forwardAccount = this.activeClients.get(`bot_${monitoredChat.forwardAccountId}`);
+                    forwardAccount = this.activeClients.get(`bot_${forwardAccountId}`);
                   }
                   
                   if (forwardAccount) {
@@ -663,7 +669,7 @@ export class TelegramClientService extends EventEmitter {
                     try {
                       const forwardMe = await forwardAccount.getMe();
                       if (forwardMe.bot) {
-                        console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} is a bot, cannot forward to users. Trying detection account.`);
+                        console.log(`   ⚠️  Forward account ${forwardAccountId} is a bot, cannot forward to users. Trying detection account.`);
                         // If detection client is also not a bot, use it
                         const detectionMe = await client.getMe();
                         if (!detectionMe.bot) {
@@ -675,8 +681,8 @@ export class TelegramClientService extends EventEmitter {
                         }
                       } else {
                         forwardClient = forwardAccount;
-                        forwardAccountId = monitoredChat.forwardAccountId;
-                        console.log(`   📤 Using account for forwarding: User ${monitoredChat.forwardAccountId} (@${forwardMe.username})`);
+                        // forwardAccountId already set
+                        console.log(`   📤 Using account for forwarding: User ${forwardAccountId} (@${forwardMe.username}`);
                       }
                     } catch (error: any) {
                       if (error.message?.includes('No valid user account')) {
@@ -685,7 +691,8 @@ export class TelegramClientService extends EventEmitter {
                       console.log(`   ⚠️  Could not verify forward account type: ${error.message}`);
                     }
                   } else {
-                    console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
+                    console.log(`   ⚠️  Forward account ${forwardAccountId} not active, using detection account`);
+                    forwardAccountId = userId;
                   }
                 }
                 
@@ -693,7 +700,7 @@ export class TelegramClientService extends EventEmitter {
                 const forwardMessage = contract.address;
                 
                 // Parse the forward target - handle different ID formats
-                let forwardTarget: any = monitoredChat.forwardToChatId;
+                let forwardTarget: any = destination.target_chat_id;
                 
                 // Convert string to appropriate type for telegram library
                 if (typeof forwardTarget === 'string') {
@@ -726,7 +733,8 @@ export class TelegramClientService extends EventEmitter {
                 
                 wasForwarded = true;
                 forwardLatency = Date.now() - forwardStartTime;
-                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId} in ${forwardLatency}ms`);
+                console.log(`   ✅ Auto-forwarded to ${destination.target_chat_name || destination.target_chat_id} in ${forwardLatency}ms`);
+                forwardResults.push({ target: destination.target_chat_id, success: true, latency: forwardLatency });
                 
                 // Log successful forward
                 await this.logForwardingHistory(userId, {
@@ -735,7 +743,7 @@ export class TelegramClientService extends EventEmitter {
                   messageId: message.id.toString(),
                   contractAddress: contract.address,
                   detectionType: contract.type,
-                  targetChatId: monitoredChat.forwardToChatId,
+                  targetChatId: destination.target_chat_id,
                   detectionAccountId: userId,
                   forwardAccountId,
                   forwardAccountPhone,
@@ -745,7 +753,8 @@ export class TelegramClientService extends EventEmitter {
                 });
               } catch (error: any) {
                 forwardError = error.message || 'Unknown error';
-                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, forwardError);
+                console.error(`   ❌ Failed to forward to ${destination.target_chat_name || destination.target_chat_id}:`, forwardError);
+                forwardResults.push({ target: destination.target_chat_id, success: false, error: forwardError });
                 
                 // Log failed forward
                 await this.logForwardingHistory(userId, {
@@ -754,7 +763,7 @@ export class TelegramClientService extends EventEmitter {
                   messageId: message.id.toString(),
                   contractAddress: contract.address,
                   detectionType: contract.type,
-                  targetChatId: monitoredChat.forwardToChatId,
+                  targetChatId: destination.target_chat_id,
                   detectionAccountId: userId,
                   forwardAccountId,
                   forwardAccountPhone,
@@ -763,6 +772,15 @@ export class TelegramClientService extends EventEmitter {
                   latencyMs: Date.now() - forwardStartTime,
                   detectedAt: Math.floor(Date.now() / 1000)
                 });
+              }
+              } // End of for loop for destinations
+              
+              // Set overall forward status based on any successful forwards
+              wasForwarded = forwardResults.some(r => r.success);
+              // Set first successful forward latency if any
+              const successfulForward = forwardResults.find(r => r.success);
+              if (successfulForward) {
+                forwardLatency = successfulForward.latency;
               }
             }
             
@@ -1743,6 +1761,41 @@ export class TelegramClientService extends EventEmitter {
     });
     
     return accounts;
+  }
+
+  /**
+   * Get forward destinations for a monitored chat
+   */
+  private async getForwardDestinations(userId: number, sourceChatId: string): Promise<any[]> {
+    const destinations = await queryAll(`
+      SELECT 
+        target_chat_id,
+        target_chat_name,
+        forward_account_id
+      FROM telegram_forward_destinations
+      WHERE user_id = ? 
+        AND source_chat_id = ?
+        AND is_active = 1
+    `, [userId, sourceChatId]);
+    
+    // If no new multi-destination config, fall back to legacy single destination
+    if (!destinations || destinations.length === 0) {
+      const chat = await queryOne(`
+        SELECT forward_to_chat_id, forward_account_id 
+        FROM telegram_monitored_chats
+        WHERE user_id = ? AND chat_id = ?
+      `, [userId, sourceChatId]);
+      
+      if (chat && (chat as any).forward_to_chat_id) {
+        return [{
+          target_chat_id: (chat as any).forward_to_chat_id,
+          target_chat_name: (chat as any).forward_to_chat_id,
+          forward_account_id: (chat as any).forward_account_id
+        }];
+      }
+    }
+    
+    return destinations || [];
   }
 
   /**

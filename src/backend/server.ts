@@ -144,6 +144,10 @@ app.use('/api/telegram', telegramRoutes);
 import telegramForwardingRoutes from './routes/telegram-forwarding.js';
 app.use('/api/telegram/forwarding', telegramForwardingRoutes);
 
+// Register Telegram forward destinations routes
+import telegramForwardDestinationRoutes from './routes/telegram-forwarding-destinations.js';
+app.use('/api/telegram/forward-destinations', telegramForwardDestinationRoutes);
+
 // Register token routes
 import tokenRoutes from './routes/tokens.js';
 app.use('/api/tokens', tokenRoutes);
