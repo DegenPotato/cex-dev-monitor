@@ -416,41 +416,46 @@ export class TelegramClientService extends EventEmitter {
         // Auto-cache ALL messages from monitored chats (before filters)
         await this.cacheMessageToHistory(userId, chatId!, message, client);
 
-        // Apply filters for contract detection
-        let shouldDetectContracts = true;
-        
-        // Check user ID filter (if configured)
+        // Apply user ID filter first (if configured)
         if (cachedFilters.length > 0) {
           const senderId = message.senderId?.toString();
           const isFilteredUser = cachedFilters.some(id => id.toString() === senderId);
           if (!isFilteredUser) {
-            console.log(`   ⏭️  Skipped contract detection: sender ${senderId} not in user filter list`);
-            shouldDetectContracts = false;
+            console.log(`   ⏭️  Skipped detection: sender ${senderId} not in user filter list`);
+            return; // Skip all detection if user filter fails
           }
         }
+
+        // Now detect either contracts OR keywords OR both
+        let detectionTriggered = false;
         
-        // Check keyword filter (if configured) - only if still eligible for detection
-        if (shouldDetectContracts && monitoredChat.monitoredKeywords && monitoredChat.monitoredKeywords.length > 0) {
-          const hasKeyword = monitoredChat.monitoredKeywords.some((keyword: string) => 
+        // 1. Check for contract addresses
+        const contracts = this.extractContracts(message.message);
+        if (contracts.length > 0) {
+          console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
+          detectionTriggered = true;
+        }
+        
+        // 2. Check for keywords (if configured)
+        let matchedKeywords: string[] = [];
+        if (monitoredChat.monitoredKeywords && monitoredChat.monitoredKeywords.length > 0) {
+          matchedKeywords = monitoredChat.monitoredKeywords.filter((keyword: string) => 
             message.message.toLowerCase().includes(keyword.toLowerCase())
           );
-          if (!hasKeyword) {
-            console.log(`   ⏭️  Skipped contract detection: no matching keywords`);
-            shouldDetectContracts = false;
+          if (matchedKeywords.length > 0) {
+            console.log(`   🔑 Matched keywords: ${matchedKeywords.join(', ')}`);
+            detectionTriggered = true;
           }
         }
 
-        // Skip contract detection if filters didn't pass (message still cached above)
-        if (!shouldDetectContracts) {
+        // If nothing detected, skip
+        if (!detectionTriggered) {
+          console.log(`   ⏭️  No contracts or keywords detected`);
           return;
         }
-
-        // Extract contract addresses (only if passed filters)
-        const contracts = this.extractContracts(message.message);
-        console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
         
+        // Emit contract detection events
         if (contracts.length > 0) {
-          // Save to database and emit event
           for (const contract of contracts) {
             await this.saveDetectedContract(userId, {
               chatId: chatId!,
@@ -463,7 +468,6 @@ export class TelegramClientService extends EventEmitter {
               messageText: message.message
             });
 
-            // Emit event for real-time updates
             this.emit('contract_detected', {
               userId,
               chatId,
@@ -473,6 +477,17 @@ export class TelegramClientService extends EventEmitter {
               message: message.message
             });
           }
+        }
+
+        // Emit keyword detection events
+        if (matchedKeywords.length > 0) {
+          this.emit('keyword_detected', {
+            userId,
+            chatId,
+            keywords: matchedKeywords,
+            sender: message.senderId?.toString(),
+            message: message.message
+          });
         }
       } catch (error) {
         console.error('Message processing error:', error);
