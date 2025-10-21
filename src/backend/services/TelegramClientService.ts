@@ -369,15 +369,30 @@ export class TelegramClientService extends EventEmitter {
     const me = await client.getMe();
     const userIdentifier = `User ${userId} (@${me.username || me.firstName})`;
     
-    // Get monitored chats from database
-    const chats = await this.getMonitoredChats(userId);
-    const userFilters = await this.getUserFilters(userId);
+    // Cache monitored chats and refresh periodically
+    let cachedChats = await this.getMonitoredChats(userId);
+    let cachedFilters = await this.getUserFilters(userId);
+    let lastRefresh = Date.now();
+    
+    // Refresh cache every 30 seconds
+    const refreshCache = async () => {
+      const now = Date.now();
+      if (now - lastRefresh > 30000) {
+        cachedChats = await this.getMonitoredChats(userId);
+        cachedFilters = await this.getUserFilters(userId);
+        lastRefresh = now;
+        console.log(`🔄 [Telegram:${userIdentifier}] Refreshed monitored chats (${cachedChats.length} chats)`);
+      }
+    };
     
     // Add message handler
     client.addEventHandler(async (event: any) => {
       try {
         const message = event.message;
         if (!message || !message.message) return;
+
+        // Refresh cache if needed
+        await refreshCache();
 
         // Check if message is from monitored chat
         // For forum groups/topics, use peerId.channelId (for supergroups/channels)
@@ -388,23 +403,29 @@ export class TelegramClientService extends EventEmitter {
           chatId = message.peerId.chatId.toString();
         }
         
-        const monitoredChat = chats.find(c => c.chatId === chatId);
+        const monitoredChat = cachedChats.find(c => c.chatId === chatId);
         if (!monitoredChat) {
           console.log(`⏭️  [Telegram:${userIdentifier}] Message from unmonitored chat: ${chatId}`);
+          console.log(`   Monitored chats: ${cachedChats.map(c => c.chatId).join(', ')}`);
           return;
         }
         
         console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})`);
+        console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
 
         // Check if message is from filtered user (if filters exist)
-        if (userFilters.length > 0) {
+        if (cachedFilters.length > 0) {
           const senderId = message.senderId?.toString();
-          const isFilteredUser = userFilters.some(id => id.toString() === senderId);
-          if (!isFilteredUser) return;
+          const isFilteredUser = cachedFilters.some(id => id.toString() === senderId);
+          if (!isFilteredUser) {
+            console.log(`   ⏭️  Skipped: sender ${senderId} not in filter list`);
+            return;
+          }
         }
 
         // Extract contract addresses
         const contracts = this.extractContracts(message.message);
+        console.log(`   🔍 Detected ${contracts.length} contracts: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
         
         if (contracts.length > 0) {
           // Save to database and emit event
