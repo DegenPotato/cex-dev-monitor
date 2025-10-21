@@ -377,32 +377,49 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
     return curve;
   };
 
-  // Setup Web Audio API for distortion
-  const setupAudioProcessing = () => {
+  // Setup Web Audio API for distortion using backend proxy
+  const setupAudioProcessing = async (videoId: string) => {
     try {
-      // Get the iframe element
-      const iframe = document.querySelector('#youtube-audio-player iframe') as HTMLIFrameElement;
-      if (!iframe) {
-        console.warn('⚠️ YouTube iframe not found for audio processing');
+      if (!videoId) {
+        console.warn('⚠️ No video ID provided for audio processing');
         return;
       }
+
+      console.log(`🎵 Setting up audio processing for video: ${videoId}`);
 
       // Create audio context if it doesn't exist
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        console.log('✅ AudioContext created for YouTube');
+        console.log('✅ AudioContext created');
       }
 
       const context = audioContextRef.current;
 
-      // Try to get the video element from YouTube player
-      // Note: This will likely fail due to CORS restrictions on YouTube iframes
-      const player = playerRef.current as any;
-      const videoElement = player?.getIframe?.()?.contentWindow?.document?.querySelector('video');
-      
-      if (videoElement && !sourceNodeRef.current) {
-        // Create source node from video element
-        sourceNodeRef.current = context.createMediaElementSource(videoElement);
+      // Fetch audio URL from backend proxy (bypasses CORS)
+      const response = await fetch(`${config.apiUrl}/api/youtube-audio/url/${videoId}`);
+      if (!response.ok) {
+        throw new Error('Failed to get audio URL from proxy');
+      }
+
+      const { audioUrl } = await response.json();
+      console.log('✅ Got audio URL from backend proxy');
+
+      // Create or reuse audio element
+      let audioElement = document.getElementById('youtube-audio-element') as HTMLAudioElement;
+      if (!audioElement) {
+        audioElement = document.createElement('audio');
+        audioElement.id = 'youtube-audio-element';
+        audioElement.crossOrigin = 'anonymous';
+        document.body.appendChild(audioElement);
+      }
+
+      // Set the audio source to proxied URL
+      audioElement.src = audioUrl;
+      audioElement.volume = volume / 100;
+
+      // Create source node if it doesn't exist
+      if (!sourceNodeRef.current) {
+        sourceNodeRef.current = context.createMediaElementSource(audioElement);
         
         // Create filter node (lowpass)
         filterRef.current = context.createBiquadFilter();
@@ -424,11 +441,20 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
         distortionNodeRef.current.connect(gainNodeRef.current);
         gainNodeRef.current.connect(context.destination);
         
-        console.log('✅ Web Audio processing chain set up for YouTube');
+        console.log('✅ Web Audio processing chain set up');
       }
+
+      // Sync playback with YouTube player
+      const player = playerRef.current as any;
+      if (player && player.getPlayerState) {
+        const state = player.getPlayerState();
+        if (state === 1) { // Playing
+          await audioElement.play();
+        }
+      }
+
     } catch (error) {
-      console.warn('⚠️ Could not set up audio processing (CORS restriction):', error);
-      // This is expected due to CORS - YouTube iframe doesn't allow direct audio access
+      console.error('❌ Failed to set up audio processing:', error);
     }
   };
 
@@ -436,9 +462,6 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
   const onPlayerReady = (event: any) => {
     console.log('✅ YouTube player ready');
     event.target.setVolume(volume);
-    
-    // Try to setup audio processing (may fail due to CORS)
-    setTimeout(() => setupAudioProcessing(), 1000);
   };
 
   const onPlayerStateChange = (event: any) => {
@@ -588,6 +611,9 @@ export const YouTubeAudioProvider: React.FC<{ children: ReactNode }> = ({ childr
     console.log('▶️ Playing video:', video.title);
     setCurrentVideo(video);
     playerRef.current.loadVideoById(video.id);
+    
+    // Setup audio processing with backend proxy
+    setTimeout(() => setupAudioProcessing(video.id), 1000);
   };
 
   const addToQueue = (video: YouTubeVideo) => {

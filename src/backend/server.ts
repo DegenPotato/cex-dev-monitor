@@ -36,6 +36,7 @@ import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
+import youtubeAudioRoutes from './routes/youtube-audio.js';
 import { createTelegramRoutes } from './routes/telegram.js';
 import userDataRoutes from './routes/user-data.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
@@ -132,6 +133,7 @@ app.use('/api/youtube', (req, res, next) => {
   }
   next();
 }, youtubeRoutes); // YouTube integration (requires auth)
+app.use('/api/youtube-audio', youtubeAudioRoutes); // YouTube audio proxy (bypasses CORS)
 app.use('/api/database', databaseRoutes);
 
 // Register Telegram routes
