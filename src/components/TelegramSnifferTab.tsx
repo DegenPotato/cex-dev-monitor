@@ -18,7 +18,9 @@ import {
   Users,
   Shield,
   History,
-  AlertTriangle
+  AlertTriangle,
+  ChevronDown,
+  CheckSquare
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -118,11 +120,70 @@ export function TelegramSnifferTab() {
   const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
   const [configDuplicateStrategy, setConfigDuplicateStrategy] = useState<string>('first_only_no_backlog');
   
+  // Multi-select forward destinations
+  const [availableForwardTargets, setAvailableForwardTargets] = useState<Array<any>>([]);
+  const [selectedForwardDestinations, setSelectedForwardDestinations] = useState<Array<{ 
+    targetChatId: string; 
+    targetChatName: string; 
+    forwardAccountId?: number | null;
+  }>>([]);
+  const [forwardTargetFilter, setForwardTargetFilter] = useState('');
+  const [showForwardDropdown, setShowForwardDropdown] = useState(false);
+  
   // Available telegram accounts for forwarding
   const [telegramAccounts, setTelegramAccounts] = useState<Array<{ id: number; name: string; phone?: string }>>([]);
 
   // Chat history viewing state
   const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string} | null>(null);
+
+  // Load available forward targets when modal opens
+  const loadAvailableForwardTargets = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/telegram/forward-destinations/available-targets`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const targets = await response.json();
+        setAvailableForwardTargets(targets);
+      }
+    } catch (error) {
+      console.error('Failed to load forward targets:', error);
+    }
+  };
+
+  // Load existing forward destinations for a chat
+  const loadForwardDestinations = async (chatId: string) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/telegram/forward-destinations/destinations/${chatId}`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const destinations = await response.json();
+        setSelectedForwardDestinations(destinations.map((d: any) => ({
+          targetChatId: d.target_chat_id,
+          targetChatName: d.target_chat_name || d.target_chat_id,
+          forwardAccountId: d.forward_account_id
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to load forward destinations:', error);
+    }
+  };
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.forward-dropdown-container')) {
+        setShowForwardDropdown(false);
+      }
+    };
+
+    if (showForwardDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showForwardDropdown]);
 
   // WebSocket listeners for chat fetch progress
   useEffect(() => {
@@ -1229,6 +1290,8 @@ export function TelegramSnifferTab() {
                                 setConfigUserIds(monitored.monitoredUserIds?.join(', ') || '');
                                 setConfigForwardTo(monitored.forwardToChatId || '');
                               }
+                              loadForwardDestinations(chat.chatId);
+                              loadAvailableForwardTargets();
                               setConfigModalOpen(true);
                             }}
                             className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all"
@@ -2402,20 +2465,147 @@ export function TelegramSnifferTab() {
               <div className="space-y-4 p-4 bg-black/20 rounded-lg border border-yellow-500/20">
                 <h4 className="text-sm font-medium text-yellow-300">Auto-Forward Settings (Optional)</h4>
                 
-                {/* Forward To Chat */}
+                {/* Multi-Select Forward Destinations */}
                 <div>
                   <label className="block text-sm font-medium text-cyan-300 mb-2">
-                    Destination Chat
+                    Forward Destinations
                   </label>
-                  <input
-                    type="text"
-                    value={configForwardTo}
-                    onChange={(e) => setConfigForwardTo(e.target.value)}
-                    placeholder="Enter chat ID or @username"
-                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
-                  />
+                  
+                  {/* Selected Destinations */}
+                  {selectedForwardDestinations.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {selectedForwardDestinations.map((dest, index) => (
+                        <div key={index} className="flex items-center gap-1 px-3 py-1.5 bg-cyan-500/20 border border-cyan-500/40 rounded-lg">
+                          <span className="text-sm text-cyan-300">
+                            {dest.targetChatName || dest.targetChatId}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setSelectedForwardDestinations(prev => 
+                                prev.filter((_, i) => i !== index)
+                              );
+                            }}
+                            className="ml-1 text-cyan-400 hover:text-cyan-300"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Dropdown Selector */}
+                  <div className="relative forward-dropdown-container">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={forwardTargetFilter}
+                        onChange={(e) => setForwardTargetFilter(e.target.value)}
+                        onFocus={() => setShowForwardDropdown(true)}
+                        placeholder="Search chats to forward to..."
+                        className="flex-1 px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
+                      />
+                      <button
+                        onClick={() => setShowForwardDropdown(!showForwardDropdown)}
+                        className="px-3 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Dropdown List */}
+                    {showForwardDropdown && (
+                      <div className="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-gray-900/95 backdrop-blur-sm border border-cyan-500/30 rounded-lg shadow-xl">
+                        {/* Bulk Actions */}
+                        <div className="sticky top-0 bg-gray-900 border-b border-cyan-500/20 p-2 flex gap-2">
+                          <button
+                            onClick={() => {
+                              const filtered = availableForwardTargets.filter(t => 
+                                !forwardTargetFilter || 
+                                t.chat_name?.toLowerCase().includes(forwardTargetFilter.toLowerCase()) ||
+                                t.username?.toLowerCase().includes(forwardTargetFilter.toLowerCase())
+                              );
+                              const newDestinations = filtered.map(t => ({
+                                targetChatId: t.chat_id,
+                                targetChatName: t.chat_name || t.username || t.chat_id,
+                                forwardAccountId: null
+                              }));
+                              setSelectedForwardDestinations(prev => {
+                                const existing = new Set(prev.map(d => d.targetChatId));
+                                return [
+                                  ...prev,
+                                  ...newDestinations.filter(d => !existing.has(d.targetChatId))
+                                ];
+                              });
+                            }}
+                            className="flex-1 px-2 py-1 text-xs bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded text-cyan-300 transition-colors"
+                          >
+                            Select All Filtered
+                          </button>
+                          <button
+                            onClick={() => setSelectedForwardDestinations([])}
+                            className="flex-1 px-2 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-300 transition-colors"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        
+                        {/* Target List */}
+                        <div className="p-1">
+                          {availableForwardTargets
+                            .filter(target => 
+                              !forwardTargetFilter || 
+                              target.chat_name?.toLowerCase().includes(forwardTargetFilter.toLowerCase()) ||
+                              target.username?.toLowerCase().includes(forwardTargetFilter.toLowerCase()) ||
+                              target.chat_id?.toLowerCase().includes(forwardTargetFilter.toLowerCase())
+                            )
+                            .map(target => {
+                              const isSelected = selectedForwardDestinations.some(d => d.targetChatId === target.chat_id);
+                              return (
+                                <button
+                                  key={target.chat_id}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setSelectedForwardDestinations(prev => 
+                                        prev.filter(d => d.targetChatId !== target.chat_id)
+                                      );
+                                    } else {
+                                      setSelectedForwardDestinations(prev => [...prev, {
+                                        targetChatId: target.chat_id,
+                                        targetChatName: target.chat_name || target.username || target.chat_id,
+                                        forwardAccountId: null
+                                      }]);
+                                    }
+                                  }}
+                                  className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-cyan-500/10 rounded transition-colors ${
+                                    isSelected ? 'bg-cyan-500/20' : ''
+                                  }`}
+                                >
+                                  <CheckSquare className={`w-4 h-4 ${isSelected ? 'text-cyan-400' : 'text-gray-500'}`} />
+                                  <div className="flex-1">
+                                    <div className="text-sm text-white">
+                                      {target.chat_name || 'Unnamed Chat'}
+                                    </div>
+                                    {target.username && (
+                                      <div className="text-xs text-gray-400">@{target.username}</div>
+                                    )}
+                                  </div>
+                                  <span className="text-xs px-1.5 py-0.5 bg-black/30 rounded text-gray-400">
+                                    {target.chat_type || 'unknown'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          {availableForwardTargets.length === 0 && (
+                            <p className="text-center text-gray-400 py-4">No available chats to forward to</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
                   <p className="text-xs text-gray-400 mt-2">
-                    Auto-forward detected contracts to this chat
+                    Selected {selectedForwardDestinations.length} destination{selectedForwardDestinations.length !== 1 ? 's' : ''} for auto-forwarding
                   </p>
                 </div>
                 
@@ -2463,7 +2653,12 @@ export function TelegramSnifferTab() {
             {/* Modal Footer */}
             <div className="sticky bottom-0 bg-gray-900/95 backdrop-blur-sm border-t border-cyan-500/20 p-6 flex gap-3">
               <button
-                onClick={() => setConfigModalOpen(false)}
+                onClick={() => {
+                  setConfigModalOpen(false);
+                  setSelectedForwardDestinations([]);
+                  setForwardTargetFilter('');
+                  setShowForwardDropdown(false);
+                }}
                 className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors"
               >
                 Cancel
@@ -2487,6 +2682,28 @@ export function TelegramSnifferTab() {
                     });
 
                     if (response.ok) {
+                      // Save multi-destination configuration
+                      if (selectedForwardDestinations.length > 0) {
+                        await fetch(`${config.apiUrl}/api/telegram/forward-destinations/destinations/${configChat.chatId}`, {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            destinations: selectedForwardDestinations.map(d => ({
+                              targetChatId: d.targetChatId,
+                              targetChatName: d.targetChatName,
+                              forwardAccountId: d.forwardAccountId
+                            }))
+                          })
+                        });
+                      } else {
+                        // Clear all destinations if none selected
+                        await fetch(`${config.apiUrl}/api/telegram/forward-destinations/destinations/${configChat.chatId}`, {
+                          method: 'DELETE',
+                          credentials: 'include'
+                        });
+                      }
+                      
                       // Also save duplicate strategy configuration
                       await fetch(`${config.apiUrl}/api/telegram/chat-config`, {
                         method: 'POST',
@@ -2502,6 +2719,9 @@ export function TelegramSnifferTab() {
                       
                       setMessage({ type: 'success', text: 'Configuration saved successfully!' });
                       setConfigModalOpen(false);
+                      setSelectedForwardDestinations([]);
+                      setForwardTargetFilter('');
+                      setShowForwardDropdown(false);
                       await loadMonitoredChats();
                     } else {
                       setMessage({ type: 'error', text: 'Failed to save configuration' });
