@@ -649,20 +649,27 @@ export class TelegramClientService extends EventEmitter {
                 if (typeof forwardTarget === 'string') {
                   // If it starts with @ it's a username, leave as string
                   if (!forwardTarget.startsWith('@')) {
-                    // It's a numeric ID - parse it
+                    // It's a numeric ID - need to resolve entity first
                     if (forwardTarget.startsWith('-')) {
                       // Group/channel ID (negative number)
                       forwardTarget = parseInt(forwardTarget);
                     } else {
-                      // User/bot ID - KEEP AS STRING (telegram library handles it)
-                      // Don't convert to number or BigInt - the library expects string for user IDs
-                      forwardTarget = forwardTarget;
+                      // User/bot ID - resolve entity to cache it
+                      const userId = parseInt(forwardTarget);
+                      console.log(`   🔍 Resolving entity for user ID: ${userId}`);
+                      try {
+                        // This will cache the entity for subsequent use
+                        await forwardClient.getEntity(userId);
+                        forwardTarget = userId;
+                      } catch (entityError: any) {
+                        console.log(`   ⚠️  Failed to resolve entity ${userId}: ${entityError.message}`);
+                        throw new Error(`Cannot forward to user ${userId}: ${entityError.message}`);
+                      }
                     }
                   }
                 }
                 
                 // Send using the selected forward account (user or bot)
-                // If entity resolution fails, the error will be caught in the outer try/catch
                 await forwardClient.sendMessage(forwardTarget, { 
                   message: forwardMessage
                 });
