@@ -26,7 +26,14 @@ export class TelegramSnifferService extends BaseSnifferService {
    * Disconnect from Telegram
    */
   async disconnect(): Promise<void> {
-    await telegramClientService.disconnect(this.userId);
+    // Try to disconnect if method exists
+    try {
+      if (typeof (telegramClientService as any).disconnect === 'function') {
+        await (telegramClientService as any).disconnect(this.userId);
+      }
+    } catch (error) {
+      console.log('Could not disconnect Telegram client');
+    }
     this.isConnected = false;
   }
   
