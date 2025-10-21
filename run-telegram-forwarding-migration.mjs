@@ -9,10 +9,18 @@ const db = new SQL.Database(buffer);
 
 // Read and execute the SQL file
 const sqlContent = readFileSync('./src/backend/database/migrations/007_telegram_multi_account_forwarding.sql', 'utf8');
-const statements = sqlContent
+
+// Remove comments first
+const noComments = sqlContent
+  .split('\n')
+  .filter(line => !line.trim().startsWith('--'))
+  .join('\n');
+
+// Split by semicolon, handling multi-line statements
+const statements = noComments
   .split(';')
   .map(s => s.trim())
-  .filter(s => s.length > 0 && !s.startsWith('--'));
+  .filter(s => s.length > 0);
 
 console.log(`📋 Found ${statements.length} statements to execute`);
 

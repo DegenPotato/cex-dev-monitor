@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { queryOne, queryAll, execute } from '../database/helpers.js';
+import { queryAll, execute, getLastInsertId } from '../database/helpers.js';
 import { apiProviderTracker } from './ApiProviderTracker.js';
 
 interface ForwardingRule {
@@ -217,7 +217,7 @@ export class TelegramForwardingService extends EventEmitter {
       const rateLimitCheck = this.canForward(rule);
       if (!rateLimitCheck.allowed) {
         console.warn(`⚠️  [Forwarding] Rate limited for rule "${rule.ruleName}": ${rateLimitCheck.reason}`);
-        await this.logForwardingHistory(rule.id, rule.userId, sourceChatId, message, null, 'rate_limited', rateLimitCheck.reason, 0);
+        await this.logForwardingHistory(rule.id, rule.userId, sourceChatId, message, null, 'rate_limited', rateLimitCheck.reason || null, 0);
         continue;
       }
       
@@ -244,10 +244,9 @@ export class TelegramForwardingService extends EventEmitter {
           console.log(`  ➡️  Forwarding to ${targetChatId} using account ${rule.targetAccountId}...`);
           
           // Perform the forward
-          let forwardedMessage;
           if (rule.forwardMode === 'forward') {
             // Use Telegram's native forward (shows "Forwarded from")
-            forwardedMessage = await client.forwardMessages(targetChatId, {
+            await client.forwardMessages(targetChatId, {
               messages: [message.id],
               fromPeer: sourceChatId
             });
@@ -258,8 +257,8 @@ export class TelegramForwardingService extends EventEmitter {
               messageText = `From @${message.senderUsername}:\n\n${messageText}`;
             }
             
-            forwardedMessage = await client.sendMessage(targetChatId, {
-              message: messageText,
+            await client.sendMessage(targetChatId, {
+              message: messageText || '',
               // TODO: Copy media if present
             });
           }
@@ -411,12 +410,12 @@ export class TelegramForwardingService extends EventEmitter {
     const cutoffTime = Math.floor(Date.now() / 1000) - (this.HISTORY_RETENTION_DAYS * 24 * 60 * 60);
     
     try {
-      const result = await execute(
+      await execute(
         'DELETE FROM telegram_forwarding_history WHERE forwarded_at < ?',
         [cutoffTime]
       );
       
-      console.log(`🗑️  [Forwarding] Cleaned up old history (${result.changes} records removed)`);
+      console.log(`🗑️  [Forwarding] Cleaned up old history`);
     } catch (error) {
       console.error('❌ [Forwarding] Failed to cleanup history:', error);
     }
@@ -429,7 +428,7 @@ export class TelegramForwardingService extends EventEmitter {
     try {
       const now = Math.floor(Date.now() / 1000);
       
-      const result = await execute(`
+      await execute(`
         INSERT INTO telegram_forwarding_rules
         (user_id, rule_name, source_chat_id, source_account_id, target_chat_ids, target_account_id,
          filter_user_ids, filter_keywords, filter_media_types, include_sender_info, forward_mode,
@@ -455,9 +454,10 @@ export class TelegramForwardingService extends EventEmitter {
         now
       ]);
       
+      const ruleId = await getLastInsertId();
       await this.loadActiveRules(); // Refresh cache
       
-      return { success: true, ruleId: result.lastInsertRowid as number };
+      return { success: true, ruleId };
     } catch (error: any) {
       console.error('❌ [Forwarding] Failed to create rule:', error);
       return { success: false, error: error.message };
