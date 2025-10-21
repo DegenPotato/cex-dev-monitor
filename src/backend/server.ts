@@ -405,6 +405,20 @@ telegramClientService.on('message_cached', (data) => {
   broadcast('telegram_message_cached', data);
 });
 
+// Real-time contract detection event - CRITICAL FOR INSTANT UPDATES
+telegramClientService.on('contract_detected', (data) => {
+  console.log('📡 Broadcasting contract detection:', data.contract);
+  broadcast('telegram_detection', {
+    contract: data.contract,
+    type: data.type,
+    chatId: data.chat_id || data.chatId,
+    chatName: data.chat_name,
+    username: data.username,
+    forwarded: data.forwarded,
+    timestamp: Date.now()
+  });
+});
+
 // API Routes
 
 // Get config

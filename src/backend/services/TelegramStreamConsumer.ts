@@ -12,6 +12,7 @@ import os from 'os';
 interface Detection {
   user_id: number;
   chat_id: string;
+  chat_name?: string;
   message_id: number;
   contract: string;
   type: string;
@@ -19,6 +20,7 @@ interface Detection {
   username: string;
   message: string;
   detected_at: number;
+  forwarded?: boolean;
 }
 
 // Performance metrics interface
@@ -281,7 +283,9 @@ export class TelegramStreamConsumer extends EventEmitter {
         contract: detection.contract,
         type: detection.type,
         chatId: detection.chat_id,
-        sender: detection.username,
+        chatName: detection.chat_name || detection.chat_id,
+        username: detection.username,
+        forwarded: detection.forwarded || false,
         timestamp: detection.detected_at
       }
     });

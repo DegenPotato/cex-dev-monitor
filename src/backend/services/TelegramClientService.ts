@@ -538,11 +538,12 @@ export class TelegramClientService extends EventEmitter {
             }
             
             // Save detection with forwarding status
+            const senderUsername = await this.getSenderUsername(client, message.senderId);
             await this.saveDetectedContract(userId, {
               chatId: chatId!,
               messageId: message.id,
               senderId: message.senderId?.toString(),
-              senderUsername: await this.getSenderUsername(client, message.senderId),
+              senderUsername,
               contractAddress: contract.address,
               detectionType: contract.type,
               originalFormat: contract.original,
@@ -550,52 +551,18 @@ export class TelegramClientService extends EventEmitter {
               forwarded: wasForwarded
             });
 
+            // Emit complete detection data for real-time updates
             this.emit('contract_detected', {
               userId,
               chatId,
+              chat_name: monitoredChat.chatName,
               contract: contract.address,
               type: contract.type,
               sender: message.senderId?.toString(),
-              message: message.message
+              username: senderUsername,
+              message: message.message,
+              forwarded: wasForwarded
             });
-            
-            // Auto-forward if configured
-            if (monitoredChat.forwardToChatId) {
-              try {
-                // Determine which client to use for forwarding
-                let forwardClient = client; // Default to detection client
-                
-                if (monitoredChat.forwardAccountId && monitoredChat.forwardAccountId !== userId) {
-                  // Use a different account for forwarding
-                  const forwardAccount = this.activeClients.get(monitoredChat.forwardAccountId);
-                  if (forwardAccount) {
-                    forwardClient = forwardAccount;
-                    console.log(`   📤 Using different account for forwarding: User ${monitoredChat.forwardAccountId}`);
-                  } else {
-                    console.log(`   ⚠️  Forward account ${monitoredChat.forwardAccountId} not active, using detection account`);
-                  }
-                }
-                
-                const forwardMessage = `🚨 **Token Detected**\n\n` +
-                  `📍 **CA:** \`${contract.address}\`\n` +
-                  `📊 **Type:** ${contract.type}\n` +
-                  `👤 **From:** ${message.senderId ? `@${await this.getSenderUsername(client, message.senderId) || message.senderId}` : 'Unknown'}\n` +
-                  `💬 **Chat:** ${monitoredChat.chatName || chatId}\n` +
-                  `🕐 **Time:** ${new Date().toLocaleTimeString()}\n\n` +
-                  `📝 **Message:**\n${message.message.substring(0, 500)}${message.message.length > 500 ? '...' : ''}\n\n` +
-                  `🔍 [Solscan](https://solscan.io/token/${contract.address}) | ` +
-                  `📈 [GMGN](https://gmgn.ai/sol/${contract.address})`;
-                
-                await forwardClient.sendMessage(monitoredChat.forwardToChatId, { 
-                  message: forwardMessage,
-                  parseMode: 'markdown'
-                });
-                
-                console.log(`   ✅ Auto-forwarded to ${monitoredChat.forwardToChatId}`);
-              } catch (error) {
-                console.error(`   ❌ Failed to forward to ${monitoredChat.forwardToChatId}:`, error);
-              }
-            }
           }
         }
 
