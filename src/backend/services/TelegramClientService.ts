@@ -1056,7 +1056,15 @@ export class TelegramClientService extends EventEmitter {
   private async validateAndExtractToken(address: string): Promise<{ isValid: boolean, actualTokens: string[] }> {
     const startTime = Date.now();
     try {
-      const publicKey = new PublicKey(address);
+      // Try to create PublicKey - this will throw if address is invalid
+      let publicKey: PublicKey;
+      try {
+        publicKey = new PublicKey(address);
+      } catch (error) {
+        // Not a valid Solana address at all
+        console.log(`   ❌ Invalid address format: ${address.substring(0, 8)}...`);
+        return { isValid: false, actualTokens: [] };
+      }
       
       // Get account info (single RPC call)
       const accountInfo = await this.solanaConnection.withProxy(conn => 
