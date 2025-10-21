@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import { apiProviderTracker } from './ApiProviderTracker.js';
 import { queryOne, execute } from '../database/helpers.js';
 
 // Dynamic imports for telegram package
@@ -803,15 +804,64 @@ export class TelegramClientService extends EventEmitter {
       const me = await client.getMe();
       console.log(`👤 [Telegram] Fetching dialogs for @${me.username || me.firstName} (ID: ${me.id})`);
       
-      // Get ALL dialogs (chats) - no limit to fetch everything
-      console.log('📥 [Telegram] Fetching all dialogs (this may take a minute)...');
-      const dialogs = await client.getDialogs();
-      
-      console.log(`📊 [Telegram] client.getDialogs() returned ${dialogs.length} dialogs`);
+      // Get ALL dialogs (chats) with rate limiting
+      console.log('📥 [Telegram] Fetching all dialogs with rate limiting (this may take a few minutes)...');
       
       const chatsList = [];
+      let offset = 0;
+      const limit = 100; // Fetch 100 chats at a time (safe limit)
+      let hasMore = true;
       
-      for (const dialog of dialogs) {
+      while (hasMore) {
+        console.log(`📥 [Telegram] Fetching batch starting at offset ${offset}...`);
+        
+        let dialogs;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        // Fetch batch of dialogs with FloodWait handling
+        while (retryCount < maxRetries) {
+          const startTime = Date.now();
+          try {
+            dialogs = await client.getDialogs({ 
+              limit,
+              offsetDate: offset
+            });
+            
+            // Track successful API call
+            const responseTime = Date.now() - startTime;
+            apiProviderTracker.trackCall('telegram', 'getDialogs', true, responseTime, 200);
+            
+            break; // Success, exit retry loop
+          } catch (error: any) {
+            const responseTime = Date.now() - startTime;
+            
+            // Handle FloodWait errors
+            if (error.errorMessage === 'FLOOD') {
+              const waitSeconds = error.seconds || 60;
+              console.warn(`⚠️  [Telegram] FloodWait error! Waiting ${waitSeconds} seconds before retry...`);
+              
+              // Track as rate limit hit
+              apiProviderTracker.trackCall('telegram', 'getDialogs', false, responseTime, 429, `FloodWait: ${waitSeconds}s`);
+              
+              await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+              retryCount++;
+            } else {
+              // Track other errors
+              apiProviderTracker.trackCall('telegram', 'getDialogs', false, responseTime, 500, error.message);
+              throw error; // Re-throw non-FloodWait errors
+            }
+          }
+        }
+        
+        if (!dialogs || dialogs.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        console.log(`📊 [Telegram] Received ${dialogs.length} dialogs in this batch`);
+        
+        for (const dialog of dialogs) {
         const entity = dialog.entity;
         
         // Get comprehensive chat type and metadata
@@ -966,6 +1016,22 @@ export class TelegramClientService extends EventEmitter {
         };
 
         chatsList.push(chatData);
+        }
+        
+        // Update offset for next batch
+        offset += dialogs.length;
+        
+        // Stop if we got fewer chats than the limit (last batch)
+        if (dialogs.length < limit) {
+          hasMore = false;
+        }
+        
+        // Rate limiting: Wait 1-2 seconds between batches to avoid FloodWait
+        if (hasMore) {
+          const delay = 1000 + Math.random() * 1000; // 1-2 seconds random delay
+          console.log(`⏱️  [Telegram] Waiting ${Math.round(delay)}ms before next batch to avoid rate limits...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
 
       console.log(`✅ [Telegram] Fetched ${chatsList.length} chats with comprehensive data for user ${userId}`);
