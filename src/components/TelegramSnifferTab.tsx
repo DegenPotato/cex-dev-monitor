@@ -2183,6 +2183,12 @@ export function TelegramSnifferTab() {
                           <span>→</span>
                           <span>To: <span className="text-white">{forward.target_chat_name || forward.target_chat_id}</span></span>
                         </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>Via: <span className="text-cyan-400">Account {forward.forward_account_id || forward.detection_account_id}</span></span>
+                          {forward.forward_account_phone && (
+                            <span className="text-gray-600">({forward.forward_account_phone})</span>
+                          )}
+                        </div>
                         {forward.error_message && (
                           <div className="text-xs text-red-400 mt-1">Error: {forward.error_message}</div>
                         )}
