@@ -347,22 +347,21 @@ export function createTelegramRoutes() {
   router.get('/all-chats', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const { telegramClientService } = await import('../services/TelegramClientService.js');
       
-      // First get basic chats from API
-      const chats = await (telegramClientService as any).getAllChats?.(userId) || [];
+      // Get chats from database (these were saved during fetch)
+      const chats = await telegramService.getMonitoredChats(userId, true); // true = include inactive
       
-      // Then get stored metadata from database
+      // Get additional metadata if available
       const storedMetadata = await telegramService.getChatMetadata(userId) as any[];
       
-      // Merge API data with stored metadata
+      // Enrich chats with metadata
       const enrichedChats = chats.map((chat: any) => {
         const stored = storedMetadata?.find((m: any) => m.chat_id === chat.chatId);
         if (stored) {
           return {
             ...chat,
             photoUrl: stored.photo_url,
-            memberCount: stored.member_count || chat.memberCount,
+            memberCount: stored.member_count || chat.participantsCount,
             onlineCount: stored.online_count,
             adminCount: stored.admin_count,
             botPercentage: stored.bot_percentage,
@@ -381,6 +380,7 @@ export function createTelegramRoutes() {
         return chat;
       });
       
+      console.log(`[Telegram] Returning ${enrichedChats.length} chats for user ${userId}`);
       res.json(enrichedChats);
     } catch (error: any) {
       console.error('[Telegram] Error getting all chats:', error);

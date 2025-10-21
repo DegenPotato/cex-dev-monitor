@@ -1319,7 +1319,7 @@ export function TelegramSnifferTab() {
                   type="text"
                   value={apiId}
                   onChange={(e) => setApiId(e.target.value)}
-                  placeholder={userAccount?.apiId || "26373394"}
+                  placeholder="Your API ID (e.g., 12345678)"
                   className="w-full px-4 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
                 />
               </div>
@@ -1331,7 +1331,7 @@ export function TelegramSnifferTab() {
                     type={showApiHash ? "text" : "password"}
                     value={apiHash}
                     onChange={(e) => setApiHash(e.target.value)}
-                    placeholder={userAccount?.apiHash || "45c5edf0039ffdd8efe7965189b42141"}
+                    placeholder="Your API Hash (32 characters)"
                     className="w-full px-4 py-2 pr-10 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
                   />
                   <button
@@ -1350,7 +1350,7 @@ export function TelegramSnifferTab() {
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder={userAccount?.phoneNumber || "+66642397038"}
+                  placeholder="+1234567890"
                   className="w-full px-4 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
                 />
               </div>
