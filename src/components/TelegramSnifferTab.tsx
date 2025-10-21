@@ -40,7 +40,7 @@ interface TelegramAccount {
   isVerified?: boolean;
 }
 
-interface MonitoredChat {
+interface SnifferChat {
   id: number;
   chatId: string;
   chatName?: string;
@@ -51,6 +51,7 @@ interface MonitoredChat {
   monitoredUserIds?: number[];
   monitoredKeywords?: string[];
   forwardToChatId?: string;
+  processBotMessages?: boolean;
   forwardAccountId?: number | null;
 }
 
@@ -76,7 +77,7 @@ export function TelegramSnifferTab() {
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
   const [availableChats, setAvailableChats] = useState<any[]>([]);
-  const [monitoredChats, setMonitoredChats] = useState<MonitoredChat[]>([]);
+  const [snifferChats, setSnifferChats] = useState<SnifferChat[]>([]);
   const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
   const [detections, setDetections] = useState<ContractDetection[]>([]);
   
@@ -119,6 +120,7 @@ export function TelegramSnifferTab() {
   const [configContractDetection, setConfigContractDetection] = useState(true);
   const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
   const [configDuplicateStrategy, setConfigDuplicateStrategy] = useState<string>('first_only_no_backlog');
+  const [configProcessBotMessages, setConfigProcessBotMessages] = useState(false);
   
   // Multi-select forward destinations
   const [availableForwardTargets, setAvailableForwardTargets] = useState<Array<any>>([]);
@@ -199,13 +201,13 @@ export function TelegramSnifferTab() {
 
     const unsubscribe3 = subscribe('telegram_chat_fetch_progress', (data: any) => {
       setFetchProgress({ saved: data.saved, total: data.total });
-      loadMonitoredChats(); // Reload chat list
+      loadSnifferChats(); // Reload chat list
     });
 
     const unsubscribe4 = subscribe('telegram_chat_fetch_complete', (data: any) => {
       setFetchProgress(null);
       setMessage({ type: 'success', text: `Successfully saved ${data.savedCount}/${data.totalChats} chats!` });
-      loadMonitoredChats();
+      loadSnifferChats();
       setLoading(false);
     });
 
@@ -262,7 +264,7 @@ export function TelegramSnifferTab() {
   useEffect(() => {
     if (isAuthenticated) {
       loadAccountStatus();
-      loadMonitoredChats(); // Load existing chats from database
+      loadSnifferChats(); // Load existing chats from database
       loadDetections(); // Load existing detections
       loadTelegramAccounts(); // Load available accounts for forwarding
     }
@@ -303,7 +305,7 @@ export function TelegramSnifferTab() {
     }
   };
 
-  const loadMonitoredChats = async () => {
+  const loadSnifferChats = async () => {
     try {
       if (!isAuthenticated) return;
 
@@ -320,14 +322,14 @@ export function TelegramSnifferTab() {
         })));
       }
 
-      // Load active chats for Monitored section
+      // Load active chats for Sniffers section
       const activeChatsResponse = await fetch(`${config.apiUrl}/api/telegram/monitored-chats`, {
         credentials: 'include'
       });
 
       if (activeChatsResponse.ok) {
         const activeChats = await activeChatsResponse.json();
-        setMonitoredChats(activeChats);
+        setSnifferChats(activeChats);
       }
     } catch (error) {
       console.error('Failed to load chats:', error);
@@ -616,7 +618,7 @@ export function TelegramSnifferTab() {
       if (data.success) {
         setMessage({ type: 'success', text: data.message });
         setSelectedChats(new Set());
-        loadMonitoredChats();
+        loadSnifferChats();
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to delete chats' });
       }
@@ -645,7 +647,7 @@ export function TelegramSnifferTab() {
             isActive: false // Default to inactive for new chats
           })));
         }
-        loadMonitoredChats();
+        loadSnifferChats();
         // Switch to sniffer tab to show fetched chats
         setActiveSection('sniffer');
       } else {
@@ -762,13 +764,13 @@ export function TelegramSnifferTab() {
   // Load chats and detections when switching sections
   useEffect(() => {
     if (activeSection === 'monitored') {
-      loadMonitoredChats();
+      loadSnifferChats();
     } else if (activeSection === 'detections') {
       loadDetections();
     } else if (activeSection === 'sniffer') {
       // Load available chats if we have them
       if (availableChats.length === 0) {
-        loadMonitoredChats(); // For now, show monitored chats in the sniffer too
+        loadSnifferChats(); // For now, show sniffer chats in the sniffer too
       }
     } else if (activeSection === 'forwards') {
       loadForwardingHistory();
@@ -821,7 +823,7 @@ export function TelegramSnifferTab() {
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          Monitored ({monitoredChats.filter(c => c.isActive).length})
+          Sniffers ({snifferChats.filter(c => c.isActive).length})
         </button>
         <button
           onClick={() => setActiveSection('detections')}
@@ -872,7 +874,7 @@ export function TelegramSnifferTab() {
                 </div>
                 {userAccount?.connected && (
                   <span className="text-sm text-gray-400">
-                    Monitoring: <span className="text-cyan-400 font-bold">{monitoredChats.filter(c => c.isActive).length}</span> active chats
+                    Monitoring: <span className="text-cyan-400 font-bold">{snifferChats.filter((c: any) => c.isActive).length}</span> active chats
                   </span>
                 )}
               </div>
@@ -1037,7 +1039,7 @@ export function TelegramSnifferTab() {
               <div className="space-y-3 max-h-[600px] overflow-y-auto">
                 {filteredChats.map((chat) => {
                   const isSelected = selectedChats.has(chat.chatId);
-                  const isMonitored = monitoredChats.some(m => m.chatId === chat.chatId && m.isActive);
+                  const isSniffer = snifferChats.some(m => m.chatId === chat.chatId && m.isActive);
                   
                   return (
                     <div
@@ -1104,9 +1106,9 @@ export function TelegramSnifferTab() {
                                   <Shield className="w-4 h-4 text-blue-400" />
                                 </span>
                               )}
-                              {isMonitored && (
+                              {isSniffer && (
                                 <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
-                                  MONITORING
+                                  SNIFFING
                                 </span>
                               )}
                               {chat.contractsDetected30d > 0 && (
@@ -1260,11 +1262,11 @@ export function TelegramSnifferTab() {
                                   method: 'POST',
                                   credentials: 'include',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ isActive: !isMonitored })
+                                  body: JSON.stringify({ isActive: !isSniffer })
                                 });
                                 if (response.ok) {
-                                  setMessage({ type: 'success', text: `${isMonitored ? 'Stopped' : 'Started'} monitoring ${chat.chatName}` });
-                                  await loadMonitoredChats();
+                                  setMessage({ type: 'success', text: `${isSniffer ? 'Stopped' : 'Started'} sniffing ${chat.chatName}` });
+                                  await loadSnifferChats();
                                 } else {
                                   setMessage({ type: 'error', text: 'Failed to toggle monitoring' });
                                 }
@@ -1273,22 +1275,23 @@ export function TelegramSnifferTab() {
                               }
                             }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                              isMonitored
+                              isSniffer
                                 ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400'
                                 : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 text-green-400'
                             }`}
                           >
-                            {isMonitored ? 'Stop' : 'Start'}
+                            {isSniffer ? 'Stop' : 'Start'}
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setConfigChat(chat);
-                              const monitored = monitoredChats.find(m => m.chatId === chat.chatId);
-                              if (monitored) {
-                                setConfigKeywords(monitored.monitoredKeywords?.join(', ') || '');
-                                setConfigUserIds(monitored.monitoredUserIds?.join(', ') || '');
-                                setConfigForwardTo(monitored.forwardToChatId || '');
+                              const sniffer = snifferChats.find(m => m.chatId === chat.chatId);
+                              if (sniffer) {
+                                setConfigKeywords(sniffer.monitoredKeywords?.join(', ') || '');
+                                setConfigUserIds(sniffer.monitoredUserIds?.join(', ') || '');
+                                setConfigForwardTo(sniffer.forwardToChatId || '');
+                                setConfigProcessBotMessages(sniffer.processBotMessages || false);
                               }
                               loadForwardDestinations(chat.chatId);
                               loadAvailableForwardTargets();
@@ -1799,7 +1802,7 @@ export function TelegramSnifferTab() {
                           
                           // Reset data state (always)
                           setAvailableChats([]);
-                          setMonitoredChats([]);
+                          setSnifferChats([]);
                           setDetections([]);
                           setSelectedChats(new Set());
                           
@@ -1841,39 +1844,37 @@ export function TelegramSnifferTab() {
         <div className="space-y-6">
           {/* Active Monitoring Overview */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold text-cyan-300">Active Monitoring</h3>
-                <p className="text-sm text-gray-400 mt-1">
-                  Currently monitoring {monitoredChats.filter(c => c.isActive).length} of {monitoredChats.length} configured chats
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
-                >
-                  Pause All
-                </button>
-                <button
-                  className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
-                >
-                  Resume All
-                </button>
-              </div>
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-cyan-300">Active Sniffers</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Currently monitoring {snifferChats.filter(c => c.isActive).length} of {snifferChats.length} configured chats
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+              >
+                Pause All
+              </button>
+              <button
+                className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+              >
+                Resume All
+              </button>
             </div>
           </div>
 
-          {/* Monitored Chats */}
+          {/* Active Sniffers */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
-            {monitoredChats.filter(c => c.isActive).length === 0 ? (
+            {snifferChats.filter(c => c.isActive).length === 0 ? (
               <div className="text-center py-12 text-gray-400">
-                <Radio className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No active monitoring</p>
+                <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium mb-2">No Active Sniffers</p>
                 <p className="text-sm mt-2">Go to Sniffer tab to select and configure chats</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {monitoredChats.filter(c => c.isActive).map((chat) => (
+                {snifferChats.filter(c => c.isActive).map((chat) => (
                   <div key={chat.id} className="bg-black/40 border border-green-500/20 rounded-lg p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
@@ -2439,6 +2440,35 @@ export function TelegramSnifferTab() {
                 </p>
               </div>
 
+              {/* Bot Message Processing */}
+              <div>
+                <label className="block text-sm font-medium text-cyan-300 mb-2">
+                  Bot Message Processing
+                </label>
+                <div className="flex items-center justify-between p-4 bg-black/40 border border-cyan-500/30 rounded-lg">
+                  <div className="flex-1">
+                    <p className="text-white">Process messages from bot accounts</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      When enabled, messages from bot accounts will be processed for contract detection.
+                      Disable to ignore bot messages and reduce noise.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfigProcessBotMessages(!configProcessBotMessages)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      configProcessBotMessages ? 'bg-cyan-500' : 'bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        configProcessBotMessages ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Duplicate CA Handling Strategy */}
               <div>
                 <label className="block text-sm font-medium text-cyan-300 mb-2">
@@ -2677,7 +2707,8 @@ export function TelegramSnifferTab() {
                         forwardToChatId: configForwardTo || null,
                         forwardAccountId: configForwardAccountId,
                         initialHistoryLimit: configInitialHistory,
-                        isActive: true
+                        isActive: true,
+                        processBotMessages: configProcessBotMessages
                       })
                     });
 
@@ -2722,7 +2753,7 @@ export function TelegramSnifferTab() {
                       setSelectedForwardDestinations([]);
                       setForwardTargetFilter('');
                       setShowForwardDropdown(false);
-                      await loadMonitoredChats();
+                      await loadSnifferChats();
                     } else {
                       setMessage({ type: 'error', text: 'Failed to save configuration' });
                     }
@@ -2746,8 +2777,8 @@ export function TelegramSnifferTab() {
       {/* Chat History Viewer Modal */}
       {selectedHistoryChat && (
         <TelegramChatHistory
-          chatId={selectedHistoryChat.id}
-          chatName={selectedHistoryChat.name}
+          chatId={selectedHistoryChat!.id}
+          chatName={selectedHistoryChat!.name}
           isOpen={!!selectedHistoryChat}
           onClose={() => setSelectedHistoryChat(null)}
         />

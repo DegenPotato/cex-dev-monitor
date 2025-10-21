@@ -425,6 +425,7 @@ export class TelegramUserService {
     forwardToChatId?: string | null;
     forwardAccountId?: number | null;
     isActive?: boolean;
+    processBotMessages?: boolean;
   }) {
     const monitoredKeywordsJson = config.monitoredKeywords ? JSON.stringify(config.monitoredKeywords) : null;
     const monitoredUserIdsJson = config.monitoredUserIds ? JSON.stringify(config.monitoredUserIds) : null;
@@ -437,6 +438,7 @@ export class TelegramUserService {
           forward_to_chat_id = ?,
           forward_account_id = ?,
           is_active = ?,
+          process_bot_messages = ?,
           updated_at = ?
       WHERE user_id = ? AND chat_id = ?
     `, [
@@ -445,6 +447,7 @@ export class TelegramUserService {
       config.forwardToChatId !== undefined ? config.forwardToChatId : null,
       config.forwardAccountId !== undefined ? config.forwardAccountId : null,
       config.isActive !== undefined ? (config.isActive ? 1 : 0) : 1,
+      config.processBotMessages !== undefined ? (config.processBotMessages ? 1 : 0) : 0,
       now,
       userId,
       chatId

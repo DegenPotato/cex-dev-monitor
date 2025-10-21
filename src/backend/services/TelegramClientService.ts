@@ -13,7 +13,7 @@ import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 let TelegramClient: any;
 let Api: any;
 let StringSession: any;
-let NewMessage: any;
+let NewMessage: any; // Used in message handler
 
 // Track module loading status
 let modulesLoaded = false;
@@ -462,16 +462,15 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Start monitoring for messages
    */
-  private async startMonitoring(userId: number, client: any) { // TelegramClient 
-    // Get user info for logging
-    const me = await client.getMe();
-    const userIdentifier = `User ${userId} (@${me.username || me.firstName})`;
+  private async startMonitoring(userId: number, client: any) {
+    const userIdentifier = `User${userId}`;
+    console.log(`👂 [Telegram:${userIdentifier}] Starting message monitoring...`);
     
-    // Cache monitored chats and refresh periodically
+    // Cache monitored chats for performance
     let cachedChats = await this.getMonitoredChats(userId);
     let lastRefresh = Date.now();
     
-    // Refresh cache every 30 seconds
+    // Refresh cache periodically
     const refreshCache = async () => {
       const now = Date.now();
       if (now - lastRefresh > 30000) {
@@ -522,7 +521,25 @@ export class TelegramClientService extends EventEmitter {
           date: message.date
         });
 
-        // Apply user ID filter first (if configured for this chat)
+        // Check if sender is a bot and if we should process bot messages
+        if (message.senderId) {
+          try {
+            const sender = await client.getEntity(message.senderId);
+            if (sender && (sender as any).bot) {
+              // This is a bot message
+              const processBotMessages = monitoredChat.processBotMessages || false;
+              if (!processBotMessages) {
+                console.log(`   ⏭️  Skipped detection: sender is a bot and bot message processing is disabled for this chat`);
+                return;
+              }
+              console.log(`   🤖 Processing bot message (bot processing enabled)`);
+            }
+          } catch (error) {
+            console.log(`   ⚠️  Could not determine if sender is bot: ${error}`);
+          }
+        }
+
+        // Apply user ID filter (if configured for this chat)
         if (monitoredChat.monitoredUserIds && monitoredChat.monitoredUserIds.length > 0) {
           const senderId = message.senderId?.toString();
           const isFilteredUser = monitoredChat.monitoredUserIds.some((id: string) => id.toString() === senderId);
