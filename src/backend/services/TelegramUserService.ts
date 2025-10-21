@@ -413,6 +413,40 @@ export class TelegramUserService {
   }
 
   /**
+   * Update chat monitoring configuration (keywords, users, forwarding) without touching chat metadata
+   */
+  async updateChatConfiguration(userId: number, chatId: string, config: {
+    monitoredKeywords?: string[];
+    monitoredUserIds?: number[];
+    forwardToChatId?: string | null;
+    isActive?: boolean;
+  }) {
+    const monitoredKeywordsJson = config.monitoredKeywords ? JSON.stringify(config.monitoredKeywords) : null;
+    const monitoredUserIdsJson = config.monitoredUserIds ? JSON.stringify(config.monitoredUserIds) : null;
+    const now = Math.floor(Date.now() / 1000);
+
+    await execute(`
+      UPDATE telegram_monitored_chats 
+      SET monitored_keywords = ?,
+          monitored_user_ids = ?,
+          forward_to_chat_id = ?,
+          is_active = ?,
+          updated_at = ?
+      WHERE user_id = ? AND chat_id = ?
+    `, [
+      monitoredKeywordsJson,
+      monitoredUserIdsJson,
+      config.forwardToChatId !== undefined ? config.forwardToChatId : null,
+      config.isActive !== undefined ? (config.isActive ? 1 : 0) : 1,
+      now,
+      userId,
+      chatId
+    ]);
+
+    return { success: true };
+  }
+
+  /**
    * Toggle monitoring status for a chat (alias for clearer API)
    */
   async toggleChatMonitoring(userId: number, chatId: string, isActive: boolean) {

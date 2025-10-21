@@ -530,9 +530,8 @@ export function createTelegramRoutes() {
       const { chatId } = req.params;
       const { monitoredKeywords, monitoredUserIds, forwardToChatId, isActive } = req.body;
 
-      // Save monitoring configuration
-      await telegramService.saveMonitoredChat(userId, {
-        chatId,
+      // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
+      await telegramService.updateChatConfiguration(userId, chatId, {
         monitoredKeywords,
         monitoredUserIds,
         forwardToChatId,
