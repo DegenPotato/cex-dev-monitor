@@ -48,6 +48,7 @@ interface MonitoredChat {
   monitoredUserIds?: number[];
   monitoredKeywords?: string[];
   forwardToChatId?: string;
+  forwardAccountId?: number | null;
 }
 
 interface ContractDetection {
@@ -141,7 +142,30 @@ export function TelegramSnifferTab() {
       setLoading(false);
     });
 
-    const unsubscribe5 = subscribe('telegram_chat_fetch_error', (data: any) => {
+    // Subscribe to real-time contract detections
+    const unsubscribe5 = subscribe('telegram_detection', (data: any) => {
+      console.log('🔔 Real-time detection received:', data);
+      // Add new detection to the top of the list
+      setDetections(prev => [{
+        id: Date.now(), // Temporary ID until we reload from DB
+        chatId: data.chatId,
+        chatName: data.chatName,
+        contractAddress: data.contract,
+        senderUsername: data.username,
+        detectionType: data.type,
+        forwarded: data.forwarded || false,
+        forwardedTo: data.forwardedTo,
+        detectedAt: data.timestamp
+      }, ...prev]);
+      
+      // Show notification
+      setMessage({ 
+        type: 'success', 
+        text: `New ${data.type} contract detected: ${data.contract.substring(0, 8)}...` 
+      });
+    });
+
+    const unsubscribe6 = subscribe('telegram_chat_fetch_error', (data: any) => {
       setFetchProgress(null);
       setMessage({ type: 'error', text: `Error: ${data.error}` });
       setLoading(false);
@@ -153,6 +177,7 @@ export function TelegramSnifferTab() {
       unsubscribe3();
       unsubscribe4();
       unsubscribe5();
+      unsubscribe6();
     };
   }, [subscribe]);
 
@@ -1758,14 +1783,20 @@ export function TelegramSnifferTab() {
                         <div className="flex items-start gap-2">
                           <span className="text-gray-500">Keywords:</span>
                           <div className="flex flex-wrap gap-1">
-                            {chat.monitoredKeywords.slice(0, 3).map((kw, idx) => (
-                              <span key={idx} className="px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400">
-                                {kw}
-                              </span>
-                            ))}
-                            {chat.monitoredKeywords.length > 3 && (
-                              <span className="text-gray-400">+{chat.monitoredKeywords.length - 3} more</span>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                              <span>Type: {chat.chatType}</span>
+                              {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
+                                <span className="text-cyan-400">• Tracking {chat.monitoredUserIds.length} users</span>
+                              )}
+                              {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
+                                <span className="text-purple-400">• {chat.monitoredKeywords.length} keywords</span>
+                              )}
+                              {chat.forwardToChatId && (
+                                <span className="text-green-400 flex items-center gap-1">
+                                  • 📤 Auto-forward{chat.forwardAccountId ? ' (custom account)' : ''}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -2182,6 +2213,21 @@ export function TelegramSnifferTab() {
                     </select>
                     <p className="text-xs text-gray-400 mt-2">
                       Choose which account sends the forwarded messages
+                    </p>
+                    <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <p className="text-xs text-blue-300">
+                        <strong>💡 Tip:</strong> Use a different account for forwarding to separate detection from notification, 
+                        or to forward from private groups to public channels.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Auto-Forwarding Status */}
+                {configForwardTo && !telegramAccounts.length && (
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <p className="text-xs text-yellow-300">
+                      ⚠️ No additional accounts available. Forwards will use the detection account.
                     </p>
                   </div>
                 )}

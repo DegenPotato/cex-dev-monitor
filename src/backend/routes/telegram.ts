@@ -631,19 +631,20 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Configure monitoring for a specific chat
+   * Configure monitoring for a specific chat (keywords, users, forwarding)
    */
   router.post('/monitored-chats/:chatId/configure', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
-      const { monitoredKeywords, monitoredUserIds, forwardToChatId, isActive, initialHistoryLimit } = req.body;
+      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit } = req.body;
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {
         monitoredKeywords,
         monitoredUserIds,
         forwardToChatId,
+        forwardAccountId,
         isActive
       });
 
@@ -652,20 +653,20 @@ export function createTelegramRoutes() {
         const { telegramHistoryService } = await import('../services/TelegramHistoryService.js');
         
         // Start fetching in background (don't wait for it)
-        telegramHistoryService.fetchAndStoreChatHistory(userId, chatId, initialHistoryLimit, (fetched, total) => {
+        telegramHistoryService.fetchAndStoreChatHistory(userId, chatId, initialHistoryLimit, (fetched: number, total: number) => {
           telegramClientService.emit('history_fetch_progress', {
             userId,
             chatId,
             fetched,
             total
           });
-        }).then(fetchResult => {
+        }).then((fetchResult: any) => {
           telegramClientService.emit('history_fetch_complete', {
             userId,
             chatId,
             ...fetchResult
           });
-        }).catch(error => {
+        }).catch((error: any) => {
           telegramClientService.emit('history_fetch_error', {
             userId,
             chatId,
