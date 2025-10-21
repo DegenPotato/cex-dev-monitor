@@ -376,9 +376,21 @@ export class TelegramClientService extends EventEmitter {
         if (!message || !message.message) return;
 
         // Check if message is from monitored chat
-        const chatId = message.chatId?.toString();
+        // For forum groups/topics, use peerId.channelId (for supergroups/channels)
+        let chatId = message.chatId?.toString();
+        if (message.peerId?.channelId) {
+          chatId = `-100${message.peerId.channelId.toString()}`;
+        } else if (message.peerId?.chatId) {
+          chatId = message.peerId.chatId.toString();
+        }
+        
         const isMonitoredChat = chats.some(c => c.chatId === chatId);
-        if (!isMonitoredChat) return;
+        if (!isMonitoredChat) {
+          console.log(`⏭️  [Telegram] Message from unmonitored chat: ${chatId}`);
+          return;
+        }
+        
+        console.log(`📨 [Telegram] Message detected in monitored chat: ${chatId}`);
 
         // Check if message is from filtered user (if filters exist)
         if (userFilters.length > 0) {
