@@ -4,20 +4,32 @@ import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
 
 export const PortfolioPanel: React.FC = () => {
-  const { wallets, portfolioStats, fetchWallets, fetchPortfolioStats, loading } = useTradingStore();
+  const { 
+    wallets, 
+    portfolioStats, 
+    fetchWallets, 
+    fetchPortfolioStats, 
+    connectWebSocket, 
+    disconnectWebSocket,
+    connected,
+    loading 
+  } = useTradingStore();
   const [selectedWallet, setSelectedWallet] = useState<string>('all');
   const [showValues, setShowValues] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
+    // Initial data fetch
     fetchWallets();
     fetchPortfolioStats();
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      fetchWallets();
-      fetchPortfolioStats();
-    }, 30000);
-    return () => clearInterval(interval);
+    
+    // Connect to WebSocket for real-time updates
+    connectWebSocket();
+    
+    // Cleanup on unmount
+    return () => {
+      disconnectWebSocket();
+    };
   }, []);
 
   const handleManualRefresh = async () => {

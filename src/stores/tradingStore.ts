@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { config } from '../config';
+import io, { Socket } from 'socket.io-client';
 
 const API_BASE_URL = config.apiUrl;
 
@@ -67,6 +68,9 @@ interface TradeHistory {
 
 interface PortfolioStats {
   totalValueUSD: number;
+  totalSOL: number;
+  totalTokens: number;
+  walletCount: number;
   totalPnL: number;
   totalPnLPercent: number;
   dayChange: number;
@@ -78,27 +82,25 @@ interface PortfolioStats {
 interface TradingStore {
   // State
   wallets: Wallet[];
-  selectedWallet: Wallet | null;
-  tradeHistory: TradeHistory[];
+  selectedWallet: string | null;
   portfolioStats: PortfolioStats | null;
+  tradeHistory: TradeHistory[];
   loading: boolean;
   error: string | null;
+  socket: Socket | null;
+  connected: boolean;
   
   // Actions
+  connectWebSocket: () => void;
+  disconnectWebSocket: () => void;
   fetchWallets: () => Promise<void>;
-  fetchWalletTokens: (walletId: string) => Promise<void>;
-  createWallet: (name: string) => Promise<void>;
-  importWallet: (name: string, privateKey: string) => Promise<void>;
+  fetchPortfolioStats: () => Promise<void>;
+  fetchTradeHistory: () => Promise<void>;
+  createWallet: (name?: string) => Promise<void>;
+  importWallet: (privateKey: string, name?: string) => Promise<void>;
   deleteWallet: (walletId: string) => Promise<void>;
   selectWallet: (walletId: string) => void;
-  
-  // Trading
   executeTrade: (params: TradeParams) => Promise<TradeResult>;
-  fetchTradeHistory: () => Promise<void>;
-  
-  // Portfolio
-  fetchPortfolioStats: () => Promise<void>;
-  refreshAllData: () => Promise<void>;
 }
 
 export const useTradingStore = create<TradingStore>((set, get) => ({
@@ -109,6 +111,97 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   portfolioStats: null,
   loading: false,
   error: null,
+  socket: null,
+  connected: false,
+
+  // WebSocket connection management
+  connectWebSocket: () => {
+    const socket = io(`${API_BASE_URL}/trading`, {
+      withCredentials: true,
+      transports: ['websocket', 'polling']
+    });
+    
+    // Get user ID from auth context (you'll need to pass this)
+    const userId = (window as any).currentUserId || localStorage.getItem('userId');
+    
+    socket.on('connect', () => {
+      console.log('📈 Trading WebSocket connected');
+      set({ connected: true });
+      
+      // Authenticate with user ID
+      socket.emit('auth', { userId });
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('📉 Trading WebSocket disconnected');
+      set({ connected: false });
+    });
+    
+    // Handle portfolio updates
+    socket.on('portfolio_update', (data: any) => {
+      set((state) => ({
+        portfolioStats: {
+          totalValueUSD: data.data.totalValueUSD,
+          totalSOL: data.data.totalSOL,
+          totalTokens: data.data.topTokens.length,
+          walletCount: data.data.wallets.length,
+          totalPnL: data.data.profitLoss,
+          totalPnLPercent: data.data.profitLossPercent,
+          dayChange: 0,
+          dayChangePercent: 0
+        },
+        wallets: state.wallets.map(w => {
+          const updatedWallet = data.data.wallets.find((uw: any) => uw.id === w.id);
+          return updatedWallet ? { ...w, balance: updatedWallet.balance } : w;
+        })
+      }));
+    });
+    
+    // Handle wallet updates
+    socket.on('wallet_update', (data: any) => {
+      set((state) => ({
+        wallets: state.wallets.map(w => 
+          w.id === String(data.walletId) 
+            ? { ...w, balance: data.data.balance, tokens: data.data.tokens }
+            : w
+        )
+      }));
+    });
+    
+    // Handle trade updates
+    socket.on('trade_update', (data: any) => {
+      if (data.data.status === 'success') {
+        // Refresh wallets and portfolio after successful trade
+        get().fetchWallets();
+        get().fetchPortfolioStats();
+      }
+    });
+    
+    // Handle price updates
+    socket.on('price_update', (data: any) => {
+      // Update SOL price in portfolio stats
+      set((state) => ({
+        portfolioStats: state.portfolioStats ? {
+          ...state.portfolioStats,
+          // Recalculate total value with new SOL price
+          totalValueUSD: (state.portfolioStats.totalSOL * data.data.sol) + 
+            state.wallets.reduce((sum, w) => 
+              sum + (w.tokens?.reduce((tSum, t) => tSum + t.valueUsd, 0) || 0), 0
+            )
+        } : null
+      }));
+    });
+    
+    set({ socket });
+  },
+
+  disconnectWebSocket: () => {
+    const { socket } = get();
+    if (socket) {
+      socket.disconnect();
+      set({ socket: null, connected: false });
+    }
+  },
 
   // Fetch all wallets
   fetchWallets: async () => {

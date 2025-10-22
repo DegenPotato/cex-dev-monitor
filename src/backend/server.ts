@@ -6,6 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
@@ -52,6 +53,23 @@ const httpServer = createServer(app);
 const wss = new WebSocketServer({ 
   server: httpServer,
   path: '/ws'
+});
+
+// Initialize Socket.IO for Trading WebSocket
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: (origin, callback) => {
+      // Same CORS rules as Express
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Start Telegram Redis Stream Consumer (if enabled)
@@ -2695,11 +2713,21 @@ app.get('/', (_req, res) => {
   });
 });
 
+// Initialize Trading WebSocket service
+import('./services/TradingWebSocketService.js').then(({ getTradingWebSocketService }) => {
+  const tradingWS = getTradingWebSocketService();
+  tradingWS.initialize(io);
+  console.log('📈 Trading WebSocket service initialized');
+}).catch(err => {
+  console.error('Failed to initialize Trading WebSocket service:', err);
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);
+  console.log(`📊 Socket.IO available for trading at http://localhost:${PORT}/trading`);
   
   // Initialize auth maintenance service (cleanup expired sessions/challenges every 30 mins)
   const authMaintenance = new AuthMaintenanceService();
