@@ -18,6 +18,7 @@
   "dependencies": {
     "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.15.0",
+    "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
@@ -62,6 +63,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.10.6",
+    "@types/node-fetch": "^2.6.13",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "@types/ws": "^8.5.10",
