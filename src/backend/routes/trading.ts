@@ -8,7 +8,8 @@ import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 // import { getWalletManager } from '../core/wallet.js'; // Using walletStorageService instead
 import { getTradingEngine } from '../core/trade.js';
 import { queryAll, queryOne, execute } from '../database/helpers.js';
-import { walletStorageService } from '../services/WalletStorageService.js';
+// Using compatibility service until migration completes
+import { walletStorageServiceCompat as walletStorageService } from '../services/WalletStorageServiceCompat.js';
 
 const authService = new SecureAuthService();
 
@@ -462,11 +463,21 @@ router.get('/api/trading/wallets/:walletId/tokens', authService.requireSecureAut
     const walletId = parseInt(req.params.walletId);
     const userId = (req as AuthenticatedRequest).user!.id;
     
-    // Verify wallet ownership
-    const wallet = await queryOne(
-      'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ? AND is_deleted = 0',
-      [walletId, userId]
-    );
+    // Verify wallet ownership (compatible with both schemas)
+    let wallet;
+    try {
+      // Try new schema first
+      wallet = await queryOne(
+        'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ? AND is_deleted = 0',
+        [walletId, userId]
+      );
+    } catch (e) {
+      // Fall back to old schema (no is_deleted column)
+      wallet = await queryOne(
+        'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ?',
+        [walletId, userId]
+      );
+    }
     
     if (!wallet) {
       return res.status(404).json({ error: 'Wallet not found' });
@@ -502,11 +513,21 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
-    // Get all user wallets
-    const wallets = await queryAll(
-      'SELECT * FROM trading_wallets WHERE user_id = ? AND is_deleted = 0',
-      [userId]
-    );
+    // Get all user wallets (compatible with both schemas)
+    let wallets;
+    try {
+      // Try new schema first
+      wallets = await queryAll(
+        'SELECT * FROM trading_wallets WHERE user_id = ? AND is_deleted = 0',
+        [userId]
+      );
+    } catch (e) {
+      // Fall back to old schema
+      wallets = await queryAll(
+        'SELECT id, user_id, wallet_address as public_key, 0 as sol_balance FROM trading_wallets WHERE user_id = ?',
+        [userId]
+      );
+    }
     
     if (!wallets || wallets.length === 0) {
       return res.json({
