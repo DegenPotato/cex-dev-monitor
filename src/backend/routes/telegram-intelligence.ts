@@ -1,17 +1,28 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request } from 'express';
 import { queryAll, queryOne, execute } from '../database/helpers.js';
-import { requireAuth } from '../middleware/auth.js';
-import { wsManager } from '../services/WebSocketManager.js';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+
+const authService = new SecureAuthService();
+
+// Extend Express Request type to include user property from auth middleware
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number;
+    wallet_address: string;
+    username: string;
+    role: string;
+  };
+}
 
 const router = Router();
 
 /**
  * Track a new caller/KOL
  */
-router.post('/api/telegram/track-caller', requireAuth, async (req: Request, res: Response) => {
+router.post('/api/telegram/track-caller', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { telegramUserId, username, firstName, lastName, isBot, isPremium, isVerified } = req.body;
-    const userId = req.userId!;
+    const userId = (req as AuthenticatedRequest).user!.id;
 
     // Check if caller already exists
     const existing = await queryOne(
@@ -28,9 +39,9 @@ router.post('/api/telegram/track-caller', requireAuth, async (req: Request, res:
             last_seen = ?, updated_at = ?
         WHERE id = ?
       `, [username, firstName, lastName, isBot ? 1 : 0, isPremium ? 1 : 0, 
-          isVerified ? 1 : 0, Date.now(), Date.now(), existing.id]);
+          isVerified ? 1 : 0, Date.now(), Date.now(), (existing as any).id]);
       
-      res.json({ success: true, callerId: existing.id });
+      res.json({ success: true, callerId: (existing as any).id });
     } else {
       // Insert new caller
       const result = await execute(`
@@ -42,7 +53,7 @@ router.post('/api/telegram/track-caller', requireAuth, async (req: Request, res:
           isBot ? 1 : 0, isPremium ? 1 : 0, isVerified ? 1 : 0,
           Date.now(), Date.now(), Date.now()]);
       
-      res.json({ success: true, callerId: result.lastID });
+      res.json({ success: true, callerId: (result as any).lastID });
     }
   } catch (error: any) {
     console.error('Error tracking caller:', error);
@@ -53,13 +64,13 @@ router.post('/api/telegram/track-caller', requireAuth, async (req: Request, res:
 /**
  * Record a token call/shill
  */
-router.post('/api/telegram/record-call', requireAuth, async (req: Request, res: Response) => {
+router.post('/api/telegram/record-call', authService.requireSecureAuth(), async (req, res) => {
   try {
     const {
       callerId, chatId, messageId, contractAddress, tokenSymbol, tokenName,
       callTimestamp, callType, callMessage, priceAtCall, mcapAtCall, confidenceScore
     } = req.body;
-    const userId = req.userId!;
+    const userId = (req as AuthenticatedRequest).user!.id;
 
     const result = await execute(`
       INSERT INTO telegram_token_calls (
@@ -90,12 +101,9 @@ router.post('/api/telegram/record-call', requireAuth, async (req: Request, res: 
         last_updated = ?
     `, [userId, chatId, Date.now(), Date.now()]);
 
-    wsManager.broadcast({
-      type: 'new_token_call',
-      data: { callId: result.lastID, callerId, contractAddress, tokenSymbol }
-    });
-
-    res.json({ success: true, callId: result.lastID });
+    // WebSocket notification will be handled by the main server
+    
+    res.json({ success: true, callId: (result as any).lastID });
   } catch (error: any) {
     console.error('Error recording call:', error);
     res.status(500).json({ error: error.message });
@@ -105,7 +113,7 @@ router.post('/api/telegram/record-call', requireAuth, async (req: Request, res: 
 /**
  * Update call performance metrics
  */
-router.post('/api/telegram/update-call-performance', requireAuth, async (req: Request, res: Response) => {
+router.post('/api/telegram/update-call-performance', authService.requireSecureAuth(), async (req, res) => {
   try {
     const {
       callId, athPrice, athTimestamp, currentPrice, currentMcap,
@@ -121,9 +129,9 @@ router.post('/api/telegram/update-call-performance', requireAuth, async (req: Re
       return res.status(404).json({ error: 'Call not found' });
     }
 
-    const athMultiplier = athPrice / call.price_at_call;
-    const currentMultiplier = currentPrice / call.price_at_call;
-    const timeToAth = Math.floor((athTimestamp - call.call_timestamp) / 60); // in minutes
+    const athMultiplier = athPrice / (call as any).price_at_call;
+    const currentMultiplier = currentPrice / (call as any).price_at_call;
+    const timeToAth = Math.floor((athTimestamp - (call as any).call_timestamp) / 60); // in minutes
     const isSuccessful = athMultiplier >= 2; // 2x is considered successful
 
     await execute(`
@@ -134,7 +142,7 @@ router.post('/api/telegram/update-call-performance', requireAuth, async (req: Re
         is_rugpull = ?, is_honeypot = ?, is_successful = ?,
         last_price_update = ?, updated_at = ?
       WHERE id = ?
-    `, [athPrice, call.mcap_at_call * athMultiplier, athTimestamp, athMultiplier,
+    `, [athPrice, (call as any).mcap_at_call * athMultiplier, athTimestamp, athMultiplier,
         currentPrice, currentMcap, currentMultiplier, timeToAth, volume24h, holderCount,
         isRugpull ? 1 : 0, isHoneypot ? 1 : 0, isSuccessful ? 1 : 0,
         Date.now(), Date.now(), callId]);
@@ -145,10 +153,10 @@ router.post('/api/telegram/update-call-performance', requireAuth, async (req: Re
       [callId]
     );
 
-    const successfulCalls = callerCalls.filter(c => c.is_successful).length;
-    const avgPeakMultiplier = callerCalls.reduce((sum, c) => sum + (c.ath_multiplier || 0), 0) / callerCalls.length;
-    const avgTimeToPeak = callerCalls.reduce((sum, c) => sum + (c.time_to_ath || 0), 0) / callerCalls.length;
-    const totalVolume = callerCalls.reduce((sum, c) => sum + (c.volume_24h || 0), 0);
+    const successfulCalls = callerCalls.filter((c: any) => c.is_successful).length;
+    const avgPeakMultiplier = callerCalls.reduce((sum: number, c: any) => sum + (c.ath_multiplier || 0), 0) / callerCalls.length;
+    const avgTimeToPeak = callerCalls.reduce((sum: number, c: any) => sum + (c.time_to_ath || 0), 0) / callerCalls.length;
+    const totalVolume = callerCalls.reduce((sum: number, c: any) => sum + (c.volume_24h || 0), 0);
     const winRate = (successfulCalls / callerCalls.length) * 100;
 
     await execute(`
@@ -168,10 +176,10 @@ router.post('/api/telegram/update-call-performance', requireAuth, async (req: Re
 /**
  * Get caller profiles with performance metrics
  */
-router.get('/api/telegram/callers', requireAuth, async (req: Request, res: Response) => {
+router.get('/api/telegram/callers', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { timeframe = '7d', sortBy = 'win_rate', limit = 50 } = req.query;
-    const userId = req.userId!;
+    const userId = (req as AuthenticatedRequest).user!.id;
 
     let timeFilter = '';
     const now = Date.now();
@@ -199,7 +207,7 @@ router.get('/api/telegram/callers', requireAuth, async (req: Request, res: Respo
     `, [userId, limit]);
 
     // Get recent calls for each caller
-    for (const caller of callers) {
+    for (const caller of callers as any[]) {
       caller.recentCalls = await queryAll(`
         SELECT * FROM telegram_token_calls 
         WHERE caller_id = ? 
@@ -220,10 +228,9 @@ router.get('/api/telegram/callers', requireAuth, async (req: Request, res: Respo
 /**
  * Get channel statistics
  */
-router.get('/api/telegram/channel-stats', requireAuth, async (req: Request, res: Response) => {
+router.get('/api/telegram/channel-stats', authService.requireSecureAuth(), async (req, res) => {
   try {
-    const { timeframe = '7d' } = req.query;
-    const userId = req.userId!;
+    const userId = (req as AuthenticatedRequest).user!.id;
 
     const channels = await queryAll(`
       SELECT 
@@ -236,7 +243,7 @@ router.get('/api/telegram/channel-stats', requireAuth, async (req: Request, res:
     `, [userId]);
 
     // Get top callers for each channel
-    for (const channel of channels) {
+    for (const channel of channels as any[]) {
       const topCallers = await queryAll(`
         SELECT 
           c.*, 
@@ -262,7 +269,7 @@ router.get('/api/telegram/channel-stats', requireAuth, async (req: Request, res:
 /**
  * Calculate and update reputation scores
  */
-router.post('/api/telegram/calculate-reputation', requireAuth, async (req: Request, res: Response) => {
+router.post('/api/telegram/calculate-reputation', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { callerId } = req.body;
 
@@ -279,26 +286,26 @@ router.post('/api/telegram/calculate-reputation', requireAuth, async (req: Reque
     let reputationScore = 50; // Base score
 
     // Win rate factor (0-30 points)
-    reputationScore += (caller.win_rate / 100) * 30;
+    reputationScore += ((caller as any).win_rate / 100) * 30;
 
     // Volume factor (0-20 points)
-    const volumePoints = Math.min(20, caller.total_volume_generated / 1000000); // 1 point per million, max 20
+    const volumePoints = Math.min(20, (caller as any).total_volume_generated / 1000000); // 1 point per million, max 20
     reputationScore += volumePoints;
 
     // Consistency factor (0-20 points)
-    const consistencyPoints = Math.min(20, caller.successful_calls / 5); // 4 points per successful call, max 20
+    const consistencyPoints = Math.min(20, (caller as any).successful_calls / 5); // 4 points per successful call, max 20
     reputationScore += consistencyPoints;
 
     // Premium/Verified bonus
-    if (caller.is_premium) reputationScore += 5;
-    if (caller.is_verified) reputationScore += 5;
+    if ((caller as any).is_premium) reputationScore += 5;
+    if ((caller as any).is_verified) reputationScore += 5;
 
     // Check for rug pulls
     const rugpulls = await queryOne(
       'SELECT COUNT(*) as count FROM telegram_token_calls WHERE caller_id = ? AND is_rugpull = 1',
       [callerId]
     );
-    reputationScore -= rugpulls.count * 10; // -10 points per rugpull
+    reputationScore -= (rugpulls as any).count * 10; // -10 points per rugpull
 
     // Determine trust level
     let trustLevel = 'neutral';
@@ -322,7 +329,7 @@ router.post('/api/telegram/calculate-reputation', requireAuth, async (req: Reque
 /**
  * Store OHLCV data for performance tracking
  */
-router.post('/api/telegram/ohlcv', requireAuth, async (req: Request, res: Response) => {
+router.post('/api/telegram/ohlcv', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { contractAddress, timestamp, timeframe, open, high, low, close, volume, tradesCount, buyerCount, sellerCount } = req.body;
 
@@ -344,7 +351,7 @@ router.post('/api/telegram/ohlcv', requireAuth, async (req: Request, res: Respon
 /**
  * Get token performance chart data
  */
-router.get('/api/telegram/token-performance/:contractAddress', requireAuth, async (req: Request, res: Response) => {
+router.get('/api/telegram/token-performance/:contractAddress', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { contractAddress } = req.params;
     const { timeframe = '5m', limit = 100 } = req.query;

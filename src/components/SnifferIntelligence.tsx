@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  User, TrendingUp, TrendingDown, Award, AlertTriangle, 
-  BarChart3, Clock, DollarSign, Target, Shield, 
-  Activity, Users, Hash, ChevronDown, ChevronRight,
-  Brain, Eye, Settings, Filter, Calendar, Zap
+  User, Award, AlertTriangle, Target, Shield, 
+  Users, Hash, ChevronDown, ChevronRight,
+  Brain, Settings, Zap
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import config from '../config.js';
+import { config } from '../config.js';
 
 interface CallerProfile {
   id: number;
@@ -67,7 +66,7 @@ const SnifferIntelligence: React.FC = () => {
   const [callers, setCallers] = useState<CallerProfile[]>([]);
   const [channels, setChannels] = useState<ChannelStats[]>([]);
   const [selectedCaller, setSelectedCaller] = useState<CallerProfile | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<ChannelStats | null>(null);
+  // const [selectedChannel, setSelectedChannel] = useState<ChannelStats | null>(null); // For future use
   const [activeView, setActiveView] = useState<'callers' | 'channels' | 'campaigns'>('callers');
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [loading, setLoading] = useState(true);
