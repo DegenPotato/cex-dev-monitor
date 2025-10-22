@@ -326,6 +326,52 @@ export function createTelegramRoutes() {
             totalChats: chats.length,
             timestamp: Date.now()
           });
+
+          // Start background metadata fetching with rate limiting
+          console.log(`📊 [Telegram] Starting background metadata fetch for ${chats.length} chats (rate limited)...`);
+          (async () => {
+            let successCount = 0;
+            let failCount = 0;
+            const delayMs = 1000; // 1 second delay between each chat (safe rate limit)
+            
+            for (let i = 0; i < chats.length; i++) {
+              const chat = chats[i];
+              try {
+                // Only fetch metadata for groups/channels (not private chats)
+                if (chat.chatType === 'group' || chat.chatType === 'supergroup' || chat.chatType === 'channel') {
+                  await telegramClientService.fetchAndStoreChatMetadata(userId, chat.chatId);
+                  successCount++;
+                  
+                  // Log progress every 10 chats
+                  if ((i + 1) % 10 === 0) {
+                    console.log(`   📊 Metadata progress: ${i + 1}/${chats.length} (${successCount} success, ${failCount} failed)`);
+                  }
+                }
+              } catch (err) {
+                failCount++;
+                console.error(`   ⚠️  Failed to fetch metadata for ${chat.chatId}:`, (err as Error).message);
+              }
+              
+              // Rate limit: wait between requests (except for the last one)
+              if (i < chats.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+              }
+            }
+            
+            console.log(`✅ [Telegram] Metadata fetch complete: ${successCount} success, ${failCount} failed`);
+            
+            // Emit metadata fetch completion
+            telegramClientService.emit('metadata_fetch_complete', {
+              userId,
+              successCount,
+              failCount,
+              totalChats: chats.length,
+              timestamp: Date.now()
+            });
+          })().catch(err => {
+            console.error('[Telegram] Background metadata fetch error:', err);
+          });
+
         } catch (error: any) {
           console.error('[Telegram] Background chat fetch error:', error);
           telegramClientService.emit('chat_fetch_error', { 
