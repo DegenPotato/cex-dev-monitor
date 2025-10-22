@@ -8,7 +8,7 @@ import { TokensTab } from './TokensTab';
 import { DatabaseTab } from './DatabaseTab';
 import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
-import FetcherTab from './FetcherTab';
+import { FetcherTab } from './FetcherTab';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';

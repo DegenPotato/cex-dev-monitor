@@ -243,10 +243,29 @@ export class TelegramForwardingService extends EventEmitter {
         try {
           console.log(`  ➡️  Forwarding to ${targetChatId} using account ${rule.targetAccountId}...`);
           
+          // Resolve entity if it's a user ID (numeric and doesn't start with -)
+          let targetEntity: any = targetChatId;
+          if (/^\d+$/.test(targetChatId)) {
+            // This is a user ID, we need to resolve it first
+            try {
+              console.log(`  🔍 Resolving user entity for ID: ${targetChatId}`);
+              const entity = await client.getEntity(targetChatId);
+              targetEntity = entity;
+              console.log(`  ✅ Resolved user entity: ${entity.username || entity.firstName || targetChatId}`);
+            } catch (entityError: any) {
+              console.log(`  ⚠️ Could not resolve entity for ${targetChatId}, trying as PeerUser...`);
+              // Try to construct a PeerUser directly
+              const { Api } = await import('telegram');
+              const bigIntModule = await import('big-integer');
+              const bigInt = bigIntModule.default || bigIntModule;
+              targetEntity = new Api.PeerUser({ userId: bigInt(targetChatId) });
+            }
+          }
+          
           // Perform the forward
           if (rule.forwardMode === 'forward') {
             // Use Telegram's native forward (shows "Forwarded from")
-            await client.forwardMessages(targetChatId, {
+            await client.forwardMessages(targetEntity, {
               messages: [message.id],
               fromPeer: sourceChatId
             });
@@ -257,7 +276,7 @@ export class TelegramForwardingService extends EventEmitter {
               messageText = `From @${message.senderUsername}:\n\n${messageText}`;
             }
             
-            await client.sendMessage(targetChatId, {
+            await client.sendMessage(targetEntity, {
               message: messageText || '',
               // TODO: Copy media if present
             });
