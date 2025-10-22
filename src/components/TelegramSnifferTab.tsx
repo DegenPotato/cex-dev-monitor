@@ -22,7 +22,8 @@ import {
   ChevronDown,
   CheckSquare,
   Crown,
-  LogOut
+  LogOut,
+  Brain
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -1039,7 +1040,7 @@ export function TelegramSnifferTab() {
               : 'text-gray-400 hover:text-cyan-300'
           }`}
         >
-          Sniffers ({snifferChats.filter(c => c.isActive).length})
+          Active Sniffers ({snifferChats.filter(c => c.isActive).length})
         </button>
         <button
           onClick={() => setActiveSection('detections')}
@@ -2241,10 +2242,19 @@ export function TelegramSnifferTab() {
           {/* Active Monitoring Overview */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-cyan-300">Active Sniffers</h3>
-              <p className="text-sm text-gray-400 mt-1">
-                Currently monitoring {snifferChats.filter(c => c.isActive).length} of {snifferChats.length} configured chats
-              </p>
+              <div>
+                <h3 className="text-xl font-bold text-cyan-300">Active Sniffers</h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  Currently monitoring {snifferChats.filter(c => c.isActive).length} of {snifferChats.length} configured chats
+                </p>
+              </div>
+              <button 
+                onClick={() => window.open('/intelligence', '_blank')}
+                className="bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 border border-cyan-500/30 rounded-lg px-4 py-2 text-cyan-400 font-medium transition-all flex items-center gap-2"
+              >
+                <Brain className="w-4 h-4" />
+                Intelligence Platform
+              </button>
             </div>
             <div className="flex gap-2">
               <button
