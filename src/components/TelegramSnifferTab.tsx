@@ -868,13 +868,8 @@ export function TelegramSnifferTab() {
           return (a.chatName || '').localeCompare(b.chatName || '');
       }
     });
-    // Apply verified filter
-    if (filterVerified) {
-      filtered = filtered.filter(chat => chat.isVerified);
-    }
-    
     return filtered;
-  }, [availableChats, searchQuery, filterType, filterRole, filterStatus, filterActivity, filterHasContracts, minMembers, filterVerified, sortBy]);
+  }, [availableChats, searchQuery, filterType, filterRole, filterStatus, filterActivity, filterHasContracts, minMembers, filterVerified, filterUsername, sortBy]);
   
   // Load chats and detections when switching sections
   useEffect(() => {

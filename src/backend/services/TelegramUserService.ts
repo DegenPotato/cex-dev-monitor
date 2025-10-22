@@ -363,6 +363,8 @@ export class TelegramUserService {
       chatId: chat.chat_id,
       chatName: chat.chat_name,
       chatType: chat.chat_type,
+      username: chat.username,
+      inviteLink: chat.invite_link,
       telegramAccountId: chat.telegram_account_id,
       forwardToChatId: chat.forward_to_chat_id,
       forwardAccountId: chat.forward_account_id,
