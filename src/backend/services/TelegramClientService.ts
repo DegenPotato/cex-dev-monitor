@@ -1150,8 +1150,22 @@ export class TelegramClientService extends EventEmitter {
 
       console.log(`📊 [Telegram] Fetching metadata for chat ${chatId}...`);
 
-      // Get the chat entity
-      const chat = await client.getEntity(chatId);
+      // Get the chat entity (with error handling for invalid/inaccessible chats)
+      let chat;
+      try {
+        chat = await client.getEntity(chatId);
+      } catch (entityError: any) {
+        // Handle common errors when chat is inaccessible
+        if (entityError.errorMessage === 'CHANNEL_INVALID' || 
+            entityError.errorMessage === 'CHANNEL_PRIVATE' ||
+            entityError.errorMessage === 'USER_NOT_PARTICIPANT' ||
+            entityError.message?.includes('Could not find the input entity')) {
+          console.log(`   ⚠️  Skipping ${chatId}: ${entityError.errorMessage || 'Chat left or inaccessible'}`);
+          return null;
+        }
+        throw entityError; // Re-throw unexpected errors
+      }
+      
       const now = Math.floor(Date.now() / 1000);
 
       // Determine chat type
@@ -1331,9 +1345,112 @@ export class TelegramClientService extends EventEmitter {
 
       return metadata;
     } catch (error: any) {
+      // Handle common expected errors gracefully
+      if (error.errorMessage === 'CHANNEL_INVALID' || 
+          error.errorMessage === 'CHANNEL_PRIVATE' ||
+          error.errorMessage === 'USER_NOT_PARTICIPANT' ||
+          error.message?.includes('Could not find the input entity')) {
+        console.log(`   ⚠️  Skipping ${chatId}: ${error.errorMessage || 'Chat left or inaccessible'}`);
+        return null; // Return null instead of throwing - chat is inaccessible
+      }
+      
+      // For other errors, log and throw
       console.error(`❌ [Telegram] Error fetching metadata for chat ${chatId}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Leave or delete a chat from Telegram account
+   * For channels/groups: Leaves the chat
+   * For private chats: Deletes the conversation history
+   */
+  async leaveChatFromTelegram(userId: number, chatId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const client = this.activeClients.get(userId);
+      if (!client) {
+        return { success: false, message: 'No active Telegram client' };
+      }
+
+      console.log(`🚪 [Telegram] Leaving chat ${chatId}...`);
+
+      // Get the chat entity
+      let chat;
+      try {
+        chat = await client.getEntity(chatId);
+      } catch (entityError: any) {
+        // Chat already left or doesn't exist
+        return { success: true, message: 'Chat not found or already left' };
+      }
+
+      // Determine chat type and leave accordingly
+      if (chat.className === 'Channel') {
+        // Leave channel/supergroup
+        await client.invoke(
+          new Api.channels.LeaveChannel({
+            channel: chat
+          })
+        );
+        console.log(`   ✅ Left channel/supergroup: ${chatId}`);
+        return { success: true, message: 'Left channel/supergroup successfully' };
+        
+      } else if (chat.className === 'Chat') {
+        // Leave regular group
+        const me = await client.getMe();
+        await client.invoke(
+          new Api.messages.DeleteChatUser({
+            chatId: chat.id,
+            userId: me.id
+          })
+        );
+        console.log(`   ✅ Left group: ${chatId}`);
+        return { success: true, message: 'Left group successfully' };
+        
+      } else if (chat.className === 'User') {
+        // Delete private conversation
+        await client.invoke(
+          new Api.messages.DeleteHistory({
+            justClear: false,
+            revoke: false,
+            peer: chat,
+            maxId: 0
+          })
+        );
+        console.log(`   ✅ Deleted private conversation: ${chatId}`);
+        return { success: true, message: 'Deleted private conversation successfully' };
+      }
+
+      return { success: false, message: 'Unknown chat type' };
+      
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Error leaving chat ${chatId}:`, error);
+      return { success: false, message: error.message || 'Failed to leave chat' };
+    }
+  }
+
+  /**
+   * Bulk leave multiple chats from Telegram
+   */
+  async bulkLeaveChatsTelegram(userId: number, chatIds: string[]): Promise<{ 
+    successful: string[]; 
+    failed: { chatId: string; error: string }[] 
+  }> {
+    const successful: string[] = [];
+    const failed: { chatId: string; error: string }[] = [];
+
+    for (const chatId of chatIds) {
+      const result = await this.leaveChatFromTelegram(userId, chatId);
+      if (result.success) {
+        successful.push(chatId);
+      } else {
+        failed.push({ chatId, error: result.message });
+      }
+      
+      // Rate limit: wait 500ms between leave operations
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return { successful, failed };
   }
 
   /**

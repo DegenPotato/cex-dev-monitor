@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   ChevronDown,
   CheckSquare,
-  Crown
+  Crown,
+  LogOut
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -658,8 +659,8 @@ export function TelegramSnifferTab() {
 
   const handleBulkDelete = async (mode: 'selected' | 'all') => {
     const confirmMsg = mode === 'all' 
-      ? `Delete ALL ${availableChats.length} chats?` 
-      : `Delete ${selectedChats.size} selected chats?`;
+      ? `Delete ALL ${availableChats.length} chats from our database?` 
+      : `Delete ${selectedChats.size} selected chats from our database?`;
     
     if (!confirm(confirmMsg)) return;
 
@@ -681,6 +682,43 @@ export function TelegramSnifferTab() {
         loadSnifferChats();
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to delete chats' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkLeaveTelegram = async () => {
+    if (selectedChats.size === 0) return;
+    
+    const confirmMsg = `⚠️ LEAVE ${selectedChats.size} chats from your Telegram account?\n\nThis will:\n- Remove you from these channels/groups\n- Delete private conversations\n- Cannot be undone!`;
+    
+    if (!confirm(confirmMsg)) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/telegram/bulk-leave-telegram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          chatIds: Array.from(selectedChats)
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage({ 
+          type: 'success', 
+          text: `${data.message}. Successfully left: ${data.successful.length}, Failed: ${data.failed.length}` 
+        });
+        setSelectedChats(new Set());
+        // Reload the chat list
+        loadSnifferChats();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to leave chats' });
       }
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message });
@@ -1223,16 +1261,27 @@ export function TelegramSnifferTab() {
                 {selectedChats.size > 0 && (
                   <>
                     <button
+                      onClick={handleBulkLeaveTelegram}
+                      className="px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 rounded-lg text-orange-400 text-sm font-medium transition-all"
+                      title="Leave these chats from your Telegram account"
+                    >
+                      <LogOut className="w-3 h-3 inline mr-1" />
+                      Leave from Telegram ({selectedChats.size})
+                    </button>
+                    <button
                       onClick={() => handleBulkDelete('selected')}
                       className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+                      title="Remove from our database only"
                     >
                       <Trash2 className="w-3 h-3 inline mr-1" />
-                      Delete Selected ({selectedChats.size})
+                      Delete from DB ({selectedChats.size})
                     </button>
                     <button
                       className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                      title="Apply same configuration to all selected chats"
                     >
-                      Configure Selected ({selectedChats.size})
+                      <SettingsIcon className="w-3 h-3 inline mr-1" />
+                      Global Config ({selectedChats.size})
                     </button>
                   </>
                 )}

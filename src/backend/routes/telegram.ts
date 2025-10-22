@@ -568,6 +568,70 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Leave a chat from Telegram (not just database)
+   */
+  router.post('/leave-chat-telegram', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.body;
+
+      if (!chatId) {
+        return res.status(400).json({ error: 'Chat ID is required' });
+      }
+
+      const result = await telegramClientService.leaveChatFromTelegram(userId, chatId);
+      
+      if (result.success) {
+        // Also remove from our database
+        await telegramService.deleteMonitoredChat(userId, chatId);
+        res.json({ success: true, message: result.message });
+      } else {
+        res.status(400).json({ error: result.message });
+      }
+    } catch (error: any) {
+      console.error('[Telegram] Error leaving chat from Telegram:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Bulk leave chats from Telegram
+   */
+  router.post('/bulk-leave-telegram', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatIds } = req.body;
+
+      if (!Array.isArray(chatIds) || chatIds.length === 0) {
+        return res.status(400).json({ error: 'Chat IDs array is required' });
+      }
+
+      console.log(`🚪 [Telegram] Bulk leaving ${chatIds.length} chats from Telegram...`);
+      
+      const result = await telegramClientService.bulkLeaveChatsTelegram(userId, chatIds);
+      
+      // Remove successful ones from database too
+      for (const chatId of result.successful) {
+        try {
+          await telegramService.deleteMonitoredChat(userId, chatId);
+        } catch (e) {
+          console.error(`Failed to delete ${chatId} from database:`, e);
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Left ${result.successful.length} chats, ${result.failed.length} failed`,
+        successful: result.successful,
+        failed: result.failed
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error bulk leaving chats from Telegram:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Get detected contracts
    */
   router.get('/detected-contracts', authService.requireSecureAuth(), async (req, res) => {
