@@ -75,12 +75,97 @@ This script:
 
 ## 📊 Performance Metrics
 
-| Operation | Target | Achieved |
-|-----------|--------|----------|
-| Wallet Encryption | <5ms | **2-3ms** ✅ |
-| Wallet Decryption | <5ms | **2-3ms** ✅ |
-| Cache Hit Rate | >90% | **95%** ✅ |
-| Total Trade Latency | <400ms | **265ms** ✅ |
+- **Wallet Encryption:** <5ms
+- **Trade Execution:** ~300ms (mainnet)
+- **Tax Calculation:** <1ms
+- **Database Operations:** <10ms
+- **Total Trade Latency:** ~350ms average
+
+## 🚀 Deployment Instructions
+
+### Prerequisites
+- VPS with Node.js 18+ and PM2
+- MongoDB/SQLite database
+- SSL certificates for API domain
+- Environment variables configured
+
+### Deployment Steps
+
+#### 1. Initial Setup (One-Time)
+```bash
+# SSH into VPS
+ssh root@YOUR_VPS_IP
+
+# Clone repository
+cd /var/www
+git clone https://github.com/your-repo/cex-monitor.git
+cd cex-monitor
+
+# Install dependencies
+npm install
+
+# Set up environment
+cp .env.example .env
+nano .env  # Add your keys
+
+# Build TypeScript
+npm run build
+
+# Start with PM2
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup  # Enable auto-start on reboot
+```
+
+#### 2. Deploy Updates (Regular)
+```bash
+# Quick deploy with script
+./deploy.sh
+
+# Or manual steps:
+git pull
+npm install
+npm run build  # CRITICAL - Compiles TypeScript!
+pm2 restart cex-monitor
+```
+
+#### 3. Create Auto-Deploy Script
+```bash
+cat > deploy.sh << 'EOF'
+#!/bin/bash
+echo "🔄 Deploying Fetcher Trading Bot..."
+git pull
+npm install
+npm run build
+pm2 restart cex-monitor
+pm2 save
+echo "✅ Deployment complete!"
+EOF
+
+chmod +x deploy.sh
+```
+
+### ⚠️ Common Issues & Solutions
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| 404 on `/api/trading/*` | TypeScript not compiled | Run `npm run build` |
+| "Cannot find module" | Dependencies not installed | Run `npm install` |
+| "Encryption key not set" | Missing env variable | Add `PRIVATE_KEY_ENCRYPTION_KEY` to `.env` |
+| Routes not updating | Running old compiled code | Always run `npm run build` after code changes |
+| PM2 not restarting | Stale process | `pm2 delete cex-monitor && pm2 start ecosystem.config.cjs` |
+
+### Monitoring
+```bash
+# Check logs
+pm2 logs cex-monitor --lines 100
+
+# Monitor status
+pm2 status
+
+# Test endpoints
+curl http://localhost:3001/api/trading/wallets
+```
 
 ---
 
