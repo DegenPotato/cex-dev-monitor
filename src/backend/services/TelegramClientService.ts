@@ -1514,20 +1514,20 @@ export class TelegramClientService extends EventEmitter {
         }
       }
 
-      // Store in database with enhanced fields
+      // Store in database with enhanced fields (32 columns total)
       await execute(`
         INSERT OR REPLACE INTO telegram_chat_metadata (
-          user_id, chat_id, title, username, chat_type, description, invite_link,
+          user_id, chat_id, title, username, chat_type, description, photo_url, invite_link,
           member_count, online_count, admin_count, restricted_count, kicked_count,
           is_member, is_admin, is_creator, has_left, join_date,
           phone_number, bio, is_verified, is_scam, is_fake, is_premium,
           restriction_reason, common_chats_count, last_seen_status, last_seen_timestamp,
           photo_id, photo_local_path, access_hash,
           fetched_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         metadata.userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
-        metadata.description, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
+        metadata.description, metadata.photoUrl, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
         metadata.adminCount, metadata.restrictedCount, metadata.kickedCount,
         metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
         metadata.hasLeft ? 1 : 0, metadata.joinDate,
