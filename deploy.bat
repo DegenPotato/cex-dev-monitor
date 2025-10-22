@@ -1,0 +1,6 @@
+@echo off
+echo Deploying to VPS...
+ssh -i "C:\Users\Potato\.ssh\id_ed25519_new" root@139.59.237.215 "cd /var/www/cex-monitor && git pull && npm install && npm run build && pm2 restart cex-monitor && pm2 save && echo 'Deployment complete!'"
+echo.
+echo Press any key to exit...
+pause >nul

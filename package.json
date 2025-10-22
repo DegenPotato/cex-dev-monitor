@@ -8,7 +8,7 @@
     "dev:frontend": "vite",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "tsc && vite build",
-    "build:backend": "tsc",
+    "build:backend": "tsc --project tsconfig.backend.json",
     "build:frontend": "vite build",
     "preview": "vite preview",
     "migrate": "node run-all-migrations.mjs",
