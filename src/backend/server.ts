@@ -148,6 +148,10 @@ app.use('/api/telegram/forwarding', telegramForwardingRoutes);
 import telegramForwardDestinationRoutes from './routes/telegram-forwarding-destinations.js';
 app.use('/api/telegram/forward-destinations', telegramForwardDestinationRoutes);
 
+// Register Telegram metadata routes
+import telegramMetadataRoutes from './routes/telegram-metadata.js';
+app.use('/api/telegram', telegramMetadataRoutes);
+
 // Register token routes
 import tokenRoutes from './routes/tokens.js';
 app.use('/api/tokens', tokenRoutes);

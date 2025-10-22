@@ -1136,6 +1136,263 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Fetch and store comprehensive metadata for a chat
+   * Including user's role (admin/creator/member status)
+   */
+  async fetchAndStoreChatMetadata(userId: number, chatId: string) {
+    try {
+      const client = this.activeClients.get(userId);
+      if (!client) {
+        console.log(`⚠️  No active client for user ${userId}`);
+        return;
+      }
+
+      console.log(`📊 [Telegram] Fetching metadata for chat ${chatId}...`);
+
+      // Get the chat entity
+      const chat = await client.getEntity(chatId);
+      const now = Math.floor(Date.now() / 1000);
+
+      // Determine chat type
+      let chatType = 'unknown';
+      if (chat.className === 'User') chatType = 'private';
+      else if (chat.className === 'Chat') chatType = 'group';
+      else if (chat.className === 'Channel') {
+        chatType = chat.broadcast ? 'channel' : 'supergroup';
+      }
+
+      // Initialize metadata object
+      const metadata: any = {
+        userId,
+        chatId,
+        title: chat.title || `${chat.firstName || ''} ${chat.lastName || ''}`.trim(),
+        username: chat.username,
+        chatType,
+        description: null,
+        photoUrl: null,
+        inviteLink: null,
+        memberCount: 0,
+        onlineCount: 0,
+        adminCount: 0,
+        restrictedCount: 0,
+        kickedCount: 0,
+        isMember: false,
+        isAdmin: false,
+        isCreator: false,
+        hasLeft: false,
+        joinDate: null,
+        fetchedAt: now,
+        updatedAt: now
+      };
+
+      // Get full chat information (for groups/channels)
+      if (chatType === 'supergroup' || chatType === 'channel' || chatType === 'group') {
+        try {
+          const fullChat = await client.invoke(
+            new Api.channels.GetFullChannel({
+              channel: chat
+            })
+          );
+
+          const fullChatInfo = fullChat.fullChat;
+
+          // Extract detailed information
+          metadata.description = fullChatInfo.about;
+          metadata.memberCount = fullChatInfo.participantsCount || 0;
+          metadata.adminCount = fullChatInfo.adminsCount || 0;
+          metadata.kickedCount = fullChatInfo.kickedCount || 0;
+          metadata.onlineCount = fullChatInfo.onlineCount || 0;
+
+          // Get export invite link if available
+          try {
+            const exportedInvite = await client.invoke(
+              new Api.messages.ExportChatInvite({
+                peer: chat
+              })
+            );
+            if (exportedInvite && (exportedInvite as any).link) {
+              metadata.inviteLink = (exportedInvite as any).link;
+            }
+          } catch (e) {
+            // User might not have permission to export invite
+          }
+
+          // Get current user's participant status
+          try {
+            const me = await client.getMe();
+            const participant = await client.invoke(
+              new Api.channels.GetParticipant({
+                channel: chat,
+                participant: me.id
+              })
+            );
+
+            if (participant && participant.participant) {
+              const p = participant.participant;
+              
+              // Check role
+              metadata.isCreator = p.className === 'ChannelParticipantCreator';
+              metadata.isAdmin = p.className === 'ChannelParticipantAdmin' || metadata.isCreator;
+              metadata.isMember = true;
+              
+              // Get join date if available
+              if (p.date) {
+                metadata.joinDate = p.date;
+              }
+
+              console.log(`   👤 User role in ${chatType}: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
+            }
+          } catch (e) {
+            // Not a member or can't fetch participant info
+            console.log(`   ⚠️  Could not fetch participant status: ${e}`);
+          }
+
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not fetch full chat info: ${error.message}`);
+        }
+      } else if (chatType === 'group') {
+        // For regular groups (not supergroups)
+        try {
+          const fullChat = await client.invoke(
+            new Api.messages.GetFullChat({
+              chatId: chat.id
+            })
+          );
+
+          const fullChatInfo = fullChat.fullChat;
+          metadata.memberCount = fullChatInfo.participants?.participants?.length || 0;
+          
+          // Check if current user is admin
+          const me = await client.getMe();
+          const participants = fullChatInfo.participants?.participants || [];
+          const myParticipant = participants.find((p: any) => p.userId?.toString() === me.id.toString());
+          
+          if (myParticipant) {
+            metadata.isMember = true;
+            metadata.isCreator = myParticipant.className === 'ChatParticipantCreator';
+            metadata.isAdmin = myParticipant.className === 'ChatParticipantAdmin' || metadata.isCreator;
+            if (myParticipant.date) {
+              metadata.joinDate = myParticipant.date;
+            }
+
+            console.log(`   👤 User role in group: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
+          }
+
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not fetch full group info: ${error.message}`);
+        }
+      }
+
+      // Store in database
+      await execute(`
+        INSERT OR REPLACE INTO telegram_chat_metadata (
+          user_id, chat_id, title, username, chat_type, description, invite_link,
+          member_count, online_count, admin_count, restricted_count, kicked_count,
+          is_member, is_admin, is_creator, has_left, join_date,
+          fetched_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        metadata.userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
+        metadata.description, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
+        metadata.adminCount, metadata.restrictedCount, metadata.kickedCount,
+        metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
+        metadata.hasLeft ? 1 : 0, metadata.joinDate, metadata.fetchedAt, metadata.updatedAt
+      ]);
+
+      console.log(`   ✅ Metadata stored: ${metadata.memberCount} members, Admin: ${metadata.isAdmin}, Creator: ${metadata.isCreator}`);
+
+      return metadata;
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Error fetching metadata for chat ${chatId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch participants from a chat for user targeting
+   * Returns list of users with their IDs, names, and metadata
+   */
+  async fetchChatParticipants(userId: number, chatId: string, limit: number = 100) {
+    try {
+      const client = this.activeClients.get(userId);
+      if (!client) {
+        throw new Error(`No active client for user ${userId}`);
+      }
+
+      console.log(`👥 [Telegram] Fetching participants for chat ${chatId}...`);
+
+      const chat = await client.getEntity(chatId);
+      const participants: any[] = [];
+
+      // For supergroups/channels
+      if (chat.className === 'Channel') {
+        try {
+          const result = await client.invoke(
+            new Api.channels.GetParticipants({
+              channel: chat,
+              filter: new Api.ChannelParticipantsRecent(),
+              offset: 0,
+              limit: Math.min(limit, 200),
+              hash: BigInt(0)
+            })
+          );
+
+          if (result.users) {
+            for (const user of result.users) {
+              participants.push({
+                userId: user.id.toString(),
+                firstName: user.firstName,
+                lastName: user.lastName,
+                username: user.username,
+                isBot: user.bot || false,
+                isVerified: user.verified || false,
+                isPremium: user.premium || false,
+                phone: user.phone,
+                displayName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${user.id}`
+              });
+            }
+          }
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not fetch participants (may need admin rights): ${error.message}`);
+        }
+      } else if (chat.className === 'Chat') {
+        // For regular groups
+        try {
+          const fullChat = await client.invoke(
+            new Api.messages.GetFullChat({
+              chatId: chat.id
+            })
+          );
+
+          if (fullChat.users) {
+            for (const user of fullChat.users) {
+              participants.push({
+                userId: user.id.toString(),
+                firstName: user.firstName,
+                lastName: user.lastName,
+                username: user.username,
+                isBot: user.bot || false,
+                isVerified: user.verified || false,
+                isPremium: user.premium || false,
+                phone: user.phone,
+                displayName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${user.id}`
+              });
+            }
+          }
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not fetch group participants: ${error.message}`);
+        }
+      }
+
+      console.log(`   ✅ Fetched ${participants.length} participants`);
+      return participants;
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Error fetching participants for chat ${chatId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Save session to database
    */
   private async saveSession(userId: number, sessionString: string) {

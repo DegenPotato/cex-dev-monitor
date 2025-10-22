@@ -114,7 +114,6 @@ export function TelegramSnifferTab() {
   const [configChat, setConfigChat] = useState<any | null>(null);
   const [configMonitorMode, setConfigMonitorMode] = useState<'all' | 'users' | 'keywords'>('all');
   const [configKeywords, setConfigKeywords] = useState('');
-  const [configUserIds, setConfigUserIds] = useState('');
   const [configForwardTo, setConfigForwardTo] = useState('');
   const [configForwardAccountId, setConfigForwardAccountId] = useState<number | null>(null);
   const [configContractDetection, setConfigContractDetection] = useState(true);
@@ -131,6 +130,17 @@ export function TelegramSnifferTab() {
   }>>([]);
   const [forwardTargetFilter, setForwardTargetFilter] = useState('');
   const [showForwardDropdown, setShowForwardDropdown] = useState(false);
+  
+  // Multi-select user targeting
+  const [availableUsers, setAvailableUsers] = useState<Array<any>>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Array<{
+    userId: string;
+    displayName: string;
+    username?: string;
+    isBot?: boolean;
+  }>>([]);
+  const [userFilter, setUserFilter] = useState('');
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   
   // Available telegram accounts for forwarding
   const [telegramAccounts, setTelegramAccounts] = useState<Array<{ id: number; name: string; phone?: string }>>([]);
@@ -1283,15 +1293,42 @@ export function TelegramSnifferTab() {
                             {isSniffer ? 'Stop' : 'Start'}
                           </button>
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               setConfigChat(chat);
                               const sniffer = snifferChats.find(m => m.chatId === chat.chatId);
                               if (sniffer) {
                                 setConfigKeywords(sniffer.monitoredKeywords?.join(', ') || '');
-                                setConfigUserIds(sniffer.monitoredUserIds?.join(', ') || '');
                                 setConfigForwardTo(sniffer.forwardToChatId || '');
                                 setConfigProcessBotMessages(sniffer.processBotMessages || false);
+                                
+                                // Load users if there are monitored user IDs
+                                if (sniffer.monitoredUserIds && sniffer.monitoredUserIds.length > 0) {
+                                  try {
+                                    const response = await fetch(
+                                      `${config.apiUrl}/api/telegram/chats/${encodeURIComponent(chat.chatId)}/participants?limit=200`,
+                                      { credentials: 'include' }
+                                    );
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      setAvailableUsers(data.participants || []);
+                                      
+                                      // Match and select users by ID
+                                      const usersToSelect = data.participants.filter((p: any) => 
+                                        sniffer.monitoredUserIds?.includes(Number(p.userId)) || 
+                                        sniffer.monitoredUserIds?.includes(p.userId)
+                                      ).map((p: any) => ({
+                                        userId: p.userId,
+                                        displayName: p.displayName,
+                                        username: p.username,
+                                        isBot: p.isBot
+                                      }));
+                                      setSelectedUsers(usersToSelect);
+                                    }
+                                  } catch (err) {
+                                    console.error('Failed to load users:', err);
+                                  }
+                                }
                               }
                               loadForwardDestinations(chat.chatId);
                               loadAvailableForwardTargets();
@@ -2379,17 +2416,174 @@ export function TelegramSnifferTab() {
               {configMonitorMode === 'users' && (
                 <div>
                   <label className="block text-sm font-medium text-cyan-300 mb-2">
-                    User IDs to Monitor
+                    Users to Monitor
                   </label>
-                  <input
-                    type="text"
-                    value={configUserIds}
-                    onChange={(e) => setConfigUserIds(e.target.value)}
-                    placeholder="123456789, 987654321 (comma-separated)"
-                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50"
-                  />
+                  
+                  {/* Selected Users */}
+                  {selectedUsers.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {selectedUsers.map((user, index) => (
+                        <div key={index} className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/20 border border-purple-500/40 rounded-lg">
+                          <span className="text-sm text-purple-300">
+                            {user.displayName}
+                            {user.isBot && <span className="ml-1 text-xs text-gray-400">(bot)</span>}
+                          </span>
+                          {user.username && (
+                            <span className="text-xs text-gray-400">@{user.username}</span>
+                          )}
+                          <button
+                            onClick={() => {
+                              setSelectedUsers(prev => prev.filter((_, i) => i !== index));
+                            }}
+                            className="ml-1 text-purple-400 hover:text-purple-300"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Dropdown Selector */}
+                  <div className="relative user-dropdown-container">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={userFilter}
+                        onChange={(e) => setUserFilter(e.target.value)}
+                        onFocus={async () => {
+                          setShowUserDropdown(true);
+                          // Load users from the chat when dropdown opens
+                          if (configChat && availableUsers.length === 0) {
+                            try {
+                              const response = await fetch(
+                                `${config.apiUrl}/api/telegram/chats/${encodeURIComponent(configChat.chatId)}/participants?limit=200`,
+                                { credentials: 'include' }
+                              );
+                              if (response.ok) {
+                                const data = await response.json();
+                                setAvailableUsers(data.participants || []);
+                              }
+                            } catch (err) {
+                              console.error('Failed to load users:', err);
+                            }
+                          }
+                        }}
+                        placeholder="Search users in this chat..."
+                        className="flex-1 px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50"
+                      />
+                      <button
+                        onClick={() => setShowUserDropdown(!showUserDropdown)}
+                        className="px-3 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-purple-400 hover:bg-purple-500/10 transition-colors"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Dropdown List */}
+                    {showUserDropdown && (
+                      <div className="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-gray-900/95 backdrop-blur-sm border border-purple-500/30 rounded-lg shadow-xl">
+                        {/* Bulk Actions */}
+                        <div className="sticky top-0 bg-gray-900 border-b border-purple-500/20 p-2 flex gap-2">
+                          <button
+                            onClick={() => {
+                              const filtered = availableUsers.filter(u =>
+                                !userFilter ||
+                                u.displayName?.toLowerCase().includes(userFilter.toLowerCase()) ||
+                                u.username?.toLowerCase().includes(userFilter.toLowerCase()) ||
+                                u.firstName?.toLowerCase().includes(userFilter.toLowerCase())
+                              );
+                              const newUsers = filtered.map(u => ({
+                                userId: u.userId,
+                                displayName: u.displayName,
+                                username: u.username,
+                                isBot: u.isBot
+                              }));
+                              setSelectedUsers(prev => {
+                                const existing = new Set(prev.map(u => u.userId));
+                                return [
+                                  ...prev,
+                                  ...newUsers.filter(u => !existing.has(u.userId))
+                                ];
+                              });
+                            }}
+                            className="flex-1 px-2 py-1 text-xs bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded text-purple-300 transition-colors"
+                          >
+                            Select All Filtered
+                          </button>
+                          <button
+                            onClick={() => setSelectedUsers([])}
+                            className="flex-1 px-2 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-300 transition-colors"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        
+                        {/* User List */}
+                        <div className="p-1">
+                          {availableUsers
+                            .filter(user =>
+                              !userFilter ||
+                              user.displayName?.toLowerCase().includes(userFilter.toLowerCase()) ||
+                              user.username?.toLowerCase().includes(userFilter.toLowerCase()) ||
+                              user.firstName?.toLowerCase().includes(userFilter.toLowerCase()) ||
+                              user.userId?.includes(userFilter)
+                            )
+                            .map(user => {
+                              const isSelected = selectedUsers.some(u => u.userId === user.userId);
+                              return (
+                                <button
+                                  key={user.userId}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setSelectedUsers(prev =>
+                                        prev.filter(u => u.userId !== user.userId)
+                                      );
+                                    } else {
+                                      setSelectedUsers(prev => [...prev, {
+                                        userId: user.userId,
+                                        displayName: user.displayName,
+                                        username: user.username,
+                                        isBot: user.isBot
+                                      }]);
+                                    }
+                                  }}
+                                  className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-purple-500/10 rounded transition-colors ${
+                                    isSelected ? 'bg-purple-500/20' : ''
+                                  }`}
+                                >
+                                  <CheckSquare className={`w-4 h-4 ${isSelected ? 'text-purple-400' : 'text-gray-500'}`} />
+                                  <div className="flex-1">
+                                    <div className="text-sm text-white flex items-center gap-2">
+                                      {user.displayName}
+                                      {user.isBot && (
+                                        <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 border border-blue-500/40 rounded text-blue-300">BOT</span>
+                                      )}
+                                      {user.isVerified && (
+                                        <span className="text-xs px-1.5 py-0.5 bg-cyan-500/20 border border-cyan-500/40 rounded text-cyan-300">✓</span>
+                                      )}
+                                    </div>
+                                    {user.username && (
+                                      <div className="text-xs text-gray-400">@{user.username}</div>
+                                    )}
+                                    <div className="text-xs text-gray-500">ID: {user.userId}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          {availableUsers.length === 0 && (
+                            <div className="text-center text-gray-400 py-4">
+                              <p>Click to load users from this chat</p>
+                              <p className="text-xs mt-1">May require admin permissions</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
                   <p className="text-xs text-gray-400 mt-2">
-                    Only messages from these Telegram user IDs will be monitored
+                    Selected {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} to monitor. Only messages from these users will be processed.
                   </p>
                 </div>
               )}
@@ -2688,6 +2882,10 @@ export function TelegramSnifferTab() {
                   setSelectedForwardDestinations([]);
                   setForwardTargetFilter('');
                   setShowForwardDropdown(false);
+                  setSelectedUsers([]);
+                  setAvailableUsers([]);
+                  setUserFilter('');
+                  setShowUserDropdown(false);
                 }}
                 className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors"
               >
@@ -2703,7 +2901,7 @@ export function TelegramSnifferTab() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         monitoredKeywords: configKeywords ? configKeywords.split(',').map(k => k.trim()).filter(k => k) : [],
-                        monitoredUserIds: configUserIds ? configUserIds.split(',').map(u => u.trim()).filter(u => u) : [],
+                        monitoredUserIds: selectedUsers.map(u => u.userId),
                         forwardToChatId: configForwardTo || null,
                         forwardAccountId: configForwardAccountId,
                         initialHistoryLimit: configInitialHistory,

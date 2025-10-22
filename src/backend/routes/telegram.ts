@@ -982,5 +982,29 @@ export function createTelegramRoutes() {
     }
   });
 
+  /**
+   * GET /api/telegram/chats/:chatId/participants
+   * Fetch participants/members from a chat for user targeting
+   */
+  router.get('/chats/:chatId/participants', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as any).user!.id;
+      const { chatId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 100;
+
+      const participants = await telegramClientService.fetchChatParticipants(userId, chatId, limit);
+
+      res.json({
+        success: true,
+        chatId,
+        participants,
+        count: participants.length
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error fetching participants:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 }
