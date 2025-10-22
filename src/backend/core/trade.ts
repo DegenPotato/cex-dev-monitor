@@ -12,6 +12,7 @@ import {
   LAMPORTS_PER_SOL,
   SystemProgram
 } from '@solana/web3.js';
+// @ts-ignore - node-fetch types not needed for runtime
 import fetch from 'node-fetch';
 import { getWalletManager } from './wallet.js';
 import { execute, queryOne } from '../database/helpers.js';
@@ -203,7 +204,7 @@ export class TradingEngine {
         taxAmount,
         netAmount
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Buy failed:', error);
       return {
         success: false,
@@ -320,7 +321,7 @@ export class TradingEngine {
         priceImpact: quoteData.priceImpactPct,
         fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sell failed:', error);
       return {
         success: false,
@@ -346,7 +347,8 @@ export class TradingEngine {
       const keypair = await this.walletManager.getKeypair(params.userId, walletAddress);
 
       // Create transfer instruction
-      const { Token, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+      const splToken = await import('@solana/spl-token');
+      const { Token, TOKEN_PROGRAM_ID } = splToken as any;
       
       const fromPubkey = keypair.publicKey;
       const toPubkey = new PublicKey(params.destination);
@@ -423,7 +425,7 @@ export class TradingEngine {
         amountIn: params.amount,
         amountOut: params.amount
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transfer failed:', error);
       return {
         success: false,
@@ -552,7 +554,7 @@ export class TradingEngine {
       const wallet = await queryOne(
         'SELECT id FROM trading_wallets WHERE wallet_address = ?',
         [data.walletAddress]
-      );
+      ) as any;
 
       await execute(`
         INSERT INTO trading_transactions (
@@ -575,10 +577,12 @@ export class TradingEngine {
       ]);
 
       // Update wallet last used
-      await execute(
-        'UPDATE trading_wallets SET last_used_at = ?, last_tx_signature = ? WHERE id = ?',
-        [Date.now(), data.signature, wallet?.id]
-      );
+      if (wallet?.id) {
+        await execute(
+          'UPDATE trading_wallets SET last_used_at = ?, last_tx_signature = ? WHERE id = ?',
+          [Date.now(), data.signature, wallet.id]
+        );
+      }
     } catch (error) {
       console.error('Error logging transaction:', error);
     }
