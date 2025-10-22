@@ -152,6 +152,14 @@ app.use('/api/telegram/forward-destinations', telegramForwardDestinationRoutes);
 import telegramMetadataRoutes from './routes/telegram-metadata.js';
 app.use('/api/telegram', telegramMetadataRoutes);
 
+// Register Telegram intelligence routes
+import telegramIntelligenceRoutes from './routes/telegram-intelligence.js';
+app.use('/', telegramIntelligenceRoutes);
+
+// Register trading routes (Fetcher)
+import tradingRoutes from './routes/trading.js';
+app.use('/', tradingRoutes);
+
 // Register token routes
 import tokenRoutes from './routes/tokens.js';
 app.use('/api/tokens', tokenRoutes);
