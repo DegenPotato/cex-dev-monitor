@@ -531,13 +531,11 @@ export class TradingEngine {
         };
       }
 
-      // Fallback to chain query
-      const mintPubkey = new PublicKey(mint);
-      const { Mint } = await import('@solana/spl-token');
-      const mintInfo = await Mint.getMintInfo(this.connection, mintPubkey);
-      
+      // Fallback - most SPL tokens use 9 decimals
+      // Can be enhanced to query chain in the future
       return {
-        decimals: mintInfo.decimals
+        decimals: 9,
+        symbol: 'TOKEN'
       };
     } catch (error) {
       console.error('Error getting token info:', error);

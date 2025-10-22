@@ -48,7 +48,7 @@ export class WalletManager {
       'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ?',
       [userId]
     );
-    const isFirst = existingWallets[0].count === 0;
+    const isFirst = (existingWallets as any[])[0].count === 0;
 
     // Store in database
     const result = await execute(`
@@ -61,7 +61,7 @@ export class WalletManager {
       publicKey,
       encryptedKey,
       iv,
-      walletName || `Wallet ${existingWallets[0].count + 1}`,
+      walletName || `Wallet ${(existingWallets as any[])[0].count + 1}`,
       isFirst ? 1 : 0,
       Date.now()
     ]);
@@ -70,10 +70,10 @@ export class WalletManager {
     this.walletCache.set(publicKey, keypair);
 
     return {
-      id: result.lastID,
+      id: (result as any)?.lastID,
       userId,
       walletAddress: publicKey,
-      walletName: walletName || `Wallet ${existingWallets[0].count + 1}`,
+      walletName: walletName || `Wallet ${(existingWallets as any[])[0].count + 1}`,
       isDefault: isFirst,
       isActive: true,
       solBalance: 0,
@@ -123,9 +123,14 @@ export class WalletManager {
 
       // Get wallet count for naming
       const walletCount = await queryOne(
-        'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ?',
+        'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ? AND is_active = 1',
         [userId]
       );
+
+      // Check user's wallet limit
+      if ((walletCount as any)?.count >= 10) {
+        throw new Error('User has reached wallet limit');
+      }
 
       // Store in database
       const result = await execute(`
@@ -138,7 +143,7 @@ export class WalletManager {
         publicKey,
         encryptedKey,
         iv,
-        walletName || `Imported Wallet ${walletCount.count + 1}`,
+        walletName || `Imported Wallet ${(walletCount as any)?.count + 1}`,
         Date.now()
       ]);
 
@@ -149,17 +154,17 @@ export class WalletManager {
       this.walletCache.set(publicKey, keypair);
 
       return {
-        id: result.lastID,
+        id: (result as any).lastID,
         userId,
         walletAddress: publicKey,
-        walletName: walletName || `Imported Wallet ${walletCount.count + 1}`,
+        walletName: walletName || `Imported Wallet ${(walletCount as any)?.count + 1}`,
         isDefault: false,
         isActive: true,
         solBalance: balance,
         createdAt: Date.now()
       };
     } catch (error) {
-      throw new Error(`Failed to import wallet: ${error.message}`);
+      throw new Error(`Failed to import wallet: ${(error as any).message || error}`);
     }
   }
 
@@ -178,8 +183,8 @@ export class WalletManager {
     }
 
     // Decrypt private key
-    const [encrypted, tag] = wallet.encrypted_private_key.split(':');
-    const privateKey = this.encryption.decrypt(encrypted, wallet.encryption_iv, tag);
+    const [encrypted, tag] = (wallet as any).encrypted_private_key.split(':');
+    const privateKey = this.encryption.decrypt(encrypted, (wallet as any).encryption_iv, tag);
 
     // Return base58 encoded for easy import elsewhere
     return privateKey;
@@ -205,8 +210,8 @@ export class WalletManager {
     }
 
     // Decrypt
-    const [encrypted, tag] = wallet.encrypted_private_key.split(':');
-    const privateKey = this.encryption.decrypt(encrypted, wallet.encryption_iv, tag);
+    const [encrypted, tag] = (wallet as any).encrypted_private_key.split(':');
+    const privateKey = this.encryption.decrypt(encrypted, (wallet as any).encryption_iv, tag);
     
     // Create keypair
     const secretKey = bs58.decode(privateKey);
@@ -235,16 +240,16 @@ export class WalletManager {
       ORDER BY is_default DESC, created_at DESC
     `, [userId]);
 
-    return wallets.map(w => ({
-      id: w.id,
-      userId: w.user_id,
-      walletAddress: w.wallet_address,
-      walletName: w.wallet_name,
-      isDefault: w.is_default === 1,
-      isActive: w.is_active === 1,
-      solBalance: w.sol_balance || 0,
-      lastUsedAt: w.last_used_at,
-      createdAt: w.created_at
+    return (wallets as any[]).map((w: any) => ({
+      id: (w as any).id,
+      userId: (w as any).user_id,
+      walletAddress: (w as any).wallet_address,
+      walletName: (w as any).wallet_name,
+      isDefault: (w as any).is_default === 1,
+      isActive: (w as any).is_active === 1,
+      solBalance: (w as any).sol_balance || 0,
+      lastUsedAt: (w as any).last_used_at,
+      createdAt: (w as any).created_at
     }));
   }
 
@@ -262,15 +267,15 @@ export class WalletManager {
     if (!wallet) return null;
 
     return {
-      id: wallet.id,
-      userId: wallet.user_id,
-      walletAddress: wallet.wallet_address,
-      walletName: wallet.wallet_name,
+      id: (wallet as any).id,
+      userId: (wallet as any).user_id,
+      walletAddress: (wallet as any).wallet_address,
+      walletName: (wallet as any).wallet_name,
       isDefault: true,
       isActive: true,
-      solBalance: wallet.sol_balance || 0,
-      lastUsedAt: wallet.last_used_at,
-      createdAt: wallet.created_at
+      solBalance: (wallet as any).sol_balance || 0,
+      lastUsedAt: (wallet as any).last_used_at,
+      createdAt: (wallet as any).created_at
     };
   }
 
@@ -318,7 +323,7 @@ export class WalletManager {
       throw new Error('Wallet not found');
     }
 
-    const balance = await this.getBalance(wallet.wallet_address);
+    const balance = await this.getBalance((wallet as any).wallet_address);
 
     await execute(
       'UPDATE trading_wallets SET sol_balance = ?, last_balance_check = ? WHERE id = ?',
@@ -342,7 +347,7 @@ export class WalletManager {
       throw new Error('Wallet not found or access denied');
     }
 
-    if (wallet.is_default) {
+    if ((wallet as any).is_default) {
       throw new Error('Cannot delete default wallet. Set another wallet as default first.');
     }
 
@@ -358,7 +363,7 @@ export class WalletManager {
       [walletId]
     );
     if (walletData) {
-      this.walletCache.delete(walletData.wallet_address);
+      this.walletCache.delete((walletData as any).wallet_address);
     }
   }
 
