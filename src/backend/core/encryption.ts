@@ -6,9 +6,7 @@
 import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
-const _SALT_LENGTH = 16; // Reserved for future use
 const IV_LENGTH = 16;
-const _TAG_LENGTH = 16; // Reserved for future use
 
 export class EncryptionService {
   private encryptionKey: Buffer;
