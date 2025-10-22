@@ -10,8 +10,7 @@ import {
   VersionedTransaction,
   ComputeBudgetProgram,
   LAMPORTS_PER_SOL,
-  TransactionMessage,
-  TransactionInstruction
+  SystemProgram
 } from '@solana/web3.js';
 import fetch from 'node-fetch';
 import { getWalletManager } from './wallet.js';
@@ -28,6 +27,7 @@ export interface TradeParams {
   slippageBps?: number;  // Default 100 (1%)
   priorityLevel?: 'low' | 'medium' | 'high' | 'turbo';
   jitoTip?: number;  // In SOL
+  skipTax?: boolean;  // Override tax for special cases
 }
 
 export interface TradeResult {
@@ -38,17 +38,43 @@ export interface TradeResult {
   amountOut?: number;
   priceImpact?: number;
   fee?: number;
+  taxAmount?: number;  // Tax collected
+  netAmount?: number;  // Amount after tax
 }
 
 export class TradingEngine {
   private connection: Connection;
   private walletManager = getWalletManager();
+  private tradingTaxBps: number;  // Tax in basis points (87 = 0.87%)
+  private taxRecipientAddress?: string;  // Where to send tax
 
   constructor(rpcUrl?: string) {
     const heliusKey = process.env.HELIUS_API_KEY;
     const url = rpcUrl || 
                 (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}` : 'https://api.mainnet-beta.solana.com');
     this.connection = new Connection(url, 'confirmed');
+    
+    // Load tax configuration (default 0.87% = 87 basis points)
+    this.tradingTaxBps = parseInt(process.env.TRADING_TAX_BPS || '87');
+    this.taxRecipientAddress = process.env.TRADING_TAX_RECIPIENT;
+    
+    if (this.tradingTaxBps > 0) {
+      console.log(`💰 Trading tax enabled: ${this.tradingTaxBps / 100}%`);
+    }
+  }
+  
+  /**
+   * Calculate tax amount for a trade
+   */
+  private calculateTax(amount: number, skipTax?: boolean): { netAmount: number; taxAmount: number } {
+    if (skipTax || this.tradingTaxBps === 0 || !this.taxRecipientAddress) {
+      return { netAmount: amount, taxAmount: 0 };
+    }
+    
+    const taxAmount = (amount * this.tradingTaxBps) / 10000;
+    const netAmount = amount - taxAmount;
+    
+    return { netAmount, taxAmount };
   }
 
   /**
@@ -66,10 +92,18 @@ export class TradingEngine {
 
       const keypair = await this.walletManager.getKeypair(params.userId, walletAddress);
 
+      // Calculate tax
+      const { netAmount, taxAmount } = this.calculateTax(params.amount, params.skipTax);
+      
+      if (taxAmount > 0) {
+        console.log(`💰 Applying ${this.tradingTaxBps / 100}% tax: ${taxAmount} SOL`);
+        console.log(`   Net amount for trade: ${netAmount} SOL`);
+      }
+
       // Get Jupiter quote
       const inputMint = 'So11111111111111111111111111111111111112'; // SOL
       const outputMint = params.tokenMint;
-      const amountLamports = Math.floor(params.amount * LAMPORTS_PER_SOL);
+      const amountLamports = Math.floor(netAmount * LAMPORTS_PER_SOL);
 
       console.log(`🎯 Getting Jupiter quote for ${params.amount} SOL -> ${outputMint}`);
 
@@ -141,13 +175,33 @@ export class TradingEngine {
       // Wait for confirmation
       await this.connection.confirmTransaction(signature, 'confirmed');
 
+      // Send tax if applicable
+      if (taxAmount > 0 && this.taxRecipientAddress) {
+        try {
+          const taxTransaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: keypair.publicKey,
+              toPubkey: new PublicKey(this.taxRecipientAddress),
+              lamports: Math.floor(taxAmount * LAMPORTS_PER_SOL)
+            })
+          );
+          
+          const taxSignature = await this.connection.sendTransaction(taxTransaction, [keypair]);
+          console.log(`💰 Tax transferred: ${taxAmount} SOL (tx: ${taxSignature})`);
+        } catch (taxError) {
+          console.error('Failed to transfer tax (trade still successful):', taxError);
+        }
+      }
+
       return {
         success: true,
         signature,
         amountIn: params.amount,
         amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
         priceImpact: quoteData.priceImpactPct,
-        fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL
+        fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL,
+        taxAmount,
+        netAmount
       };
     } catch (error) {
       console.error('Buy failed:', error);
