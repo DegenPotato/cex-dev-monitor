@@ -57,6 +57,7 @@ export class TelegramClientService extends EventEmitter {
   private activeClients: Map<string | number, any> = new Map(); // TelegramClient instances (key: userId for users, 'bot_userId' for bots)
   private encryptionKey: string;
   private solanaConnection: ProxiedSolanaConnection;
+  private metadataRefreshInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -74,6 +75,102 @@ export class TelegramClientService extends EventEmitter {
     this.restoreAllSessions().catch(err => {
       console.error('❌ [Telegram] Failed to restore sessions:', err);
     });
+
+    // Start periodic metadata refresh for active monitored chats (every 10 minutes)
+    this.startPeriodicMetadataRefresh();
+  }
+
+  /**
+   * Start periodic metadata refresh for active monitored chats
+   */
+  private startPeriodicMetadataRefresh() {
+    // Clear any existing interval
+    if (this.metadataRefreshInterval) {
+      clearInterval(this.metadataRefreshInterval);
+    }
+
+    // Refresh every 10 minutes (600,000 ms)
+    this.metadataRefreshInterval = setInterval(async () => {
+      try {
+        console.log('🔄 [Telegram] Starting periodic metadata refresh for active chats...');
+        await this.refreshActiveChatsMetadata();
+      } catch (error) {
+        console.error('❌ [Telegram] Error in periodic metadata refresh:', error);
+      }
+    }, 10 * 60 * 1000);
+
+    console.log('⏰ [Telegram] Periodic metadata refresh started (every 10 minutes)');
+  }
+
+  /**
+   * Refresh metadata for all active monitored chats
+   */
+  private async refreshActiveChatsMetadata() {
+    try {
+      const { queryAll } = await import('../database/helpers.js');
+      
+      // Get all active monitored chats grouped by user
+      const activeChats = await queryAll(`
+        SELECT DISTINCT user_id, chat_id 
+        FROM telegram_monitored_chats 
+        WHERE is_active = 1
+      `) as any[];
+
+      if (activeChats.length === 0) {
+        console.log('   ℹ️ No active monitored chats to refresh');
+        return;
+      }
+
+      console.log(`   📊 Refreshing metadata for ${activeChats.length} active chats...`);
+
+      // Group by user to process efficiently
+      const chatsByUser = new Map<number, string[]>();
+      for (const chat of activeChats) {
+        if (!chatsByUser.has(chat.user_id)) {
+          chatsByUser.set(chat.user_id, []);
+        }
+        chatsByUser.get(chat.user_id)!.push(chat.chat_id);
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // Process each user's chats
+      for (const [userId, chatIds] of chatsByUser) {
+        // Check if user has an active client
+        if (!this.activeClients.has(userId)) {
+          console.log(`   ⚠️ Skipping user ${userId}: No active client`);
+          continue;
+        }
+
+        // Fetch metadata for each chat with delay
+        for (const chatId of chatIds) {
+          try {
+            await this.fetchAndStoreChatMetadata(userId, chatId);
+            successCount++;
+            
+            // Rate limit: 2 seconds between requests
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (error: any) {
+            failCount++;
+            console.log(`   ⚠️ Failed to refresh metadata for ${chatId}: ${error.message}`);
+          }
+        }
+      }
+
+      console.log(`   ✅ Metadata refresh complete: ${successCount} success, ${failCount} failed`);
+
+      // Emit completion event
+      this.emit('metadata_refresh_complete', {
+        totalChats: activeChats.length,
+        successCount,
+        failCount,
+        timestamp: Date.now()
+      });
+
+    } catch (error) {
+      console.error('❌ [Telegram] Error refreshing active chats metadata:', error);
+    }
   }
 
   /**

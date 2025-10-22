@@ -102,6 +102,20 @@ export function TelegramSnifferTab() {
   const [minMembers, setMinMembers] = useState(0);
   const [sortBy, setSortBy] = useState<'role' | 'members' | 'activity' | 'name'>('role');
   
+  // Global Configuration Modal
+  const [showGlobalConfigModal, setShowGlobalConfigModal] = useState(false);
+  const [globalConfig, setGlobalConfig] = useState<{
+    monitoredKeywords: string[];
+    forwardDestinations: string[];
+    duplicateStrategy: string;
+    historyLimit: number;
+  }>({
+    monitoredKeywords: [],
+    forwardDestinations: [],
+    duplicateStrategy: 'first_only_no_backlog',
+    historyLimit: 0
+  });
+  
   // Form states
   const [apiId, setApiId] = useState('');
   const [apiHash, setApiHash] = useState('');
@@ -727,6 +741,60 @@ export function TelegramSnifferTab() {
     }
   };
 
+  const handleApplyGlobalConfig = async () => {
+    if (selectedChats.size === 0) return;
+
+    setLoading(true);
+    try {
+      const selectedChatIds = Array.from(selectedChats);
+      let successCount = 0;
+      let failCount = 0;
+
+      // Apply configuration to each selected chat
+      for (const chatId of selectedChatIds) {
+        try {
+          const chatData = availableChats.find(c => c.chatId === chatId);
+          if (!chatData) continue;
+
+          const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              chatId,
+              chatName: chatData.chatName,
+              chatType: chatData.chatType,
+              monitoredKeywords: globalConfig.monitoredKeywords,
+              initialHistoryLimit: globalConfig.historyLimit
+            })
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          failCount++;
+        }
+      }
+
+      setMessage({
+        type: 'success',
+        text: `Applied configuration to ${successCount} chats${failCount > 0 ? `, ${failCount} failed` : ''}`
+      });
+      
+      setSelectedChats(new Set());
+      setShowGlobalConfigModal(false);
+      loadSnifferChats();
+      
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFetchChats = async () => {
     setLoading(true);
     try {
@@ -1277,6 +1345,7 @@ export function TelegramSnifferTab() {
                       Delete from DB ({selectedChats.size})
                     </button>
                     <button
+                      onClick={() => setShowGlobalConfigModal(true)}
                       className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
                       title="Apply same configuration to all selected chats"
                     >
@@ -3487,6 +3556,129 @@ export function TelegramSnifferTab() {
           isOpen={!!selectedHistoryChat}
           onClose={() => setSelectedHistoryChat(null)}
         />
+      )}
+
+      {/* Global Configuration Modal */}
+      {showGlobalConfigModal && createPortal(
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 border border-cyan-500/30 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-cyan-300">
+                🎯 Global Configuration
+              </h3>
+              <button
+                onClick={() => setShowGlobalConfigModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="mb-4 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+              <p className="text-sm text-gray-300">
+                Apply the same configuration to <span className="text-cyan-400 font-bold">{selectedChats.size} selected chats</span>.
+                This will activate monitoring for all selected chats.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Keywords Configuration */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  🔍 Monitored Keywords (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={globalConfig.monitoredKeywords.join(', ')}
+                  onChange={(e) => setGlobalConfig({
+                    ...globalConfig,
+                    monitoredKeywords: e.target.value.split(',').map(k => k.trim()).filter(k => k)
+                  })}
+                  placeholder="ca, contract, pump, launch, etc."
+                  className="w-full px-4 py-2 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Only messages containing these keywords will be processed. Leave empty to monitor all messages.
+                </p>
+              </div>
+
+              {/* Duplicate Strategy */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  🔄 Duplicate Contract Handling
+                </label>
+                <select
+                  value={globalConfig.duplicateStrategy}
+                  onChange={(e) => setGlobalConfig({
+                    ...globalConfig,
+                    duplicateStrategy: e.target.value
+                  })}
+                  className="w-full px-4 py-2 bg-black/40 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:outline-none"
+                >
+                  <option value="first_only_no_backlog">First Mention Only (Real-time)</option>
+                  <option value="first_only_with_backlog">First Mention Only (Scan History)</option>
+                  <option value="buy_any_call">Process Every Mention</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {globalConfig.duplicateStrategy === 'first_only_no_backlog' && 'Only process the first time a contract is mentioned in real-time'}
+                  {globalConfig.duplicateStrategy === 'first_only_with_backlog' && 'Process first mention after scanning chat history'}
+                  {globalConfig.duplicateStrategy === 'buy_any_call' && 'Process every mention of the contract'}
+                </p>
+              </div>
+
+              {/* History Limit */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  📚 Fetch Message History
+                </label>
+                <input
+                  type="number"
+                  value={globalConfig.historyLimit}
+                  onChange={(e) => setGlobalConfig({
+                    ...globalConfig,
+                    historyLimit: parseInt(e.target.value) || 0
+                  })}
+                  min="0"
+                  max="5000"
+                  placeholder="0"
+                  className="w-full px-4 py-2 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Number of past messages to scan (0 = don't fetch history, max 5000). This will run in the background.
+                </p>
+              </div>
+
+              {/* Summary */}
+              <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <h4 className="text-sm font-semibold text-purple-300 mb-2">📋 Configuration Summary</h4>
+                <ul className="text-xs text-gray-300 space-y-1">
+                  <li>✓ Will activate <span className="text-cyan-400 font-bold">{selectedChats.size} chats</span></li>
+                  <li>✓ Keywords: {globalConfig.monitoredKeywords.length > 0 ? globalConfig.monitoredKeywords.join(', ') : 'All messages'}</li>
+                  <li>✓ Duplicate Strategy: {globalConfig.duplicateStrategy.replace(/_/g, ' ')}</li>
+                  <li>✓ History: {globalConfig.historyLimit > 0 ? `${globalConfig.historyLimit} messages` : 'Real-time only'}</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowGlobalConfigModal(false)}
+                className="flex-1 px-6 py-3 bg-gray-600 hover:bg-gray-500 rounded-lg text-white font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyGlobalConfig}
+                disabled={loading}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-cyan-600 hover:from-green-500 hover:to-cyan-500 rounded-lg text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Applying...' : `Apply to ${selectedChats.size} Chats`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </>
   );
