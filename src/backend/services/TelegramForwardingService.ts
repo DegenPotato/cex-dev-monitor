@@ -195,8 +195,6 @@ export class TelegramForwardingService extends EventEmitter {
     },
     clientProvider: (accountId: number) => Promise<any> // Function to get Telegram client
   ): Promise<void> {
-    const startTime = Date.now();
-    
     // Find applicable rules
     const applicableRules = Array.from(this.ruleCache.values()).filter(
       rule =>
