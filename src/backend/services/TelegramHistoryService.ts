@@ -30,12 +30,23 @@ export class TelegramHistoryService {
         return { success: false, messagesFetched: 0, apiCalls: 0, error: 'No active Telegram client' };
       }
 
-      // Normalize chatId format - ensure channels have -100 prefix
-      // If it's a numeric ID without prefix and looks like a channel (> 1000000000), add -100
+      // Get chat info from database to check type
+      const chatInfo = await queryOne(
+        'SELECT chat_type FROM telegram_monitored_chats WHERE user_id = ? AND chat_id = ?',
+        [userId, chatId]
+      ) as any;
+
+      // Normalize chatId format - ONLY add -100 prefix for channels/supergroups
+      // Private chats and bots should NEVER get -100 prefix
       let normalizedChatId = chatId;
       if (!chatId.startsWith('-') && parseInt(chatId) > 1000000000) {
-        normalizedChatId = `-100${chatId}`;
-        console.log(`  🔧 Normalized chatId: ${chatId} → ${normalizedChatId}`);
+        // Only add -100 for channels and supergroups
+        if (chatInfo && (chatInfo.chat_type === 'channel' || chatInfo.chat_type === 'supergroup')) {
+          normalizedChatId = `-100${chatId}`;
+          console.log(`  🔧 Normalized chatId: ${chatId} → ${normalizedChatId}`);
+        } else {
+          console.log(`  ℹ️ Keeping chatId as-is (${chatInfo?.chat_type || 'unknown type'}): ${chatId}`);
+        }
       }
 
       // Check when we last fetched

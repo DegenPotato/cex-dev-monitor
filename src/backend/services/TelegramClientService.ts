@@ -146,8 +146,20 @@ export class TelegramClientService extends EventEmitter {
         // Fetch metadata for each chat with delay
         for (const chatId of chatIds) {
           try {
-            await this.fetchAndStoreChatMetadata(userId, chatId);
-            successCount++;
+            const result = await this.fetchAndStoreChatMetadata(userId, chatId);
+            
+            // If metadata fetch returned null, chat is inaccessible - deactivate it
+            if (result === null) {
+              const { execute } = await import('../database/helpers.js');
+              await execute(
+                'UPDATE telegram_monitored_chats SET is_active = 0 WHERE user_id = ? AND chat_id = ?',
+                [userId, chatId]
+              );
+              console.log(`   ⚠️ Auto-deactivated inaccessible chat: ${chatId}`);
+              failCount++;
+            } else {
+              successCount++;
+            }
             
             // Rate limit: 2 seconds between requests
             await new Promise(resolve => setTimeout(resolve, 2000));
