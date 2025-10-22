@@ -4,6 +4,7 @@
  */
 
 import EventEmitter from 'events';
+import { ApiProviderTracker } from './ApiProviderTracker.js';
 
 interface TelegramAPICall {
   method: string;
@@ -117,6 +118,17 @@ export class TelegramRateLimiter extends EventEmitter {
       call.duration = Date.now() - startTime;
       this.trackSuccess(method, call.duration);
       
+      // Track in global API provider tracker
+      const apiTracker = ApiProviderTracker.getInstance();
+      apiTracker.trackCall(
+        'telegram',
+        method,
+        true,
+        call.duration,
+        200,
+        undefined
+      );
+      
       // Reduce delay on success (adaptive)
       if (this.consecutiveFloodErrors > 0) {
         this.consecutiveFloodErrors = 0;
@@ -160,6 +172,18 @@ export class TelegramRateLimiter extends EventEmitter {
       
       // Track other errors
       this.trackError(method, error);
+      
+      // Track in global API provider tracker (for non-flood errors)
+      const apiTracker = ApiProviderTracker.getInstance();
+      apiTracker.trackCall(
+        'telegram',
+        method,
+        false,
+        call.duration || 0,
+        error.errorCode || 500,
+        call.error
+      );
+      
       throw error;
       
     } finally {
