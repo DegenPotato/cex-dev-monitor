@@ -226,15 +226,8 @@ export class TelegramForwardingService extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, rule.delaySeconds * 1000));
       }
       
-      // Get client for forwarding
-      let client;
-      try {
-        client = await clientProvider(rule.targetAccountId);
-      } catch (error: any) {
-        console.error(`❌ [Forwarding] Failed to get client for account ${rule.targetAccountId}:`, error.message);
-        await this.logForwardingHistory(rule.id, rule.userId, sourceChatId, message, null, 'failed', `Client error: ${error.message}`, Date.now() - startTime);
-        continue;
-      }
+      // Get client for target account (to forward messages) - use the selected account
+      const client = await clientProvider(rule.targetAccountId);
       
       // Forward to each target chat
       for (const targetChatId of rule.targetChatIds) {
@@ -243,22 +236,38 @@ export class TelegramForwardingService extends EventEmitter {
         try {
           console.log(`  ➡️  Forwarding to ${targetChatId} using account ${rule.targetAccountId}...`);
           
-          // Resolve entity if it's a user ID (numeric and doesn't start with -)
+          // Resolve target entity
           let targetEntity: any = targetChatId;
+          
+          // Check if it's a numeric user ID
           if (/^\d+$/.test(targetChatId)) {
-            // This is a user ID, we need to resolve it first
+            // This is a user ID - need special handling
+            console.log(`  🔍 Resolving user ID: ${targetChatId}`);
+            
             try {
-              console.log(`  🔍 Resolving user entity for ID: ${targetChatId}`);
-              const entity = await client.getEntity(targetChatId);
-              targetEntity = entity;
-              console.log(`  ✅ Resolved user entity: ${entity.username || entity.firstName || targetChatId}`);
-            } catch (entityError: any) {
-              console.log(`  ⚠️ Could not resolve entity for ${targetChatId}, trying as PeerUser...`);
-              // Try to construct a PeerUser directly
-              const { Api } = await import('telegram');
-              const bigIntModule = await import('big-integer');
-              const bigInt = bigIntModule.default || bigIntModule;
-              targetEntity = new Api.PeerUser({ userId: bigInt(targetChatId) });
+              // First try to get the entity normally
+              targetEntity = await client.getEntity(targetChatId);
+              console.log(`  ✅ Resolved user entity`);
+            } catch (error: any) {
+              console.log(`  ⚠️ Could not resolve user ${targetChatId}, constructing PeerUser...`);
+              
+              // Construct PeerUser manually for user IDs
+              try {
+                const { Api } = await import('telegram');
+                const bigIntModule = await import('big-integer');
+                const bigInt = bigIntModule.default || bigIntModule;
+                targetEntity = new Api.PeerUser({ userId: bigInt(targetChatId) });
+                console.log(`  ✅ Created PeerUser for ${targetChatId}`);
+              } catch (peerError: any) {
+                throw new Error(`Cannot forward to user ${targetChatId}: ${peerError.message}`);
+              }
+            }
+          } else {
+            // For groups/channels (start with -), resolve normally
+            try {
+              targetEntity = await client.getEntity(targetChatId);
+            } catch (e) {
+              console.log(`  ⚠️ Using ${targetChatId} as-is`);
             }
           }
           

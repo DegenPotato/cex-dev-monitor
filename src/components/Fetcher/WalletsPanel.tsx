@@ -127,12 +127,14 @@ export const WalletsPanel: React.FC = () => {
                   <span className="text-gray-400">Address:</span>
                   <div className="flex items-center gap-1">
                     <code className="text-cyan-300 text-xs">
-                      {wallet.publicKey.slice(0, 4)}...{wallet.publicKey.slice(-4)}
+                      {wallet.publicKey ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}` : 'Loading...'}
                     </code>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        copyToClipboard(wallet.publicKey, 'Address');
+                        if (wallet.publicKey) {
+                          copyToClipboard(wallet.publicKey, 'Address');
+                        }
                       }}
                       className="p-1 hover:bg-gray-700/50 rounded"
                     >
@@ -210,7 +212,9 @@ export const WalletsPanel: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        copyToClipboard(wallet.privateKey!, 'Private key');
+                        if (wallet.privateKey) {
+                          copyToClipboard(wallet.privateKey, 'Private key');
+                        }
                       }}
                       className="p-1 hover:bg-gray-700/50 rounded"
                     >
@@ -218,7 +222,7 @@ export const WalletsPanel: React.FC = () => {
                     </button>
                   </div>
                   <code className="text-orange-400 break-all text-xs">
-                    {wallet.privateKey.slice(0, 20)}...
+                    {wallet.privateKey ? `${wallet.privateKey.slice(0, 20)}...` : 'Encrypted'}
                   </code>
                 </div>
               )}
