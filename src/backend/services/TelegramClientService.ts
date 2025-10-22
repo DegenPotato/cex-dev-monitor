@@ -3,11 +3,12 @@
  * Handles authentication with 2FA support and real-time message monitoring
  */
 
-import { EventEmitter } from 'events';
 import crypto from 'crypto';
-import { execute, queryOne, queryAll } from '../database/helpers.js';
-import { PublicKey } from '@solana/web3.js';
+import { EventEmitter } from 'events';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
+import { telegramRateLimiter } from './TelegramRateLimiter.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
+import { PublicKey } from '@solana/web3.js';
 
 // Dynamic imports for telegram package
 let TelegramClient: any;
@@ -1188,10 +1189,15 @@ export class TelegramClientService extends EventEmitter {
       // Get full chat information (for groups/channels)
       if (chatType === 'supergroup' || chatType === 'channel' || chatType === 'group') {
         try {
-          const fullChat = await client.invoke(
-            new Api.channels.GetFullChannel({
-              channel: chat
-            })
+          const fullChat: any = await telegramRateLimiter.executeCall(
+            'GetFullChannel',
+            () => client.invoke(
+              new Api.channels.GetFullChannel({
+                channel: chat
+              })
+            ),
+            userId,
+            'normal'
           );
 
           const fullChatInfo = fullChat.fullChat;
@@ -1205,10 +1211,15 @@ export class TelegramClientService extends EventEmitter {
 
           // Get export invite link if available
           try {
-            const exportedInvite = await client.invoke(
-              new Api.messages.ExportChatInvite({
-                peer: chat
-              })
+            const exportedInvite = await telegramRateLimiter.executeCall(
+              'ExportChatInvite',
+              () => client.invoke(
+                new Api.messages.ExportChatInvite({
+                  peer: chat
+                })
+              ),
+              userId,
+              'low'
             );
             if (exportedInvite && (exportedInvite as any).link) {
               metadata.inviteLink = (exportedInvite as any).link;
@@ -1220,11 +1231,16 @@ export class TelegramClientService extends EventEmitter {
           // Get current user's participant status
           try {
             const me = await client.getMe();
-            const participant = await client.invoke(
-              new Api.channels.GetParticipant({
-                channel: chat,
-                participant: me.id
-              })
+            const participant: any = await telegramRateLimiter.executeCall(
+              'GetParticipant',
+              () => client.invoke(
+                new Api.channels.GetParticipant({
+                  channel: chat,
+                  participant: me.id
+                })
+              ),
+              userId,
+              'normal'
             );
 
             if (participant && participant.participant) {
@@ -1253,10 +1269,15 @@ export class TelegramClientService extends EventEmitter {
       } else if (chatType === 'group') {
         // For regular groups (not supergroups)
         try {
-          const fullChat = await client.invoke(
-            new Api.messages.GetFullChat({
-              chatId: chat.id
-            })
+          const fullChat: any = await telegramRateLimiter.executeCall(
+            'GetFullChat',
+            () => client.invoke(
+              new Api.messages.GetFullChat({
+                chatId: chat.id
+              })
+            ),
+            userId,
+            'normal'
           );
 
           const fullChatInfo = fullChat.fullChat;
@@ -1327,14 +1348,19 @@ export class TelegramClientService extends EventEmitter {
       // For supergroups/channels
       if (chat.className === 'Channel') {
         try {
-          const result = await client.invoke(
-            new Api.channels.GetParticipants({
-              channel: chat,
-              filter: new Api.ChannelParticipantsRecent(),
-              offset: 0,
-              limit: Math.min(limit, 200),
-              hash: BigInt(0)
-            })
+          const result: any = await telegramRateLimiter.executeCall(
+            'GetParticipants',
+            () => client.invoke(
+              new Api.channels.GetParticipants({
+                channel: chat,
+                filter: new Api.ChannelParticipantsRecent(),
+                offset: 0,
+                limit: Math.min(limit, 200),
+                hash: BigInt(0)
+              })
+            ),
+            userId,
+            'low'
           );
 
           if (result.users) {
@@ -1358,10 +1384,15 @@ export class TelegramClientService extends EventEmitter {
       } else if (chat.className === 'Chat') {
         // For regular groups
         try {
-          const fullChat = await client.invoke(
-            new Api.messages.GetFullChat({
-              chatId: chat.id
-            })
+          const fullChat: any = await telegramRateLimiter.executeCall(
+            'GetFullChat',
+            () => client.invoke(
+              new Api.messages.GetFullChat({
+                chatId: chat.id
+              })
+            ),
+            userId,
+            'low'
           );
 
           if (fullChat.users) {
@@ -1412,10 +1443,15 @@ export class TelegramClientService extends EventEmitter {
       const me = await client.getMe();
       
       // Get full user details
-      const fullUser = await client.invoke(
-        new Api.users.GetFullUser({
-          id: me
-        })
+      const fullUser: any = await telegramRateLimiter.executeCall(
+        'GetFullUser',
+        () => client.invoke(
+          new Api.users.GetFullUser({
+            id: me
+          })
+        ),
+        userId,
+        'low'
       );
       
       const now = Math.floor(Date.now() / 1000);

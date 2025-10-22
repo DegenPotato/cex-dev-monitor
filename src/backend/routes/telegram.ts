@@ -1,6 +1,7 @@
 import { Router, Request } from 'express';
 import { TelegramUserService } from '../services/TelegramUserService.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
+import { telegramRateLimiter } from '../services/TelegramRateLimiter.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { execute } from '../database/helpers.js';
 
@@ -1048,6 +1049,46 @@ export function createTelegramRoutes() {
       });
     } catch (error: any) {
       console.error('[Telegram] Error fetching participants:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get Telegram API traffic metrics
+   */
+  router.get('/traffic-metrics', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const metrics = telegramRateLimiter.getMetrics();
+      res.json(metrics);
+    } catch (error: any) {
+      console.error('[Telegram] Error getting traffic metrics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get detailed traffic report
+   */
+  router.get('/traffic-report/:minutes?', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const minutes = parseInt(req.params.minutes || '60');
+      const report = telegramRateLimiter.getTrafficReport(minutes);
+      res.json(report);
+    } catch (error: any) {
+      console.error('[Telegram] Error getting traffic report:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Reset rate limiter delays (after successful period)
+   */
+  router.post('/reset-rate-limits', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      telegramRateLimiter.resetDelays();
+      res.json({ success: true, message: 'Rate limiter delays reset to baseline' });
+    } catch (error: any) {
+      console.error('[Telegram] Error resetting rate limits:', error);
       res.status(500).json({ error: error.message });
     }
   });
