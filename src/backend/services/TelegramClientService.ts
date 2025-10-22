@@ -1514,23 +1514,29 @@ export class TelegramClientService extends EventEmitter {
         }
       }
 
-      // Store in database with enhanced fields (32 columns total)
+      // Store in database with ALL columns (33 total, excluding auto-increment id)
       await execute(`
         INSERT OR REPLACE INTO telegram_chat_metadata (
           user_id, chat_id, title, username, chat_type, description, photo_url, invite_link,
           member_count, online_count, admin_count, restricted_count, kicked_count,
           is_member, is_admin, is_creator, has_left, join_date,
+          message_count, last_message_date, last_message_text, avg_messages_per_day, peak_activity_hour,
+          common_keywords, language, spam_score, bot_percentage,
+          contracts_detected_30d, last_contract_date, most_active_sender,
           phone_number, bio, is_verified, is_scam, is_fake, is_premium,
           restriction_reason, common_chats_count, last_seen_status, last_seen_timestamp,
           photo_id, photo_local_path, access_hash,
           fetched_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         metadata.userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
         metadata.description, metadata.photoUrl, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
         metadata.adminCount, metadata.restrictedCount, metadata.kickedCount,
         metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
         metadata.hasLeft ? 1 : 0, metadata.joinDate,
+        0, null, null, 0, null, // message_count, last_message_date, last_message_text, avg_messages_per_day, peak_activity_hour
+        null, null, 0, 0, // common_keywords, language, spam_score, bot_percentage
+        0, null, null, // contracts_detected_30d, last_contract_date, most_active_sender
         metadata.phoneNumber, metadata.bio, metadata.isVerified ? 1 : 0, metadata.isScam ? 1 : 0,
         metadata.isFake ? 1 : 0, metadata.isPremium ? 1 : 0, metadata.restrictionReason,
         metadata.commonChatsCount, metadata.lastSeenStatus, metadata.lastSeenTimestamp,
