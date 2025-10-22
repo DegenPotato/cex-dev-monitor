@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, Plus, Key, Copy, Trash2, Eye, EyeOff, Shield, CheckCircle, DollarSign } from 'lucide-react';
+import { Wallet, Plus, Key, Copy, Trash2, Eye, EyeOff, Shield, CheckCircle, DollarSign, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
 import { toast } from 'react-hot-toast';
+import { config } from '../../config';
 
 export const WalletsPanel: React.FC = () => {
   const { wallets, fetchWallets, createWallet, importWallet, deleteWallet, loading } = useTradingStore();
@@ -57,6 +58,70 @@ export const WalletsPanel: React.FC = () => {
 
   const toggleShowKey = (walletId: string) => {
     setShowKeys(prev => ({ ...prev, [walletId]: !prev[walletId] }));
+  };
+
+  const handleExportWallet = async (walletId: string, walletName: string) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/trading/wallets/${walletId}/export`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to export wallet');
+      }
+      
+      const data = await response.json();
+      
+      // Create a text file with the keys
+      const content = `Wallet: ${walletName}\nPublic Key: ${data.publicKey}\nPrivate Key: ${data.privateKey}\n\nWARNING: Keep this private key secure!`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `wallet_${walletName.replace(/\s+/g, '_')}_keys.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Wallet keys exported successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to export wallet');
+    }
+  };
+
+  const handleWithdraw = async (walletId: string, walletName: string, balance: number) => {
+    const amount = prompt(`Withdraw SOL from ${walletName}\nBalance: ${balance?.toFixed(4) || '0'} SOL\n\nAmount to withdraw:`);
+    
+    if (!amount || parseFloat(amount) <= 0) return;
+    
+    if (parseFloat(amount) > balance) {
+      toast.error('Insufficient balance');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${config.apiUrl}/api/trading/wallets/${walletId}/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount: parseFloat(amount) })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to withdraw');
+      }
+      
+      const data = await response.json();
+      toast.success(`Successfully withdrew ${data.amount} SOL to ${data.recipient.slice(0, 4)}...${data.recipient.slice(-4)}`);
+      
+      // Refresh wallets to update balance
+      await fetchWallets();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to process withdrawal');
+    }
   };
 
   return (
@@ -164,8 +229,8 @@ export const WalletsPanel: React.FC = () => {
                     e.stopPropagation();
                     toggleShowKey(wallet.id);
                   }}
-                  className="flex-1 px-2 py-1 bg-gray-700/50 hover:bg-gray-700/70 
-                           rounded text-xs flex items-center justify-center gap-1"
+                  className="px-2 py-1 bg-gray-700/50 hover:bg-gray-700 
+                           rounded text-xs flex items-center gap-1"
                 >
                   {showKeys[wallet.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   {showKeys[wallet.id] ? 'Hide' : 'Show'} Key
@@ -173,16 +238,18 @@ export const WalletsPanel: React.FC = () => {
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    // Withdraw to user's connected wallet (no alternative destination)
-                    const amount = prompt(`Withdraw SOL from ${wallet.name}\nBalance: ${wallet.balance?.toFixed(4) || '0'} SOL\n\nAmount to withdraw:`);
-                    if (amount && parseFloat(amount) > 0) {
-                      if (parseFloat(amount) > (wallet.balance || 0)) {
-                        toast.error('Insufficient balance');
-                        return;
-                      }
-                      // TODO: Implement withdraw to user's connected wallet
-                      toast.success(`Withdrawing ${amount} SOL to your connected wallet...`);
-                    }
+                    await handleExportWallet(wallet.id, wallet.name);
+                  }}
+                  className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 
+                           rounded text-xs flex items-center gap-1"
+                  title="Export wallet keys"
+                >
+                  <Download className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await handleWithdraw(wallet.id, wallet.name, wallet.balance || 0);
                   }}
                   className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 
                            rounded text-xs flex items-center gap-1"

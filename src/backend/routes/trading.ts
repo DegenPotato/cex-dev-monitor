@@ -5,9 +5,10 @@
 
 import { Router, Request } from 'express';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
-import { getWalletManager } from '../core/wallet.js';
+// import { getWalletManager } from '../core/wallet.js'; // Using walletStorageService instead
 import { getTradingEngine } from '../core/trade.js';
-import { queryAll, queryOne } from '../database/helpers.js';
+import { queryAll, queryOne, execute } from '../database/helpers.js';
+import { walletStorageService } from '../services/WalletStorageService.js';
 
 const authService = new SecureAuthService();
 
@@ -22,7 +23,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 const router = Router();
-const walletManager = getWalletManager();
+// const walletManager = getWalletManager(); // Removed - using walletStorageService
 const tradingEngine = getTradingEngine();
 
 /**
@@ -31,7 +32,7 @@ const tradingEngine = getTradingEngine();
 router.get('/api/trading/wallets', authService.requireSecureAuth(), async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
-    const wallets = await walletManager.getUserWallets(userId);
+    const wallets = await walletStorageService.getUserWallets(userId);
     
     res.json({ success: true, wallets });
   } catch (error: any) {
@@ -48,7 +49,7 @@ router.post('/api/trading/wallets/create', authService.requireSecureAuth(), asyn
     const userId = (req as AuthenticatedRequest).user!.id;
     const { walletName } = req.body;
     
-    const wallet = await walletManager.createWallet(userId, walletName);
+    const wallet = await walletStorageService.createWallet(userId, walletName);
     
     res.json({ success: true, wallet });
   } catch (error: any) {
@@ -69,7 +70,7 @@ router.post('/api/trading/wallets/import', authService.requireSecureAuth(), asyn
       return res.status(400).json({ error: 'Private key required' });
     }
     
-    const wallet = await walletManager.importWallet(userId, privateKey, walletName);
+    const wallet = await walletStorageService.importWallet(userId, privateKey, walletName);
     
     res.json({ success: true, wallet });
   } catch (error: any) {
@@ -81,14 +82,14 @@ router.post('/api/trading/wallets/import', authService.requireSecureAuth(), asyn
 /**
  * Export wallet (get private key)
  */
-router.get('/api/trading/wallets/:walletAddress/export', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets/:walletId/export', authService.requireSecureAuth(), async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
-    const { walletAddress } = req.params;
+    const walletId = parseInt(req.params.walletId);
     
-    const privateKey = await walletManager.exportWallet(userId, walletAddress);
+    const wallet = await walletStorageService.exportWallet(walletId, userId);
     
-    res.json({ success: true, privateKey });
+    res.json({ success: true, ...wallet });
   } catch (error: any) {
     console.error('Error exporting wallet:', error);
     res.status(500).json({ error: error.message });
@@ -103,7 +104,11 @@ router.post('/api/trading/wallets/:walletId/default', authService.requireSecureA
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
     
-    await walletManager.setDefaultWallet(userId, walletId);
+    // Reset all wallets to non-default
+    await execute('UPDATE trading_wallets SET is_default = 0 WHERE user_id = ?', [userId]);
+    
+    // Set this wallet as default
+    await execute('UPDATE trading_wallets SET is_default = 1 WHERE id = ? AND user_id = ?', [walletId, userId]);
     
     res.json({ success: true });
   } catch (error: any) {
@@ -117,9 +122,26 @@ router.post('/api/trading/wallets/:walletId/default', authService.requireSecureA
  */
 router.get('/api/trading/wallets/:walletId/balance', authService.requireSecureAuth(), async (req, res) => {
   try {
+    const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
     
-    const balance = await walletManager.updateBalance(walletId);
+    // Get wallet public key
+    const wallets = await walletStorageService.getUserWallets(userId);
+    const wallet = wallets.find(w => w.id === walletId.toString());
+    
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+    
+    // Get balance from blockchain
+    const { Connection, PublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
+    const connection = new Connection(process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com');
+    const pubkey = new PublicKey(wallet.publicKey);
+    const lamports = await connection.getBalance(pubkey);
+    const balance = lamports / LAMPORTS_PER_SOL;
+    
+    // Update in database
+    await walletStorageService.updateWalletBalance(walletId, balance);
     
     res.json({ success: true, balance });
   } catch (error: any) {
@@ -136,11 +158,102 @@ router.delete('/api/trading/wallets/:walletId', authService.requireSecureAuth(),
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
     
-    await walletManager.deleteWallet(userId, walletId);
+    await walletStorageService.deleteWallet(walletId, userId);
     
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting wallet:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Withdraw SOL to user's connected wallet
+ */
+router.post('/api/trading/wallets/:walletId/withdraw', authService.requireSecureAuth(), async (req, res) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const walletId = parseInt(req.params.walletId);
+    const { amount } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+    
+    // Get user's connected wallet from users table
+    const user = await queryOne('SELECT wallet_address FROM users WHERE id = ?', [userId]) as { wallet_address?: string } | undefined;
+    if (!user || !user.wallet_address) {
+      return res.status(400).json({ error: 'No connected wallet found. Please connect your wallet in settings.' });
+    }
+    
+    // Get the trading wallet keypair
+    const keypair = await walletStorageService.getWalletKeypair(walletId, userId);
+    
+    // Import Solana dependencies
+    const { 
+      Connection, 
+      PublicKey, 
+      LAMPORTS_PER_SOL, 
+      Transaction, 
+      SystemProgram,
+      sendAndConfirmTransaction 
+    } = await import('@solana/web3.js');
+    
+    const connection = new Connection(process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com');
+    
+    // Check balance
+    const balance = await connection.getBalance(keypair.publicKey);
+    const balanceSOL = balance / LAMPORTS_PER_SOL;
+    
+    if (balanceSOL < amount) {
+      return res.status(400).json({ 
+        error: `Insufficient balance. Available: ${balanceSOL} SOL, Requested: ${amount} SOL` 
+      });
+    }
+    
+    // Create transfer transaction
+    const toPubkey = new PublicKey(user.wallet_address!);
+    const lamports = Math.floor(amount * LAMPORTS_PER_SOL);
+    
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: keypair.publicKey,
+        toPubkey,
+        lamports
+      })
+    );
+    
+    // Send and confirm transaction
+    console.log(`💸 Withdrawing ${amount} SOL from wallet ${walletId} to ${user.wallet_address!}...`);
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [keypair],
+      { commitment: 'confirmed' }
+    );
+    
+    console.log(`✅ Withdrawal successful: ${signature}`);
+    
+    // Update balance in database
+    const newBalance = await connection.getBalance(keypair.publicKey);
+    await walletStorageService.updateWalletBalance(walletId, newBalance / LAMPORTS_PER_SOL);
+    
+    // Log the withdrawal (optional - you might want to create a withdrawals table)
+    await execute(
+      `INSERT INTO trading_transactions (user_id, wallet_id, tx_type, signature, amount_out, status, created_at)
+       VALUES (?, ?, 'withdraw', ?, ?, 'completed', strftime('%s', 'now'))`,
+      [userId, walletId, signature, amount]
+    );
+    
+    res.json({ 
+      success: true, 
+      signature,
+      amount,
+      recipient: user.wallet_address!,
+      newBalance: newBalance / LAMPORTS_PER_SOL
+    });
+  } catch (error: any) {
+    console.error('Error processing withdrawal:', error);
     res.status(500).json({ error: error.message });
   }
 });

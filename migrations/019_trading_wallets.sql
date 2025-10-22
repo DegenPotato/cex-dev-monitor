@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS trading_wallets (
   
   -- Status
   is_active INTEGER DEFAULT 1,
+  is_default INTEGER DEFAULT 0,  -- Default wallet flag
   is_deleted INTEGER DEFAULT 0,  -- Soft delete flag
   
   -- Timestamps
