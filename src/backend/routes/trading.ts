@@ -415,7 +415,7 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
     const totalSOL = wallets.reduce((sum: number, w: any) => sum + (w.sol_balance || 0), 0);
     
     // Get token holdings if table exists
-    let holdings = [];
+    let holdings: any[] = [];
     try {
       const walletIds = wallets.map((w: any) => w.id);
       const placeholders = walletIds.map(() => '?').join(',');
@@ -445,7 +445,7 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
     const totalValueUSD = (totalSOL * solPrice) + totalTokenValue;
     
     // Get recent trading activity
-    let recentActivity = [];
+    let recentActivity: any[] = [];
     try {
       recentActivity = await queryAll(`
         SELECT 

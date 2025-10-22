@@ -5,7 +5,6 @@
 
 import { Server } from 'socket.io';
 import { queryAll, queryOne } from '../database/helpers.js';
-import { getTradingEngine } from '../core/trade.js';
 import { getWalletManager } from '../core/wallet.js';
 import { Connection, PublicKey } from '@solana/web3.js';
 import fetch from 'node-fetch';

@@ -94,6 +94,7 @@ interface TradingStore {
   connectWebSocket: () => void;
   disconnectWebSocket: () => void;
   fetchWallets: () => Promise<void>;
+  fetchWalletTokens: (walletId: string) => Promise<void>;
   fetchPortfolioStats: () => Promise<void>;
   fetchTradeHistory: () => Promise<void>;
   createWallet: (name?: string) => Promise<void>;
@@ -186,7 +187,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
           // Recalculate total value with new SOL price
           totalValueUSD: (state.portfolioStats.totalSOL * data.data.sol) + 
             state.wallets.reduce((sum, w) => 
-              sum + (w.tokens?.reduce((tSum, t) => tSum + t.valueUsd, 0) || 0), 0
+              sum + (w.tokens?.reduce((tSum, t) => tSum + (t.valueUSD || 0), 0) || 0), 0
             )
         } : null
       }));
@@ -256,14 +257,14 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   },
 
   // Create new wallet
-  createWallet: async (name: string) => {
+  createWallet: async (name?: string) => {
     set({ loading: true, error: null });
     try {
       const response = await fetch(`${API_BASE_URL}/api/trading/wallets/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ walletName: name })
       });
       
       if (!response.ok) throw new Error('Failed to create wallet');
@@ -276,14 +277,14 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   },
 
   // Import existing wallet
-  importWallet: async (name: string, privateKey: string) => {
+  importWallet: async (privateKey: string, name?: string) => {
     set({ loading: true, error: null });
     try {
       const response = await fetch(`${API_BASE_URL}/api/trading/wallets/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, privateKey })
+        body: JSON.stringify({ privateKey, walletName: name })
       });
       
       if (!response.ok) throw new Error('Failed to import wallet');
@@ -308,7 +309,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
       
       set(state => ({
         wallets: state.wallets.filter(w => w.id !== walletId),
-        selectedWallet: state.selectedWallet?.id === walletId ? null : state.selectedWallet,
+        selectedWallet: state.selectedWallet === walletId ? null : state.selectedWallet,
         loading: false
       }));
     } catch (error) {
@@ -320,7 +321,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   // Select wallet
   selectWallet: (walletId: string) => {
     set(state => ({
-      selectedWallet: state.wallets.find(w => w.id === walletId) || null
+      selectedWallet: state.wallets.find(w => w.id === walletId) ? walletId : null
     }));
   },
 

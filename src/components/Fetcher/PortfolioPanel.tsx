@@ -11,7 +11,6 @@ export const PortfolioPanel: React.FC = () => {
     fetchPortfolioStats, 
     connectWebSocket, 
     disconnectWebSocket,
-    connected,
     loading 
   } = useTradingStore();
   const [selectedWallet, setSelectedWallet] = useState<string>('all');
