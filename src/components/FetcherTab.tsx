@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Wallet, Plus, Import, Download, Key, Shield, Zap,
-  ArrowUpRight, ArrowDownLeft, Send, Settings, 
-  DollarSign, TrendingUp, AlertTriangle, CheckCircle,
-  Copy, ExternalLink, RefreshCw, Eye, EyeOff, 
-  Activity, Target, ChevronDown, ChevronRight
-} from 'lucide-react';
+import { Wallet, RefreshCw, Plus, Copy, Download } from 'lucide-react';
+import { TrendingUp, Shield, Import, CheckCircle, Zap, Activity } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { config } from '../config';
 
@@ -20,26 +15,27 @@ interface TradingWallet {
   createdAt: number;
 }
 
-interface Transaction {
-  id: number;
-  signature: string;
-  txType: 'buy' | 'sell' | 'transfer';
-  status: string;
-  tokenMint: string;
-  tokenSymbol?: string;
-  amountIn: number;
-  amountOut: number;
-  totalFeeSol: number;
-  createdAt: number;
-  confirmedAt?: number;
-  errorMessage?: string;
-}
+// Transaction interface for future use
+// interface Transaction {
+//   id: number;
+//   signature: string;
+//   txType: 'buy' | 'sell' | 'transfer';
+//   status: string;
+//   tokenMint: string;
+//   tokenSymbol?: string;
+//   amountIn: number;
+//   amountOut: number;
+//   totalFeeSol: number;
+//   createdAt: number;
+//   confirmedAt?: number;
+//   errorMessage?: string;
+// }
 
 const FetcherTab: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [wallets, setWallets] = useState<TradingWallet[]>([]);
   const [selectedWallet, setSelectedWallet] = useState<TradingWallet | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // const [transactions, setTransactions] = useState<Transaction[]>([]); // TODO: Implement transaction history view
   const [activeView, setActiveView] = useState<'wallets' | 'trade' | 'history'>('wallets');
   const [loading, setLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -48,13 +44,13 @@ const FetcherTab: React.FC = () => {
   const [walletName, setWalletName] = useState('');
   const [importKey, setImportKey] = useState('');
 
-  // Trade form state
-  const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
-  const [tokenAddress, setTokenAddress] = useState('');
-  const [tradeAmount, setTradeAmount] = useState('');
-  const [slippage, setSlippage] = useState('1');
-  const [priorityFee, setPriorityFee] = useState<'medium' | 'high' | 'turbo'>('medium');
-  const [jitoTip, setJitoTip] = useState('0');
+  // Trade form state - will be used when Trade UI is implemented
+  // const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
+  // const [tokenAddress, setTokenAddress] = useState('');
+  // const [tradeAmount, setTradeAmount] = useState('');
+  // const [slippage, setSlippage] = useState('1.0');
+  // const [priorityFee, setPriorityFee] = useState('medium');
+  // const [jitoTip, setJitoTip] = useState('0.0001');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -89,8 +85,8 @@ const FetcherTab: React.FC = () => {
         credentials: 'include'
       });
       if (response.ok) {
-        const data = await response.json();
-        setTransactions(data.transactions || []);
+        // const data = await response.json();
+        // setTransactions(data.transactions || []); // TODO: Use transactions in UI
       }
     } catch (error) {
       console.error('Failed to load transactions:', error);
@@ -217,56 +213,58 @@ const FetcherTab: React.FC = () => {
     }
   };
 
-  const executeTrade = async () => {
-    if (!selectedWallet) {
-      alert('Please select a wallet');
-      return;
-    }
+  // TODO: Implement trade execution when Trade UI is ready
+  // const executeTrade = async () => {
+  //   if (!selectedWallet) {
+  //     alert('Please select a wallet');
+  //     return;
+  //   }
+  //
+  //   if (!tokenAddress || !tradeAmount) {
+  //     alert('Please fill in all required fields');
+  //     return;
+  //   }
+  //
+  //   setLoading(true);
+  //   try {
+  //     const response = await fetch(`${config.apiUrl}/api/trading/${tradeAction}`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json'
+  //       },
+  //       credentials: 'include',
+  //       body: JSON.stringify({
+  //         walletAddress: selectedWallet.walletAddress,
+  //         tokenMint: tokenAddress,
+  //         amount: parseFloat(tradeAmount),
+  //         slippageBps: parseInt((parseFloat(slippage) * 100).toString()),
+  //         priorityLevel: priorityFee,
+  //         jitoTip: parseFloat(jitoTip)
+  //       })
+  //     });
+  //     
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       alert(`✅ ${tradeAction === 'buy' ? 'Buy' : 'Sell'} successful!\nSignature: ${data.signature}`);
+  //       await loadTransactions();
+  //       await loadWallets();
+  //       
+  //       // Clear form
+  //       setTokenAddress('');
+  //       setTradeAmount('');
+  //     } else {
+  //       const error = await response.json();
+  //       alert(`Trade failed: ${error.error}`);
+  //     }
+  //   } catch (error) {
+  //     console.error('Trade error:', error);
+  //     alert('Trade failed');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
-    if (!tokenAddress || !tradeAmount) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const endpoint = tradeAction === 'buy' ? 'buy' : 'sell';
-      const response = await fetch(`${config.apiUrl}/api/trading/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          walletAddress: selectedWallet.walletAddress,
-          tokenMint: tokenAddress,
-          amount: parseFloat(tradeAmount),
-          slippageBps: parseFloat(slippage) * 100,
-          priorityLevel: priorityFee,
-          jitoTip: parseFloat(jitoTip) || undefined
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        alert(`✅ ${tradeAction === 'buy' ? 'Buy' : 'Sell'} successful!\nSignature: ${data.signature}`);
-        await loadTransactions();
-        await loadWallets();
-        
-        // Clear form
-        setTokenAddress('');
-        setTradeAmount('');
-      } else {
-        const error = await response.json();
-        alert(`Trade failed: ${error.error}`);
-      }
-    } catch (error) {
-      console.error('Trade error:', error);
-      alert('Trade failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = async (text: string) => {
     navigator.clipboard.writeText(text);
     alert('Copied to clipboard');
   };
