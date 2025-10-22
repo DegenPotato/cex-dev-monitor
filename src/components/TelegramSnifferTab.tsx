@@ -73,7 +73,7 @@ interface ContractDetection {
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'settings'>('sniffer');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'traffic' | 'settings'>('sniffer');
   const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -97,6 +97,7 @@ export function TelegramSnifferTab() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [filterActivity, setFilterActivity] = useState<'all' | 'high' | 'medium' | 'low' | 'dead'>('all');
   const [filterHasContracts, setFilterHasContracts] = useState(false);
+  const [filterUsername, setFilterUsername] = useState<'all' | 'with' | 'without'>('all');
   const [minMembers, setMinMembers] = useState(0);
   const [sortBy, setSortBy] = useState<'role' | 'members' | 'activity' | 'name'>('role');
   
@@ -155,7 +156,12 @@ export function TelegramSnifferTab() {
   const [telegramAccounts, setTelegramAccounts] = useState<Array<{ id: number; name: string; phone?: string }>>([]);
 
   // Chat history viewing state
-  const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string} | null>(null);
+  const [selectedHistoryChat, setSelectedHistoryChat] = useState<{id: string, name: string, username?: string} | null>(null);
+  
+  // Traffic monitoring states
+  const [trafficMetrics, setTrafficMetrics] = useState<any>(null);
+  const [trafficReport, setTrafficReport] = useState<any>(null);
+  const [trafficReportPeriod, setTrafficReportPeriod] = useState(60);
 
   // Load available forward targets when modal opens
   const loadAvailableForwardTargets = async () => {
@@ -838,6 +844,12 @@ export function TelegramSnifferTab() {
         return false;
       }
       
+      // Username filter
+      if (filterUsername !== 'all') {
+        if (filterUsername === 'with' && !chat.username) return false;
+        if (filterUsername === 'without' && chat.username) return false;
+      }
+      
       return true;
     });
     
@@ -947,6 +959,16 @@ export function TelegramSnifferTab() {
           }`}
         >
           Forwards 📤
+        </button>
+        <button
+          onClick={() => setActiveSection('traffic')}
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'traffic' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
+              : 'text-gray-400 hover:text-cyan-300'
+          }`}
+        >
+          Traffic 📊
         </button>
         <button
           onClick={() => setActiveSection('settings')}
@@ -1117,6 +1139,16 @@ export function TelegramSnifferTab() {
                 >
                   Has CAs
                 </button>
+                
+                <select
+                  value={filterUsername}
+                  onChange={(e) => setFilterUsername(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="all">All Usernames</option>
+                  <option value="with">@ With Username</option>
+                  <option value="without">⭕ Without Username</option>
+                </select>
                 
                 <button
                   onClick={() => setFilterVerified(!filterVerified)}
@@ -1332,6 +1364,7 @@ export function TelegramSnifferTab() {
                               {chat.username && (
                                 <span className="text-xs text-cyan-400">@{chat.username}</span>
                               )}
+                              <span className="text-xs text-gray-500" title="Chat ID">ID: {chat.chatId}</span>
                               {chat.memberCount > 0 && (
                                 <span className="text-xs text-gray-400 flex items-center gap-1">
                                   <Users className="w-3 h-3" />
@@ -1381,6 +1414,21 @@ export function TelegramSnifferTab() {
                             
                             {/* Quick Actions Row */}
                             <div className="flex items-center gap-2 mt-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedHistoryChat({
+                                    id: chat.chatId,
+                                    name: chat.chatName || chat.chatId,
+                                    username: chat.username
+                                  });
+                                }}
+                                className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors"
+                                title="View real-time messages"
+                              >
+                                <History className="w-3 h-3" />
+                                History
+                              </button>
                               {chat.inviteLink && (
                                 <>
                                   <button
@@ -2123,7 +2171,11 @@ export function TelegramSnifferTab() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setSelectedHistoryChat({ id: chat.chatId, name: chat.chatName || chat.chatId })}
+                          onClick={() => setSelectedHistoryChat({ 
+                            id: chat.chatId, 
+                            name: chat.chatName || chat.chatId, 
+                            username: chat.username || undefined 
+                          })}
                           className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded text-purple-400 text-xs font-medium transition-all flex items-center gap-1"
                         >
                           <History className="w-3 h-3" />
@@ -2508,6 +2560,218 @@ export function TelegramSnifferTab() {
                 <p className="text-sm text-gray-500 mt-2">Forwards will appear here when contracts are detected and forwarded</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Traffic Monitoring Tab */}
+      {activeSection === 'traffic' && (
+        <div className="space-y-6">
+          {/* Load Traffic Data */}
+          {(() => {
+            if (!trafficMetrics) {
+              // Load metrics on tab switch
+              fetch(`${config.apiUrl}/api/telegram/traffic-metrics`, { credentials: 'include' })
+                .then(res => res.json())
+                .then(setTrafficMetrics)
+                .catch(err => console.error('Failed to load traffic metrics:', err));
+              
+              // Load report
+              fetch(`${config.apiUrl}/api/telegram/traffic-report/${trafficReportPeriod}`, { credentials: 'include' })
+                .then(res => res.json())
+                .then(setTrafficReport)
+                .catch(err => console.error('Failed to load traffic report:', err));
+            }
+            return null;
+          })()}
+
+          {/* Traffic Overview */}
+          <div className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-lg font-semibold text-cyan-300 mb-4">Telegram API Traffic Overview</h3>
+            
+            {trafficMetrics?.summary && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white">{trafficMetrics.summary.totalCalls}</div>
+                  <div className="text-xs text-gray-400">Total Calls</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-400">{trafficMetrics.summary.successRate}</div>
+                  <div className="text-xs text-gray-400">Success Rate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-400">{trafficMetrics.summary.callsPerMinute}</div>
+                  <div className="text-xs text-gray-400">Calls/Min</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-cyan-400">{trafficMetrics.summary.currentDelay}</div>
+                  <div className="text-xs text-gray-400">Current Delay</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${
+                    trafficMetrics.summary.adaptiveStatus?.includes('BACKING') ? 'text-red-400' : 'text-green-400'
+                  }`}>
+                    {trafficMetrics.summary.adaptiveStatus || 'NORMAL'}
+                  </div>
+                  <div className="text-xs text-gray-400">Rate Limiter</div>
+                </div>
+              </div>
+            )}
+            
+            {trafficMetrics?.summary?.floodErrors > 0 && (
+              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-400">
+                  ⚠️ {trafficMetrics.summary.floodErrors} flood wait errors detected
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Method Breakdown */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-lg font-semibold text-cyan-300 mb-4">API Method Breakdown</h3>
+            
+            {trafficMetrics?.methodBreakdown && trafficMetrics.methodBreakdown.length > 0 ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-6 text-xs text-gray-400 pb-2 border-b border-gray-800">
+                  <div>Method</div>
+                  <div className="text-center">Calls</div>
+                  <div className="text-center">Success</div>
+                  <div className="text-center">Failed</div>
+                  <div className="text-center">Avg Duration</div>
+                  <div className="text-center">Last Flood</div>
+                </div>
+                {trafficMetrics.methodBreakdown.map((method: any) => (
+                  <div key={method.method} className="grid grid-cols-6 py-2 text-sm hover:bg-cyan-500/5 rounded">
+                    <div className="text-white font-medium">{method.method}</div>
+                    <div className="text-center text-gray-300">{method.calls}</div>
+                    <div className="text-center text-green-400">{method.success}</div>
+                    <div className="text-center text-red-400">{method.failed}</div>
+                    <div className="text-center text-gray-300">{method.avgDuration}ms</div>
+                    <div className="text-center">
+                      {method.lastFloodWait ? (
+                        <span className="text-yellow-400">{method.lastFloodWait}s</span>
+                      ) : (
+                        <span className="text-gray-600">-</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-400">No API calls tracked yet</p>
+            )}
+          </div>
+
+          {/* Flood Wait History */}
+          {trafficMetrics?.floodWaitHistory && trafficMetrics.floodWaitHistory.length > 0 && (
+            <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-yellow-500/20 p-6">
+              <h3 className="text-lg font-semibold text-yellow-300 mb-4">Flood Wait History</h3>
+              
+              <div className="space-y-3">
+                {trafficMetrics.floodWaitHistory.map((history: any) => (
+                  <div key={history.method} className="flex items-center justify-between p-3 bg-black/40 rounded-lg">
+                    <div>
+                      <div className="text-white font-medium">{history.method}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Recent waits: {history.recentWaits.join(', ')}s
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-yellow-400">Max: {history.maxWait}s</div>
+                      <div className="text-xs text-gray-400">Avg: {history.avgWait}s</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Traffic Report */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-cyan-300">Traffic Report</h3>
+              <select
+                value={trafficReportPeriod}
+                onChange={(e) => {
+                  const period = parseInt(e.target.value);
+                  setTrafficReportPeriod(period);
+                  // Reload report with new period
+                  fetch(`${config.apiUrl}/api/telegram/traffic-report/${period}`, { credentials: 'include' })
+                    .then(res => res.json())
+                    .then(setTrafficReport)
+                    .catch(err => console.error('Failed to load traffic report:', err));
+                }}
+                className="px-3 py-1 bg-black/40 border border-cyan-500/30 rounded-lg text-sm"
+              >
+                <option value={15}>Last 15 minutes</option>
+                <option value={30}>Last 30 minutes</option>
+                <option value={60}>Last 1 hour</option>
+                <option value={120}>Last 2 hours</option>
+                <option value={360}>Last 6 hours</option>
+              </select>
+            </div>
+            
+            {trafficReport && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="bg-black/40 p-3 rounded-lg">
+                    <div className="text-gray-400">Total Calls</div>
+                    <div className="text-xl text-white">{trafficReport.totalCalls || 0}</div>
+                  </div>
+                  <div className="bg-black/40 p-3 rounded-lg">
+                    <div className="text-gray-400">Unique Methods</div>
+                    <div className="text-xl text-white">{trafficReport.uniqueMethods || 0}</div>
+                  </div>
+                  <div className="bg-black/40 p-3 rounded-lg">
+                    <div className="text-gray-400">Flood Events</div>
+                    <div className="text-xl text-yellow-400">{trafficReport.floodEvents?.length || 0}</div>
+                  </div>
+                </div>
+                
+                {trafficReport.floodEvents && trafficReport.floodEvents.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-yellow-300 mb-2">Recent Flood Events</h4>
+                    <div className="space-y-2">
+                      {trafficReport.floodEvents.slice(0, 5).map((event: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-sm p-2 bg-yellow-500/10 rounded">
+                          <span className="text-white">{event.method}</span>
+                          <span className="text-yellow-400">{event.waitSeconds}s wait</span>
+                          <span className="text-gray-400">{new Date(event.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Reset Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${config.apiUrl}/api/telegram/reset-rate-limits`, {
+                    method: 'POST',
+                    credentials: 'include'
+                  });
+                  if (res.ok) {
+                    setMessage({ type: 'success', text: 'Rate limiter delays reset to baseline' });
+                    // Reload metrics
+                    setTimeout(() => {
+                      setTrafficMetrics(null);
+                      setTrafficReport(null);
+                    }, 100);
+                  }
+                } catch (err) {
+                  setMessage({ type: 'error', text: 'Failed to reset rate limits' });
+                }
+              }}
+              className="px-4 py-2 bg-cyan-500/20 border border-cyan-500/40 rounded-lg text-cyan-400 hover:bg-cyan-500/30 transition-colors"
+            >
+              Reset Rate Limiter Delays
+            </button>
           </div>
         </div>
       )}
@@ -3175,6 +3439,7 @@ export function TelegramSnifferTab() {
         <TelegramChatHistory
           chatId={selectedHistoryChat!.id}
           chatName={selectedHistoryChat!.name}
+          username={selectedHistoryChat!.username}
           isOpen={!!selectedHistoryChat}
           onClose={() => setSelectedHistoryChat(null)}
         />

@@ -1226,6 +1226,13 @@ export class TelegramClientService extends EventEmitter {
             }
           } catch (e) {
             // User might not have permission to export invite
+            console.log(`   ℹ️ Could not export invite link: ${e}`);
+          }
+          
+          // If no invite link but we have username, generate it
+          if (!metadata.inviteLink && metadata.username) {
+            metadata.inviteLink = `https://t.me/${metadata.username}`;
+            console.log(`   ✅ Generated invite link from username: ${metadata.inviteLink}`);
           }
 
           // Get current user's participant status

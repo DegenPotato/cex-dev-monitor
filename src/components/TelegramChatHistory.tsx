@@ -34,11 +34,12 @@ interface Message {
 interface TelegramChatHistoryProps {
   chatId: string;
   chatName: string;
+  username?: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: TelegramChatHistoryProps) {
+export function TelegramChatHistory({ chatId, chatName, username, isOpen, onClose }: TelegramChatHistoryProps) {
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -235,8 +236,35 @@ export function TelegramChatHistory({ chatId, chatName, isOpen, onClose }: Teleg
           <div className="flex items-center gap-3">
             <MessageSquare className="w-6 h-6 text-cyan-400" />
             <div>
-              <h3 className="text-xl font-bold text-cyan-300">{chatName}</h3>
-              <p className="text-sm text-gray-400">{chatId}</p>
+              <h3 className="text-xl font-bold text-cyan-300">
+                {chatName}
+                {username && (
+                  <span className="text-sm text-cyan-400 ml-2 font-normal">@{username}</span>
+                )}
+              </h3>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-400">ID: {chatId}</p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(chatId);
+                  }}
+                  className="text-xs text-gray-500 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+                  title="Copy chat ID"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+                {username && (
+                  <a
+                    href={`https://t.me/${username}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-gray-500 hover:text-cyan-400 flex items-center gap-1 transition-colors ml-2"
+                    title="Open in Telegram"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

@@ -1056,7 +1056,7 @@ export function createTelegramRoutes() {
   /**
    * Get Telegram API traffic metrics
    */
-  router.get('/traffic-metrics', authService.requireSecureAuth(), async (req, res) => {
+  router.get('/traffic-metrics', authService.requireSecureAuth(), async (_req, res) => {
     try {
       const metrics = telegramRateLimiter.getMetrics();
       res.json(metrics);
@@ -1083,7 +1083,7 @@ export function createTelegramRoutes() {
   /**
    * Reset rate limiter delays (after successful period)
    */
-  router.post('/reset-rate-limits', authService.requireSecureAuth(), async (req, res) => {
+  router.post('/reset-rate-limits', authService.requireSecureAuth(), async (_req, res) => {
     try {
       telegramRateLimiter.resetDelays();
       res.json({ success: true, message: 'Rate limiter delays reset to baseline' });
