@@ -1305,6 +1305,20 @@ export class TelegramClientService extends EventEmitter {
         isCreator: false,
         hasLeft: false,
         joinDate: null,
+        // Enhanced moderation fields
+        phoneNumber: null,
+        bio: null,
+        isVerified: chat.verified || false,
+        isScam: chat.scam || false,
+        isFake: chat.fake || false,
+        isPremium: chat.premium || false,
+        restrictionReason: null,
+        commonChatsCount: 0,
+        lastSeenStatus: null,
+        lastSeenTimestamp: null,
+        photoId: null,
+        photoLocalPath: null,
+        accessHash: chat.accessHash?.toString() || null,
         fetchedAt: now,
         updatedAt: now
       };
@@ -1434,20 +1448,94 @@ export class TelegramClientService extends EventEmitter {
         }
       }
 
-      // Store in database
+      // Enhanced metadata for private chats and bots (User entities)
+      if (chatType === 'private') {
+        try {
+          // Get full user information
+          const fullUser: any = await telegramRateLimiter.executeCall(
+            'GetFullUser',
+            () => client.invoke(
+              new Api.users.GetFullUser({
+                id: chat
+              })
+            ),
+            userId,
+            'normal'
+          );
+
+          const fullUserInfo = fullUser.fullUser;
+          
+          // Extract enhanced user data
+          metadata.bio = fullUserInfo.about;
+          metadata.phoneNumber = chat.phone || null;
+          metadata.commonChatsCount = fullUserInfo.commonChatsCount || 0;
+          
+          // Extract restriction reason if any
+          if (chat.restrictionReason && chat.restrictionReason.length > 0) {
+            metadata.restrictionReason = chat.restrictionReason[0].text;
+          }
+          
+          // Get last seen status
+          if (chat.status) {
+            const status = chat.status;
+            if (status.className === 'UserStatusOnline') {
+              metadata.lastSeenStatus = 'online';
+              metadata.lastSeenTimestamp = Math.floor(Date.now() / 1000);
+            } else if (status.className === 'UserStatusRecently') {
+              metadata.lastSeenStatus = 'recently';
+            } else if (status.className === 'UserStatusLastWeek') {
+              metadata.lastSeenStatus = 'within_week';
+            } else if (status.className === 'UserStatusLastMonth') {
+              metadata.lastSeenStatus = 'within_month';
+            } else if (status.className === 'UserStatusOffline') {
+              metadata.lastSeenStatus = 'offline';
+              metadata.lastSeenTimestamp = status.wasOnline;
+            } else if (status.className === 'UserStatusEmpty') {
+              metadata.lastSeenStatus = 'hidden';
+            }
+          }
+
+          console.log(`   👤 User info: ${metadata.bio ? 'Has bio' : 'No bio'}, Phone: ${metadata.phoneNumber ? 'Yes' : 'No'}, Verified: ${metadata.isVerified}, Premium: ${metadata.isPremium}, Scam: ${metadata.isScam}`);
+
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not fetch full user info: ${error.message}`);
+        }
+      }
+
+      // Download profile photo (for all chat types)
+      if (chat.photo) {
+        try {
+          metadata.photoId = chat.photo.photoId?.toString() || null;
+          // Note: Actual photo download can be implemented later if needed
+          // Would require: client.downloadProfilePhoto(chat) and storing to disk
+          console.log(`   📷 Profile photo available: ${metadata.photoId}`);
+        } catch (error: any) {
+          console.log(`   ⚠️  Could not process profile photo: ${error.message}`);
+        }
+      }
+
+      // Store in database with enhanced fields
       await execute(`
         INSERT OR REPLACE INTO telegram_chat_metadata (
           user_id, chat_id, title, username, chat_type, description, invite_link,
           member_count, online_count, admin_count, restricted_count, kicked_count,
           is_member, is_admin, is_creator, has_left, join_date,
+          phone_number, bio, is_verified, is_scam, is_fake, is_premium,
+          restriction_reason, common_chats_count, last_seen_status, last_seen_timestamp,
+          photo_id, photo_local_path, access_hash,
           fetched_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         metadata.userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
         metadata.description, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
         metadata.adminCount, metadata.restrictedCount, metadata.kickedCount,
         metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
-        metadata.hasLeft ? 1 : 0, metadata.joinDate, metadata.fetchedAt, metadata.updatedAt
+        metadata.hasLeft ? 1 : 0, metadata.joinDate,
+        metadata.phoneNumber, metadata.bio, metadata.isVerified ? 1 : 0, metadata.isScam ? 1 : 0,
+        metadata.isFake ? 1 : 0, metadata.isPremium ? 1 : 0, metadata.restrictionReason,
+        metadata.commonChatsCount, metadata.lastSeenStatus, metadata.lastSeenTimestamp,
+        metadata.photoId, metadata.photoLocalPath, metadata.accessHash,
+        metadata.fetchedAt, metadata.updatedAt
       ]);
 
       console.log(`   ✅ Metadata stored: ${metadata.memberCount} members, Admin: ${metadata.isAdmin}, Creator: ${metadata.isCreator}`);
