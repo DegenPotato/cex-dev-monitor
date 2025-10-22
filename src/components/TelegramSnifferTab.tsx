@@ -20,7 +20,8 @@ import {
   History,
   AlertTriangle,
   ChevronDown,
-  CheckSquare
+  CheckSquare,
+  Crown
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -90,6 +91,14 @@ export function TelegramSnifferTab() {
   const [filterType, setFilterType] = useState<'all' | 'group' | 'channel' | 'private'>('all');
   const [filterVerified, setFilterVerified] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  
+  // Enhanced filters
+  const [filterRole, setFilterRole] = useState<'all' | 'creator' | 'admin' | 'member'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterActivity, setFilterActivity] = useState<'all' | 'high' | 'medium' | 'low' | 'dead'>('all');
+  const [filterHasContracts, setFilterHasContracts] = useState(false);
+  const [minMembers, setMinMembers] = useState(0);
+  const [sortBy, setSortBy] = useState<'role' | 'members' | 'activity' | 'name'>('role');
   
   // Form states
   const [apiId, setApiId] = useState('');
@@ -279,6 +288,41 @@ export function TelegramSnifferTab() {
       loadTelegramAccounts(); // Load available accounts for forwarding
     }
   }, [isAuthenticated]);
+  
+  // Subscribe to real-time metadata updates
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const unsubMetadata = subscribe('metadata_update', (data: any) => {
+      setAvailableChats(prev => prev.map(chat => 
+        chat.chatId === data.chatId 
+          ? { ...chat, ...data.metadata }
+          : chat
+      ));
+    });
+    
+    const unsubStatus = subscribe('chat_status_update', (data: any) => {
+      setAvailableChats(prev => prev.map(chat => 
+        chat.chatId === data.chatId 
+          ? { ...chat, isActive: data.isActive }
+          : chat
+      ));
+    });
+    
+    const unsubContracts = subscribe('telegram_contract_detected', (data: any) => {
+      setAvailableChats(prev => prev.map(chat => 
+        chat.chatId === data.chatId 
+          ? { ...chat, contractsDetected30d: (chat.contractsDetected30d || 0) + 1 }
+          : chat
+      ));
+    });
+    
+    return () => {
+      unsubMetadata();
+      unsubStatus();
+      unsubContracts();
+    };
+  }, [isAuthenticated, subscribe]);
 
   const loadAccountStatus = async () => {
     try {
@@ -740,36 +784,85 @@ export function TelegramSnifferTab() {
 
   // Filter and search chats
   const filteredChats = useMemo(() => {
-    let filtered = availableChats;
+    let filtered = availableChats.filter(chat => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          chat.chatName?.toLowerCase().includes(query) ||
+          chat.username?.toLowerCase().includes(query) ||
+          chat.chatId.toLowerCase().includes(query) ||
+          chat.description?.toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
+      
+      // Type filter
+      if (filterType !== 'all' && chat.chatType !== filterType) {
+        return false;
+      }
+      
+      // Role filter
+      if (filterRole !== 'all') {
+        if (filterRole === 'creator' && !chat.isCreator) return false;
+        if (filterRole === 'admin' && !chat.isAdmin) return false;
+        if (filterRole === 'member' && !chat.isMember) return false;
+      }
+      
+      // Status filter
+      if (filterStatus !== 'all') {
+        if (filterStatus === 'active' && !chat.isActive) return false;
+        if (filterStatus === 'inactive' && chat.isActive) return false;
+      }
+      
+      // Activity filter
+      if (filterActivity !== 'all') {
+        const msgsPerDay = chat.avgMessagesPerDay || 0;
+        if (filterActivity === 'high' && msgsPerDay < 100) return false;
+        if (filterActivity === 'medium' && (msgsPerDay < 10 || msgsPerDay >= 100)) return false;
+        if (filterActivity === 'low' && (msgsPerDay === 0 || msgsPerDay >= 10)) return false;
+        if (filterActivity === 'dead' && msgsPerDay > 0) return false;
+      }
+      
+      // Has contracts filter
+      if (filterHasContracts && (!chat.contractsDetected30d || chat.contractsDetected30d === 0)) {
+        return false;
+      }
+      
+      // Min members filter
+      if (minMembers > 0 && (!chat.memberCount || chat.memberCount < minMembers)) {
+        return false;
+      }
+      
+      // Verified filter
+      if (filterVerified && !chat.isVerified) {
+        return false;
+      }
+      
+      return true;
+    });
     
-    // Apply search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(chat => 
-        chat.chatName?.toLowerCase().includes(query) ||
-        chat.username?.toLowerCase().includes(query) ||
-        chat.chatId?.includes(query) ||
-        chat.description?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply type filter
-    if (filterType !== 'all') {
-      filtered = filtered.filter(chat => {
-        if (filterType === 'group') return chat.chatType === 'group' || chat.chatType === 'supergroup';
-        if (filterType === 'channel') return chat.chatType === 'channel';
-        if (filterType === 'private') return chat.chatType === 'private';
-        return true;
-      });
-    }
-    
+    // Sort results
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'role':
+          const roleValue = (c: any) => c.isCreator ? 3 : c.isAdmin ? 2 : c.isMember ? 1 : 0;
+          return roleValue(b) - roleValue(a);
+        case 'members':
+          return (b.memberCount || 0) - (a.memberCount || 0);
+        case 'activity':
+          return (b.avgMessagesPerDay || 0) - (a.avgMessagesPerDay || 0);
+        case 'name':
+        default:
+          return (a.chatName || '').localeCompare(b.chatName || '');
+      }
+    });
     // Apply verified filter
     if (filterVerified) {
       filtered = filtered.filter(chat => chat.isVerified);
     }
     
     return filtered;
-  }, [availableChats, searchQuery, filterType, filterVerified]);
+  }, [availableChats, searchQuery, filterType, filterRole, filterStatus, filterActivity, filterHasContracts, minMembers, filterVerified, sortBy]);
   
   // Load chats and detections when switching sections
   useEffect(() => {
@@ -872,6 +965,32 @@ export function TelegramSnifferTab() {
       {/* Main Sniffer Interface */}
       {activeSection === 'sniffer' && (
         <div className="space-y-6">
+          {/* Admin/Creator Stats Bar */}
+          <div className="bg-gradient-to-r from-yellow-500/10 to-purple-500/10 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-white">{availableChats.length}</div>
+                <div className="text-xs text-gray-400">Total Chats</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-yellow-400">{availableChats.filter(c => c.isCreator).length}</div>
+                <div className="text-xs text-gray-400">👑 Creator</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-purple-400">{availableChats.filter(c => c.isAdmin && !c.isCreator).length}</div>
+                <div className="text-xs text-gray-400">🛡️ Admin</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-green-400">{availableChats.filter(c => c.isActive).length}</div>
+                <div className="text-xs text-gray-400">Active</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-orange-400">{availableChats.filter(c => c.contractsDetected30d > 0).length}</div>
+                <div className="text-xs text-gray-400">w/ CAs</div>
+              </div>
+            </div>
+          </div>
+          
           {/* Status Bar */}
           <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-4">
             <div className="flex items-center justify-between">
@@ -942,18 +1061,62 @@ export function TelegramSnifferTab() {
                 />
               </div>
               
-              {/* Filters */}
-              <div className="flex gap-2">
+              {/* Enhanced Filters */}
+              <div className="flex flex-wrap gap-2">
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as any)}
-                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-400"
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
                 >
                   <option value="all">All Types</option>
                   <option value="group">Groups</option>
                   <option value="channel">Channels</option>
                   <option value="private">Private</option>
                 </select>
+                
+                <select
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="creator">👑 Creator</option>
+                  <option value="admin">🛡️ Admin</option>
+                  <option value="member">👤 Member</option>
+                </select>
+                
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">🟢 Active</option>
+                  <option value="inactive">⭕ Inactive</option>
+                </select>
+                
+                <select
+                  value={filterActivity}
+                  onChange={(e) => setFilterActivity(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="all">All Activity</option>
+                  <option value="high">🔥 High</option>
+                  <option value="medium">📊 Medium</option>
+                  <option value="low">📉 Low</option>
+                  <option value="dead">💀 Dead</option>
+                </select>
+                
+                <button
+                  onClick={() => setFilterHasContracts(!filterHasContracts)}
+                  className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                    filterHasContracts 
+                      ? 'bg-orange-500/20 border-orange-500/40 text-orange-400' 
+                      : 'bg-black/40 border-cyan-500/30 text-gray-400'
+                  }`}
+                >
+                  Has CAs
+                </button>
                 
                 <button
                   onClick={() => setFilterVerified(!filterVerified)}
@@ -978,6 +1141,31 @@ export function TelegramSnifferTab() {
                   <Eye className="w-4 h-4" />
                   <span className="ml-2">Details</span>
                 </button>
+                
+                {/* Min Members Filter */}
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-400" />
+                  <input
+                    type="number"
+                    value={minMembers}
+                    onChange={(e) => setMinMembers(parseInt(e.target.value) || 0)}
+                    placeholder="Min"
+                    className="w-20 px-2 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                    min="0"
+                  />
+                </div>
+                
+                {/* Sort By Selector */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="role">Sort: Role</option>
+                  <option value="members">Sort: Members</option>
+                  <option value="activity">Sort: Activity</option>
+                  <option value="name">Sort: Name</option>
+                </select>
               </div>
             </div>
             
@@ -1106,8 +1294,18 @@ export function TelegramSnifferTab() {
                               <h4 className="font-medium text-white">
                                 {chat.chatName || chat.chatId}
                               </h4>
-                              {chat.chatType === 'bot' && (
+                              {chat.isCreator && (
+                                <span className="px-1.5 py-0.5 bg-yellow-500/20 border border-yellow-500/40 rounded text-yellow-400 text-xs font-bold flex items-center gap-1">
+                                  <Crown className="w-3 h-3" /> CREATOR
+                                </span>
+                              )}
+                              {chat.isAdmin && !chat.isCreator && (
                                 <span className="px-1.5 py-0.5 bg-purple-500/20 border border-purple-500/40 rounded text-purple-400 text-xs font-bold flex items-center gap-1">
+                                  <Shield className="w-3 h-3" /> ADMIN
+                                </span>
+                              )}
+                              {chat.chatType === 'bot' && (
+                                <span className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-500/40 rounded text-blue-400 text-xs font-bold flex items-center gap-1">
                                   <Bot className="w-3 h-3" /> BOT
                                 </span>
                               )}
@@ -1118,11 +1316,11 @@ export function TelegramSnifferTab() {
                               )}
                               {isSniffer && (
                                 <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded text-green-400 text-xs font-bold">
-                                  SNIFFING
+                                  MONITORING
                                 </span>
                               )}
                               {chat.contractsDetected30d > 0 && (
-                                <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-400 text-xs font-bold">
+                                <span className="px-2 py-0.5 bg-orange-500/20 border border-orange-500/30 rounded text-orange-400 text-xs font-bold">
                                   {chat.contractsDetected30d} CAs
                                 </span>
                               )}
