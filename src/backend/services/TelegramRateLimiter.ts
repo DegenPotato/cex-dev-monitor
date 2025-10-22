@@ -37,25 +37,37 @@ export class TelegramRateLimiter extends EventEmitter {
   
   // Rate limiting
   private lastCallTime = 0;
-  private currentDelayMs = 300; // Start with 300ms between calls
+  private currentDelayMs = 500; // Start with 500ms between calls (more conservative)
   private consecutiveFloodErrors = 0;
   
   // Configuration
   private config: RateLimitConfig = {
     methodLimits: new Map([
-      ['GetFullChannel', 1], // 1 per second max
-      ['GetParticipants', 0.5], // 1 every 2 seconds
-      ['GetFullUser', 0.5], // 1 every 2 seconds
-      ['ExportChatInvite', 0.2], // 1 every 5 seconds
-      ['GetParticipant', 1], // 1 per second
-      ['GetFullChat', 1], // 1 per second
+      // User-related calls (most restrictive - Telegram is very sensitive to these)
+      ['GetUsers', 0.1], // 1 every 10 seconds - VERY restrictive
+      ['GetFullUser', 0.2], // 1 every 5 seconds
+      ['GetEntity', 0.5], // 1 every 2 seconds (when resolving users)
+      
+      // Channel/Chat metadata
+      ['GetFullChannel', 0.5], // 1 every 2 seconds (was too aggressive at 1/sec)
+      ['GetFullChat', 0.5], // 1 every 2 seconds
+      ['GetParticipants', 0.2], // 1 every 5 seconds (participants lists are expensive)
+      ['GetParticipant', 0.5], // 1 every 2 seconds
+      
+      // Administrative actions
+      ['ExportChatInvite', 0.1], // 1 every 10 seconds (very restricted)
+      
+      // Message/Dialog operations
       ['GetDialogs', 0.1], // 1 every 10 seconds
+      ['GetHistory', 1], // 1 per second (reading messages is less restricted)
+      ['ForwardMessages', 1], // 1 per second
+      ['SendMessage', 1], // 1 per second
     ]),
-    globalCallsPerSecond: 3,
-    globalCallsPerMinute: 100,
-    baseDelayMs: 300,
-    maxDelayMs: 5000,
-    backoffMultiplier: 1.5
+    globalCallsPerSecond: 2, // Reduced from 3 to be more conservative
+    globalCallsPerMinute: 60, // Reduced from 100 to be safer
+    baseDelayMs: 500, // Increased from 300ms
+    maxDelayMs: 10000, // Increased from 5000ms
+    backoffMultiplier: 2.0 // Increased from 1.5 for more aggressive backoff
   };
   
   // Metrics tracking
