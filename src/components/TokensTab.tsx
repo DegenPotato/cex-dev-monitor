@@ -55,10 +55,12 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
 
   const fetchTokens = async () => {
     try {
-      const response = await fetch(apiUrl('/api/tokens?limit=1000'));
+      const response = await fetch(apiUrl('/api/tokens?limit=1000'), { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setTokens(data);
+      } else {
+        console.error('Failed to fetch tokens');
       }
     } catch (error) {
       console.error('Error fetching tokens:', error);
@@ -69,7 +71,7 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
 
   const fetchMarketDataStatus = async () => {
     try {
-      const response = await fetch(apiUrl('/api/market-data/status'));
+      const response = await fetch(apiUrl('/api/market-data/status'), { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setMarketDataStatus(data);
@@ -82,7 +84,10 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
   const toggleMarketDataTracker = async () => {
     try {
       const endpoint = marketDataStatus?.isRunning ? '/api/market-data/stop' : '/api/market-data/start';
-      const response = await fetch(apiUrl(endpoint), { method: 'POST' });
+      const response = await fetch(apiUrl(endpoint), { 
+        method: 'POST',
+        credentials: 'include' 
+      });
       if (response.ok) {
         const data = await response.json();
         alert(data.message);

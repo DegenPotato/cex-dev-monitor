@@ -1,6 +1,6 @@
 import { MonitoredWallet } from '../types';
 import { ExternalLink, Power, Sparkles, Calendar, Activity, Flame } from 'lucide-react';
-import { apiUrl } from '../config';
+import api from '../lib/api/fetchWithAuth';
 
 interface WalletListProps {
   wallets: MonitoredWallet[];
@@ -19,7 +19,7 @@ export function WalletList({ wallets, onUpdate }: WalletListProps) {
 
   const toggleWallet = async (address: string) => {
     try {
-      await fetch(apiUrl(`/api/wallets/${address}/toggle`), { method: 'POST' });
+      await api.post(`/api/wallets/${address}/toggle`);
       onUpdate();
     } catch (error) {
       console.error('Error toggling wallet:', error);
