@@ -3,23 +3,13 @@
  * Query token sources and performance metrics
  */
 
-import { Router, Request } from 'express';
+import { Router } from 'express';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { tokenSourceTracker } from '../services/TokenSourceTracker.js';
 import { queryAll, queryOne } from '../database/helpers.js';
 
 const authService = new SecureAuthService();
 const router = Router();
-
-// Extend Express Request type
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: number;
-    wallet_address: string;
-    username: string;
-    role: string;
-  };
-}
 
 /**
  * Get top performing token sources
@@ -124,7 +114,7 @@ router.get('/api/analytics/tokens/by-source', authService.requireSecureAuth(), a
 /**
  * Get source performance summary
  */
-router.get('/api/analytics/token-sources/summary', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/analytics/token-sources/summary', authService.requireSecureAuth(), async (_req, res) => {
   try {
     // Get overall statistics
     const stats = await queryOne(`
@@ -191,7 +181,7 @@ router.get('/api/analytics/token-sources/summary', authService.requireSecureAuth
 /**
  * Get detailed Telegram source performance
  */
-router.get('/api/analytics/telegram-sources', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/analytics/telegram-sources', authService.requireSecureAuth(), async (_req, res) => {
   try {
     const sources = await queryAll(`
       SELECT 

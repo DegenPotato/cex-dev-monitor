@@ -7,7 +7,6 @@ import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { telegramRateLimiter } from './TelegramRateLimiter.js';
-import { apiProviderTracker } from './ApiProviderTracker.js';
 import { tokenSourceTracker } from './TokenSourceTracker.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { PublicKey } from '@solana/web3.js';

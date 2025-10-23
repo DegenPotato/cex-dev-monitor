@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  PieChart, Pie, Cell,
+  Tooltip, ResponsiveContainer 
 } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Database, Clock, Target, Award, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Activity, Database, Clock, Target, Award } from 'lucide-react';
 import { config } from '../config';
 
 interface TokenSource {
@@ -34,10 +34,7 @@ interface Summary {
 export const TokenAnalyticsDashboard: React.FC = () => {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [telegramSources, setTelegramSources] = useState<TokenSource[]>([]);
-  const [topSources, setTopSources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSource, setSelectedSource] = useState<string | null>(null);
-  const [sourcePerformance, setSourcePerformance] = useState<any>(null);
 
   useEffect(() => {
     fetchData();
@@ -61,12 +58,7 @@ export const TokenAnalyticsDashboard: React.FC = () => {
       const telegramData = await telegramRes.json();
       if (telegramData.success) setTelegramSources(telegramData.sources);
 
-      // Fetch top sources
-      const topRes = await fetch(`${config.apiUrl}/api/analytics/token-sources/top?limit=10`, {
-        credentials: 'include'
-      });
-      const topData = await topRes.json();
-      if (topData.success) setTopSources(topData.sources);
+      // Note: Top sources can be fetched here if needed for future features
 
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
@@ -82,8 +74,8 @@ export const TokenAnalyticsDashboard: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setSourcePerformance(data.performance);
-        setSelectedSource(chatId);
+        // Source performance data available here for future features
+        console.log('Source performance:', data.performance);
       }
     } catch (error) {
       console.error('Failed to fetch source performance:', error);
