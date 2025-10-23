@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap } from 'lucide-react';
+import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap, BarChart3 } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { config } from '../config';
 import { SettingsPanel } from './SettingsPanel';
@@ -9,12 +9,13 @@ import { DatabaseTab } from './DatabaseTab';
 import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
 import { FetcherTab } from './FetcherTab';
+import { TokenIndexTab } from './TokenIndexTab';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
 import { useAudio } from '../contexts/AudioContext';
 
-type Tab = 'wallets' | 'tokens' | 'database' | 'telegram' | 'fetcher';
+type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher';
 
 // Sound-reactive glow component
 function SoundReactiveGlow({ analyser }: { analyser: AnalyserNode | null }) {
@@ -517,6 +518,23 @@ export function Dashboard() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('token-index')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
+              activeTab === 'token-index'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
+            }`}
+          >
+            {activeTab === 'token-index' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <BarChart3 className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Token Index</span>
+            {activeTab === 'token-index' && (
+              <TrendingUp className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('telegram')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'telegram'
@@ -595,6 +613,11 @@ export function Dashboard() {
               <TokensTab onTokenSelect={setSelectedTokenAddress} />
             </div>
           )
+        ) : activeTab === 'token-index' ? (
+          <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+            <TokenIndexTab onTokenSelect={setSelectedTokenAddress} />
+          </div>
         ) : activeTab === 'telegram' ? (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
