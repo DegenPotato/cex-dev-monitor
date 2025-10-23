@@ -37,6 +37,7 @@ import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import { telegramEntityCache } from './services/TelegramEntityCache.js';
 import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
+import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -80,6 +81,11 @@ const io = new SocketIOServer(httpServer, {
   },
   transports: ['websocket', 'polling']
 });
+
+// Initialize Trading WebSocket Service
+const tradingWebSocketService = getTradingWebSocketService();
+tradingWebSocketService.initialize(io);
+console.log('✅ Trading WebSocket service initialized on /trading namespace');
 
 // Start Telegram Redis Stream Consumer (if enabled)
 if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
