@@ -109,7 +109,7 @@ router.get('/', async (req, res) => {
         -- Market data
         md.price_usd as current_price_usd,
         md.market_cap_usd,
-        md.volume_24h as volume_24h_usd,
+        md.volume_24h_usd,
         md.price_change_24h,
         
         -- Performance metrics from trades
@@ -117,16 +117,7 @@ router.get('/', async (req, res) => {
         ts.avg_profit_loss_pct
         
       FROM token_registry tr
-      LEFT JOIN (
-        SELECT 
-          mint_address,
-          price_usd,
-          market_cap_usd,
-          volume_24h,
-          price_change_24h
-        FROM token_market_data
-        WHERE is_current = 1
-      ) md ON tr.token_mint = md.mint_address
+      LEFT JOIN token_market_data md ON tr.token_mint = md.mint_address
       
       LEFT JOIN (
         SELECT 
@@ -316,10 +307,10 @@ router.get('/:tokenMint', async (req, res) => {
         tr.*,
         md.price_usd as current_price_usd,
         md.market_cap_usd,
-        md.volume_24h as volume_24h_usd,
+        md.volume_24h_usd,
         md.price_change_24h
       FROM token_registry tr
-      LEFT JOIN token_market_data md ON tr.token_mint = md.mint_address AND md.is_current = 1
+      LEFT JOIN token_market_data md ON tr.token_mint = md.mint_address
       WHERE tr.token_mint = ?
     `, [tokenMint]) as any;
 
