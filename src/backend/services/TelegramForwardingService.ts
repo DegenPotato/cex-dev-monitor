@@ -4,8 +4,9 @@
  */
 
 import { EventEmitter } from 'events';
-import { queryAll, execute, getLastInsertId } from '../database/helpers.js';
+import { queryAll, queryOne, execute } from '../database/helpers.js';
 import { apiProviderTracker } from './ApiProviderTracker.js';
+import { telegramEntityCache } from './TelegramEntityCache.js';
 
 interface ForwardingRule {
   id: number;
@@ -222,6 +223,16 @@ export class TelegramForwardingService extends EventEmitter {
       // Apply delay if configured
       if (rule.delaySeconds > 0) {
         await new Promise(resolve => setTimeout(resolve, rule.delaySeconds * 1000));
+      }
+      
+      // Pre-load entities to avoid cache misses
+      try {
+        await telegramEntityCache.preloadEntities(
+          await clientProvider(rule.targetAccountId),
+          rule.targetChatIds
+        );
+      } catch (e) {
+        console.log(`  ⚠️ Entity pre-load failed, will try direct resolution`);
       }
       
       // Get client for target account (to forward messages) - use the selected account
@@ -506,7 +517,14 @@ export class TelegramForwardingService extends EventEmitter {
         now
       ]);
       
-      const ruleId = await getLastInsertId();
+      // Get the last inserted rule ID
+      const result = await queryOne<{ id: number }>(
+        `SELECT id FROM telegram_forwarding_rules 
+         WHERE user_id = ? AND rule_name = ? 
+         ORDER BY id DESC LIMIT 1`,
+        [userId, rule.ruleName || 'Untitled Rule']
+      );
+      const ruleId = result?.id;
       await this.loadActiveRules(); // Refresh cache
       
       return { success: true, ruleId };

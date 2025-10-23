@@ -35,6 +35,7 @@ import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalcu
 import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import { ohlcvAggregator } from './services/OHLCVAggregator.js';
+import { telegramEntityCache } from './services/TelegramEntityCache.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -359,6 +360,13 @@ const technicalIndicatorCalculator = new TechnicalIndicatorCalculator();
 })();
 
 console.log('✅ [Init] Services initialized - Use Settings panel to start monitoring');
+
+// Initialize Telegram entity cache for forwarding reliability
+telegramEntityCache.initialize().then(() => {
+  console.log('📋 [Init] Telegram entity cache initialized');
+}).catch(err => {
+  console.error('Failed to initialize entity cache:', err);
+});
 
 // WebSocket clients
 const clients = new Set<WebSocket>();
