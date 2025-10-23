@@ -1,5 +1,14 @@
 import { queryAll } from '../database/helpers.js';
 
+interface Candle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 /**
  * OHLCV Aggregator
  * Aggregates 1-minute candles into higher timeframes
@@ -35,7 +44,7 @@ export class OHLCVAggregator {
       query += ` ORDER BY timestamp DESC LIMIT ?`;
       params.push(limit * aggregationMinutes); // Fetch enough 1m candles
       
-      const candles1m = await queryAll(query, params);
+      const candles1m = await queryAll<Candle>(query, params);
       
       if (!candles1m || candles1m.length === 0) {
         return [];
@@ -45,8 +54,8 @@ export class OHLCVAggregator {
       candles1m.reverse();
       
       // Group candles by aggregation period
-      const aggregatedCandles: any[] = [];
-      let currentGroup: any[] = [];
+      const aggregatedCandles: Candle[] = [];
+      let currentGroup: Candle[] = [];
       let currentPeriodStart = 0;
       
       for (const candle of candles1m) {
@@ -59,7 +68,10 @@ export class OHLCVAggregator {
         if (periodStart !== currentPeriodStart) {
           // Process current group
           if (currentGroup.length > 0) {
-            aggregatedCandles.push(this.aggregateGroup(currentGroup, currentPeriodStart));
+            const aggregated = this.aggregateGroup(currentGroup, currentPeriodStart);
+            if (aggregated) {
+              aggregatedCandles.push(aggregated);
+            }
           }
           
           // Start new group
@@ -72,7 +84,10 @@ export class OHLCVAggregator {
       
       // Process last group
       if (currentGroup.length > 0) {
-        aggregatedCandles.push(this.aggregateGroup(currentGroup, currentPeriodStart));
+        const aggregated = this.aggregateGroup(currentGroup, currentPeriodStart);
+        if (aggregated) {
+          aggregatedCandles.push(aggregated);
+        }
       }
       
       // Limit results
@@ -84,7 +99,7 @@ export class OHLCVAggregator {
     }
   }
   
-  private aggregateGroup(candles: any[], timestamp: number) {
+  private aggregateGroup(candles: Candle[], timestamp: number): Candle | null {
     if (candles.length === 0) return null;
     
     return {
