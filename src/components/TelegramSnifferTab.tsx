@@ -2288,6 +2288,14 @@ export function TelegramSnifferTab() {
                   Currently monitoring {snifferChats.filter(c => c.isActive).length} of {snifferChats.length} configured chats
                 </p>
               </div>
+              <button
+                onClick={handleFetchChats}
+                disabled={loading}
+                className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 text-xs font-medium transition-all flex items-center gap-2"
+              >
+                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                Refresh Chats
+              </button>
               <button 
                 onClick={() => window.open('/intelligence', '_blank')}
                 className="bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 border border-cyan-500/30 rounded-lg px-4 py-2 text-cyan-400 font-medium transition-all flex items-center gap-2"
@@ -2345,6 +2353,24 @@ export function TelegramSnifferTab() {
                           History
                         </button>
                         <button
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${chat.chatId}/toggle`, {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ isActive: false })
+                              });
+                              if (response.ok) {
+                                setMessage({ type: 'success', text: `Paused sniffing ${chat.chatName || chat.chatId}` });
+                                await loadSnifferChats();
+                              } else {
+                                setMessage({ type: 'error', text: 'Failed to pause sniffer' });
+                              }
+                            } catch (error) {
+                              setMessage({ type: 'error', text: 'Error pausing sniffer' });
+                            }
+                          }}
                           className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded text-red-400 text-xs font-medium transition-all"
                         >
                           Pause
@@ -2354,24 +2380,41 @@ export function TelegramSnifferTab() {
                     
                     {/* Active Configuration */}
                     <div className="space-y-2 text-xs">
+                      {/* Real-time Stats */}
+                      <div className="flex items-center gap-4 p-2 bg-black/60 rounded border border-cyan-500/10">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Detections:</span>
+                          <span className="font-bold text-cyan-400">
+                            {detections.filter(d => d.chatId === chat.chatId).length}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Today:</span>
+                          <span className="font-bold text-green-400">
+                            {detections.filter(d => 
+                              d.chatId === chat.chatId && 
+                              new Date(d.detectedAt * 1000).toDateString() === new Date().toDateString()
+                            ).length}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Success:</span>
+                          <span className="font-bold text-purple-400">
+                            {detections.filter(d => d.chatId === chat.chatId && d.forwarded).length}/
+                            {detections.filter(d => d.chatId === chat.chatId).length}
+                          </span>
+                        </div>
+                      </div>
+                      
                       {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
                         <div className="flex items-start gap-2">
                           <span className="text-gray-500">Keywords:</span>
                           <div className="flex flex-wrap gap-1">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                              <span>Type: {chat.chatType}</span>
-                              {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
-                                <span className="text-cyan-400">• Tracking {chat.monitoredUserIds.length} users</span>
-                              )}
-                              {chat.monitoredKeywords && chat.monitoredKeywords.length > 0 && (
-                                <span className="text-purple-400">• {chat.monitoredKeywords.length} keywords</span>
-                              )}
-                              {chat.forwardToChatId && (
-                                <span className="text-green-400 flex items-center gap-1">
-                                  • 📤 Auto-forward{chat.forwardAccountId ? ' (custom account)' : ''}
-                                </span>
-                              )}
-                            </div>
+                            {chat.monitoredKeywords.map((kw, idx) => (
+                              <span key={idx} className="px-1.5 py-0.5 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400 text-xs">
+                                {kw}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -2379,7 +2422,16 @@ export function TelegramSnifferTab() {
                       {chat.monitoredUserIds && chat.monitoredUserIds.length > 0 && (
                         <div className="flex items-start gap-2">
                           <span className="text-gray-500">Users:</span>
-                          <span className="text-purple-400">{chat.monitoredUserIds.length} specific users</span>
+                          <span className="text-cyan-400">{chat.monitoredUserIds.length} specific users</span>
+                        </div>
+                      )}
+                      
+                      {chat.forwardToChatId && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Forwarding:</span>
+                          <span className="text-green-400 flex items-center gap-1">
+                            📤 To: {chat.forwardToChatId}{chat.forwardAccountId ? ' (custom account)' : ''}
+                          </span>
                         </div>
                       )}
                       

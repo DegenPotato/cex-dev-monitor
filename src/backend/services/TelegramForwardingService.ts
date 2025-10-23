@@ -369,6 +369,20 @@ export class TelegramForwardingService extends EventEmitter {
           
           console.log(`  ✅ Forwarded successfully to ${targetChatId} (${responseTime}ms)`);
           
+          // REFRESH ENTITIES AFTER SUCCESSFUL FORWARD
+          // This helps resolve entity issues for future forwards
+          if (isUserId) {
+            console.log(`  🔄 Refreshing dialogs after forward to maintain entity cache...`);
+            try {
+              // Refresh dialogs in background (don't await to avoid delays)
+              client.getDialogs({ limit: 10 }).catch((e: any) => {
+                console.log(`  ⚠️ Background dialog refresh failed: ${e.message}`);
+              });
+            } catch (e) {
+              // Silent fail - this is just cache maintenance
+            }
+          }
+          
         } catch (error: any) {
           const responseTime = Date.now() - forwardStartTime;
           
