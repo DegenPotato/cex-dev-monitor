@@ -662,6 +662,13 @@ export class TelegramClientService extends EventEmitter {
         // Refresh cache if needed
         await refreshCache();
 
+        // Extract topic ID if this is a forum message
+        let topicId: string | null = null;
+        if (message.replyTo?.forumTopic && message.replyTo?.replyToMsgId) {
+          topicId = message.replyTo.replyToMsgId.toString();
+          console.log(`   📌 Message in forum topic: ${topicId}`);
+        }
+
         // Check if message is from monitored chat
         // For forum groups/topics, use peerId.channelId (for supergroups/channels)
         let chatId = message.chatId?.toString();
@@ -683,7 +690,8 @@ export class TelegramClientService extends EventEmitter {
         }
         
         const monitoredChat = cachedChats.find(c => c.chatId === chatId);
-        console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})`);
+        const topicInfo = topicId ? ` [Topic: ${topicId}]` : '';
+        console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})${topicInfo}`);
         console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
 
         // Auto-cache ALL messages from monitored chats (before filters)
@@ -696,7 +704,8 @@ export class TelegramClientService extends EventEmitter {
           messageId: message.id,
           text: message.message,
           senderId: message.senderId?.toString(),
-          date: message.date
+          date: message.date,
+          topicId: topicId
         });
 
         // Check if sender is a bot and if we should process bot messages
