@@ -2603,6 +2603,20 @@ app.post('/api/market-data/stop', (_req, res) => {
 });
 
 // SOL Price Oracle control
+app.get('/api/sol-price', async (_req, res) => {
+  try {
+    const price = await solPriceOracle.getPriceAsync();
+    const status = solPriceOracle.getStatus();
+    res.json({
+      success: true,
+      price,
+      status
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/sol-oracle/start', async (_req, res) => {
   try {
     await solPriceOracle.start();
