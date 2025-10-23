@@ -31,7 +31,7 @@ try {
 console.log(`📋 Already applied: ${appliedMigrations.size} migration(s)`);
 
 // Read all SQL files from migrations directory
-const migrationsDir = './src/backend/database/migrations';
+const migrationsDir = './migrations';
 const migrationFiles = readdirSync(migrationsDir)
   .filter(f => f.endsWith('.sql'))
   .sort(); // Alphabetical order (001_, 002_, etc.)
