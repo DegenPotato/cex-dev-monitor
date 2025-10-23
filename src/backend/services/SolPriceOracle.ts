@@ -1,33 +1,23 @@
 import { ConfigProvider } from '../providers/ConfigProvider.js';
 import { apiProviderTracker } from './ApiProviderTracker.js';
-import WebSocket from 'ws';
 
 /**
  * SOL Price Oracle
- * Uses Jupiter Price API V2 WebSocket for real-time SOL/USD price updates
- * Falls back to REST polling if WebSocket fails
+ * Uses GeckoTerminal API for SOL/USD price
  */
 export class SolPriceOracle {
   private isRunning = false;
-  private ws: WebSocket | null = null;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
-  private fallbackInterval: NodeJS.Timeout | null = null;
+  private intervalId: NodeJS.Timeout | null = null;
   
-  private readonly JUPITER_WS = 'wss://price.jup.ag/v2';
-  private readonly JUPITER_ULTRA_API = 'https://api.jup.ag/ultra/price/v3';
-  private readonly JUPITER_API_KEY = '7aeace19-c170-493e-a4ed-4e2e61eeb49d';
-  private readonly SOL_MINT = 'So11111111111111111111111111111111111111112';
-  private readonly RECONNECT_DELAY = 5000; // 5 seconds
-  private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
-  private readonly FALLBACK_INTERVAL = 30000; // 30 seconds (more frequent updates)
+  private readonly GECKOTERMINAL_API = 'https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price';
+  private readonly SOL_ADDRESS = 'So11111111111111111111111111111111111111112';
+  private readonly POLL_INTERVAL = 30000; // 30 seconds
   
   private currentPrice: number = 150; // Fallback default
-  private lastUpdate: number = 0;
-  private useWebSocket = false; // Disabled due to DNS issues on some servers
+  private lastUpdate: number = 0
 
   /**
-   * Start the price oracle with WebSocket
+   * Start the price oracle
    */
   async start() {
     if (this.isRunning) {
@@ -36,7 +26,7 @@ export class SolPriceOracle {
     }
 
     this.isRunning = true;
-    console.log('💰 [SOL Oracle] Starting with Jupiter REST API');
+    console.log('💰 [SOL Oracle] Starting with GeckoTerminal API (30s interval)');
     
     // Load existing price from DB
     const storedPrice = await ConfigProvider.get('sol_price_usd');
@@ -45,12 +35,13 @@ export class SolPriceOracle {
       console.log(`💰 [SOL Oracle] Loaded cached price: $${this.currentPrice.toFixed(2)}`);
     }
     
-    // Try WebSocket first, fall back to REST if it fails
-    if (this.useWebSocket) {
-      this.connectWebSocket();
-    } else {
-      this.startFallbackPolling();
-    }
+    // Fetch immediately
+    await this.fetchPrice();
+    
+    // Then poll every 30 seconds
+    this.intervalId = setInterval(() => {
+      this.fetchPrice();
+    }, this.POLL_INTERVAL);
   }
 
   /**
@@ -59,163 +50,48 @@ export class SolPriceOracle {
   stop() {
     this.isRunning = false;
     
-    // Close WebSocket
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    
-    // Clear all timers
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-    if (this.fallbackInterval) {
-      clearInterval(this.fallbackInterval);
-      this.fallbackInterval = null;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
     
     console.log('💰 [SOL Oracle] Stopped');
   }
 
   /**
-   * Connect to Jupiter WebSocket
+   * Fetch price via GeckoTerminal API
    */
-  private connectWebSocket() {
-    try {
-      console.log('💰 [SOL Oracle] Connecting to Jupiter WebSocket...');
-      this.ws = new WebSocket(this.JUPITER_WS);
-      
-      this.ws.on('open', () => {
-        console.log('💰 [SOL Oracle] WebSocket connected');
-        
-        // Subscribe to SOL price updates
-        this.ws?.send(JSON.stringify({
-          method: 'subscribeTokenPrice',
-          params: [this.SOL_MINT]
-        }));
-        
-        // Start heartbeat
-        this.startHeartbeat();
-      });
-      
-      this.ws.on('message', async (data: WebSocket.Data) => {
-        try {
-          const message = JSON.parse(data.toString());
-          
-          // Handle price update
-          if (message.type === 'price' && message.data) {
-            const newPrice = message.data.price;
-            if (newPrice && typeof newPrice === 'number' && newPrice > 0) {
-              await this.updatePriceValue(newPrice, 'WebSocket');
-            }
-          }
-        } catch (error: any) {
-          console.error('💰 [SOL Oracle] Error parsing WebSocket message:', error.message);
-        }
-      });
-      
-      this.ws.on('error', (error) => {
-        console.error('💰 [SOL Oracle] WebSocket error:', error.message);
-        apiProviderTracker.trackCall('Jupiter', 'WebSocket', false, 0, undefined, error.message);
-      });
-      
-      this.ws.on('close', () => {
-        console.log('💰 [SOL Oracle] WebSocket disconnected');
-        this.ws = null;
-        
-        if (this.heartbeatInterval) {
-          clearInterval(this.heartbeatInterval);
-          this.heartbeatInterval = null;
-        }
-        
-        // Reconnect if still running
-        if (this.isRunning) {
-          console.log(`💰 [SOL Oracle] Reconnecting in ${this.RECONNECT_DELAY/1000}s...`);
-          this.reconnectTimeout = setTimeout(() => {
-            if (this.isRunning) {
-              this.connectWebSocket();
-            }
-          }, this.RECONNECT_DELAY);
-        }
-      });
-    } catch (error: any) {
-      console.error('💰 [SOL Oracle] Failed to create WebSocket:', error.message);
-      // Fall back to REST polling
-      this.useWebSocket = false;
-      this.startFallbackPolling();
-    }
-  }
-  
-  /**
-   * Start heartbeat to keep WebSocket alive
-   */
-  private startHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ method: 'ping' }));
-      }
-    }, this.HEARTBEAT_INTERVAL);
-  }
-  
-  /**
-   * Start fallback REST polling
-   */
-  private startFallbackPolling() {
-    console.log('💰 [SOL Oracle] Starting REST polling (30s interval)');
-    
-    // Fetch immediately
-    this.fetchPriceREST();
-    
-    // Then poll every 30 seconds
-    this.fallbackInterval = setInterval(() => {
-      this.fetchPriceREST();
-    }, this.FALLBACK_INTERVAL);
-  }
-  
-  /**
-   * Fetch price via Jupiter Ultra API v3
-   */
-  private async fetchPriceREST() {
+  private async fetchPrice() {
     const startTime = Date.now();
     try {
       const response = await fetch(
-        `${this.JUPITER_ULTRA_API}?ids=${this.SOL_MINT}`,
-        { 
-          headers: { 
-            'Accept': 'application/json',
-            'X-API-KEY': this.JUPITER_API_KEY
-          } 
-        }
+        `${this.GECKOTERMINAL_API}/${this.SOL_ADDRESS}`,
+        { headers: { 'Accept': 'application/json' } }
       );
 
       if (!response.ok) {
         const responseTime = Date.now() - startTime;
-        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, response.status);
+        apiProviderTracker.trackCall('GeckoTerminal', '/token_price', false, responseTime, response.status);
         throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
       const responseTime = Date.now() - startTime;
       
-      // Jupiter Ultra API v3 response format: { data: { [mint]: { price: number } } }
-      const priceData = data.data?.[this.SOL_MINT];
-      const newPrice = priceData?.price;
+      // GeckoTerminal response format: { data: { attributes: { token_prices: { [address]: "price" } } } }
+      const priceStr = data.data?.attributes?.token_prices?.[this.SOL_ADDRESS.toLowerCase()];
+      const newPrice = priceStr ? parseFloat(priceStr) : null;
 
       if (newPrice && typeof newPrice === 'number' && newPrice > 0) {
-        await this.updatePriceValue(newPrice, 'Jupiter Ultra');
-        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', true, responseTime, 200);
+        await this.updatePriceValue(newPrice);
+        apiProviderTracker.trackCall('GeckoTerminal', '/token_price', true, responseTime, 200);
       } else {
-        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, 200, 'Invalid data structure');
+        apiProviderTracker.trackCall('GeckoTerminal', '/token_price', false, responseTime, 200, 'Invalid data structure');
         console.warn('💰 [SOL Oracle] Invalid price data received:', JSON.stringify(data));
       }
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, undefined, error.message);
+      apiProviderTracker.trackCall('GeckoTerminal', '/token_price', false, responseTime, undefined, error.message);
       console.error('💰 [SOL Oracle] Error fetching price:', error.message);
     }
   }
@@ -223,7 +99,7 @@ export class SolPriceOracle {
   /**
    * Update price value and store in database
    */
-  private async updatePriceValue(newPrice: number, source: string) {
+  private async updatePriceValue(newPrice: number) {
     this.currentPrice = newPrice;
     this.lastUpdate = Date.now();
     
@@ -231,7 +107,7 @@ export class SolPriceOracle {
     await ConfigProvider.set('sol_price_usd', newPrice.toString());
     await ConfigProvider.set('sol_price_updated_at', this.lastUpdate.toString());
     
-    console.log(`💰 [SOL Oracle] Updated via ${source}: $${newPrice.toFixed(2)}`);
+    console.log(`💰 [SOL Oracle] Updated: $${newPrice.toFixed(2)}`);
   }
 
   /**
@@ -270,8 +146,7 @@ export class SolPriceOracle {
       isRunning: this.isRunning,
       currentPrice: this.currentPrice,
       lastUpdate: this.lastUpdate,
-      method: this.useWebSocket ? 'WebSocket' : 'REST',
-      connected: this.ws?.readyState === WebSocket.OPEN
+      method: 'GeckoTerminal REST'
     };
   }
 }
