@@ -2288,6 +2288,54 @@ export function TelegramSnifferTab() {
                   Currently monitoring {snifferChats.filter(c => c.isActive).length} of {snifferChats.length} configured chats
                 </p>
               </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    // Pause all active sniffers
+                    const activeChats = snifferChats.filter(c => c.isActive);
+                    for (const chat of activeChats) {
+                      try {
+                        await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${chat.chatId}/toggle`, {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ isActive: false })
+                        });
+                      } catch (error) {
+                        console.error('Failed to pause chat:', chat.chatId);
+                      }
+                    }
+                    setMessage({ type: 'success', text: `Paused all ${activeChats.length} active sniffers` });
+                    await loadSnifferChats();
+                  }}
+                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
+                >
+                  Pause All
+                </button>
+                <button
+                  onClick={async () => {
+                    // Resume all inactive sniffers
+                    const inactiveChats = snifferChats.filter(c => !c.isActive);
+                    for (const chat of inactiveChats) {
+                      try {
+                        await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${chat.chatId}/toggle`, {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ isActive: true })
+                        });
+                      } catch (error) {
+                        console.error('Failed to resume chat:', chat.chatId);
+                      }
+                    }
+                    setMessage({ type: 'success', text: `Resumed ${inactiveChats.length} sniffers` });
+                    await loadSnifferChats();
+                  }}
+                  className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
+                >
+                  Resume All
+                </button>
+              </div>
               <button
                 onClick={handleFetchChats}
                 disabled={loading}
@@ -2304,17 +2352,39 @@ export function TelegramSnifferTab() {
                 Intelligence Platform
               </button>
             </div>
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 rounded-lg text-red-400 text-sm font-medium transition-all"
-              >
-                Pause All
-              </button>
-              <button
-                className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-lg text-green-400 text-sm font-medium transition-all"
-              >
-                Resume All
-              </button>
+            
+            {/* Live Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-4">
+              <div className="bg-black/40 rounded-lg p-3 border border-cyan-500/10">
+                <div className="text-2xl font-bold text-cyan-400">
+                  {detections.length}
+                </div>
+                <div className="text-xs text-gray-400">Total Detections</div>
+              </div>
+              <div className="bg-black/40 rounded-lg p-3 border border-green-500/10">
+                <div className="text-2xl font-bold text-green-400">
+                  {detections.filter(d => new Date(d.detectedAt * 1000).toDateString() === new Date().toDateString()).length}
+                </div>
+                <div className="text-xs text-gray-400">Today's Finds</div>
+              </div>
+              <div className="bg-black/40 rounded-lg p-3 border border-purple-500/10">
+                <div className="text-2xl font-bold text-purple-400">
+                  {forwardingStats?.successRate ? `${Math.round(forwardingStats.successRate)}%` : '0%'}
+                </div>
+                <div className="text-xs text-gray-400">Forward Success</div>
+              </div>
+              <div className="bg-black/40 rounded-lg p-3 border border-yellow-500/10">
+                <div className="text-2xl font-bold text-yellow-400">
+                  {forwardingStats?.avgLatencyMs ? `${Math.round(forwardingStats.avgLatencyMs)}ms` : '0ms'}
+                </div>
+                <div className="text-xs text-gray-400">Avg Latency</div>
+              </div>
+              <div className="bg-black/40 rounded-lg p-3 border border-orange-500/10">
+                <div className="text-2xl font-bold text-orange-400">
+                  {new Set(detections.map(d => d.contractAddress)).size}
+                </div>
+                <div className="text-xs text-gray-400">Unique Tokens</div>
+              </div>
             </div>
           </div>
 
@@ -2444,6 +2514,113 @@ export function TelegramSnifferTab() {
                 ))}
               </div>
             )}
+          </div>
+          
+          {/* Top Performing Sniffers */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Top Performing Chats</h3>
+            <div className="space-y-3">
+              {(() => {
+                // Calculate performance metrics for each chat
+                const chatPerformance = snifferChats.map(chat => {
+                  const chatDetections = detections.filter(d => d.chatId === chat.chatId);
+                  const todayDetections = chatDetections.filter(d => 
+                    new Date(d.detectedAt * 1000).toDateString() === new Date().toDateString()
+                  );
+                  const successfulForwards = chatDetections.filter(d => d.forwarded).length;
+                  const successRate = chatDetections.length > 0 
+                    ? (successfulForwards / chatDetections.length) * 100 
+                    : 0;
+                  
+                  return {
+                    ...chat,
+                    totalDetections: chatDetections.length,
+                    todayDetections: todayDetections.length,
+                    successRate,
+                    uniqueTokens: new Set(chatDetections.map(d => d.contractAddress)).size
+                  };
+                })
+                .filter(chat => chat.totalDetections > 0)
+                .sort((a, b) => b.totalDetections - a.totalDetections)
+                .slice(0, 5);
+                
+                if (chatPerformance.length === 0) {
+                  return <p className="text-center text-gray-400 py-4">No detection data yet</p>;
+                }
+                
+                return chatPerformance.map((chat, index) => (
+                  <div key={chat.id} className="flex items-center justify-between p-3 bg-black/40 rounded-lg border border-cyan-500/10">
+                    <div className="flex items-center gap-3">
+                      <div className="text-2xl font-bold text-cyan-400 w-8">#{index + 1}</div>
+                      <div>
+                        <div className="font-medium text-white">{chat.chatName || chat.chatId}</div>
+                        <div className="text-xs text-gray-400">
+                          {chat.chatType} • {chat.username ? `@${chat.username}` : `ID: ${chat.chatId}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-4 text-xs">
+                      <div className="text-center">
+                        <div className="font-bold text-cyan-400">{chat.totalDetections}</div>
+                        <div className="text-gray-500">Total</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-bold text-green-400">{chat.todayDetections}</div>
+                        <div className="text-gray-500">Today</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-bold text-purple-400">{Math.round(chat.successRate)}%</div>
+                        <div className="text-gray-500">Success</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-bold text-yellow-400">{chat.uniqueTokens}</div>
+                        <div className="text-gray-500">Unique</div>
+                      </div>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+          
+          {/* Recent Activity Timeline */}
+          <div className="bg-black/20 backdrop-blur-sm rounded-xl border border-cyan-500/20 p-6">
+            <h3 className="text-xl font-bold text-cyan-300 mb-4">Recent Activity</h3>
+            <div className="space-y-2">
+              {detections.slice(0, 5).map((detection) => (
+                <div key={detection.id} className="flex items-center gap-3 p-2 bg-black/40 rounded-lg border-l-2 border-cyan-500/30">
+                  <div className="text-xs text-gray-500 w-16">
+                    {new Date(detection.detectedAt * 1000).toLocaleTimeString()}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-cyan-400">
+                        {detection.contractAddress.substring(0, 8)}...
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                        detection.detectionType === 'standard'
+                          ? 'bg-green-500/20 text-green-400'
+                          : detection.detectionType === 'obfuscated'
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : 'bg-purple-500/20 text-purple-400'
+                      }`}>
+                        {detection.detectionType}
+                      </span>
+                      {detection.forwarded && (
+                        <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">✓</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      from {detection.chatName || 'Unknown Chat'}
+                      {detection.senderUsername && ` by @${detection.senderUsername}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {detections.length === 0 && (
+                <p className="text-center text-gray-400 py-4">No recent activity</p>
+              )}
+            </div>
           </div>
         </div>
       )}
