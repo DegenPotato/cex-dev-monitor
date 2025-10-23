@@ -69,7 +69,7 @@ export function RecentTokenMints() {
       <div className="p-6">
         <div className="flex items-center gap-3 mb-4">
           <Rocket className="w-6 h-6 text-cyan-400 animate-pulse" />
-          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
+          <h2 className="text-2xl font-bold text-cyan-400">Token Sniffer</h2>
         </div>
         <div className="text-cyan-300/60 text-center py-8 flex items-center justify-center gap-2">
           <Activity className="w-5 h-5 animate-spin" />
@@ -84,7 +84,7 @@ export function RecentTokenMints() {
       <div className="p-6">
         <div className="flex items-center gap-3 mb-4">
           <Rocket className="w-6 h-6 text-cyan-400" />
-          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
+          <h2 className="text-2xl font-bold text-cyan-400">Token Sniffer</h2>
         </div>
         <div className="text-cyan-300/60 text-center py-8 bg-black/20 rounded-lg border border-cyan-500/10">
           No tokens detected yet. Add monitored wallets to start tracking.
@@ -98,7 +98,7 @@ export function RecentTokenMints() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <Rocket className="w-6 h-6 text-cyan-400" />
-          <h2 className="text-2xl font-bold text-cyan-400">Recent Token Launches</h2>
+          <h2 className="text-2xl font-bold text-cyan-400">Token Sniffer</h2>
           <div className="h-[1px] w-16 bg-gradient-to-r from-cyan-400 to-transparent" />
         </div>
         <span className="text-sm text-cyan-300/60 bg-black/30 backdrop-blur-sm px-3 py-1 rounded-full border border-cyan-500/20">{tokens.length} tokens</span>

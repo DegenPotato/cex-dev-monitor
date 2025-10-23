@@ -19,11 +19,11 @@ export class SolPriceOracle {
   private readonly SOL_MINT = 'So11111111111111111111111111111111111111112';
   private readonly RECONNECT_DELAY = 5000; // 5 seconds
   private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
-  private readonly FALLBACK_INTERVAL = 60000; // 60 seconds
+  private readonly FALLBACK_INTERVAL = 30000; // 30 seconds (more frequent updates)
   
   private currentPrice: number = 150; // Fallback default
   private lastUpdate: number = 0;
-  private useWebSocket = true;
+  private useWebSocket = false; // Disabled due to DNS issues on some servers
 
   /**
    * Start the price oracle with WebSocket
@@ -35,7 +35,7 @@ export class SolPriceOracle {
     }
 
     this.isRunning = true;
-    console.log('💰 [SOL Oracle] Starting with Jupiter WebSocket');
+    console.log('💰 [SOL Oracle] Starting with Jupiter REST API');
     
     // Load existing price from DB
     const storedPrice = await ConfigProvider.get('sol_price_usd');
@@ -165,12 +165,12 @@ export class SolPriceOracle {
    * Start fallback REST polling
    */
   private startFallbackPolling() {
-    console.log('💰 [SOL Oracle] Starting fallback REST polling (60s interval)');
+    console.log('💰 [SOL Oracle] Starting REST polling (30s interval)');
     
     // Fetch immediately
     this.fetchPriceREST();
     
-    // Then poll every 60 seconds
+    // Then poll every 30 seconds
     this.fallbackInterval = setInterval(() => {
       this.fetchPriceREST();
     }, this.FALLBACK_INTERVAL);

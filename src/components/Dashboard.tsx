@@ -494,7 +494,7 @@ export function Dashboard() {
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
             )}
             <Activity className="w-5 h-5 relative z-10" />
-            <span className="relative z-10">Wallet Monitoring</span>
+            <span className="relative z-10">Wallet Sniffer</span>
             {activeTab === 'wallets' && (
               <Activity className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
             )}
@@ -511,7 +511,7 @@ export function Dashboard() {
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
             )}
             <Flame className="w-5 h-5 relative z-10" />
-            <span className="relative z-10">Token Launch History</span>
+            <span className="relative z-10">Token Sniffer</span>
             {activeTab === 'tokens' && (
               <TrendingUp className="w-4 h-4 ml-2 animate-pulse text-cyan-300 relative z-10" />
             )}
