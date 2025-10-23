@@ -907,9 +907,13 @@ export class TelegramClientService extends EventEmitter {
             // Log to token_mints table (upsert)
             await this.logTokenMint(contract.address, {
               platform: 'pumpfun',
-              firstSeenSource: 'telegram',
+              firstSeenSource: 'telegram_realtime',
               chatName: monitoredChat.chatName,
-              chatId: chatId
+              chatId: chatId,
+              messageTimestamp: message.date,
+              senderId: message.senderId?.toString(),
+              messageId: message.id?.toString(),
+              userId: userId
             });
             
             // Mark as first mention if applicable
@@ -2855,6 +2859,19 @@ export class TelegramClientService extends EventEmitter {
       for (const [address, data] of contracts) {
         await this.markFirstMention(address, chatId, data.message);
         
+        // Log to token_mints/token_registry
+        await this.logTokenMint(address, {
+          platform: 'pumpfun',
+          firstSeenSource: 'telegram_backlog',
+          chatName: data.message.chatName || chatId,
+          chatId: chatId,
+          messageTimestamp: data.date,
+          senderId: data.message.senderId?.toString(),
+          messageId: data.message.id.toString(),
+          isBacklog: true,
+          userId: userId
+        });
+        
         // Log as backlog detection
         await this.logTelegramDetection({
           contractAddress: address,
@@ -2894,11 +2911,37 @@ export class TelegramClientService extends EventEmitter {
     firstSeenSource?: string;
     chatName?: string;
     chatId?: string;
+    messageTimestamp?: number;
+    senderId?: string;
+    messageId?: string;
+    isBacklog?: boolean;
+    userId?: number;
   }) {
     try {
       const now = Math.floor(Date.now() / 1000);
       
-      // Check if token already exists
+      // Use TokenSourceTracker for comprehensive token_registry tracking
+      const sourceType = data.firstSeenSource?.replace('telegram_', '') === 'realtime' ? 'telegram' : 
+                        data.firstSeenSource?.replace('telegram_', '') === 'backlog' ? 'telegram' : 
+                        'telegram';
+      
+      await tokenSourceTracker.registerToken({
+        tokenMint: contractAddress,
+        firstSourceType: sourceType as any,
+        firstSourceDetails: {
+          platform: data.platform || 'pumpfun',
+          isBacklog: data.isBacklog || false,
+          detectionType: data.firstSeenSource,
+          messageTimestamp: data.messageTimestamp
+        },
+        telegramChatId: data.chatId,
+        telegramChatName: data.chatName,
+        telegramMessageId: data.messageId ? parseInt(data.messageId) : undefined,
+        telegramSender: data.senderId,
+        discoveredByUserId: data.userId || 1
+      });
+      
+      // Also maintain legacy token_mints table for backwards compatibility
       const existing = await queryOne(`
         SELECT id, telegram_mentions FROM token_mints WHERE mint_address = ?
       `, [contractAddress]);
@@ -2921,7 +2964,7 @@ export class TelegramClientService extends EventEmitter {
           data.platform || 'pumpfun',
           now,
           data.firstSeenSource || 'telegram',
-          now
+          data.messageTimestamp || now
         ]);
         console.log(`   📝 New token logged: ${contractAddress.substring(0, 8)}...`);
       } else {

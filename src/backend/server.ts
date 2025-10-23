@@ -209,6 +209,10 @@ app.use('/', tokenAnalyticsRoutes);
 import tokenRoutes from './routes/tokens.js';
 app.use('/api/tokens', tokenRoutes);
 
+// Register token registry routes
+import tokenRegistryRoutes from './routes/tokenRegistry.js';
+app.use('/api/token-registry', tokenRegistryRoutes);
+
 // Register user data management routes (GDPR compliance)
 app.use(userDataRoutes);
 
