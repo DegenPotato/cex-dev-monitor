@@ -2510,6 +2510,45 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Disconnect and cleanup user's Telegram session
+   * Called when user data is deleted or user logs out
+   */
+  async disconnectAndCleanup(userId: number): Promise<void> {
+    console.log(`🧹 [Telegram] Disconnecting and cleaning up session for user ${userId}`);
+    
+    // Remove from both possible keys (regular and bot)
+    const regularClient = this.activeClients.get(userId);
+    const botClient = this.activeClients.get(`bot_${userId}`);
+    
+    // Disconnect regular client
+    if (regularClient) {
+      try {
+        await regularClient.disconnect();
+        console.log(`   ✅ Disconnected regular client for user ${userId}`);
+      } catch (error) {
+        console.log(`   ⚠️ Error disconnecting regular client:`, error);
+      }
+      this.activeClients.delete(userId);
+    }
+    
+    // Disconnect bot client
+    if (botClient) {
+      try {
+        await botClient.disconnect();
+        console.log(`   ✅ Disconnected bot client for user ${userId}`);
+      } catch (error) {
+        console.log(`   ⚠️ Error disconnecting bot client:`, error);
+      }
+      this.activeClients.delete(`bot_${userId}`);
+    }
+    
+    // Clear auth session
+    this.authSessions.delete(userId);
+    
+    console.log(`   🗑️ Cleaned up all session data for user ${userId}`);
+  }
+
+  /**
    * Get connection status for a user
    */
   getConnectionStatus(userId: number): { connected: boolean; client: any | null } {

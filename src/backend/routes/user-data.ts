@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { execute, queryOne } from '../database/helpers.js';
+import { telegramClientService } from '../services/TelegramClientService.js';
 
-const router = Router();
 const authService = new SecureAuthService();
+const router = Router();
 
 interface AuthenticatedRequest extends Request {
   user?: { id: number; address: string; role?: string };
@@ -72,11 +73,15 @@ router.delete('/api/user/data/:type', authService.requireSecureAuth(), async (re
     switch (dataType) {
       case 'telegram-user-account':
         await execute('DELETE FROM telegram_user_accounts WHERE user_id = ?', [userId]);
+        // Disconnect Telegram session
+        await telegramClientService.disconnectAndCleanup(userId);
         deletedCount = 1;
         break;
         
       case 'telegram-bot-account':
         await execute('DELETE FROM telegram_bot_accounts WHERE user_id = ?', [userId]);
+        // Disconnect bot session
+        await telegramClientService.disconnectAndCleanup(userId);
         deletedCount = 1;
         break;
         
@@ -169,6 +174,9 @@ router.delete('/api/user/data/all', authService.requireSecureAuth(), async (req:
     await execute('DELETE FROM telegram_monitored_chats WHERE user_id = ?', [userId]);
     await execute('DELETE FROM telegram_bot_accounts WHERE user_id = ?', [userId]);
     await execute('DELETE FROM telegram_user_accounts WHERE user_id = ?', [userId]);
+    
+    // CRITICAL: Disconnect and cleanup Telegram session
+    await telegramClientService.disconnectAndCleanup(userId);
     
     console.log(`🗑️  [User Data] User ${userId} deleted ALL data:`, summary);
     
