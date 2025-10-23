@@ -178,6 +178,10 @@ app.use('/', telegramIntelligenceRoutes);
 import tradingRoutes from './routes/trading.js';
 app.use('/', tradingRoutes);
 
+// Register token analytics routes
+import tokenAnalyticsRoutes from './routes/tokenAnalytics.js';
+app.use('/', tokenAnalyticsRoutes);
+
 // Register token routes
 import tokenRoutes from './routes/tokens.js';
 app.use('/api/tokens', tokenRoutes);

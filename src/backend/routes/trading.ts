@@ -10,6 +10,7 @@ import { getTradingEngine } from '../core/trade.js';
 import { queryAll, queryOne, execute } from '../database/helpers.js';
 // Using compatibility service until migration completes
 import { walletStorageServiceCompat as walletStorageService } from '../services/WalletStorageServiceCompat.js';
+import { tokenSourceTracker } from '../services/TokenSourceTracker.js';
 
 const authService = new SecureAuthService();
 
@@ -289,6 +290,39 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req, res
     });
     
     if (result.success) {
+      // Track trade source attribution
+      try {
+        // Get the token's original source from registry
+        const tokenInfo = await queryOne(`
+          SELECT first_source_type, telegram_chat_id, telegram_chat_name 
+          FROM token_registry 
+          WHERE token_mint = ?
+        `, [tokenMint]) as any;
+        
+        if (tokenInfo) {
+          // Create a trade ID (you might want to store trades in a proper table)
+          const tradeId = Date.now(); // Simple ID for now
+          
+          await tokenSourceTracker.linkTradeToSource({
+            tradeId,
+            tokenMint,
+            sourceType: tokenInfo.first_source_type || 'unknown',
+            sourceChatId: tokenInfo.telegram_chat_id,
+            sourceChatName: tokenInfo.telegram_chat_name
+          });
+        } else {
+          // Token not in registry, register it as a trade-discovered token
+          await tokenSourceTracker.registerToken({
+            tokenMint,
+            firstSourceType: 'trade',
+            firstSourceDetails: { action: 'buy', amount },
+            discoveredByUserId: userId
+          });
+        }
+      } catch (trackError) {
+        console.error('Failed to track trade source:', trackError);
+      }
+      
       res.json(result);
     } else {
       res.status(400).json(result);
@@ -331,6 +365,31 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req, re
     } as any);
     
     if (result.success) {
+      // Track trade source attribution
+      try {
+        // Get the token's original source from registry
+        const tokenInfo = await queryOne(`
+          SELECT first_source_type, telegram_chat_id, telegram_chat_name 
+          FROM token_registry 
+          WHERE token_mint = ?
+        `, [tokenMint]) as any;
+        
+        if (tokenInfo) {
+          // Create a trade ID
+          const tradeId = Date.now();
+          
+          await tokenSourceTracker.linkTradeToSource({
+            tradeId,
+            tokenMint,
+            sourceType: tokenInfo.first_source_type || 'unknown',
+            sourceChatId: tokenInfo.telegram_chat_id,
+            sourceChatName: tokenInfo.telegram_chat_name
+          });
+        }
+      } catch (trackError) {
+        console.error('Failed to track sell trade source:', trackError);
+      }
+      
       res.json(result);
     } else {
       res.status(400).json(result);

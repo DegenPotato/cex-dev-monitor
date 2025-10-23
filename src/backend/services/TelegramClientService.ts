@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { telegramRateLimiter } from './TelegramRateLimiter.js';
+import { apiProviderTracker } from './ApiProviderTracker.js';
+import { tokenSourceTracker } from './TokenSourceTracker.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { PublicKey } from '@solana/web3.js';
 
@@ -2021,14 +2023,15 @@ export class TelegramClientService extends EventEmitter {
         Math.floor(Date.now() / 1000)
       ]);
     } catch (error) {
-      console.error(`   ❌ Failed to cache message to history:`, error);
+      console.error('Failed to cache message to history:', error);
     }
   }
 
   /**
-   * Save detected contract to database
+   * Save detected contract to database and token registry
    */
   private async saveDetectedContract(userId: number, data: any) {
+    // Save to original telegram_detected_contracts table
     await execute(`
       INSERT INTO telegram_detected_contracts 
       (user_id, chat_id, message_id, sender_id, sender_username, contract_address, 
@@ -2048,6 +2051,24 @@ export class TelegramClientService extends EventEmitter {
       Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000)
     ]);
+
+    // Also track in the new token registry for source analytics
+    try {
+      await tokenSourceTracker.trackTelegramToken({
+        userId,
+        chatId: data.chatId,
+        chatName: data.chatName,
+        messageId: data.messageId,
+        senderId: data.senderId,
+        senderUsername: data.senderUsername,
+        contractAddress: data.contractAddress,
+        detectionType: data.detectionType,
+        originalFormat: data.originalFormat,
+        messageText: data.messageText
+      });
+    } catch (error) {
+      console.error('Failed to track token in registry:', error);
+    }
   }
 
   /**
