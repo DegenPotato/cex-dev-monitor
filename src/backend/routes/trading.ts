@@ -3,7 +3,8 @@
  * Secure wallet management and trading operations
  */
 
-import { Router, Request } from 'express';
+import express from 'express';
+import { solPriceOracle } from '../services/SolPriceOracle.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 // import { getWalletManager } from '../core/wallet.js'; // Using walletStorageService instead
 import { getTradingEngine } from '../core/trade.js';
@@ -632,9 +633,9 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
       holdings = [];
     }
     
-    // Calculate total portfolio value (assume SOL at $150 for now - should fetch real price)
+    // Calculate total portfolio value using real SOL price
     const totalTokenValue = holdings.reduce((sum: number, h: any) => sum + (h.total_value || 0), 0);
-    const solPrice = 150; // TODO: Fetch real SOL price
+    const solPrice = solPriceOracle.getPrice();
     const totalValueUSD = (totalSOL * solPrice) + totalTokenValue;
     
     // Get recent trading activity

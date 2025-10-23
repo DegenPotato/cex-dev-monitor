@@ -6,8 +6,9 @@
 import { Server } from 'socket.io';
 import { queryAll, queryOne } from '../database/helpers.js';
 import { getWalletManager } from '../core/wallet.js';
-import { Connection, PublicKey } from '@solana/web3.js';
-import fetch from 'node-fetch';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import WebSocket from 'ws';
+import { solPriceOracle } from './SolPriceOracle.js';
 
 interface PortfolioUpdate {
   type: 'portfolio_update';
@@ -58,7 +59,6 @@ class TradingWebSocketService {
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private portfolioUpdateInterval: NodeJS.Timeout | null = null;
   private connection: Connection;
-  private solPrice: number = 150; // Default SOL price
   private tokenPrices: Map<string, number> = new Map();
 
   constructor() {
@@ -144,31 +144,22 @@ class TradingWebSocketService {
    * Start real-time price updates
    */
   private async startPriceUpdates() {
-    // Fetch SOL price every 10 seconds
+    // Broadcast price updates to clients every 10 seconds
     const updatePrices = async () => {
       try {
-        // Fetch SOL price from CoinGecko
-        const response = await fetch(
-          'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd'
-        );
-        const data = await response.json() as any;
+        // SOL price is managed by solPriceOracle
+        // Broadcast price update to all connected clients
+        const update: PriceUpdate = {
+          type: 'price_update',
+          data: {
+            sol: solPriceOracle.getPrice(),
+            tokens: Object.fromEntries(this.tokenPrices)
+          }
+        };
         
-        if (data.solana?.usd) {
-          this.solPrice = data.solana.usd;
-          
-          // Broadcast price update to all connected clients
-          const update: PriceUpdate = {
-            type: 'price_update',
-            data: {
-              sol: this.solPrice,
-              tokens: Object.fromEntries(this.tokenPrices)
-            }
-          };
-          
-          this.io?.of('/trading').emit('price_update', update);
-        }
+        this.io?.of('/trading').emit('price_update', update);
       } catch (error) {
-        console.error('Error fetching SOL price:', error);
+        console.error('Error broadcasting price update:', error);
       }
     };
     
@@ -230,7 +221,7 @@ class TradingWebSocketService {
       
       // Calculate total value
       const totalTokenValue = holdings.reduce((sum: number, h: any) => sum + (h.total_value || 0), 0);
-      const totalValueUSD = (totalSOL * this.solPrice) + totalTokenValue;
+      const totalValueUSD = (totalSOL * solPriceOracle.getPrice()) + totalTokenValue;
       
       // Calculate P&L
       let profitLoss = 0;
@@ -328,7 +319,7 @@ class TradingWebSocketService {
                 data: {
                   balance: newBalance,
                   tokens: [], // TODO: Fetch token balances
-                  totalValue: newBalance * this.solPrice
+                  totalValue: newBalance * solPriceOracle.getPrice()
                 }
               };
               
@@ -379,7 +370,7 @@ class TradingWebSocketService {
         data: {
           balance: newBalance,
           tokens,
-          totalValue: newBalance * this.solPrice
+          totalValue: newBalance * solPriceOracle.getPrice()
         }
       };
       
@@ -419,7 +410,7 @@ class TradingWebSocketService {
    * Get current SOL price
    */
   getSolPrice(): number {
-    return this.solPrice;
+    return solPriceOracle.getPrice();
   }
   
   /**

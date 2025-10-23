@@ -76,11 +76,21 @@ export class OHLCVMetricsCalculator {
         const metrics = await this.calculateTokenMetrics(token.mint_address);
         
         if (metrics) {
+          // Get current ATH to ensure we never decrease it
+          const currentData = await queryOne<{ ath_mcap: number | null }>(`
+            SELECT ath_mcap FROM token_mints WHERE mint_address = ?
+          `, [token.mint_address]);
+          
+          // Only update ATH if new value is higher (or if no ATH exists yet)
+          const finalAthMcap = currentData?.ath_mcap 
+            ? Math.max(currentData.ath_mcap, metrics.ath_mcap)
+            : metrics.ath_mcap;
+          
           await execute(
             `UPDATE token_mints 
              SET starting_mcap = ?, ath_mcap = ?, current_mcap = ?, last_updated = ?
              WHERE mint_address = ?`,
-            [metrics.starting_mcap, metrics.ath_mcap, metrics.current_mcap, Date.now(), token.mint_address]
+            [metrics.starting_mcap, finalAthMcap, metrics.current_mcap, Date.now(), token.mint_address]
           );
           updated++;
         }
