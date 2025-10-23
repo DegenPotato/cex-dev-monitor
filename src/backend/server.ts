@@ -189,6 +189,10 @@ app.use('/', tradingRoutes);
 // Register OHLCV routes
 app.use('/', ohlcvRoutes);
 
+// Register indicators routes
+import indicatorsRoutes from './routes/indicators.js';
+app.use('/', indicatorsRoutes);
+
 // Register forwarding routes
 app.use('/', forwardingDestinationRoutes);
 app.use('/', forwardingRulesRoutes);
