@@ -572,6 +572,52 @@ export class TelegramClientService extends EventEmitter {
   }
 
   /**
+   * Pre-cache entities from a chat to avoid "entity not found" errors
+   */
+  private async preCacheChatEntities(client: any, chatId: string | number): Promise<void> {
+    try {
+      console.log(`🔄 [Telegram] Pre-caching entities for chat ${chatId}...`);
+      
+      // Method 1: Get recent messages to cache senders
+      try {
+        const messages = await client.getMessages(chatId, { limit: 100 });
+        const uniqueSenders = new Set<string>();
+        
+        for (const msg of messages) {
+          if (msg.senderId) {
+            uniqueSenders.add(msg.senderId.toString());
+          }
+        }
+        
+        console.log(`   ✅ Cached ${uniqueSenders.size} unique senders from recent messages`);
+      } catch (msgError) {
+        console.log(`   ⚠️  Could not fetch recent messages: ${msgError}`);
+      }
+      
+      // Method 2: For groups/channels, try to get participants
+      try {
+        const chat = await client.getEntity(chatId);
+        if (chat && (chat.className === 'Channel' || chat.className === 'Chat')) {
+          // For small groups, we can get all participants
+          if (!chat.broadcast && chat.participantsCount < 200) {
+            try {
+              const participants = await client.getParticipants(chatId, { limit: 200 });
+              console.log(`   ✅ Cached ${participants.length} participants from group`);
+            } catch (partError) {
+              console.log(`   ℹ️  Could not fetch participants (may lack permissions)`);
+            }
+          }
+        }
+      } catch (chatError) {
+        console.log(`   ⚠️  Could not analyze chat type: ${chatError}`);
+      }
+      
+    } catch (error) {
+      console.log(`⚠️ [Telegram] Failed to pre-cache entities: ${error}`);
+    }
+  }
+
+  /**
    * Start monitoring for messages
    */
   private async startMonitoring(userId: number, client: any) {
@@ -582,13 +628,28 @@ export class TelegramClientService extends EventEmitter {
     let cachedChats = await this.getMonitoredChats(userId);
     let lastRefresh = Date.now();
     
+    // Pre-cache entities for all monitored chats
+    for (const chat of cachedChats) {
+      await this.preCacheChatEntities(client, chat.chatId);
+    }
+    
     // Refresh cache periodically
     const refreshCache = async () => {
       const now = Date.now();
       if (now - lastRefresh > 30000) {
+        const oldChats = cachedChats;
         cachedChats = await this.getMonitoredChats(userId);
         lastRefresh = now;
         console.log(`🔄 [Telegram:${userIdentifier}] Refreshed monitored chats (${cachedChats.length} chats)`);
+        
+        // Pre-cache entities for any new chats
+        for (const chat of cachedChats) {
+          const isNew = !oldChats.some(old => old.chatId === chat.chatId);
+          if (isNew) {
+            console.log(`   📌 New chat detected: ${chat.chatName || chat.chatId}`);
+            await this.preCacheChatEntities(client, chat.chatId);
+          }
+        }
       }
     };
     
@@ -640,19 +701,55 @@ export class TelegramClientService extends EventEmitter {
 
         // Check if sender is a bot and if we should process bot messages
         if (message.senderId) {
+          let isBot = false;
+          
           try {
-            const sender = await client.getEntity(message.senderId);
-            if (sender && (sender as any).bot) {
-              // This is a bot message
+            // Method 1: Check if sender info is already in the message object
+            const messageSender = (message as any).sender;
+            if (messageSender) {
+              isBot = messageSender.bot || false;
+            } else {
+              // Method 2: Try to get entity - may fail for uncached users
+              try {
+                const sender = await client.getEntity(message.senderId);
+                isBot = (sender as any).bot || false;
+              } catch (entityError: any) {
+                // Entity not cached - this is normal for new users
+                // We'll cache them for next time
+                if (entityError.message?.includes('Could not find the input entity')) {
+                  console.log(`   ℹ️  New user detected (ID: ${message.senderId}) - will cache for future`);
+                  // Try to cache the user by fetching recent messages which includes sender info
+                  try {
+                    const messages = await client.getMessages(chatId, { limit: 1, ids: [message.id] });
+                    if (messages && messages[0]) {
+                      const fetchedMessage = messages[0];
+                      const sender = (fetchedMessage as any).sender;
+                      if (sender) {
+                        isBot = sender.bot || false;
+                        console.log(`   ✅ Cached user info - Bot: ${isBot}`);
+                      }
+                    }
+                  } catch (cacheError) {
+                    console.log(`   ⚠️  Could not cache user info: ${cacheError}`);
+                  }
+                } else {
+                  console.log(`   ⚠️  Unexpected error checking sender: ${entityError}`);
+                }
+              }
+            }
+            
+            // Check if we should skip bot messages
+            if (isBot) {
               const processBotMessages = monitoredChat.processBotMessages || false;
               if (!processBotMessages) {
-                console.log(`   ⏭️  Skipped detection: sender is a bot and bot message processing is disabled for this chat`);
+                console.log(`   ⏭️  Skipped detection: sender is a bot and bot message processing is disabled`);
                 return;
               }
               console.log(`   🤖 Processing bot message (bot processing enabled)`);
             }
           } catch (error) {
-            console.log(`   ⚠️  Could not determine if sender is bot: ${error}`);
+            console.log(`   ⚠️  Error in bot detection: ${error}`);
+            // Continue processing on error - better to process than skip
           }
         }
 
