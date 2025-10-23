@@ -2831,21 +2831,6 @@ export class TelegramClientService extends EventEmitter {
     console.log(`📜 [Telegram] Scanning history for chat ${chatId} (depth: ${depth})`);
     
     try {
-      // Get chat info for the chat name
-      let chatEntity: any;
-      let chatName = chatId;
-      let chatUsername: string | undefined;
-      
-      try {
-        chatEntity = await client.getEntity(chatId);
-        chatName = chatEntity.title || chatEntity.username || 
-                  `${chatEntity.firstName || ''} ${chatEntity.lastName || ''}`.trim() || 
-                  chatId;
-        chatUsername = chatEntity.username;
-      } catch (error) {
-        console.log(`   ⚠️ Could not get chat info for ${chatId}`);
-      }
-      
       const messages = await client.getMessages(chatId, { limit: depth });
       const contracts: Map<string, any> = new Map();
       
@@ -2859,22 +2844,10 @@ export class TelegramClientService extends EventEmitter {
           // Store the oldest mention of each contract
           if (!contracts.has(contract.address) || 
               message.date < contracts.get(contract.address).date) {
-            
-            // Get sender username for this message
-            let senderUsername: string | undefined;
-            try {
-              senderUsername = await this.getSenderUsername(client, message.senderId);
-            } catch (error) {
-              // Ignore error getting username
-            }
-            
             contracts.set(contract.address, {
               ...contract,
               message,
-              date: message.date,
-              senderUsername,
-              chatName,
-              chatUsername
+              date: message.date
             });
           }
         }
@@ -2886,11 +2859,11 @@ export class TelegramClientService extends EventEmitter {
       for (const [address, data] of contracts) {
         await this.markFirstMention(address, chatId, data.message);
         
-        // Log to token_mints/token_registry with complete details
+        // Log to token_mints/token_registry
         await this.logTokenMint(address, {
           platform: 'pumpfun',
           firstSeenSource: 'telegram_backlog',
-          chatName: data.chatName,
+          chatName: data.message.chatName || chatId,
           chatId: chatId,
           messageTimestamp: data.date,
           senderId: data.message.senderId?.toString(),
@@ -2899,18 +2872,15 @@ export class TelegramClientService extends EventEmitter {
           userId: userId
         });
         
-        // Log as backlog detection with complete details
+        // Log as backlog detection
         await this.logTelegramDetection({
           contractAddress: address,
           chatId,
-          chatName: data.chatName,
-          chatUsername: data.chatUsername,
           messageId: data.message.id.toString(),
           messageText: data.message.message.substring(0, 500),
           messageTimestamp: data.date,
           senderId: data.message.senderId?.toJSNumber(),
-          senderUsername: data.senderUsername,
-          detectionType: 'backlog', // Mark explicitly as backlog type
+          detectionType: data.type,
           detectedByUserId: userId,
           detectedAt: Math.floor(Date.now() / 1000),
           isFirstMention: true,
@@ -3079,6 +3049,29 @@ export class TelegramClientService extends EventEmitter {
         data.forwardError || null,
         data.processedAction || null
       ]);
+      
+      // ALSO register in token_registry table
+      // Determine source type based on backlog flag
+      const sourceType = data.isBacklog ? 'telegram_backlog' : 'telegram_realtime';
+      
+      await tokenSourceTracker.registerToken({
+        tokenMint: data.contractAddress,
+        firstSourceType: 'telegram' as any,
+        firstSourceDetails: {
+          platform: 'pumpfun',
+          isBacklog: data.isBacklog || false,
+          detectionType: sourceType,
+          messageTimestamp: data.messageTimestamp,
+          isFirstMention: data.isFirstMention || false,
+          processedAction: data.processedAction
+        },
+        telegramChatId: data.chatId,
+        telegramChatName: data.chatName,
+        telegramMessageId: data.messageId ? parseInt(data.messageId) : undefined,
+        telegramSender: data.senderUsername || data.senderId?.toString(),
+        discoveredByUserId: data.detectedByUserId
+      });
+      
     } catch (error: any) {
       console.error(`   ❌ Failed to log Telegram detection:`, error.message);
     }

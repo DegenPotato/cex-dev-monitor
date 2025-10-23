@@ -3,7 +3,7 @@ import {
   Flame, ExternalLink, TrendingUp, TrendingDown,
   BarChart3, Clock, User, RefreshCw, Search,
   Eye, AlertCircle, Activity, MessageCircle, 
-  Trophy, Hash, Globe
+  Zap, Trophy, Hash, Globe
 } from 'lucide-react';
 import { apiUrl } from '../config';
 import { formatDistanceToNow } from 'date-fns';
@@ -107,7 +107,7 @@ export function TokenIndexTab({ onTokenSelect }: TokenIndexTabProps) {
     fetchAnalytics();
     
     // Set up WebSocket for real-time updates
-    const ws = new WebSocket(`${apiUrl('/api/ws').replace('http', 'ws')}`);
+    const ws = new WebSocket(`${apiUrl('/ws').replace('http', 'ws')}`);
     
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -155,7 +155,7 @@ export function TokenIndexTab({ onTokenSelect }: TokenIndexTabProps) {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(apiUrl(`/api/token-analytics/overview?timeframe=${selectedTimeframe}`), { 
+      const response = await fetch(apiUrl(`/api/token-registry/analytics/overview?timeframe=${selectedTimeframe}`), { 
         credentials: 'include' 
       });
       
@@ -181,16 +181,29 @@ export function TokenIndexTab({ onTokenSelect }: TokenIndexTabProps) {
 
   const getSourceBadge = (sourceType: string, sourceDetails?: any) => {
     const isBacklog = sourceDetails?.isBacklog || sourceDetails?.detectionType === 'telegram_backlog';
+    const isRealtime = sourceDetails?.detectionType === 'telegram_realtime';
     
     if (sourceType === 'telegram') {
+      if (isBacklog) {
+        return (
+          <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Backlog
+          </span>
+        );
+      }
+      if (isRealtime) {
+        return (
+          <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400 flex items-center gap-1">
+            <Zap className="w-3 h-3" />
+            Realtime
+          </span>
+        );
+      }
       return (
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border ${
-          isBacklog 
-            ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' 
-            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-        }`}>
+        <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1">
           <MessageCircle className="w-3 h-3" />
-          {isBacklog ? 'Backlog' : 'Realtime'}
+          Telegram
         </span>
       );
     }
