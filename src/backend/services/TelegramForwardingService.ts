@@ -227,6 +227,15 @@ export class TelegramForwardingService extends EventEmitter {
       // Get client for target account (to forward messages) - use the selected account
       const client = await clientProvider(rule.targetAccountId);
       
+      // Check if the account is a bot (bots can't forward to users)
+      let isBot = false;
+      try {
+        const me = await client.getMe();
+        isBot = me.bot || false;
+      } catch (e) {
+        console.log(`  ⚠️ Could not check if account is bot`);
+      }
+      
       // Forward to each target chat
       for (const targetChatId of rule.targetChatIds) {
         const forwardStartTime = Date.now();
@@ -234,38 +243,55 @@ export class TelegramForwardingService extends EventEmitter {
         try {
           console.log(`  ➡️  Forwarding to ${targetChatId} using account ${rule.targetAccountId}...`);
           
-          // Resolve target entity
-          let targetEntity: any = targetChatId;
-          
           // Check if it's a numeric user ID
-          if (/^\d+$/.test(targetChatId)) {
+          const isUserId = /^\d+$/.test(targetChatId);
+          
+          // If it's a user ID and we're using a bot account, skip with clear error
+          if (isUserId && isBot) {
+            throw new Error(`Cannot forward to user ${targetChatId}: Bot accounts cannot initiate conversations with users. Please use a user account for forwarding.`);
+          }
+          
+          // Resolve target entity
+          let targetEntity: any;
+          
+          if (isUserId) {
             // This is a user ID - need special handling
             console.log(`  🔍 Resolving user ID: ${targetChatId}`);
             
             try {
-              // First try to get the entity normally
-              targetEntity = await client.getEntity(targetChatId);
-              console.log(`  ✅ Resolved user entity`);
-            } catch (error: any) {
-              console.log(`  ⚠️ Could not resolve user ${targetChatId}, constructing PeerUser...`);
+              // Try multiple resolution methods
               
-              // Construct PeerUser manually for user IDs
+              // Method 1: Direct entity resolution with proper type conversion
+              targetEntity = await client.getEntity(parseInt(targetChatId));
+              console.log(`  ✅ Resolved user entity directly`);
+            } catch (error: any) {
+              console.log(`  ⚠️ Direct resolution failed: ${error.message}`);
+              
               try {
+                // Method 2: Try to get input entity
+                targetEntity = await client.getInputEntity(targetChatId);
+                console.log(`  ✅ Got input entity for user`);
+              } catch (inputError: any) {
+                // Final fallback: PeerUser construction (may not work for all cases)
+                console.log(`  ⚠️ Trying PeerUser construction as last resort...`);
                 const { Api } = await import('telegram');
                 const bigIntModule = await import('big-integer');
                 const bigInt = bigIntModule.default || bigIntModule;
-                targetEntity = new Api.PeerUser({ userId: bigInt(targetChatId) });
-                console.log(`  ✅ Created PeerUser for ${targetChatId}`);
-              } catch (peerError: any) {
-                throw new Error(`Cannot forward to user ${targetChatId}: ${peerError.message}`);
+                
+                // Convert string ID to BigInt properly
+                const userId = bigInt(targetChatId);
+                targetEntity = new Api.PeerUser({ userId });
+                console.log(`  ⚠️ Created PeerUser (may fail on forward)`);
               }
             }
           } else {
             // For groups/channels (start with -), resolve normally
             try {
               targetEntity = await client.getEntity(targetChatId);
+              console.log(`  ✅ Resolved group/channel entity`);
             } catch (e) {
               console.log(`  ⚠️ Using ${targetChatId} as-is`);
+              targetEntity = targetChatId;
             }
           }
           
