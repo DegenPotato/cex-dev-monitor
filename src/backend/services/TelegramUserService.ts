@@ -616,10 +616,30 @@ export class TelegramUserService {
       
       // Delete from Telegram data tables (always)
       const dataTables = [
+        // Core data tables
         'telegram_detected_contracts',
+        'telegram_detections',
         'telegram_message_history',
         'telegram_chat_metadata',
-        'telegram_monitored_chats'
+        'telegram_monitored_chats',
+        'telegram_chat_fetch_status',
+        
+        // Forwarding tables
+        'telegram_forwarding_rules',
+        'telegram_forwarding_history',
+        'telegram_forward_destinations',
+        'telegram_available_forward_targets',
+        
+        // Chat configuration
+        'telegram_chat_configs',
+        
+        // Caller/KOL tracking (delete token_calls first due to FK)
+        'telegram_token_calls',
+        'telegram_callers',
+        'telegram_channel_stats'
+        
+        // NOTE: telegram_entity_cache is NOT deleted as it's a shared cache
+        // without user_id - it stores entity access hashes for all users
       ];
       
       // Delete from account tables (optional)
@@ -630,21 +650,30 @@ export class TelegramUserService {
       
       const tables = includeAccounts ? [...dataTables, ...accountTables] : dataTables;
       
+      let deletedCount = 0;
+      const deletionResults: { table: string; deleted: number; error?: string }[] = [];
+      
       for (const table of tables) {
         try {
-          await execute(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
-          console.log(`✓ Cleared ${table} for user ${userId}`);
-        } catch (error) {
-          console.log(`Table ${table} might not exist, skipping...`);
+          const result = await execute(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+          const count = (result as any)?.changes || 0;
+          deletedCount += count;
+          deletionResults.push({ table, deleted: count });
+          console.log(`✓ Cleared ${table} for user ${userId} (${count} rows)`);
+        } catch (error: any) {
+          console.log(`⚠️  Table ${table} deletion failed: ${error.message}`);
+          deletionResults.push({ table, deleted: 0, error: error.message });
         }
       }
       
       return { 
         success: true, 
         message: includeAccounts 
-          ? 'All Telegram data and accounts have been deleted'
-          : 'All Telegram data has been deleted (accounts kept)',
+          ? `All Telegram data and accounts have been deleted (${deletedCount} total rows)`
+          : `All Telegram data has been deleted (${deletedCount} total rows, accounts kept)`,
         deletedTables: tables,
+        deletionResults,
+        totalRowsDeleted: deletedCount,
         accountsDeleted: includeAccounts
       };
     } catch (error: any) {
