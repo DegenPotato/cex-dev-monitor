@@ -300,18 +300,13 @@ export class UnifiedTokenProvider {
     mintAddress: string, 
     source: 'telegram' | 'wallet' | 'general' = 'general'
   ): Promise<void> {
-    const updates: any = {
-      total_mentions: execute.raw('total_mentions + 1')
-    };
-
+    let setClause = 'total_mentions = total_mentions + 1';
+    
     if (source === 'telegram') {
-      updates.telegram_mentions = execute.raw('telegram_mentions + 1');
+      setClause += ', telegram_mentions = telegram_mentions + 1';
     } else if (source === 'wallet') {
-      updates.wallet_transactions = execute.raw('wallet_transactions + 1');
+      setClause += ', wallet_transactions = wallet_transactions + 1';
     }
-
-    const fields = Object.keys(updates);
-    const setClause = fields.map(f => `${f} = ${f} + 1`).join(', ');
     
     await execute(
       `UPDATE token_registry SET ${setClause}, updated_at = strftime('%s', 'now') WHERE token_mint = ?`,
@@ -346,7 +341,19 @@ export class UnifiedTokenProvider {
   static async cleanupOldTokens(daysOld = 30): Promise<number> {
     const cutoffTime = Math.floor(Date.now() / 1000) - (daysOld * 24 * 60 * 60);
     
-    const result = await execute(`
+    // Get count of tokens to be deleted first
+    const toDelete = await queryOne<{ count: number }>(`
+      SELECT COUNT(*) as count FROM token_registry 
+      WHERE first_seen_at < ? 
+        AND total_trades = 0 
+        AND total_mentions < 2
+        AND token_mint NOT IN (
+          SELECT mint_address FROM token_market_data WHERE volume_24h_usd > 1000
+        )
+    `, [cutoffTime]);
+    
+    // Now delete them
+    await execute(`
       DELETE FROM token_registry 
       WHERE first_seen_at < ? 
         AND total_trades = 0 
@@ -357,7 +364,7 @@ export class UnifiedTokenProvider {
     `, [cutoffTime]);
 
     saveDatabase();
-    return result.changes || 0;
+    return toDelete?.count || 0;
   }
 }
 

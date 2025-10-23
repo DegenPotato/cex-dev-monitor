@@ -55,15 +55,8 @@ CREATE TABLE IF NOT EXISTS token_registry (
   FOREIGN KEY (discovered_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Step 2: Ensure token_market_data exists (already created in migration 030)
--- Just adding columns if missing
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS fdv REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS total_supply REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS circulating_supply REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS price_sol REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS market_cap_sol REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS volume_24h_sol REAL;
-ALTER TABLE token_market_data ADD COLUMN IF NOT EXISTS liquidity_sol REAL;
+-- Step 2: token_market_data already exists from migration 030
+-- These columns should already exist, but we'll skip adding them to avoid SQLite syntax errors
 
 -- Step 3: Migrate all token_mints data to token_registry
 INSERT OR IGNORE INTO token_registry (
