@@ -15,7 +15,8 @@ export class SolPriceOracle {
   private fallbackInterval: NodeJS.Timeout | null = null;
   
   private readonly JUPITER_WS = 'wss://price.jup.ag/v2';
-  private readonly JUPITER_REST = 'https://price.jup.ag/v6/price';
+  private readonly JUPITER_ULTRA_API = 'https://api.jup.ag/ultra/price/v3';
+  private readonly JUPITER_API_KEY = '7aeace19-c170-493e-a4ed-4e2e61eeb49d';
   private readonly SOL_MINT = 'So11111111111111111111111111111111111111112';
   private readonly RECONNECT_DELAY = 5000; // 5 seconds
   private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -177,37 +178,44 @@ export class SolPriceOracle {
   }
   
   /**
-   * Fetch price via REST API
+   * Fetch price via Jupiter Ultra API v3
    */
   private async fetchPriceREST() {
     const startTime = Date.now();
     try {
       const response = await fetch(
-        `${this.JUPITER_REST}?ids=${this.SOL_MINT}`,
-        { headers: { 'Accept': 'application/json' } }
+        `${this.JUPITER_ULTRA_API}?ids=${this.SOL_MINT}`,
+        { 
+          headers: { 
+            'Accept': 'application/json',
+            'X-API-KEY': this.JUPITER_API_KEY
+          } 
+        }
       );
 
       if (!response.ok) {
         const responseTime = Date.now() - startTime;
-        apiProviderTracker.trackCall('Jupiter', '/v6/price', false, responseTime, response.status);
+        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, response.status);
         throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
       const responseTime = Date.now() - startTime;
+      
+      // Jupiter Ultra API v3 response format: { data: { [mint]: { price: number } } }
       const priceData = data.data?.[this.SOL_MINT];
       const newPrice = priceData?.price;
 
       if (newPrice && typeof newPrice === 'number' && newPrice > 0) {
-        await this.updatePriceValue(newPrice, 'REST');
-        apiProviderTracker.trackCall('Jupiter', '/v6/price', true, responseTime, 200);
+        await this.updatePriceValue(newPrice, 'Jupiter Ultra');
+        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', true, responseTime, 200);
       } else {
-        apiProviderTracker.trackCall('Jupiter', '/v6/price', false, responseTime, 200, 'Invalid data structure');
-        console.warn('💰 [SOL Oracle] Invalid price data received');
+        apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, 200, 'Invalid data structure');
+        console.warn('💰 [SOL Oracle] Invalid price data received:', JSON.stringify(data));
       }
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      apiProviderTracker.trackCall('Jupiter', '/v6/price', false, responseTime, undefined, error.message);
+      apiProviderTracker.trackCall('Jupiter Ultra', '/price/v3', false, responseTime, undefined, error.message);
       console.error('💰 [SOL Oracle] Error fetching price:', error.message);
     }
   }
