@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import TechnicalIndicators, { RSIOscillator, EMAOverlay } from './TechnicalIndicators';
+import RealtimeChartToggle from './RealtimeChartToggle';
 import { Card } from '../ui/card';
 
 interface ChartData {
@@ -37,7 +38,35 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const [timeframe, setTimeframe] = useState<TimeframeType>('1m');
   const [indicators, setIndicators] = useState<IndicatorType>('both');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isRealtime, setIsRealtime] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout>();
+  const [userId, setUserId] = useState<number | null>(null);
+
+  // Get user ID from auth
+  useEffect(() => {
+    fetch('/api/auth/status', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => {
+        if (data.authenticated && data.user) {
+          setUserId(data.user.id);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  // Listen for real-time updates
+  useEffect(() => {
+    const handleRealtimeUpdate = (event: CustomEvent) => {
+      console.log('📊 Real-time update received:', event.detail);
+      // Refresh the chart data
+      fetchData();
+    };
+
+    window.addEventListener('ohlcv:updated', handleRealtimeUpdate as EventListener);
+    return () => {
+      window.removeEventListener('ohlcv:updated', handleRealtimeUpdate as EventListener);
+    };
+  }, []);
 
   // Fetch indicator data
   const fetchData = async () => {
@@ -77,7 +106,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
   useEffect(() => {
     fetchData();
 
-    if (autoRefresh) {
+    // Don't auto-refresh if real-time is active
+    if (autoRefresh && !isRealtime) {
       intervalRef.current = setInterval(fetchData, 60000); // Refresh every minute
     }
 
@@ -86,7 +116,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
         clearInterval(intervalRef.current);
       }
     };
-  }, [mintAddress, poolAddress, timeframe, autoRefresh]);
+  }, [mintAddress, poolAddress, timeframe, autoRefresh, isRealtime]);
 
   // Calculate current values for display
   const currentValues = useMemo(() => {
@@ -202,6 +232,22 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Real-time Toggle - only show if user is authenticated */}
+        {userId && (
+          <RealtimeChartToggle
+            mintAddress={mintAddress}
+            poolAddress={poolAddress}
+            userId={userId}
+            onStatusChange={(active) => {
+              setIsRealtime(active);
+              // Disable normal auto-refresh when real-time is active
+              if (active) {
+                setAutoRefresh(false);
+              }
+            }}
+          />
+        )}
 
         {/* Timeframe selector */}
         <div className="flex gap-1">

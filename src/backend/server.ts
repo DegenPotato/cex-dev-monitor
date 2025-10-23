@@ -36,6 +36,7 @@ import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import { telegramEntityCache } from './services/TelegramEntityCache.js';
+import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -191,6 +192,10 @@ app.use('/', ohlcvRoutes);
 // Register indicators routes
 import indicatorsRoutes from './routes/indicators.js';
 app.use('/', indicatorsRoutes);
+
+// Register real-time OHLCV routes
+import realtimeOHLCVRoutes from './routes/realtime-ohlcv.js';
+app.use('/', realtimeOHLCVRoutes);
 
 // Register forwarding routes
 app.use('/', forwardingDestinationRoutes);
@@ -2774,8 +2779,12 @@ import('./services/TradingWebSocketService.js').then(({ getTradingWebSocketServi
   tradingWS.initialize(io);
   console.log('📈 Trading WebSocket service initialized');
 }).catch(err => {
-  console.error('Failed to initialize Trading WebSocket service:', err);
+  console.error('Failed to initialize Trading WebSocket:', err);
 });
+
+// Initialize Real-time OHLCV service
+realtimeOHLCVService.initialize(io);
+console.log('🚀 Real-time OHLCV service initialized');
 
 // Start server
 const PORT = process.env.PORT || 3001;
