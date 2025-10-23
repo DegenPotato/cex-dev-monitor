@@ -5,7 +5,7 @@
  * deletion is working correctly for a user.
  */
 
-import { queryAll, queryOne } from '../database/helpers.js';
+import { queryOne } from '../database/helpers.js';
 
 async function verifyTelegramDeletion(userId: number) {
   console.log(`\n🔍 Verifying Telegram data deletion for user ${userId}\n`);
