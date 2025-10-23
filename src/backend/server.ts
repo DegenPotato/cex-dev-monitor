@@ -30,6 +30,7 @@ import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
+import { ohlcvCollectorV2 } from './services/OHLCVCollectorV2.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
@@ -42,6 +43,12 @@ import youtubeRoutes from './routes/youtube.js';
 import youtubeAudioRoutes from './routes/youtube-audio.js';
 import { createTelegramRoutes } from './routes/telegram.js';
 import userDataRoutes from './routes/user-data.js';
+import tradingRoutes from './routes/trading.js';
+import forwardingDestinationRoutes from './routes/telegram-forwarding-destinations.js';
+import forwardingRulesRoutes from './routes/telegram-forwarding.js';
+// import tokenMetadataRoutes from './routes/token-metadata.js'; // TODO: Create this file
+// import configRoutes from './routes/config.js'; // TODO: Create this file
+import ohlcvRoutes from './routes/ohlcv.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 import { telegramClientService } from './services/TelegramClientService.js';
@@ -176,9 +183,15 @@ app.use('/api/telegram', telegramMetadataRoutes);
 import telegramIntelligenceRoutes from './routes/telegram-intelligence.js';
 app.use('/', telegramIntelligenceRoutes);
 
-// Register trading routes (Fetcher)
-import tradingRoutes from './routes/trading.js';
+// Register trading routes (already imported above)
 app.use('/', tradingRoutes);
+
+// Register OHLCV routes
+app.use('/', ohlcvRoutes);
+
+// Register forwarding routes
+app.use('/', forwardingDestinationRoutes);
+app.use('/', forwardingRulesRoutes);
 
 // Register token analytics routes
 import tokenAnalyticsRoutes from './routes/tokenAnalytics.js';
