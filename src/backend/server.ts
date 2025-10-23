@@ -34,6 +34,7 @@ import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
+import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -1514,15 +1515,27 @@ app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
     const { address, timeframe } = req.params;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
     
-    // Get candles with pool_address to identify which pool each candle belongs to
-    const candles = await queryAll(
-      `SELECT pool_address, timestamp, open, high, low, close, volume 
-       FROM ohlcv_data 
-       WHERE mint_address = ? AND timeframe = ? 
-       ORDER BY timestamp ASC
-       LIMIT ?`,
-      [address, timeframe, limit]
-    );
+    let candles: any[] = [];
+    
+    // For 1m timeframe, fetch directly from database
+    if (timeframe === '1m') {
+      candles = await queryAll(
+        `SELECT pool_address, timestamp, open, high, low, close, volume 
+         FROM ohlcv_data 
+         WHERE mint_address = ? AND timeframe = ? 
+         ORDER BY timestamp ASC
+         LIMIT ?`,
+        [address, timeframe, limit]
+      );
+    } else if (['15m', '1h', '4h', '1d'].includes(timeframe)) {
+      // For higher timeframes, aggregate from 1m data
+      candles = await ohlcvAggregator.aggregateCandles(
+        address, 
+        null, // Will aggregate across all pools
+        timeframe as any,
+        limit
+      );
+    }
     
     // Get token metadata (including migration info)
     const tokenMeta = await queryOne<{

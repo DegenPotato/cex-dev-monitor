@@ -3,7 +3,7 @@
  * Secure wallet management and trading operations
  */
 
-import express from 'express';
+import { Router, Request, Response } from 'express';
 import { solPriceOracle } from '../services/SolPriceOracle.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 // import { getWalletManager } from '../core/wallet.js'; // Using walletStorageService instead
@@ -32,7 +32,7 @@ const tradingEngine = getTradingEngine();
 /**
  * Get all wallets for authenticated user
  */
-router.get('/api/trading/wallets', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const wallets = await walletStorageService.getUserWallets(userId);
@@ -47,7 +47,7 @@ router.get('/api/trading/wallets', authService.requireSecureAuth(), async (req, 
 /**
  * Create new wallet
  */
-router.post('/api/trading/wallets/create', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/wallets/create', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { walletName } = req.body;
@@ -64,7 +64,7 @@ router.post('/api/trading/wallets/create', authService.requireSecureAuth(), asyn
 /**
  * Import existing wallet
  */
-router.post('/api/trading/wallets/import', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/wallets/import', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { privateKey, walletName } = req.body;
@@ -85,7 +85,7 @@ router.post('/api/trading/wallets/import', authService.requireSecureAuth(), asyn
 /**
  * Export wallet (get private key)
  */
-router.get('/api/trading/wallets/:walletId/export', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets/:walletId/export', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
@@ -102,7 +102,7 @@ router.get('/api/trading/wallets/:walletId/export', authService.requireSecureAut
 /**
  * Set default wallet
  */
-router.post('/api/trading/wallets/:walletId/default', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/wallets/:walletId/default', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
@@ -123,7 +123,7 @@ router.post('/api/trading/wallets/:walletId/default', authService.requireSecureA
 /**
  * Refresh wallet balance
  */
-router.get('/api/trading/wallets/:walletId/balance', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets/:walletId/balance', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
@@ -156,7 +156,7 @@ router.get('/api/trading/wallets/:walletId/balance', authService.requireSecureAu
 /**
  * Delete wallet (soft delete)
  */
-router.delete('/api/trading/wallets/:walletId', authService.requireSecureAuth(), async (req, res) => {
+router.delete('/api/trading/wallets/:walletId', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
@@ -173,7 +173,7 @@ router.delete('/api/trading/wallets/:walletId', authService.requireSecureAuth(),
 /**
  * Withdraw SOL to user's connected wallet
  */
-router.post('/api/trading/wallets/:walletId/withdraw', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/wallets/:walletId/withdraw', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const walletId = parseInt(req.params.walletId);
@@ -264,7 +264,7 @@ router.post('/api/trading/wallets/:walletId/withdraw', authService.requireSecure
 /**
  * Buy token
  */
-router.post('/api/trading/buy', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 
@@ -337,7 +337,7 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req, res
 /**
  * Sell token
  */
-router.post('/api/trading/sell', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 
@@ -404,7 +404,7 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req, re
 /**
  * Transfer token
  */
-router.post('/api/trading/transfer', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/transfer', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 
@@ -442,7 +442,7 @@ router.post('/api/trading/transfer', authService.requireSecureAuth(), async (req
 /**
  * Get transaction history
  */
-router.get('/api/trading/transactions', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/transactions', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { limit = 50, offset = 0, walletId } = req.query;
@@ -498,7 +498,7 @@ router.get('/api/trading/transactions', authService.requireSecureAuth(), async (
 /**
  * Get wallet token holdings
  */
-router.get('/api/trading/wallets/:walletId/holdings', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets/:walletId/holdings', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const walletId = parseInt(req.params.walletId);
     
@@ -518,7 +518,7 @@ router.get('/api/trading/wallets/:walletId/holdings', authService.requireSecureA
 /**
  * Get wallet tokens (alias for holdings with better formatting)
  */
-router.get('/api/trading/wallets/:walletId/tokens', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/wallets/:walletId/tokens', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const walletId = parseInt(req.params.walletId);
     const userId = (req as AuthenticatedRequest).user!.id;
@@ -569,7 +569,7 @@ router.get('/api/trading/wallets/:walletId/tokens', authService.requireSecureAut
 /**
  * Get portfolio statistics across all wallets
  */
-router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
@@ -728,7 +728,7 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
 /**
  * Get or create API keys configuration
  */
-router.get('/api/trading/config', authService.requireSecureAuth(), async (req, res) => {
+router.get('/api/trading/config', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
@@ -754,7 +754,7 @@ router.get('/api/trading/config', authService.requireSecureAuth(), async (req, r
 /**
  * Update API keys configuration
  */
-router.post('/api/trading/config', authService.requireSecureAuth(), async (req, res) => {
+router.post('/api/trading/config', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 

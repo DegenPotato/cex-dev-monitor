@@ -6,8 +6,7 @@
 import { Server } from 'socket.io';
 import { queryAll, queryOne } from '../database/helpers.js';
 import { getWalletManager } from '../core/wallet.js';
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import WebSocket from 'ws';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { solPriceOracle } from './SolPriceOracle.js';
 
 interface PortfolioUpdate {
