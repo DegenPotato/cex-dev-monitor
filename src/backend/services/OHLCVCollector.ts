@@ -436,11 +436,15 @@ export class OHLCVCollector {
       }
       
       // Fetch OHLCV data
+      console.log(`🔍 [OHLCV] Fetching ${mintAddress.slice(0, 8)}... ${timeframe.name}: before timestamp ${targetTimestamp} (${new Date(targetTimestamp * 1000).toISOString()})`);
+      
       const candles = await this.fetchOHLCV(
         poolAddress,
         timeframe,
         targetTimestamp
       );
+      
+      console.log(`📊 [OHLCV] Received ${candles.length} candles for ${mintAddress.slice(0, 8)}... ${timeframe.name}`);
       
       if (candles.length === 0) {
         console.log(`📊 [OHLCV] No data for ${mintAddress.slice(0, 8)}... ${timeframe.name}`);
@@ -716,7 +720,10 @@ export class OHLCVCollector {
         currency: 'usd'
       });
       
-      const response = await fetch(`${url}?${params}`, {
+      const fullUrl = `${url}?${params}`;
+      console.log(`🌐 [OHLCV] Requesting: ${fullUrl}`);
+      
+      const response = await fetch(fullUrl, {
         headers: { 'Accept': 'application/json' }
       });
       
@@ -729,8 +736,11 @@ export class OHLCVCollector {
     const ohlcvArray = data?.data?.attributes?.ohlcv_list;
     
     if (!ohlcvArray || !Array.isArray(ohlcvArray)) {
+      console.log(`⚠️ [OHLCV] No OHLCV data in response for ${poolAddress.slice(0, 8)}...`);
       return [];
     }
+    
+    console.log(`📊 [OHLCV] GeckoTerminal returned ${ohlcvArray.length} candles for ${poolAddress.slice(0, 8)}...`);
     
     // Parse OHLCV data: [timestamp, open, high, low, close, volume]
     return ohlcvArray.map((candle: any[]) => ({

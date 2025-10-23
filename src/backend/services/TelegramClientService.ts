@@ -59,6 +59,7 @@ export class TelegramClientService extends EventEmitter {
   private encryptionKey: string;
   private solanaConnection: ProxiedSolanaConnection;
   private metadataRefreshInterval: NodeJS.Timeout | null = null;
+  private unmonitoredLogThrottle: Record<string, number> = {}; // Track last log time per chat
 
   constructor() {
     super();
@@ -609,13 +610,18 @@ export class TelegramClientService extends EventEmitter {
           chatId = message.peerId.chatId.toString();
         }
         
-        const monitoredChat = cachedChats.find(c => c.chatId === chatId);
-        if (!monitoredChat) {
-          console.log(`⏭️  [Telegram:${userIdentifier}] Message from unmonitored chat: ${chatId}`);
-          console.log(`   Monitored chats: ${cachedChats.map(c => c.chatId).join(', ')}`);
+        const monitoredChatIds = cachedChats.map(c => c.chatId);
+        if (!monitoredChatIds.includes(chatId)) {
+          // Only log unmonitored chats occasionally to reduce noise
+          if (!this.unmonitoredLogThrottle[chatId] || Date.now() - this.unmonitoredLogThrottle[chatId] > 60000) {
+            console.log(`⏭️  [Telegram:${userIdentifier}] Message from unmonitored chat: ${chatId}`);
+            console.log(`   Monitored chats: ${monitoredChatIds.join(', ')}`);
+            this.unmonitoredLogThrottle[chatId] = Date.now();
+          }
           return;
         }
         
+        const monitoredChat = cachedChats.find(c => c.chatId === chatId);
         console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})`);
         console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
 
