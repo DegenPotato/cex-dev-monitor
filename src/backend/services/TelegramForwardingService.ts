@@ -269,30 +269,42 @@ export class TelegramForwardingService extends EventEmitter {
             // This is a user ID - need special handling
             console.log(`  🔍 Resolving user ID: ${targetChatId}`);
             
+            // Pre-load entities to warm up the cache
             try {
-              // Try multiple resolution methods
+              await telegramEntityCache.preloadEntities(client, [targetChatId]);
+              console.log(`  ✅ Pre-loaded entity cache`);
+            } catch (e) {
+              console.log(`  ⚠️ Cache pre-load failed: ${e}`);
+            }
+            
+            try {
+              // Method 1: Try with different client methods
+              const dialogs = await client.getDialogs({ limit: 100 });
+              const userDialog = dialogs.find((d: any) => 
+                d.entity?.id?.toString() === targetChatId
+              );
               
-              // Method 1: Direct entity resolution with proper type conversion
-              targetEntity = await client.getEntity(parseInt(targetChatId));
-              console.log(`  ✅ Resolved user entity directly`);
-            } catch (error: any) {
-              console.log(`  ⚠️ Direct resolution failed: ${error.message}`);
-              
-              try {
-                // Method 2: Try to get input entity
-                targetEntity = await client.getInputEntity(targetChatId);
+              if (userDialog) {
+                targetEntity = userDialog.entity;
+                console.log(`  ✅ Found user in dialogs`);
+              } else {
+                // Method 2: Try to get input entity with int conversion
+                targetEntity = await client.getInputEntity(parseInt(targetChatId));
                 console.log(`  ✅ Got input entity for user`);
-              } catch (inputError: any) {
-                // Final fallback: PeerUser construction (may not work for all cases)
-                console.log(`  ⚠️ Trying PeerUser construction as last resort...`);
-                const { Api } = await import('telegram');
-                const bigIntModule = await import('big-integer');
-                const bigInt = bigIntModule.default || bigIntModule;
-                
-                // Convert string ID to BigInt properly
-                const userId = bigInt(targetChatId);
-                targetEntity = new Api.PeerUser({ userId });
-                console.log(`  ⚠️ Created PeerUser (may fail on forward)`);
+              }
+            } catch (error: any) {
+              console.log(`  ⚠️ Resolution failed: ${error.message}`);
+              
+              // Check if error indicates we haven't interacted with this user
+              if (error.message?.includes('Could not find the input entity') || 
+                  error.message?.includes('PEER_ID_INVALID')) {
+                throw new Error(
+                  `Cannot forward to user ${targetChatId}: No existing conversation found. ` +
+                  `The user must have previously messaged this account, or you must initiate ` +
+                  `a conversation with them first. Try sending a message manually to establish contact.`
+                );
+              } else {
+                throw error;
               }
             }
           } else {

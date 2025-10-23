@@ -116,26 +116,24 @@ ORDER BY tmd.volume_24h_usd DESC;
 
 -- Function to update market data (called by backend services)
 -- This is a placeholder - actual implementation would be in backend
--- Shows the expected update pattern
-/*
-UPDATE token_market_data SET
-  price_usd = ?,
-  price_sol = ?,
-  market_cap_usd = ?,
-  volume_24h_usd = ?,
-  volume_1h_usd = ?,
-  price_change_1h = ?,
-  price_change_24h = ?,
-  trades_24h = ?,
-  trades_1h = ?,
-  buyers_24h = ?,
-  sellers_24h = ?,
-  buy_sell_ratio = ?,
-  high_24h_usd = ?,
-  low_24h_usd = ?,
-  last_updated = ?,
-  last_price_update = ?,
-  data_source = ?,
-  confidence_score = ?
-WHERE mint_address = ?;
-*/
+-- Shows the expected update pattern:
+-- UPDATE token_market_data SET
+--   price_usd = ?,
+--   price_sol = ?,
+--   market_cap_usd = ?,
+--   volume_24h_usd = ?,
+--   volume_1h_usd = ?,
+--   price_change_1h = ?,
+--   price_change_24h = ?,
+--   trades_24h = ?,
+--   trades_1h = ?,
+--   buyers_24h = ?,
+--   sellers_24h = ?,
+--   buy_sell_ratio = ?,
+--   high_24h_usd = ?,
+--   low_24h_usd = ?,
+--   last_updated = ?,
+--   last_price_update = ?,
+--   data_source = ?,
+--   confidence_score = ?
+-- WHERE mint_address = ?;
