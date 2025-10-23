@@ -1,4 +1,4 @@
-// API Configuration
+// API Configuration (Frontend only - excluded from backend build)
 export const config = {
   apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
   wsUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:3001',

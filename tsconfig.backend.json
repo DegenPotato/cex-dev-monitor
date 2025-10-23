@@ -23,6 +23,8 @@
     "src/components",
     "src/contexts",
     "src/hooks",
+    "src/lib/api",
+    "src/config.ts",
     "src/App.tsx",
     "src/main.tsx"
   ]
