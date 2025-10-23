@@ -79,7 +79,8 @@ export class SolPriceOracle {
       const responseTime = Date.now() - startTime;
       
       // GeckoTerminal response format: { data: { attributes: { token_prices: { [address]: "price" } } } }
-      const priceStr = data.data?.attributes?.token_prices?.[this.SOL_ADDRESS.toLowerCase()];
+      const tokenPrices = data.data?.attributes?.token_prices;
+      const priceStr = tokenPrices?.[this.SOL_ADDRESS] || tokenPrices?.[this.SOL_ADDRESS.toLowerCase()];
       const newPrice = priceStr ? parseFloat(priceStr) : null;
 
       if (newPrice && typeof newPrice === 'number' && newPrice > 0) {
