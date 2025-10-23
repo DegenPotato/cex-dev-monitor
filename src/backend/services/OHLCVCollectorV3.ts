@@ -497,14 +497,32 @@ export class OHLCVCollectorV3 {
         console.log(`      ⏰ Converting milliseconds to seconds`);
       }
       
-      return ohlcvList.map((candle: number[]) => ({
-        timestamp: isMilliseconds ? Math.floor(candle[0] / 1000) : candle[0],
-        open: candle[1],
-        high: candle[2],
-        low: candle[3],
-        close: candle[4],
-        volume: candle[5]
-      }));
+      return ohlcvList
+        .map((candle: number[]) => ({
+          timestamp: isMilliseconds ? Math.floor(candle[0] / 1000) : candle[0],
+          open: candle[1],
+          high: candle[2],
+          low: candle[3],
+          close: candle[4],
+          volume: candle[5]
+        }))
+        .filter((candle: Candle) => 
+          // Filter out invalid candles
+          candle.timestamp > 0 &&
+          candle.open > 0 &&
+          candle.high > 0 &&
+          candle.low > 0 &&
+          candle.close > 0 &&
+          !isNaN(candle.open) &&
+          !isNaN(candle.high) &&
+          !isNaN(candle.low) &&
+          !isNaN(candle.close) &&
+          candle.high >= candle.low &&
+          candle.high >= candle.open &&
+          candle.high >= candle.close &&
+          candle.low <= candle.open &&
+          candle.low <= candle.close
+        );
       
     } catch (error: any) {
       console.log(`      ⚠️ Fetch error: ${error.message}`);

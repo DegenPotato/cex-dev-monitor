@@ -212,11 +212,14 @@ const RobustChart: React.FC<RobustChartProps> = ({
       // Set data - timestamps from OHLCV are already in seconds (Unix timestamp)
       const candleData = validData.map(candle => ({
         time: Math.floor(candle.timestamp) as any, // Already in seconds from GeckoTerminal
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-      }));
+        open: candle.open || 0,
+        high: candle.high || 0,
+        low: candle.low || 0,
+        close: candle.close || 0,
+      })).filter(candle => 
+        // Final safety check - ensure no zeros or invalid values
+        candle.open > 0 && candle.high > 0 && candle.low > 0 && candle.close > 0
+      );
 
       const volumeData = validData.map(candle => {
         const vol = candle.volume || 0;

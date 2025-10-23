@@ -101,10 +101,28 @@ router.get('/api/ohlcv/:mintAddress', authService.requireSecureAuth(), async (re
     
     const candles = await queryAll(query, params);
     
+    // Filter out candles with null or invalid values
+    const validCandles = candles.filter((candle: any) => {
+      return candle && 
+             candle.timestamp != null &&
+             candle.open != null && 
+             candle.high != null && 
+             candle.low != null && 
+             candle.close != null &&
+             !isNaN(candle.open) &&
+             !isNaN(candle.high) &&
+             !isNaN(candle.low) &&
+             !isNaN(candle.close) &&
+             candle.open > 0 &&
+             candle.high > 0 &&
+             candle.low > 0 &&
+             candle.close > 0;
+    });
+    
     res.json({
       success: true,
-      count: candles.length,
-      candles
+      count: validCandles.length,
+      candles: validCandles
     });
   } catch (error: any) {
     console.error('Error fetching OHLCV data:', error);

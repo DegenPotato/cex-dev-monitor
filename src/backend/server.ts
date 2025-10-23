@@ -1548,13 +1548,27 @@ app.get('/api/ohlcv/:address/:timeframe', async (req, res) => {
     
     // For 1m timeframe, fetch directly from database
     if (timeframe === '1m') {
-      candles = await queryAll(
+      const rawCandles = await queryAll(
         `SELECT pool_address, timestamp, open, high, low, close, volume 
          FROM ohlcv_data 
          WHERE mint_address = ? AND timeframe = ? 
+           AND open IS NOT NULL 
+           AND high IS NOT NULL 
+           AND low IS NOT NULL 
+           AND close IS NOT NULL
+           AND open > 0
+           AND high > 0
+           AND low > 0
+           AND close > 0
          ORDER BY timestamp ASC
          LIMIT ?`,
         [address, timeframe, limit]
+      );
+      
+      // Additional validation to ensure no null values
+      candles = rawCandles.filter((c: any) => 
+        c && c.timestamp && c.open && c.high && c.low && c.close &&
+        !isNaN(c.open) && !isNaN(c.high) && !isNaN(c.low) && !isNaN(c.close)
       );
     } else if (['15m', '1h', '4h', '1d'].includes(timeframe)) {
       // For higher timeframes, aggregate from 1m data
