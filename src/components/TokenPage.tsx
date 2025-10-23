@@ -358,10 +358,10 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
               Launch Time
             </div>
             <div className="text-white text-xl font-bold">
-              {new Date(token.timestamp).toLocaleDateString()}
+              {new Date(token.timestamp * 1000).toLocaleDateString()}
             </div>
             <div className="text-gray-500 text-xs">
-              {new Date(token.timestamp).toLocaleTimeString()}
+              {new Date(token.timestamp * 1000).toLocaleTimeString()}
             </div>
           </div>
         </div>

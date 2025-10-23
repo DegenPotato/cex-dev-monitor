@@ -397,7 +397,7 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-3 h-3" />
-                      <span>{new Date(token.timestamp).toLocaleString()}</span>
+                      <span>{new Date(token.timestamp * 1000).toLocaleString()}</span>
                     </div>
                     {token.last_updated && (
                       <div className="text-xs text-green-400">

@@ -294,7 +294,7 @@ export function WalletDetailsModal({ wallet, walletType, onClose }: WalletDetail
                         <div>
                           <div className="text-sm text-gray-400">Launched</div>
                           <div className="text-white font-medium">
-                            {new Date(metrics.bestPerformer.timestamp).toLocaleDateString()}
+                            {new Date(metrics.bestPerformer.timestamp * 1000).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
@@ -311,14 +311,14 @@ export function WalletDetailsModal({ wallet, walletType, onClose }: WalletDetail
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">First Seen</span>
                         <span className="text-white">
-                          {new Date(wallet.first_seen).toLocaleString()}
+                          {new Date(wallet.first_seen * 1000).toLocaleString()}
                         </span>
                       </div>
                       {wallet.last_activity && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Last Activity</span>
                           <span className="text-white">
-                            {new Date(wallet.last_activity).toLocaleString()}
+                            {new Date(wallet.last_activity * 1000).toLocaleString()}
                           </span>
                         </div>
                       )}
@@ -379,7 +379,7 @@ export function WalletDetailsModal({ wallet, walletType, onClose }: WalletDetail
                               </div>
                               <div className="flex items-center gap-4 text-xs text-gray-400">
                                 <span>
-                                  {new Date(token.timestamp).toLocaleString()}
+                                  {new Date(token.timestamp * 1000).toLocaleString()}
                                 </span>
                                 <span>
                                   MCap: {formatMcap(token.current_mcap)}

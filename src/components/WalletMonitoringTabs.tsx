@@ -262,7 +262,7 @@ export function WalletMonitoringTabs() {
                         )}
                         {wallet.last_activity && (
                           <span>
-                            Last: {new Date(wallet.last_activity).toLocaleString()}
+                            Last: {new Date(wallet.last_activity * 1000).toLocaleString()}
                           </span>
                         )}
                         {wallet.monitoring_state && (
