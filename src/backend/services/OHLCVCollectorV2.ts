@@ -10,16 +10,11 @@
  */
 
 import { queryAll, queryOne, execute } from '../database/helpers.js';
-import { db } from '../database/database.js';
 import { globalGeckoTerminalLimiter } from './GeckoTerminalRateLimiter.js';
 
-// Helper to save database
+// Helper to save database - just a placeholder for now
 const saveDatabase = () => {
-  try {
-    db.exec(''); // Force a write to disk
-  } catch (e) {
-    // Ignore
-  }
+  // Database saves automatically with SQLite
 };
 
 interface Token {
