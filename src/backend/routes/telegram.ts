@@ -3,7 +3,7 @@ import { TelegramUserService } from '../services/TelegramUserService.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
 import { telegramRateLimiter } from '../services/TelegramRateLimiter.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
-import { execute, queryOne } from '../database/helpers.js';
+import { execute, queryOne, queryAll } from '../database/helpers.js';
 
 const authService = new SecureAuthService();
 
@@ -743,13 +743,45 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Update monitored topics for a chat
+   */
+  router.post('/monitored-chats/:chatId/topics', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      const { monitoredTopicIds } = req.body;
+      
+      // Update monitored topics
+      await execute(`
+        UPDATE telegram_monitored_chats 
+        SET monitored_topic_ids = ?, updated_at = ?
+        WHERE user_id = ? AND chat_id = ?
+      `, [
+        monitoredTopicIds && monitoredTopicIds.length > 0 ? JSON.stringify(monitoredTopicIds) : null,
+        Math.floor(Date.now() / 1000),
+        userId,
+        chatId
+      ]);
+      
+      res.json({ 
+        success: true, 
+        message: 'Topics configuration updated',
+        monitoredTopicIds
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error updating monitored topics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Configure monitoring for a specific chat (keywords, users, forwarding)
    */
   router.post('/monitored-chats/:chatId/configure', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
-      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit, processBotMessages } = req.body;
+      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit, processBotMessages, monitoredTopicIds } = req.body;
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {
@@ -758,7 +790,8 @@ export function createTelegramRoutes() {
         forwardToChatId,
         forwardAccountId,
         isActive,
-        processBotMessages
+        processBotMessages,
+        monitoredTopicIds
       });
 
       // If initialHistoryLimit is provided, fetch history in background
@@ -1033,6 +1066,47 @@ export function createTelegramRoutes() {
       });
     } catch (error: any) {
       console.error('[Telegram] Error getting forwarding stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get topics in a forum group
+   */
+  router.get('/chats/:chatId/topics', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      
+      // Get topic statistics from message history
+      const topics = await queryAll(`
+        SELECT 
+          topic_id,
+          topic_title,
+          COUNT(DISTINCT message_id) as message_count,
+          COUNT(DISTINCT sender_id) as unique_senders,
+          COUNT(DISTINCT CASE WHEN detected_contracts IS NOT NULL THEN message_id END) as messages_with_contracts,
+          MAX(message_timestamp) as last_activity
+        FROM telegram_message_history
+        WHERE user_id = ? AND chat_id = ? AND topic_id IS NOT NULL
+        GROUP BY topic_id, topic_title
+        ORDER BY message_count DESC
+      `, [userId, chatId]) as any[];
+      
+      res.json({
+        success: true,
+        chatId,
+        topics: topics.map(t => ({
+          topicId: t.topic_id,
+          topicTitle: t.topic_title || `Topic ${t.topic_id}`,
+          messageCount: t.message_count,
+          uniqueSenders: t.unique_senders,
+          contractsDetected: t.messages_with_contracts,
+          lastActivityTime: t.last_activity
+        }))
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting topics:', error);
       res.status(500).json({ error: error.message });
     }
   });

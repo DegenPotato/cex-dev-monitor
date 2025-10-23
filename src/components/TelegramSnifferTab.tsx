@@ -56,6 +56,7 @@ interface SnifferChat {
   forwardToChatId?: string;
   processBotMessages?: boolean;
   forwardAccountId?: number | null;
+  monitoredTopicIds?: string[];
 }
 
 interface ContractDetection {
@@ -146,6 +147,19 @@ export function TelegramSnifferTab() {
   const [configInitialHistory, setConfigInitialHistory] = useState(0); // 0 = none, 1-10000 = limit, 999999 = all
   const [configDuplicateStrategy, setConfigDuplicateStrategy] = useState<string>('first_only_no_backlog');
   const [configProcessBotMessages, setConfigProcessBotMessages] = useState(false);
+  
+  // Topic monitoring
+  const [availableTopics, setAvailableTopics] = useState<Array<{
+    topicId: string;
+    topicTitle: string;
+    messageCount: number;
+    uniqueSenders: number;
+    contractsDetected: number;
+    lastActivityTime: number;
+  }>>([]);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+  const [monitorAllTopics, setMonitorAllTopics] = useState(true);
+  const [loadingTopics, setLoadingTopics] = useState(false);
   
   // Multi-select forward destinations
   const [availableForwardTargets, setAvailableForwardTargets] = useState<Array<any>>([]);
@@ -1662,6 +1676,8 @@ export function TelegramSnifferTab() {
                                 setConfigForwardTo(sniffer.forwardToChatId || '');
                                 setConfigForwardAccountId(sniffer.forwardAccountId || null);
                                 setConfigProcessBotMessages(sniffer.processBotMessages || false);
+                                setSelectedTopicIds(sniffer.monitoredTopicIds || []);
+                                setMonitorAllTopics(!sniffer.monitoredTopicIds || sniffer.monitoredTopicIds.length === 0);
                                 // Note: initialHistoryLimit is not loaded since it's a one-time fetch
                                 
                                 // Load duplicate strategy from chat config API
@@ -1672,6 +1688,19 @@ export function TelegramSnifferTab() {
                                     setConfigDuplicateStrategy(data.duplicateStrategy);
                                   }
                                 }).catch(err => console.error('Failed to load chat config:', err));
+                                
+                                // Load available topics if it's a forum group
+                                if (chat.is_forum) {
+                                  setLoadingTopics(true);
+                                  fetch(`${config.apiUrl}/api/telegram/chats/${chat.chatId}/topics`, {
+                                    credentials: 'include'
+                                  }).then(response => response.json()).then(data => {
+                                    if (data.success && data.topics) {
+                                      setAvailableTopics(data.topics);
+                                    }
+                                  }).catch(err => console.error('Failed to load topics:', err))
+                                  .finally(() => setLoadingTopics(false));
+                                }
                                 
                                 // Load users if there are monitored user IDs
                                 if (sniffer.monitoredUserIds && sniffer.monitoredUserIds.length > 0) {
@@ -3230,6 +3259,71 @@ export function TelegramSnifferTab() {
                 </p>
               </div>
 
+              {/* Topic Monitoring (Forum Groups Only) */}
+              {configChat?.is_forum && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-white flex items-center gap-2">
+                    🎯 Topic Monitoring
+                    {loadingTopics && <span className="text-xs text-gray-400">(Loading...)</span>}
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={monitorAllTopics}
+                        onChange={(e) => {
+                          setMonitorAllTopics(e.target.checked);
+                          if (e.target.checked) {
+                            setSelectedTopicIds([]);
+                          }
+                        }}
+                        className="w-4 h-4 text-cyan-500 rounded border-gray-600 focus:ring-cyan-500/50"
+                      />
+                      <span className="text-white">Monitor All Topics</span>
+                    </label>
+                    
+                    {!monitorAllTopics && availableTopics.length > 0 && (
+                      <div className="space-y-2 pl-6">
+                        <p className="text-sm text-gray-400">Select specific topics to monitor:</p>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {availableTopics.map(topic => (
+                            <label key={topic.topicId} className="flex items-start gap-2 cursor-pointer p-2 hover:bg-black/20 rounded">
+                              <input
+                                type="checkbox"
+                                checked={selectedTopicIds.includes(topic.topicId)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedTopicIds([...selectedTopicIds, topic.topicId]);
+                                  } else {
+                                    setSelectedTopicIds(selectedTopicIds.filter(id => id !== topic.topicId));
+                                  }
+                                }}
+                                className="w-4 h-4 mt-0.5 text-cyan-500 rounded border-gray-600 focus:ring-cyan-500/50"
+                              />
+                              <div className="flex-1">
+                                <span className="text-white block">{topic.topicTitle || `Topic ${topic.topicId}`}</span>
+                                <div className="text-xs text-gray-500 flex gap-3">
+                                  <span>{topic.messageCount} messages</span>
+                                  <span>{topic.uniqueSenders} users</span>
+                                  {topic.contractsDetected > 0 && (
+                                    <span className="text-green-400">{topic.contractsDetected} CAs</span>
+                                  )}
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!monitorAllTopics && availableTopics.length === 0 && !loadingTopics && (
+                      <p className="text-sm text-gray-500 pl-6">No topics found. Messages need to be received first to detect topics.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Bot Message Processing */}
               <div>
                 <label className="block text-sm font-medium text-cyan-300 mb-2">
@@ -3491,6 +3585,8 @@ export function TelegramSnifferTab() {
                 onClick={async () => {
                   try {
                     setLoading(true);
+                    
+                    // Save main configuration
                     const response = await fetch(`${config.apiUrl}/api/telegram/monitored-chats/${configChat.chatId}/configure`, {
                       method: 'POST',
                       credentials: 'include',
@@ -3502,7 +3598,8 @@ export function TelegramSnifferTab() {
                         forwardAccountId: configForwardAccountId,
                         initialHistoryLimit: configInitialHistory,
                         isActive: true,
-                        processBotMessages: configProcessBotMessages
+                        processBotMessages: configProcessBotMessages,
+                        monitoredTopicIds: !monitorAllTopics ? selectedTopicIds : []
                       })
                     });
 
@@ -3547,6 +3644,10 @@ export function TelegramSnifferTab() {
                       setSelectedForwardDestinations([]);
                       setForwardTargetFilter('');
                       setShowForwardDropdown(false);
+                      setSelectedUsers([]);
+                      setAvailableUsers([]);
+                      setUserFilter('');
+                      setShowUserDropdown(false);
                       await loadSnifferChats();
                     } else {
                       setMessage({ type: 'error', text: 'Failed to save configuration' });

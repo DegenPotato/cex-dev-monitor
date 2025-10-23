@@ -690,6 +690,17 @@ export class TelegramClientService extends EventEmitter {
         }
         
         const monitoredChat = cachedChats.find(c => c.chatId === chatId);
+        
+        // Topic filtering logic
+        if (topicId && monitoredChat.monitoredTopicIds && monitoredChat.monitoredTopicIds.length > 0) {
+          // Chat has specific topics configured
+          if (!monitoredChat.monitoredTopicIds.includes(topicId)) {
+            console.log(`   ⏭️  Skipped: Topic ${topicId} not in monitored topics list [${monitoredChat.monitoredTopicIds.join(', ')}]`);
+            return;
+          }
+          console.log(`   ✅ Topic ${topicId} is monitored`);
+        }
+        
         const topicInfo = topicId ? ` [Topic: ${topicId}]` : '';
         console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})${topicInfo}`);
         console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
