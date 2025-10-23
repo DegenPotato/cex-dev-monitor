@@ -654,14 +654,8 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       
-      // Try to disconnect active client if exists
-      try {
-        if (typeof (telegramClientService as any).disconnect === 'function') {
-          await (telegramClientService as any).disconnect(userId);
-        }
-      } catch (error) {
-        console.log('Could not disconnect client');
-      }
+      // Disconnect active client if exists
+      await telegramClientService.disconnectAndCleanup(userId);
       
       // Delete from database
       const result = await telegramService.deleteUserAccount(userId);
@@ -683,6 +677,9 @@ export function createTelegramRoutes() {
   router.delete('/bot-account', authService.requireSecureAuth(), async (req, res) => {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
+      
+      // Disconnect bot client if exists
+      await telegramClientService.disconnectAndCleanup(userId);
       
       const result = await telegramService.deleteBotAccount(userId);
       
@@ -706,6 +703,9 @@ export function createTelegramRoutes() {
       const includeAccounts = req.query.includeAccounts === 'true';
       
       console.log(`⚠️  [Telegram] User ${userId} requested to DELETE ALL TELEGRAM DATA (includeAccounts: ${includeAccounts})`);
+      
+      // CRITICAL: Disconnect Telegram client BEFORE deleting data
+      await telegramClientService.disconnectAndCleanup(userId);
       
       const result = await telegramService.deleteAllTelegramData(userId, includeAccounts);
       
