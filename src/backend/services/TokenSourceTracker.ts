@@ -58,6 +58,7 @@ class TokenSourceTracker {
       if (existing) {
         const existingToken = existing as { id: number; first_source_type: string };
         // Token already registered, just log a sighting
+        console.log(`   ⏭️  Token already in registry: ${entry.tokenMint.substring(0, 8)}... (originally from ${existingToken.first_source_type})`);
         await this.logSighting({
           tokenMint: entry.tokenMint,
           sourceType: entry.firstSourceType,
@@ -99,9 +100,8 @@ class TokenSourceTracker {
       ) as { id: number } | undefined;
 
       // Log token discovery (WebSocket notification can be added later)
-      console.log(`📊 [TokenTracker] New token discovered: ${entry.tokenMint} from ${entry.firstSourceType}`);
-
-      console.log(`📊 [TokenTracker] Registered new token ${entry.tokenMint} from ${entry.firstSourceType}`);
+      console.log(`   🆕 NEW TOKEN REGISTERED: ${entry.tokenMint.substring(0, 8)}... from ${entry.firstSourceType} (${entry.telegramChatName || 'unknown chat'})`);
+      
       return result?.id || 0;
     } catch (error: any) {
       console.error('[TokenTracker] Error registering token:', error);

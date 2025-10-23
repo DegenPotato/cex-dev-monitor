@@ -1353,7 +1353,7 @@ export class TelegramClientService extends EventEmitter {
       const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
       if (ownerStr === TOKEN_PROGRAM_ID && dataLength === 82) {
         const elapsed = Date.now() - startTime;
-        console.log(`   ✅ Token mint verified in ${elapsed}ms: ${address.substring(0, 8)}...`);
+        console.log(`   🔍 Token validation complete in ${elapsed}ms: ${address.substring(0, 8)}...`);
         return { isValid: true, actualTokens: [address] };
       }
       
