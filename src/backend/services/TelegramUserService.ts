@@ -371,6 +371,7 @@ export class TelegramUserService {
       monitoredUserIds: chat.monitored_user_ids ? JSON.parse(chat.monitored_user_ids) : [],
       monitoredKeywords: chat.monitored_keywords ? JSON.parse(chat.monitored_keywords) : [],
       isActive: chat.is_active === 1,
+      processBotMessages: chat.process_bot_messages === 1,
       createdAt: chat.created_at,
       updatedAt: chat.updated_at
     }));

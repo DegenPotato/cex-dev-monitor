@@ -749,7 +749,7 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
-      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit } = req.body;
+      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit, processBotMessages } = req.body;
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {
@@ -757,7 +757,8 @@ export function createTelegramRoutes() {
         monitoredUserIds,
         forwardToChatId,
         forwardAccountId,
-        isActive
+        isActive,
+        processBotMessages
       });
 
       // If initialHistoryLimit is provided, fetch history in background
