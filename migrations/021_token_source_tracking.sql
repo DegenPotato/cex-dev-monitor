@@ -91,11 +91,13 @@ CREATE TABLE IF NOT EXISTS trade_source_attribution (
   
   created_at INTEGER DEFAULT (strftime('%s', 'now')),
   
-  FOREIGN KEY (token_mint) REFERENCES token_registry(token_mint),
-  INDEX idx_trade_source_token (token_mint),
-  INDEX idx_trade_source_type (source_type),
-  INDEX idx_trade_source_chat (source_chat_id)
+  FOREIGN KEY (token_mint) REFERENCES token_registry(token_mint)
 );
+
+-- Create indexes for trade_source_attribution
+CREATE INDEX IF NOT EXISTS idx_trade_source_token ON trade_source_attribution(token_mint);
+CREATE INDEX IF NOT EXISTS idx_trade_source_type ON trade_source_attribution(source_type);
+CREATE INDEX IF NOT EXISTS idx_trade_source_chat ON trade_source_attribution(source_chat_id);
 
 -- Aggregate stats by source
 CREATE VIEW IF NOT EXISTS token_source_performance AS
