@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
-import { ohlcvCollectorV2 } from '../services/OHLCVCollectorV2.js';
+import { ohlcvCollectorV3 } from '../services/OHLCVCollectorV3.js';
 import { queryAll, queryOne } from '../database/helpers.js';
 
 const router = Router();
@@ -11,8 +11,8 @@ const authService = new SecureAuthService();
  */
 router.post('/api/ohlcv/v2/start', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
   try {
-    await ohlcvCollectorV2.start();
-    res.json({ success: true, message: 'OHLCV Collector V2 started' });
+    await ohlcvCollectorV3.start();
+    res.json({ success: true, message: 'OHLCV Collector V3 started' });
   } catch (error: any) {
     console.error('Error starting OHLCV collector:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -24,8 +24,8 @@ router.post('/api/ohlcv/v2/start', authService.requireSecureAuth(), async (_req:
  */
 router.post('/api/ohlcv/v2/stop', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
   try {
-    ohlcvCollectorV2.stop();
-    res.json({ success: true, message: 'OHLCV Collector V2 stopped' });
+    ohlcvCollectorV3.stop();
+    res.json({ success: true, message: 'OHLCV Collector V3 stopped' });
   } catch (error: any) {
     console.error('Error stopping OHLCV collector:', error);
     res.status(500).json({ success: false, error: error.message });

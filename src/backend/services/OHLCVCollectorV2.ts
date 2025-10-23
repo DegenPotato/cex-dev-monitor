@@ -404,6 +404,30 @@ export class OHLCVCollectorV2 {
       
       const ohlcvList = data?.data?.attributes?.ohlcv_list || [];
       
+      // Debug: Log first candle to see timestamp format
+      if (ohlcvList.length > 0) {
+        const firstCandle = ohlcvList[0];
+        const timestamp = firstCandle[0];
+        console.log(`      📊 First candle timestamp: ${timestamp}`);
+        console.log(`        As seconds: ${new Date(timestamp * 1000).toISOString()}`);
+        console.log(`        As millis:  ${new Date(timestamp).toISOString()}`);
+        
+        // If timestamp is in milliseconds (> 1 billion), convert to seconds
+        // Unix seconds for 2020+ would be > 1,577,836,800
+        // Unix milliseconds for 2020+ would be > 1,577,836,800,000
+        if (timestamp > 1000000000000) {
+          console.log(`        ✅ Detected milliseconds, converting to seconds`);
+          return ohlcvList.map((candle: number[]) => ({
+            timestamp: Math.floor(candle[0] / 1000), // Convert ms to seconds
+            open: candle[1],
+            high: candle[2],
+            low: candle[3],
+            close: candle[4],
+            volume: candle[5]
+          }));
+        }
+      }
+      
       return ohlcvList.map((candle: number[]) => ({
         timestamp: candle[0],
         open: candle[1],
