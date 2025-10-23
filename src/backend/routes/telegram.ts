@@ -743,6 +743,54 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Get topic performance analytics
+   */
+  router.get('/topics/analytics', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { telegramTopicService } = await import('../services/TelegramTopicService.js');
+      
+      const bestTopics = await telegramTopicService.getBestPerformingTopics(userId, 20);
+      
+      res.json({
+        success: true,
+        bestPerformingTopics: bestTopics
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting topic analytics:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Update topic-specific user filter
+   */
+  router.post('/chats/:chatId/topics/:topicId/user-filter', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId, topicId } = req.params;
+      const { monitoredUserIds, excludedUserIds } = req.body;
+      
+      const { telegramTopicService } = await import('../services/TelegramTopicService.js');
+      await telegramTopicService.updateTopicUserFilter(
+        userId, 
+        chatId, 
+        topicId,
+        monitoredUserIds,
+        excludedUserIds
+      );
+      
+      res.json({ 
+        success: true, 
+        message: 'Topic user filter updated'
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error updating topic user filter:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Update monitored topics for a chat
    */
   router.post('/monitored-chats/:chatId/topics', authService.requireSecureAuth(), async (req, res) => {
@@ -1071,7 +1119,28 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Get topics in a forum group
+   * Discover topics from Telegram API (fetch fresh from Telegram)
+   */
+  router.post('/chats/:chatId/topics/discover', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      
+      const { telegramTopicService } = await import('../services/TelegramTopicService.js');
+      const result = await telegramTopicService.discoverForumTopics(userId, chatId);
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error('[Telegram] Error discovering topics:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  /**
+   * Get topics in a forum group (from cache or history)
    */
   router.get('/chats/:chatId/topics', authService.requireSecureAuth(), async (req, res) => {
     try {

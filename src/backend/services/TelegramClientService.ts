@@ -701,6 +701,38 @@ export class TelegramClientService extends EventEmitter {
           console.log(`   ✅ Topic ${topicId} is monitored`);
         }
         
+        // Check topic-specific user filter if topic detected
+        if (topicId) {
+          try {
+            const { telegramTopicService } = await import('./TelegramTopicService.js');
+            const topicFilter = await telegramTopicService.getTopicUserFilter(userId, chatId, topicId);
+            
+            if (topicFilter) {
+              const senderId = message.senderId?.toString();
+              
+              // Check monitored users for this topic
+              if (topicFilter.monitored_user_ids) {
+                const monitoredIds = JSON.parse(topicFilter.monitored_user_ids);
+                if (monitoredIds.length > 0 && !monitoredIds.includes(senderId)) {
+                  console.log(`   ⏭️  Skipped: User ${senderId} not in topic's monitored users`);
+                  return;
+                }
+              }
+              
+              // Check excluded users for this topic
+              if (topicFilter.excluded_user_ids) {
+                const excludedIds = JSON.parse(topicFilter.excluded_user_ids);
+                if (excludedIds.includes(senderId)) {
+                  console.log(`   ⏭️  Skipped: User ${senderId} is excluded for this topic`);
+                  return;
+                }
+              }
+            }
+          } catch (error) {
+            console.log(`   ⚠️ Could not check topic user filter:`, error);
+          }
+        }
+        
         const topicInfo = topicId ? ` [Topic: ${topicId}]` : '';
         console.log(`📨 [Telegram:${userIdentifier}] Message in "${monitoredChat.chatName || chatId}" (${chatId})${topicInfo}`);
         console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
