@@ -30,7 +30,6 @@ import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
 import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
-import { ohlcvCollectorV3 } from './services/OHLCVCollectorV3.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';

@@ -1,4 +1,4 @@
-import { queryAll, queryOne } from '../database/helpers.js';
+import { queryAll } from '../database/helpers.js';
 
 async function testTimestamps() {
   console.log('\n🔍 Testing OHLCV Timestamp Issues\n');
