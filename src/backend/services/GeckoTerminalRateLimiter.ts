@@ -13,17 +13,22 @@ import { apiProviderTracker } from './ApiProviderTracker.js';
  * - Prevents bursts that trigger 429 errors
  */
 export class GeckoTerminalRateLimiter {
-  private requestQueue: Array<() => void> = [];
+  private requestQueue: Array<() => Promise<void>> = [];
   private requestTimestamps: number[] = [];
+  private isProcessing = false;
+  private backoffMs = 2000; // Dynamic backoff, starts at 2 seconds
+  private readonly MIN_REQUEST_INTERVAL = 2000; // Base interval: 2 seconds
+  private readonly MAX_REQUEST_INTERVAL = 60000; // Max backoff: 60 seconds
+  private readonly MAX_RETRIES = 3;
+  private consecutiveErrors = 0;
   private readonly maxRequestsPerMinute: number;
   private readonly windowMs = 60 * 1000; // 1 minute window
-  private isProcessing = false;
-  
+
   constructor(maxRequestsPerMinute: number = 10) {
     this.maxRequestsPerMinute = maxRequestsPerMinute;
     console.log(`🚦 [GeckoTerminal] Rate limiter initialized: ${maxRequestsPerMinute} req/min`);
   }
-  
+
   /**
    * Execute a GeckoTerminal API call with rate limiting
    * Automatically queues if limit reached
@@ -32,29 +37,55 @@ export class GeckoTerminalRateLimiter {
     return new Promise((resolve, reject) => {
       this.requestQueue.push(async () => {
         const startTime = Date.now();
-        try {
-          const result = await requestFn();
-          const responseTime = Date.now() - startTime;
-          
-          // Track successful call
-          apiProviderTracker.trackCall('GeckoTerminal', endpoint, true, responseTime);
-          
-          resolve(result);
-        } catch (error: any) {
-          const responseTime = Date.now() - startTime;
-          const statusCode = error?.response?.status || error?.status;
-          
-          // Track failed call
-          apiProviderTracker.trackCall(
-            'GeckoTerminal', 
-            endpoint, 
-            false, 
-            responseTime,
-            statusCode,
-            error?.message
-          );
-          
-          reject(error);
+        let retries = 0;
+        
+        while (retries <= this.MAX_RETRIES) {
+          try {
+            const result = await requestFn();
+            const responseTime = Date.now() - startTime;
+            
+            // Track successful call
+            apiProviderTracker.trackCall('GeckoTerminal', endpoint, true, responseTime);
+            
+            // Reset backoff on success
+            this.consecutiveErrors = 0;
+            this.backoffMs = this.MIN_REQUEST_INTERVAL;
+            
+            resolve(result);
+            return;
+          } catch (error: any) {
+            const responseTime = Date.now() - startTime;
+            const statusCode = error?.response?.status || error?.status;
+            
+            if (statusCode === 429 || error?.message === 'RATE_LIMITED') {
+              // Rate limit hit - increase backoff
+              this.consecutiveErrors++;
+              this.backoffMs = Math.min(
+                this.backoffMs * 2,
+                this.MAX_REQUEST_INTERVAL
+              );
+              
+              if (retries < this.MAX_RETRIES) {
+                console.log(`⚠️ [GeckoTerminal] Rate limited, retry ${retries + 1}/${this.MAX_RETRIES} after ${this.backoffMs}ms`);
+                await this.delay(this.backoffMs);
+                retries++;
+                continue;
+              }
+            }
+            
+            // Track failed call
+            apiProviderTracker.trackCall(
+              'GeckoTerminal', 
+              endpoint, 
+              false, 
+              responseTime,
+              statusCode,
+              error?.message
+            );
+            
+            reject(error);
+            return;
+          }
         }
       });
       
@@ -76,7 +107,7 @@ export class GeckoTerminalRateLimiter {
       // Clean up old timestamps outside the window
       const now = Date.now();
       this.requestTimestamps = this.requestTimestamps.filter(
-        timestamp => now - timestamp < this.windowMs
+        (timestamp: number) => now - timestamp < this.windowMs
       );
       
       // Check if we can make another request
@@ -98,9 +129,10 @@ export class GeckoTerminalRateLimiter {
         this.requestTimestamps.push(Date.now());
         await request();
         
-        // Small delay between requests to prevent bursts
-        const delayBetweenRequests = Math.ceil(this.windowMs / this.maxRequestsPerMinute);
-        await this.delay(delayBetweenRequests);
+        // Add adaptive delay based on backoff
+        const baseDelay = Math.ceil(this.windowMs / this.maxRequestsPerMinute);
+        const adaptiveDelay = Math.max(baseDelay, this.backoffMs);
+        await this.delay(adaptiveDelay);
       }
     }
     
@@ -113,14 +145,16 @@ export class GeckoTerminalRateLimiter {
   getStatus() {
     const now = Date.now();
     const recentRequests = this.requestTimestamps.filter(
-      timestamp => now - timestamp < this.windowMs
+      (timestamp: number) => now - timestamp < this.windowMs
     );
     
     return {
       queueLength: this.requestQueue.length,
       requestsInLastMinute: recentRequests.length,
       maxRequestsPerMinute: this.maxRequestsPerMinute,
-      utilizationPercent: (recentRequests.length / this.maxRequestsPerMinute) * 100
+      utilizationPercent: (recentRequests.length / this.maxRequestsPerMinute) * 100,
+      currentBackoff: this.backoffMs,
+      consecutiveErrors: this.consecutiveErrors
     };
   }
   
@@ -133,4 +167,5 @@ export class GeckoTerminalRateLimiter {
 }
 
 // Global singleton instance
-export const globalGeckoTerminalLimiter = new GeckoTerminalRateLimiter(25); // 25 req/min (safe under 30 limit)
+// VERY conservative: 10 req/min to avoid 429 errors completely
+export const globalGeckoTerminalLimiter = new GeckoTerminalRateLimiter(10);

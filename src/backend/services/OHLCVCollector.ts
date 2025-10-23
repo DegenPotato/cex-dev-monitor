@@ -32,15 +32,14 @@ export class OHLCVCollector {
   // Deduplication cache (per pool+timeframe) - reserved for future use
   // private processedPools: Set<string> = new Set();
   
-  // Timeframe configurations
-  // Note: Only fetch 1m data and aggregate it in the calculator for consistency
+  // Timeframe configurations with smart intervals
+  // Fetch different timeframes at different intervals for efficiency
   private readonly TIMEFRAMES = [
-    { name: '1m', api: 'minute', aggregate: 1, intervalMs: 60 * 1000 }
-    // Removed other timeframes - we'll aggregate from 1m data for consistency
-    // { name: '15m', api: 'minute', aggregate: 15, intervalMs: 15 * 60 * 1000 },
-    // { name: '1h', api: 'hour', aggregate: 1, intervalMs: 60 * 60 * 1000 },
-    // { name: '4h', api: 'hour', aggregate: 4, intervalMs: 4 * 60 * 60 * 1000 },
-    // { name: '1d', api: 'day', aggregate: 1, intervalMs: 24 * 60 * 60 * 1000 }
+    { name: '1m', api: 'minute', aggregate: 1, intervalMs: 60 * 1000 },      // Every 1 minute
+    { name: '15m', api: 'minute', aggregate: 15, intervalMs: 15 * 60 * 1000 }, // Every 15 minutes
+    { name: '1h', api: 'hour', aggregate: 1, intervalMs: 60 * 60 * 1000 },     // Every hour
+    { name: '4h', api: 'hour', aggregate: 4, intervalMs: 4 * 60 * 60 * 1000 },  // Every 4 hours
+    { name: '1d', api: 'day', aggregate: 1, intervalMs: 24 * 60 * 60 * 1000 }   // Every day
   ];
   
   // Rate limiting - Global rate limiter handles all pacing
