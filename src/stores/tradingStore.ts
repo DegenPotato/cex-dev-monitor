@@ -75,6 +75,7 @@ interface PortfolioStats {
   totalPnLPercent: number;
   dayChange: number;
   dayChangePercent: number;
+  solPrice?: number;
   topGainer?: TokenBalance;
   topLoser?: TokenBalance;
 }
@@ -149,7 +150,8 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
           totalPnL: data.data.profitLoss,
           totalPnLPercent: data.data.profitLossPercent,
           dayChange: 0,
-          dayChangePercent: 0
+          dayChangePercent: 0,
+          solPrice: data.data.solPrice
         },
         wallets: state.wallets.map(w => {
           const updatedWallet = data.data.wallets.find((uw: any) => uw.id === w.id);
@@ -184,6 +186,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
       set((state) => ({
         portfolioStats: state.portfolioStats ? {
           ...state.portfolioStats,
+          solPrice: data.data.sol,
           // Recalculate total value with new SOL price
           totalValueUSD: (state.portfolioStats.totalSOL * data.data.sol) + 
             state.wallets.reduce((sum, w) => 

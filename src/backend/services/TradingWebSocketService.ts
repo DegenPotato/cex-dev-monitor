@@ -8,6 +8,7 @@ import { queryAll, queryOne } from '../database/helpers.js';
 import { getWalletManager } from '../core/wallet.js';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { solPriceOracle } from './SolPriceOracle.js';
+import { tokenPriceOracle } from './TokenPriceOracle.js';
 
 interface PortfolioUpdate {
   type: 'portfolio_update';
@@ -15,6 +16,7 @@ interface PortfolioUpdate {
   data: {
     totalValueUSD: number;
     totalSOL: number;
+    solPrice?: number;
     wallets: any[];
     topTokens: any[];
     profitLoss: number;
@@ -213,6 +215,26 @@ class TradingWebSocketService {
             ORDER BY total_value DESC
             LIMIT 10
           `, walletIds);
+          
+          // Fetch real-time token prices
+          if (holdings.length > 0) {
+            const mintAddresses = holdings.map(h => h.token_mint);
+            const tokenPrices = await tokenPriceOracle.getTokenPrices(mintAddresses);
+            
+            // Update holdings with real prices
+            holdings = holdings.map(h => {
+              const price = tokenPrices.get(h.token_mint);
+              if (price) {
+                return {
+                  ...h,
+                  avg_price: price.priceUSD,
+                  total_value: h.total_amount * price.priceUSD,
+                  price_change_24h: price.priceChange24h
+                };
+              }
+              return h;
+            });
+          }
         } catch (e) {
           holdings = [];
         }
@@ -260,6 +282,7 @@ class TradingWebSocketService {
         data: {
           totalValueUSD,
           totalSOL,
+          solPrice: solPriceOracle.getPrice(),
           wallets: wallets.map((w: any) => ({
             id: w.id,
             name: w.walletName,

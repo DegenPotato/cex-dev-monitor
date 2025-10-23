@@ -38,6 +38,7 @@ import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import { telegramEntityCache } from './services/TelegramEntityCache.js';
 import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
 import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
+import { tokenPriceOracle } from './services/TokenPriceOracle.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -86,6 +87,18 @@ const io = new SocketIOServer(httpServer, {
 const tradingWebSocketService = getTradingWebSocketService();
 tradingWebSocketService.initialize(io);
 console.log('✅ Trading WebSocket service initialized on /trading namespace');
+
+// Start price oracles for trading features
+solPriceOracle.start().then(async () => {
+  console.log('💰 SOL Price Oracle started for Trading Bot');
+  
+  // Start token price oracle with current SOL price
+  const solPrice = solPriceOracle.getPrice();
+  await tokenPriceOracle.start(solPrice);
+  console.log('🪙 Token Price Oracle started for Trading Bot');
+}).catch(err => {
+  console.error('Failed to start price oracles:', err);
+});
 
 // Start Telegram Redis Stream Consumer (if enabled)
 if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
@@ -2676,6 +2689,46 @@ app.post('/api/sol-oracle/stop', (_req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Token price oracle endpoints
+app.get('/api/token-oracle/price/:mintAddress', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    const price = await tokenPriceOracle.getTokenPrice(mintAddress);
+    
+    if (price) {
+      res.json({ success: true, data: price });
+    } else {
+      res.status(404).json({ success: false, error: 'Token price not found' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/token-oracle/prices', async (req, res) => {
+  try {
+    const { addresses } = req.body;
+    
+    if (!addresses || !Array.isArray(addresses)) {
+      return res.status(400).json({ success: false, error: 'addresses array required' });
+    }
+    
+    const prices = await tokenPriceOracle.getTokenPrices(addresses);
+    const pricesArray = Array.from(prices.entries()).map(([address, price]) => ({
+      ...price,
+      address // Override the address in price object to ensure consistency
+    }));
+    
+    res.json({ 
+      success: true, 
+      count: pricesArray.length,
+      data: pricesArray 
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
