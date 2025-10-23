@@ -2831,6 +2831,21 @@ export class TelegramClientService extends EventEmitter {
     console.log(`📜 [Telegram] Scanning history for chat ${chatId} (depth: ${depth})`);
     
     try {
+      // Get chat info for the chat name
+      let chatEntity: any;
+      let chatName = chatId;
+      let chatUsername: string | undefined;
+      
+      try {
+        chatEntity = await client.getEntity(chatId);
+        chatName = chatEntity.title || chatEntity.username || 
+                  `${chatEntity.firstName || ''} ${chatEntity.lastName || ''}`.trim() || 
+                  chatId;
+        chatUsername = chatEntity.username;
+      } catch (error) {
+        console.log(`   ⚠️ Could not get chat info for ${chatId}`);
+      }
+      
       const messages = await client.getMessages(chatId, { limit: depth });
       const contracts: Map<string, any> = new Map();
       
@@ -2844,10 +2859,22 @@ export class TelegramClientService extends EventEmitter {
           // Store the oldest mention of each contract
           if (!contracts.has(contract.address) || 
               message.date < contracts.get(contract.address).date) {
+            
+            // Get sender username for this message
+            let senderUsername: string | undefined;
+            try {
+              senderUsername = await this.getSenderUsername(client, message.senderId);
+            } catch (error) {
+              // Ignore error getting username
+            }
+            
             contracts.set(contract.address, {
               ...contract,
               message,
-              date: message.date
+              date: message.date,
+              senderUsername,
+              chatName,
+              chatUsername
             });
           }
         }
@@ -2859,11 +2886,11 @@ export class TelegramClientService extends EventEmitter {
       for (const [address, data] of contracts) {
         await this.markFirstMention(address, chatId, data.message);
         
-        // Log to token_mints/token_registry
+        // Log to token_mints/token_registry with complete details
         await this.logTokenMint(address, {
           platform: 'pumpfun',
           firstSeenSource: 'telegram_backlog',
-          chatName: data.message.chatName || chatId,
+          chatName: data.chatName,
           chatId: chatId,
           messageTimestamp: data.date,
           senderId: data.message.senderId?.toString(),
@@ -2872,15 +2899,18 @@ export class TelegramClientService extends EventEmitter {
           userId: userId
         });
         
-        // Log as backlog detection
+        // Log as backlog detection with complete details
         await this.logTelegramDetection({
           contractAddress: address,
           chatId,
+          chatName: data.chatName,
+          chatUsername: data.chatUsername,
           messageId: data.message.id.toString(),
           messageText: data.message.message.substring(0, 500),
           messageTimestamp: data.date,
           senderId: data.message.senderId?.toJSNumber(),
-          detectionType: data.type,
+          senderUsername: data.senderUsername,
+          detectionType: 'backlog', // Mark explicitly as backlog type
           detectedByUserId: userId,
           detectedAt: Math.floor(Date.now() / 1000),
           isFirstMention: true,
@@ -2921,9 +2951,9 @@ export class TelegramClientService extends EventEmitter {
       const now = Math.floor(Date.now() / 1000);
       
       // Use TokenSourceTracker for comprehensive token_registry tracking
-      const sourceType = data.firstSeenSource?.replace('telegram_', '') === 'realtime' ? 'telegram' : 
-                        data.firstSeenSource?.replace('telegram_', '') === 'backlog' ? 'telegram' : 
-                        'telegram';
+      // Properly map the source type - keep distinction between realtime and backlog
+      const sourceType = 'telegram'; // Base type is always telegram for now
+      const detectionType = data.firstSeenSource || 'telegram_realtime';
       
       await tokenSourceTracker.registerToken({
         tokenMint: contractAddress,
@@ -2931,7 +2961,7 @@ export class TelegramClientService extends EventEmitter {
         firstSourceDetails: {
           platform: data.platform || 'pumpfun',
           isBacklog: data.isBacklog || false,
-          detectionType: data.firstSeenSource,
+          detectionType: detectionType,  // Preserves telegram_realtime vs telegram_backlog
           messageTimestamp: data.messageTimestamp
         },
         telegramChatId: data.chatId,
