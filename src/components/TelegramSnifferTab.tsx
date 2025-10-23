@@ -1660,7 +1660,18 @@ export function TelegramSnifferTab() {
                               if (sniffer) {
                                 setConfigKeywords(sniffer.monitoredKeywords?.join(', ') || '');
                                 setConfigForwardTo(sniffer.forwardToChatId || '');
+                                setConfigForwardAccountId(sniffer.forwardAccountId || null);
                                 setConfigProcessBotMessages(sniffer.processBotMessages || false);
+                                // Note: initialHistoryLimit is not loaded since it's a one-time fetch
+                                
+                                // Load duplicate strategy from chat config API
+                                fetch(`${config.apiUrl}/api/telegram/chat-config/${chat.chatId}`, {
+                                  credentials: 'include'
+                                }).then(response => response.json()).then(data => {
+                                  if (data.duplicateStrategy) {
+                                    setConfigDuplicateStrategy(data.duplicateStrategy);
+                                  }
+                                }).catch(err => console.error('Failed to load chat config:', err));
                                 
                                 // Load users if there are monitored user IDs
                                 if (sniffer.monitoredUserIds && sniffer.monitoredUserIds.length > 0) {

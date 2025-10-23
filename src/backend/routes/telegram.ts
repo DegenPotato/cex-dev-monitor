@@ -3,7 +3,7 @@ import { TelegramUserService } from '../services/TelegramUserService.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
 import { telegramRateLimiter } from '../services/TelegramRateLimiter.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
-import { execute } from '../database/helpers.js';
+import { execute, queryOne } from '../database/helpers.js';
 
 const authService = new SecureAuthService();
 
@@ -1033,6 +1033,41 @@ export function createTelegramRoutes() {
       });
     } catch (error: any) {
       console.error('[Telegram] Error getting forwarding stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get chat duplicate strategy configuration
+   */
+  router.get('/chat-config/:chatId', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { chatId } = req.params;
+      
+      const config = await queryOne<any>(
+        `SELECT * FROM telegram_chat_configs WHERE chat_id = ? AND user_id = ?`,
+        [chatId, userId]
+      );
+      
+      if (!config) {
+        // Return default config if none exists
+        return res.json({
+          duplicateStrategy: 'first_only_no_backlog',
+          backlogScanDepth: 1000,
+          backlogTimeLimit: 86400,
+          minTimeBetweenDuplicates: 0
+        });
+      }
+      
+      res.json({
+        duplicateStrategy: config.duplicate_strategy,
+        backlogScanDepth: config.backlog_scan_depth,
+        backlogTimeLimit: config.backlog_time_limit,
+        minTimeBetweenDuplicates: config.min_time_between_duplicates
+      });
+    } catch (error: any) {
+      console.error('[Telegram] Error getting chat config:', error);
       res.status(500).json({ error: error.message });
     }
   });
