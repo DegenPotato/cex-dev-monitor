@@ -39,16 +39,19 @@ CREATE TABLE trading_wallets (
 );
 
 -- Step 4: Migrate data from backup if it exists
--- The backup will have the old column names (wallet_address, encrypted_private_key)
-INSERT OR IGNORE INTO trading_wallets (id, user_id, public_key, private_key, created_at)
+-- The backup has NEW column names (public_key, private_key) from migration 019
+INSERT OR IGNORE INTO trading_wallets (id, user_id, public_key, private_key, sol_balance, is_active, is_default, created_at)
 SELECT 
   id,
   user_id,
-  wallet_address as public_key,  -- Old column name
-  encrypted_private_key as private_key,  -- Old column name
+  public_key,
+  private_key,
+  COALESCE(sol_balance, 0),
+  COALESCE(is_active, 1),
+  COALESCE(is_default, 0),
   COALESCE(created_at, strftime('%s', 'now'))
 FROM trading_wallets_backup
-WHERE EXISTS (SELECT 1 FROM trading_wallets_backup LIMIT 1);
+WHERE (SELECT COUNT(*) FROM trading_wallets_backup) > 0;
 
 -- Step 5: Create the token holdings table
 CREATE TABLE IF NOT EXISTS wallet_token_holdings (
