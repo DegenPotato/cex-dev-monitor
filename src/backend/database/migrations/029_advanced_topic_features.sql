@@ -186,10 +186,3 @@ CREATE TABLE IF NOT EXISTS telegram_topic_logs (
 
 CREATE INDEX IF NOT EXISTS idx_topic_logs_operation ON telegram_topic_logs(operation, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_topic_logs_errors ON telegram_topic_logs(status, created_at DESC) WHERE status = 'failed';
-
--- ============================================
--- 8. Migration tracking
--- ============================================
-INSERT INTO migrations (name, applied_at) 
-VALUES ('029_advanced_topic_features.sql', strftime('%s', 'now'))
-ON CONFLICT(name) DO NOTHING;
