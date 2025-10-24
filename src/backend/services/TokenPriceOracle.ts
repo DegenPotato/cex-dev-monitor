@@ -373,36 +373,12 @@ export class TokenPriceOracle {
 
   /**
    * Save token price to database
+   * Now only saves to gecko_token_data - token_market_data is a VIEW that auto-populates
    */
   private async saveToDatabase(price: TokenPrice): Promise<void> {
     try {
-      // Save to existing token_market_data table for backward compatibility
-      await execute(`
-        INSERT OR REPLACE INTO token_market_data (
-          mint_address,
-          token_symbol,
-          token_name,
-          price_usd,
-          price_sol,
-          price_change_24h,
-          volume_24h_usd,
-          market_cap_usd,
-          liquidity_usd,
-          last_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now') * 1000)
-      `, [
-        price.mintAddress,
-        price.symbol || null,
-        price.name || null,
-        price.priceUsd,
-        price.priceSol || null,
-        price.priceChange24h || null,
-        price.volume24h || null,
-        price.marketCap || null,
-        price.liquidity || null
-      ]);
-      
-      // Save comprehensive data to new gecko_token_data table
+      // Save comprehensive data to gecko_token_data (source of truth)
+      // token_market_data is now a VIEW that automatically pulls from this
       await this.saveComprehensiveData(price);
       
     } catch (error) {
