@@ -41,6 +41,8 @@ export class TelegramForwardingService extends EventEmitter {
   private recentForwards: Map<number, ForwardAttempt[]> = new Map(); // Rule ID -> recent attempts
   private readonly RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
   private readonly HISTORY_RETENTION_DAYS = 7;
+  private entityCache: Map<string, any> = new Map(); // Cache resolved entities
+  private lastUserForwardTime: number = 0; // Track last user forward time
 
   private constructor() {
     super();
@@ -250,6 +252,7 @@ export class TelegramForwardingService extends EventEmitter {
       // Forward to each target chat
       for (const targetChatId of rule.targetChatIds) {
         const forwardStartTime = Date.now();
+        let targetEntity: any; // Declare here so it's accessible in catch block
         
         try {
           console.log(`  ➡️  Forwarding to ${targetChatId} using account ${rule.targetAccountId}...`);
@@ -262,49 +265,69 @@ export class TelegramForwardingService extends EventEmitter {
             throw new Error(`Cannot forward to user ${targetChatId}: Bot accounts cannot initiate conversations with users. Please use a user account for forwarding.`);
           }
           
-          // Resolve target entity
-          let targetEntity: any;
+          // Add delay for user forwards to avoid rate limits
+          if (isUserId) {
+            const timeSinceLastForward = Date.now() - this.lastUserForwardTime;
+            if (timeSinceLastForward < 3000) {
+              const waitTime = 3000 - timeSinceLastForward;
+              console.log(`  ⏱️ Waiting ${waitTime}ms to avoid user forward rate limit...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            this.lastUserForwardTime = Date.now();
+          }
           
+          // Resolve target entity
           if (isUserId) {
             // This is a user ID - need special handling
             console.log(`  🔍 Resolving user ID: ${targetChatId}`);
             
-            // Pre-load entities to warm up the cache
-            try {
-              await telegramEntityCache.preloadEntities(client, [targetChatId]);
-              console.log(`  ✅ Pre-loaded entity cache`);
-            } catch (e) {
-              console.log(`  ⚠️ Cache pre-load failed: ${e}`);
-            }
-            
-            try {
-              // Method 1: Try with different client methods
-              const dialogs = await client.getDialogs({ limit: 100 });
-              const userDialog = dialogs.find((d: any) => 
-                d.entity?.id?.toString() === targetChatId
-              );
-              
-              if (userDialog) {
-                targetEntity = userDialog.entity;
-                console.log(`  ✅ Found user in dialogs`);
-              } else {
-                // Method 2: Try to get input entity with int conversion
-                targetEntity = await client.getInputEntity(parseInt(targetChatId));
-                console.log(`  ✅ Got input entity for user`);
+            // Check entity cache first
+            const cacheKey = `entity_${targetChatId}_${rule.targetAccountId}`;
+            if (this.entityCache.has(cacheKey)) {
+              targetEntity = this.entityCache.get(cacheKey);
+              console.log(`  📦 Using cached entity for user ${targetChatId}`);
+            } else {
+              // Pre-load entities to warm up the cache
+              try {
+                await telegramEntityCache.preloadEntities(client, [targetChatId]);
+                console.log(`  ✅ Pre-loaded entity cache`);
+              } catch (e) {
+                console.log(`  ⚠️ Cache pre-load failed: ${e}`);
               }
-            } catch (error: any) {
-              console.log(`  ⚠️ Resolution failed: ${error.message}`);
               
-              // Check if error indicates we haven't interacted with this user
-              if (error.message?.includes('Could not find the input entity') || 
-                  error.message?.includes('PEER_ID_INVALID')) {
-                throw new Error(
-                  `Cannot forward to user ${targetChatId}: No existing conversation found. ` +
-                  `The user must have previously messaged this account, or you must initiate ` +
-                  `a conversation with them first. Try sending a message manually to establish contact.`
+              try {
+                // Method 1: Try with different client methods
+                const dialogs = await client.getDialogs({ limit: 100 });
+                const userDialog = dialogs.find((d: any) => 
+                  d.entity?.id?.toString() === targetChatId
                 );
-              } else {
-                throw error;
+                
+                if (userDialog) {
+                  targetEntity = userDialog.entity;
+                  console.log(`  ✅ Found user in dialogs`);
+                } else {
+                  // Method 2: Try to get input entity with int conversion
+                  targetEntity = await client.getInputEntity(parseInt(targetChatId));
+                  console.log(`  ✅ Got input entity for user`);
+                }
+                
+                // Cache the entity for future use
+                this.entityCache.set(cacheKey, targetEntity);
+                console.log(`  💾 Cached entity for user ${targetChatId}`);
+              } catch (error: any) {
+                console.log(`  ⚠️ Resolution failed: ${error.message}`);
+                
+                // Check if error indicates we haven't interacted with this user
+                if (error.message?.includes('Could not find the input entity') || 
+                    error.message?.includes('PEER_ID_INVALID')) {
+                  throw new Error(
+                    `Cannot forward to user ${targetChatId}: No existing conversation found. ` +
+                    `The user must have previously messaged this account, or you must initiate ` +
+                    `a conversation with them first. Try sending a message manually to establish contact.`
+                  );
+                } else {
+                  throw error;
+                }
               }
             }
           } else {
@@ -385,6 +408,65 @@ export class TelegramForwardingService extends EventEmitter {
           
         } catch (error: any) {
           const responseTime = Date.now() - forwardStartTime;
+          
+          // Check for flood wait error
+          if (error.message?.includes('A wait of') && error.message?.includes('seconds is required')) {
+            const waitMatch = error.message.match(/A wait of (\d+) seconds/);
+            if (waitMatch) {
+              const waitSeconds = parseInt(waitMatch[1]);
+              console.log(`  ⏱️ Telegram rate limit: waiting ${waitSeconds}s before retry...`);
+              
+              // Wait the required time
+              await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+              
+              // Retry the forward after waiting
+              try {
+                console.log(`  🔄 Retrying forward to ${targetChatId} after rate limit wait...`);
+                
+                if (rule.forwardMode === 'forward') {
+                  await client.forwardMessages(targetEntity, {
+                    messages: [message.id],
+                    fromPeer: sourceChatId
+                  });
+                } else {
+                  let messageText = message.text || '';
+                  if (rule.includeSenderInfo && message.senderUsername) {
+                    messageText = `From @${message.senderUsername}:\n\n${messageText}`;
+                  }
+                  
+                  await client.sendMessage(targetEntity, {
+                    message: messageText || ''
+                  });
+                }
+                
+                const retryResponseTime = Date.now() - forwardStartTime;
+                console.log(`  ✅ Retry successful for ${targetChatId} after ${waitSeconds}s wait (total ${retryResponseTime}ms)`);
+                
+                // Log success
+                await this.logForwardingHistory(
+                  rule.id,
+                  rule.userId,
+                  sourceChatId,
+                  message,
+                  targetChatId,
+                  'success',
+                  `Succeeded after ${waitSeconds}s rate limit wait`,
+                  retryResponseTime
+                );
+                
+                // Track forward attempt for rate limiting
+                this.trackForwardAttempt(rule.id);
+                
+                // Update rule stats
+                await this.updateRuleStats(rule.id, true);
+                
+                continue; // Skip the error handling below
+              } catch (retryError: any) {
+                console.error(`  ❌ Retry also failed for ${targetChatId}:`, retryError.message);
+                error.message = `Retry failed after ${waitSeconds}s wait: ${retryError.message}`;
+              }
+            }
+          }
           
           console.error(`  ❌ Failed to forward to ${targetChatId}:`, error.message);
           
