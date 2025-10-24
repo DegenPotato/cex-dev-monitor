@@ -3,10 +3,15 @@
  * 
  * Key features:
  * - Fetches ALL pools (bonding curve + DEX)
- * - Handles PumpFun token migrations
- * - Properly tags pool types for chart stitching
+ * - Handles PumpFun token migrations (to pumpswap or raydium)
+ * - Properly tags pool types and is_post_migration flag for chart stitching
  * - Fixed timestamp conversion
  * - Prioritizes all timeframes including 1m
+ * 
+ * Chart Stitching Logic:
+ * - Pre-migration: PumpFun bonding curve (dex_id='pump-fun', is_post_migration=0)
+ * - Post-migration: PumpSwap/Raydium DEX (dex_id='pumpswap'/'raydium', is_post_migration=1)
+ * - The is_post_migration flag is set based on graduated_at timestamp comparison
  */
 
 import { queryAll, queryOne, execute } from '../database/helpers.js';
@@ -394,6 +399,9 @@ export class OHLCVCollectorV3 {
       for (const candle of batch) {
         try {
           // Determine if this candle is pre or post migration
+          // This flag is the source of truth for chart stitching
+          // Pre-migration: PumpFun bonding curve data
+          // Post-migration: PumpSwap or Raydium DEX data (newer tokens use pumpswap, older may use raydium)
           const isPostMigration = migrationUnix && candle.timestamp >= migrationUnix;
           
           await execute(`
