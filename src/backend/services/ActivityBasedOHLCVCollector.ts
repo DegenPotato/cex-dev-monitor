@@ -423,9 +423,9 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
            ELSE 5
          END,
          next_update ASC
-       LIMIT 50`
-      [now]
-    );
+       LIMIT 50`,
+        [now]
+      );
     
     if (duePools.length === 0) {
       return;
