@@ -1,0 +1,573 @@
+import { getDb, queryOne, queryAll, execute } from '../database/helpers.js';
+import { 
+    Campaign, 
+    CampaignNode, 
+    CampaignAlert,
+    CampaignMetrics,
+    RuntimeInstance,
+    CampaignTemplate
+} from '../models/Campaign.js';
+import { getCampaignExecutor } from './CampaignExecutor.js';
+import { getSolanaEventDetector } from './SolanaEventDetector.js';
+
+export class CampaignManager {
+    constructor() {
+        console.log('📊 CampaignManager initialized');
+    }
+
+    // ==================== Campaign CRUD ====================
+
+    async createCampaign(userId: number, campaign: Partial<Campaign>): Promise<Campaign> {
+        const result = await execute(
+            `INSERT INTO campaigns (user_id, name, description, enabled, tags, lifetime_ms, max_instances)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                userId,
+                campaign.name || 'New Campaign',
+                campaign.description || '',
+                campaign.enabled !== false ? 1 : 0,
+                JSON.stringify(campaign.tags || []),
+                campaign.lifetime_ms || null,
+                campaign.max_instances || 100
+            ]
+        );
+
+        const newCampaign: Campaign = {
+            id: result.lastInsertRowid,
+            user_id: userId,
+            name: campaign.name || 'New Campaign',
+            description: campaign.description,
+            enabled: campaign.enabled !== false,
+            tags: campaign.tags || [],
+            lifetime_ms: campaign.lifetime_ms,
+            max_instances: campaign.max_instances || 100,
+            created_at: Date.now()
+        };
+
+        // Create nodes if provided
+        if (campaign.nodes && campaign.nodes.length > 0) {
+            for (const node of campaign.nodes) {
+                await this.addNode(newCampaign.id!, node);
+            }
+            newCampaign.nodes = campaign.nodes;
+        }
+
+        console.log(`✅ Created campaign ${newCampaign.id}: ${newCampaign.name}`);
+        return newCampaign;
+    }
+
+    async getCampaign(campaignId: number, userId?: number): Promise<Campaign | null> {
+        const whereClause = userId ? 'c.id = ? AND c.user_id = ?' : 'c.id = ?';
+        const params = userId ? [campaignId, userId] : [campaignId];
+
+        const campaign = await queryOne(
+            `SELECT c.*,
+                (SELECT json_group_array(json_object(
+                    'node_id', node_id,
+                    'node_type', node_type,
+                    'parent_node_id', parent_node_id,
+                    'parallel_group', parallel_group,
+                    'config', config,
+                    'position_x', position_x,
+                    'position_y', position_y
+                ))
+                FROM campaign_nodes 
+                WHERE campaign_id = c.id
+                ) as nodes_json
+             FROM campaigns c
+             WHERE ${whereClause}`,
+            params
+        );
+
+        if (!campaign) return null;
+
+        // Parse JSON fields
+        if (campaign.tags) campaign.tags = JSON.parse(campaign.tags);
+        if (campaign.nodes_json) {
+            campaign.nodes = JSON.parse(campaign.nodes_json);
+            campaign.nodes.forEach((node: CampaignNode) => {
+                if (typeof node.config === 'string') {
+                    node.config = JSON.parse(node.config);
+                }
+            });
+        }
+        delete campaign.nodes_json;
+
+        return campaign as Campaign;
+    }
+
+    async getUserCampaigns(userId: number): Promise<Campaign[]> {
+        const campaigns = await queryAll(
+            `SELECT c.*,
+                (SELECT COUNT(*) FROM campaign_runtime_instances 
+                 WHERE campaign_id = c.id AND status = 'running') as active_instances,
+                (SELECT COUNT(*) FROM campaign_runtime_instances 
+                 WHERE campaign_id = c.id 
+                 AND date(started_at, 'unixepoch') = date('now')) as today_instances
+             FROM campaigns c
+             WHERE c.user_id = ?
+             ORDER BY c.created_at DESC`,
+            [userId]
+        );
+
+        // Parse JSON fields
+        for (const campaign of campaigns) {
+            if (campaign.tags) campaign.tags = JSON.parse(campaign.tags);
+        }
+
+        return campaigns as Campaign[];
+    }
+
+    async updateCampaign(campaignId: number, userId: number, updates: Partial<Campaign>): Promise<boolean> {
+        const fields: string[] = [];
+        const values: any[] = [];
+
+        if (updates.name !== undefined) {
+            fields.push('name = ?');
+            values.push(updates.name);
+        }
+        if (updates.description !== undefined) {
+            fields.push('description = ?');
+            values.push(updates.description);
+        }
+        if (updates.enabled !== undefined) {
+            fields.push('enabled = ?');
+            values.push(updates.enabled ? 1 : 0);
+        }
+        if (updates.tags !== undefined) {
+            fields.push('tags = ?');
+            values.push(JSON.stringify(updates.tags));
+        }
+        if (updates.lifetime_ms !== undefined) {
+            fields.push('lifetime_ms = ?');
+            values.push(updates.lifetime_ms);
+        }
+        if (updates.max_instances !== undefined) {
+            fields.push('max_instances = ?');
+            values.push(updates.max_instances);
+        }
+
+        fields.push('updated_at = ?');
+        values.push(Math.floor(Date.now() / 1000));
+
+        values.push(campaignId, userId);
+
+        await execute(
+            `UPDATE campaigns SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`,
+            values
+        );
+
+        return true;
+    }
+
+    async deleteCampaign(campaignId: number, userId: number): Promise<boolean> {
+        // First, stop any running instances
+        await execute(
+            `UPDATE campaign_runtime_instances 
+             SET status = 'failed', error_message = 'Campaign deleted'
+             WHERE campaign_id = ? AND status = 'running'`,
+            [campaignId]
+        );
+
+        // Delete the campaign (cascades to nodes, events, etc.)
+        const result = await execute(
+            `DELETE FROM campaigns WHERE id = ? AND user_id = ?`,
+            [campaignId, userId]
+        );
+
+        return result.changes > 0;
+    }
+
+    async activateCampaign(campaignId: number, userId: number): Promise<boolean> {
+        await execute(
+            `UPDATE campaigns 
+             SET enabled = 1, last_activated_at = ? 
+             WHERE id = ? AND user_id = ?`,
+            [Math.floor(Date.now() / 1000), campaignId, userId]
+        );
+
+        // Reload in detector
+        const detector = getSolanaEventDetector();
+        await detector['loadActiveCampaigns']();
+
+        return true;
+    }
+
+    async deactivateCampaign(campaignId: number, userId: number): Promise<boolean> {
+        await execute(
+            `UPDATE campaigns SET enabled = 0 WHERE id = ? AND user_id = ?`,
+            [campaignId, userId]
+        );
+
+        return true;
+    }
+
+    // ==================== Node Management ====================
+
+    async addNode(campaignId: number, node: CampaignNode): Promise<CampaignNode> {
+        const result = await execute(
+            `INSERT INTO campaign_nodes 
+             (campaign_id, node_id, node_type, parent_node_id, parallel_group, config, position_x, position_y)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                campaignId,
+                node.node_id,
+                node.node_type,
+                node.parent_node_id || null,
+                node.parallel_group || null,
+                JSON.stringify(node.config),
+                node.position_x || 0,
+                node.position_y || 0
+            ]
+        );
+
+        node.id = result.lastInsertRowid;
+        node.campaign_id = campaignId;
+        
+        return node;
+    }
+
+    async updateNode(campaignId: number, nodeId: string, updates: Partial<CampaignNode>): Promise<boolean> {
+        const fields: string[] = [];
+        const values: any[] = [];
+
+        if (updates.parent_node_id !== undefined) {
+            fields.push('parent_node_id = ?');
+            values.push(updates.parent_node_id);
+        }
+        if (updates.parallel_group !== undefined) {
+            fields.push('parallel_group = ?');
+            values.push(updates.parallel_group);
+        }
+        if (updates.config !== undefined) {
+            fields.push('config = ?');
+            values.push(JSON.stringify(updates.config));
+        }
+        if (updates.position_x !== undefined) {
+            fields.push('position_x = ?');
+            values.push(updates.position_x);
+        }
+        if (updates.position_y !== undefined) {
+            fields.push('position_y = ?');
+            values.push(updates.position_y);
+        }
+
+        if (fields.length === 0) return false;
+
+        values.push(campaignId, nodeId);
+
+        await execute(
+            `UPDATE campaign_nodes SET ${fields.join(', ')} WHERE campaign_id = ? AND node_id = ?`,
+            values
+        );
+
+        return true;
+    }
+
+    async deleteNode(campaignId: number, nodeId: string): Promise<boolean> {
+        // Update children to have no parent
+        await execute(
+            `UPDATE campaign_nodes SET parent_node_id = NULL 
+             WHERE campaign_id = ? AND parent_node_id = ?`,
+            [campaignId, nodeId]
+        );
+
+        // Delete the node
+        const result = await execute(
+            `DELETE FROM campaign_nodes WHERE campaign_id = ? AND node_id = ?`,
+            [campaignId, nodeId]
+        );
+
+        return result.changes > 0;
+    }
+
+    // ==================== Runtime & Monitoring ====================
+
+    async getRunningInstances(userId?: number): Promise<RuntimeInstance[]> {
+        const whereClause = userId 
+            ? `ri.status = 'running' AND c.user_id = ?`
+            : `ri.status = 'running'`;
+        const params = userId ? [userId] : [];
+
+        const instances = await queryAll(
+            `SELECT ri.*, c.name as campaign_name
+             FROM campaign_runtime_instances ri
+             JOIN campaigns c ON ri.campaign_id = c.id
+             WHERE ${whereClause}
+             ORDER BY ri.started_at DESC`,
+            params
+        );
+
+        // Parse JSON fields
+        for (const instance of instances) {
+            if (instance.trigger_data) instance.trigger_data = JSON.parse(instance.trigger_data);
+            if (instance.execution_log) instance.execution_log = JSON.parse(instance.execution_log);
+        }
+
+        return instances as RuntimeInstance[];
+    }
+
+    async getInstanceHistory(campaignId: number, limit: number = 50): Promise<RuntimeInstance[]> {
+        const instances = await queryAll(
+            `SELECT * FROM campaign_runtime_instances 
+             WHERE campaign_id = ?
+             ORDER BY started_at DESC
+             LIMIT ?`,
+            [campaignId, limit]
+        );
+
+        // Parse JSON fields
+        for (const instance of instances) {
+            if (instance.trigger_data) instance.trigger_data = JSON.parse(instance.trigger_data);
+            if (instance.execution_log) instance.execution_log = JSON.parse(instance.execution_log);
+        }
+
+        return instances as RuntimeInstance[];
+    }
+
+    async getCampaignEvents(instanceId: number): Promise<any[]> {
+        const events = await queryAll(
+            `SELECT * FROM campaign_events 
+             WHERE instance_id = ?
+             ORDER BY created_at ASC`,
+            [instanceId]
+        );
+
+        // Parse JSON fields
+        for (const event of events) {
+            if (event.event_data) event.event_data = JSON.parse(event.event_data);
+            if (event.raw_instructions) event.raw_instructions = JSON.parse(event.raw_instructions);
+        }
+
+        return events;
+    }
+
+    async getCampaignAlerts(userId: number, acknowledged: boolean = false): Promise<CampaignAlert[]> {
+        const alerts = await queryAll(
+            `SELECT a.*, c.name as campaign_name
+             FROM campaign_alerts a
+             JOIN campaigns c ON a.campaign_id = c.id
+             WHERE c.user_id = ? AND a.acknowledged = ?
+             ORDER BY a.created_at DESC
+             LIMIT 100`,
+            [userId, acknowledged ? 1 : 0]
+        );
+
+        // Parse JSON fields
+        for (const alert of alerts) {
+            if (alert.metadata) alert.metadata = JSON.parse(alert.metadata);
+        }
+
+        return alerts as CampaignAlert[];
+    }
+
+    async acknowledgeAlert(alertId: number, userId: number): Promise<boolean> {
+        const result = await execute(
+            `UPDATE campaign_alerts 
+             SET acknowledged = 1 
+             WHERE id = ? AND campaign_id IN (
+                SELECT id FROM campaigns WHERE user_id = ?
+             )`,
+            [alertId, userId]
+        );
+
+        return result.changes > 0;
+    }
+
+    async getCampaignMetrics(campaignId: number, days: number = 7): Promise<CampaignMetrics[]> {
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        const startDateStr = startDate.toISOString().split('T')[0];
+
+        const metrics = await queryAll(
+            `SELECT * FROM campaign_metrics 
+             WHERE campaign_id = ? AND metric_date >= ?
+             ORDER BY metric_date DESC`,
+            [campaignId, startDateStr]
+        );
+
+        return metrics as CampaignMetrics[];
+    }
+
+    // ==================== Templates ====================
+
+    async exportCampaignAsTemplate(campaignId: number): Promise<CampaignTemplate> {
+        const campaign = await this.getCampaign(campaignId);
+        if (!campaign) throw new Error('Campaign not found');
+
+        const template: CampaignTemplate = {
+            name: campaign.name,
+            description: campaign.description || '',
+            category: 'custom',
+            tags: campaign.tags || [],
+            nodes: campaign.nodes || [],
+            version: '1.0.0'
+        };
+
+        return template;
+    }
+
+    async importCampaignFromTemplate(userId: number, template: CampaignTemplate): Promise<Campaign> {
+        const campaign: Partial<Campaign> = {
+            name: template.name + ' (Imported)',
+            description: template.description,
+            tags: template.tags,
+            nodes: template.nodes,
+            enabled: false // Start disabled
+        };
+
+        return await this.createCampaign(userId, campaign);
+    }
+
+    // ==================== Predefined Templates ====================
+
+    getPresetTemplates(): CampaignTemplate[] {
+        return [
+            {
+                name: '2 SOL → Token Launch Detector',
+                description: 'Detects wallets receiving exactly 2 SOL, monitors for token minting within 1 hour',
+                category: 'token_launch',
+                tags: ['token', 'launch', 'mint'],
+                nodes: [
+                    {
+                        node_id: 't1',
+                        node_type: 'trigger',
+                        config: {
+                            trigger_type: 'transfer_credited',
+                            lamports_exact: 2000000000,
+                            dedupe_window_ms: 600000
+                        }
+                    },
+                    {
+                        node_id: 'f1',
+                        node_type: 'filter',
+                        parent_node_id: 't1',
+                        config: {
+                            filter_type: 'account_age',
+                            expression: 'account_age_seconds <= 300'
+                        }
+                    },
+                    {
+                        node_id: 'm1',
+                        node_type: 'monitor',
+                        parent_node_id: 'f1',
+                        config: {
+                            window_ms: 3600000,
+                            programs_to_watch: ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'],
+                            events: ['InitializeMint', 'MintTo']
+                        }
+                    },
+                    {
+                        node_id: 'a1',
+                        node_type: 'action',
+                        parent_node_id: 'm1',
+                        config: {
+                            action_type: 'create_alert',
+                            alert_title: 'Token Launch Detected',
+                            alert_message: 'Wallet {{wallet}} launched a token',
+                            priority: 'high'
+                        }
+                    }
+                ]
+            },
+            {
+                name: 'MEV Bot Tracker',
+                description: 'Tracks wallets performing high-frequency trades on specific programs',
+                category: 'mev',
+                tags: ['mev', 'bot', 'trading'],
+                nodes: [
+                    {
+                        node_id: 't1',
+                        node_type: 'trigger',
+                        config: {
+                            trigger_type: 'program_log',
+                            program_id: '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8', // Raydium
+                            log_pattern: 'swap.*success',
+                            aggregation: 'per_block'
+                        }
+                    },
+                    {
+                        node_id: 'a1',
+                        node_type: 'action',
+                        parent_node_id: 't1',
+                        config: {
+                            action_type: 'tag_db',
+                            tag_name: 'mev_bot',
+                            tag_value: 'potential_mev'
+                        }
+                    }
+                ]
+            },
+            {
+                name: 'Wash Trading Detector',
+                description: 'Identifies circular token movements indicating wash trading',
+                category: 'fraud_detection',
+                tags: ['wash', 'trading', 'fraud'],
+                nodes: [
+                    {
+                        node_id: 't1',
+                        node_type: 'trigger',
+                        config: {
+                            trigger_type: 'transfer_credited',
+                            lamports_min: 1000000,
+                            aggregation: 'per_tx'
+                        }
+                    },
+                    {
+                        node_id: 'm1',
+                        node_type: 'monitor',
+                        parent_node_id: 't1',
+                        config: {
+                            window_ms: 300000, // 5 minutes
+                            programs_to_watch: ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'],
+                            min_events: 5
+                        }
+                    },
+                    {
+                        node_id: 'a1',
+                        node_type: 'action',
+                        parent_node_id: 'm1',
+                        config: {
+                            action_type: 'webhook',
+                            webhook_url: 'https://your-webhook.com/wash-trading',
+                            webhook_payload_template: '{"wallet": "{{wallet}}", "type": "wash_trading", "timestamp": "{{timestamp}}"}'
+                        }
+                    }
+                ]
+            }
+        ];
+    }
+
+    // ==================== Analytics ====================
+
+    async getCampaignStats(userId: number): Promise<any> {
+        const stats = await queryOne(
+            `SELECT 
+                COUNT(*) as total_campaigns,
+                COUNT(CASE WHEN enabled = 1 THEN 1 END) as active_campaigns,
+                SUM(total_instances) as total_instances,
+                SUM(successful_instances) as successful_instances,
+                (SELECT COUNT(*) FROM campaign_runtime_instances ri 
+                 JOIN campaigns c ON ri.campaign_id = c.id 
+                 WHERE c.user_id = ? AND ri.status = 'running') as running_instances,
+                (SELECT COUNT(*) FROM campaign_alerts a 
+                 JOIN campaigns c ON a.campaign_id = c.id 
+                 WHERE c.user_id = ? AND a.acknowledged = 0) as unread_alerts
+             FROM campaigns 
+             WHERE user_id = ?`,
+            [userId, userId, userId]
+        );
+
+        return stats;
+    }
+}
+
+// Singleton instance
+let campaignManager: CampaignManager | null = null;
+
+export function getCampaignManager(): CampaignManager {
+    if (!campaignManager) {
+        campaignManager = new CampaignManager();
+    }
+    return campaignManager;
+}

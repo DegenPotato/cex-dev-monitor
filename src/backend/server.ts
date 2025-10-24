@@ -114,6 +114,25 @@ geckoNetworksSyncService.start().then(() => {
   console.error('Failed to start GeckoNetworks sync service:', err);
 });
 
+// Start Campaign services
+import { getCampaignExecutor } from './services/CampaignExecutor.js';
+import { getSolanaEventDetector } from './services/SolanaEventDetector.js';
+
+const campaignExecutor = getCampaignExecutor();
+const solanaEventDetector = getSolanaEventDetector();
+
+campaignExecutor.start().then(() => {
+  console.log('⚡ Campaign Executor started');
+}).catch(err => {
+  console.error('Failed to start Campaign Executor:', err);
+});
+
+solanaEventDetector.start().then(() => {
+  console.log('🔍 Solana Event Detector started for Campaign Builder');
+}).catch(err => {
+  console.error('Failed to start Solana Event Detector:', err);
+});
+
 // Start Telegram Redis Stream Consumer (if enabled)
 if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
   import('./services/TelegramStreamConsumer.js').then(({ telegramStreamConsumer }) => {
@@ -245,6 +264,10 @@ app.use('/api/tokens', tokenRoutes);
 // Register token registry routes
 import tokenRegistryRoutes from './routes/tokenRegistry.js';
 app.use('/api/token-registry', tokenRegistryRoutes);
+
+// Register campaign routes
+import campaignRoutes from './routes/campaigns.js';
+app.use('/api', campaignRoutes);
 
 // Register user data management routes (GDPR compliance)
 app.use(userDataRoutes);
