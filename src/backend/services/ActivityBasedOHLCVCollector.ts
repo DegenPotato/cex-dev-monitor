@@ -81,11 +81,11 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       
       // Get tokens that have no pools
       const tokensWithoutPools = await queryAll<{ mint_address: string }>(
-        `SELECT DISTINCT r.mint_address 
+        `SELECT DISTINCT r.token_mint as mint_address 
          FROM token_registry r
          WHERE NOT EXISTS (
            SELECT 1 FROM token_pools p 
-           WHERE p.mint_address = r.mint_address
+           WHERE p.mint_address = r.token_mint
          )
          LIMIT 20`
       );
