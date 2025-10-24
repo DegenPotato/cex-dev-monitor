@@ -3,6 +3,7 @@ import { saveDatabase } from '../database/connection.js';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { globalGeckoTerminalLimiter } from './GeckoTerminalRateLimiter.js';
 import { ConfigProvider } from '../providers/ConfigProvider.js';
+import { poolActivityTracker } from './PoolActivityTracker.js';
 
 /**
  * OHLCV Data Collector using GeckoTerminal API
@@ -201,6 +202,13 @@ export class OHLCVCollector {
     volume_24h_usd: number | null;
     is_primary: number;
   }>> {
+    // First, use the enhanced pool search to find ALL pools
+    const poolsFound = await poolActivityTracker.trackPoolsForToken(mintAddress);
+    
+    if (poolsFound > 0) {
+      console.log(`✅ [OHLCV] Found and tracked ${poolsFound} pools via search endpoint`);
+    }
+    
     // Check if we already have pools (DEDUPLICATION CHECK)
     const existing = await queryAll<{ 
       pool_address: string;
