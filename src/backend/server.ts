@@ -1314,12 +1314,12 @@ app.get('/api/tokens', async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 1000;
   
   try {
-    // Query from token_registry - use gecko_token_data as source for market data
+    // Simple query - just get basic info from token_registry and gecko_token_data
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint as mint_address,
-        COALESCE(gtd.symbol, tr.token_symbol) as symbol,
-        COALESCE(gtd.name, tr.token_name) as name,
+        tr.token_symbol as symbol,
+        tr.token_name as name,
         tr.creator_address,
         tr.platform,
         tr.creation_signature as signature,
@@ -1330,13 +1330,10 @@ app.get('/api/tokens', async (req, res) => {
           ELSE NULL
         END as launchpad_completed_at,
         tr.migrated_pool_address,
-        tr.total_mentions as telegram_mentions,
-        tr.total_trades as wallet_transactions,
-        tr.first_source_type,
-        tr.telegram_chat_name,
         
         -- Market data from latest gecko_token_data
         gtd.price_usd,
+        gtd.price_sol,
         gtd.market_cap_usd as current_mcap,
         gtd.volume_24h_usd,
         gtd.price_change_24h,
@@ -1349,18 +1346,10 @@ app.get('/api/tokens', async (req, res) => {
         -- Primary pool data
         tp.pool_address as primary_pool,
         tp.dex as primary_dex,
-        tp.volume_24h_usd as pool_volume_24h,
-        tp.liquidity_usd as pool_liquidity,
         tp.activity_tier,
         
-        -- Calculate price in SOL
-        gtd.price_sol,
-        
         -- Starting market cap (assume pump.fun starts at ~$5k)
-        CASE 
-          WHEN tr.platform = 'pump.fun' THEN 5000
-          ELSE NULL
-        END as starting_mcap
+        5000 as starting_mcap
         
       FROM token_registry tr
       LEFT JOIN (
@@ -1376,8 +1365,6 @@ app.get('/api/tokens', async (req, res) => {
           mint_address,
           pool_address,
           dex,
-          volume_24h_usd,
-          liquidity_usd,
           activity_tier
         FROM token_pools
         WHERE is_primary = 1
