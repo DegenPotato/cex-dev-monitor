@@ -3,7 +3,7 @@ import {
   Flame, ExternalLink, TrendingUp, TrendingDown,
   BarChart3, Clock, User, RefreshCw, Search,
   Eye, AlertCircle, Activity, MessageCircle, 
-  Zap, Trophy, Hash, Globe
+  Zap, Trophy, Hash, Globe, Radio
 } from 'lucide-react';
 import { apiUrl } from '../config';
 import { formatDistanceToNow } from 'date-fns';
@@ -51,6 +51,9 @@ interface TokenRegistry {
   roi_from_first_mention?: number;
   hours_to_first_trade?: number;
   win_rate?: number;
+  
+  // OHLCV Settings
+  ohlcv_realtime_enabled?: boolean;
 }
 
 interface TokenAnalytics {
@@ -165,6 +168,32 @@ export function TokenIndexTab({ onTokenSelect }: TokenIndexTabProps) {
       }
     } catch (error) {
       console.error('Error fetching analytics:', error);
+    }
+  };
+
+  const toggleRealtimeOHLCV = async (mintAddress: string, currentState: boolean, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent token selection
+    
+    try {
+      const response = await fetch(apiUrl(`/api/ohlcv/toggle-realtime/${mintAddress}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ enabled: !currentState })
+      });
+      
+      if (response.ok) {
+        // Update the token in the list
+        setTokens(prev => prev.map(token => 
+          token.token_mint === mintAddress 
+            ? { ...token, ohlcv_realtime_enabled: !currentState }
+            : token
+        ));
+      } else {
+        console.error('Failed to toggle real-time OHLCV');
+      }
+    } catch (error) {
+      console.error('Error toggling real-time OHLCV:', error);
     }
   };
 
@@ -524,8 +553,19 @@ export function TokenIndexTab({ onTokenSelect }: TokenIndexTabProps) {
                       </div>
                     )}
                     
-                    {/* External Links */}
+                    {/* External Links & Controls */}
                     <div className="flex items-center gap-1 mt-1">
+                      <button
+                        onClick={(e) => toggleRealtimeOHLCV(token.token_mint, token.ohlcv_realtime_enabled || false, e)}
+                        className={`transition-colors ${
+                          token.ohlcv_realtime_enabled 
+                            ? 'text-green-400 hover:text-green-300' 
+                            : 'text-gray-400 hover:text-gray-300'
+                        }`}
+                        title={token.ohlcv_realtime_enabled ? 'Real-time OHLCV Active (1 min)' : 'Enable Real-time OHLCV'}
+                      >
+                        <Radio className="w-4 h-4" />
+                      </button>
                       <a
                         href={`https://pump.fun/${token.token_mint}`}
                         target="_blank"

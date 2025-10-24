@@ -28,7 +28,7 @@ import { globalRPCServerRotator } from './services/RPCServerRotator.js';
 import { globalAnalysisQueue } from './services/AnalysisQueue.js';
 import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
-import { OHLCVCollector } from './services/OHLCVCollector.js';
+import { activityBasedOHLCVCollector } from './services/ActivityBasedOHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
 import { solPriceOracle } from './services/SolPriceOracle.js';
@@ -369,7 +369,7 @@ if (hasProxies) {
 const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
 const tradingActivityMonitor = new TradingActivityMonitor();
-const ohlcvCollector = new OHLCVCollector();
+const ohlcvCollector = activityBasedOHLCVCollector; // Use enhanced activity-based collector
 const metricsCalculator = new OHLCVMetricsCalculator();
 const technicalIndicatorCalculator = new TechnicalIndicatorCalculator();
 
@@ -1523,6 +1523,41 @@ app.post('/api/ohlcv/stop', authService.requireSuperAdmin(), (_req, res) => {
 app.get('/api/ohlcv/status', async (_req, res) => {
   const status = await ohlcvCollector.getStatus();
   res.json(status);
+});
+
+// Toggle real-time OHLCV updates for a token
+app.post('/api/ohlcv/toggle-realtime/:mintAddress', async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+    const { enabled } = req.body;
+    
+    // Update token settings
+    await execute(
+      `UPDATE token_mints 
+       SET ohlcv_realtime_enabled = ?, ohlcv_update_tier = ?
+       WHERE mint_address = ?`,
+      [enabled ? 1 : 0, enabled ? 'REALTIME' : 'NORMAL', mintAddress]
+    );
+    
+    // Update schedule if pools exist
+    await execute(
+      `UPDATE ohlcv_update_schedule 
+       SET update_tier = ?, next_update = ?
+       WHERE mint_address = ?`,
+      [enabled ? 'REALTIME' : 'NORMAL', Date.now() + (enabled ? 60000 : 900000), mintAddress]
+    );
+    
+    saveDatabase();
+    
+    res.json({ 
+      success: true, 
+      mintAddress,
+      realtimeEnabled: enabled,
+      message: enabled ? 'Real-time updates enabled (1 min intervals)' : 'Real-time updates disabled (15 min intervals)'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Clear all OHLCV data (for fresh start testing)

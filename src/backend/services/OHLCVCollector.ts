@@ -34,7 +34,7 @@ export class OHLCVCollector {
   
   // Timeframe configurations with smart intervals
   // Fetch different timeframes at different intervals for efficiency
-  private readonly TIMEFRAMES = [
+  protected readonly TIMEFRAMES = [
     { name: '1m', api: 'minute', aggregate: 1, intervalMs: 60 * 1000 },      // Every 1 minute
     { name: '15m', api: 'minute', aggregate: 15, intervalMs: 15 * 60 * 1000 }, // Every 15 minutes
     { name: '1h', api: 'hour', aggregate: 1, intervalMs: 60 * 60 * 1000 },     // Every hour
@@ -89,7 +89,7 @@ export class OHLCVCollector {
   /**
    * Main backfill cycle - processes tokens in priority order
    */
-  private async runBackfillCycle() {
+  protected async runBackfillCycle() {
     try {
       console.log('📊 [OHLCV] Starting backfill cycle...');
       
@@ -621,7 +621,7 @@ export class OHLCVCollector {
   /**
    * Fetch latest candles for a completed token (real-time updates)
    */
-  private async fetchLatestCandles(
+  protected async fetchLatestCandles(
     mintAddress: string,
     poolAddress: string,
     timeframe: typeof this.TIMEFRAMES[0],
