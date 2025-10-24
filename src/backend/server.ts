@@ -2676,40 +2676,8 @@ app.get('/api/market-data/analyze-mint/:mintAddress', async (req, res) => {
   }
 });
 
-app.post('/api/market-data/start', async (_req, res) => {
-  try {
-    // Start SOL price oracle (needed for price calculations)
-    await solPriceOracle.start();
-    
-    // Token oracle already started with SOL oracle
-    res.json({ 
-      success: true, 
-      message: 'Token price oracle already running - updates every 60 seconds',
-      status: tokenPriceOracle.getStatus()
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/market-data/stop', (_req, res) => {
-  try {
-    tokenPriceOracle.stop();
-    
-    // Stop SOL price oracle too (unless main monitoring is running)
-    if (pumpFunMonitor.getActiveMonitors().length === 0) {
-      solPriceOracle.stop();
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Token price oracle stopped',
-      status: tokenPriceOracle.getStatus()
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// Token Price Oracle is now auto-started on server initialization
+// No manual start/stop endpoints needed - it runs continuously
 
 // SOL Price Oracle control
 app.get('/api/sol-price', async (_req, res) => {

@@ -39,16 +39,13 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('newest');
-  const [marketDataStatus, setMarketDataStatus] = useState<any>(null);
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [refreshCooldowns, setRefreshCooldowns] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchTokens();
-    fetchMarketDataStatus();
     const interval = setInterval(() => {
       fetchTokens();
-      fetchMarketDataStatus();
     }, 10000); // Refresh every 10s
     return () => clearInterval(interval);
   }, []);
@@ -69,34 +66,6 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
     }
   };
 
-  const fetchMarketDataStatus = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/market-data/status'), { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setMarketDataStatus(data);
-      }
-    } catch (error) {
-      console.error('Error fetching market data status:', error);
-    }
-  };
-
-  const toggleMarketDataTracker = async () => {
-    try {
-      const endpoint = marketDataStatus?.isRunning ? '/api/market-data/stop' : '/api/market-data/start';
-      const response = await fetch(apiUrl(endpoint), { 
-        method: 'POST',
-        credentials: 'include' 
-      });
-      if (response.ok) {
-        const data = await response.json();
-        alert(data.message);
-        fetchMarketDataStatus();
-      }
-    } catch (error: any) {
-      alert(`Error: ${error.message}`);
-    }
-  };
 
   const formatMarketCap = (mcap?: number) => {
     if (!mcap) return 'N/A';
@@ -183,39 +152,9 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
             <Flame className="w-6 h-6 text-purple-400" />
             Token Launch History ({tokens.length})
           </h2>
-          <p className="text-sm text-gray-400 mt-1">Comprehensive market data and insights</p>
+          <p className="text-sm text-gray-400 mt-1">Real-time data from Token Price Oracle</p>
         </div>
-
-        {/* Market Data Tracker Control */}
-        {marketDataStatus && (
-          <button
-            onClick={toggleMarketDataTracker}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-              marketDataStatus.isRunning
-                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            {marketDataStatus.isRunning ? 'Stop' : 'Start'} Market Data Tracker
-          </button>
-        )}
       </div>
-
-      {/* Market Data Status Banner */}
-      {marketDataStatus?.isRunning && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-green-400 font-medium mb-2">
-            <BarChart3 className="w-4 h-4 animate-pulse" />
-            Market Data Tracker Active
-          </div>
-          <div className="text-xs text-gray-400">
-            Polling GeckoTerminal every {marketDataStatus.pollInterval / 1000}s • 
-            Rate limited to {marketDataStatus.maxCallsPerMinute} calls/minute • 
-            {marketDataStatus.delayBetweenCalls}ms delay between calls
-          </div>
-        </div>
-      )}
 
       {/* Sort Controls */}
       <div className="flex gap-2 mb-6">
