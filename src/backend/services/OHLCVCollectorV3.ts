@@ -16,7 +16,7 @@ interface Token {
   mint_address: string;
   timestamp: number; // Creation timestamp (in milliseconds)
   migrated_pool_address?: string | null;
-  launchpad_completed_at?: number | null;
+  graduated_at?: number | null;
 }
 
 interface Pool {
@@ -81,19 +81,19 @@ export class OHLCVCollectorV3 {
       // Get tokens with migration info
       const tokens = await queryAll<Token>(`
         SELECT 
-          tm.mint_address,
-          tm.timestamp,
-          tm.migrated_pool_address,
-          tm.launchpad_completed_at
-        FROM token_mints tm
+          r.token_mint as mint_address,
+          r.first_seen_at * 1000 as timestamp,
+          r.migrated_pool_address,
+          r.graduated_at
+        FROM token_registry r
         LEFT JOIN (
           SELECT mint_address, MIN(oldest_timestamp) as first_data
           FROM ohlcv_backfill_progress
           GROUP BY mint_address
-        ) obp ON tm.mint_address = obp.mint_address
+        ) obp ON r.token_mint = obp.mint_address
         ORDER BY 
           CASE WHEN obp.first_data IS NULL THEN 0 ELSE 1 END,
-          tm.timestamp DESC
+          r.first_seen_at DESC
         LIMIT 30
       `);
       
@@ -123,7 +123,7 @@ export class OHLCVCollectorV3 {
     // Check if this is a PumpFun token with migration
     const hasMigration = !!token.migrated_pool_address;
     if (hasMigration) {
-      console.log(`  🎓 PumpFun token - migrated at ${token.launchpad_completed_at ? new Date(token.launchpad_completed_at).toISOString() : 'unknown'}`);
+      console.log(`  🎓 PumpFun token - migrated at ${token.graduated_at ? new Date(token.graduated_at * 1000).toISOString() : 'unknown'}`);
     }
     
     // Get ALL pools for this token
@@ -150,7 +150,7 @@ export class OHLCVCollectorV3 {
           pool, 
           timeframe, 
           token.timestamp,
-          token.launchpad_completed_at
+          token.graduated_at
         );
       }
     }

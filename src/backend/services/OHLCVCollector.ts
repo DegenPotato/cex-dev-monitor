@@ -232,17 +232,17 @@ export class OHLCVCollector {
     // Check if token has a migrated_pool_address (from pump.fun graduation)
     const tokenInfo = await queryOne<{ 
       migrated_pool_address: string | null;
-      launchpad_completed_at: number | null;
+      graduated_at: number | null;
     }>(
-      `SELECT migrated_pool_address, launchpad_completed_at FROM token_mints WHERE mint_address = ?`,
+      `SELECT migrated_pool_address, graduated_at FROM token_registry WHERE token_mint = ?`,
       [mintAddress]
     );
     
     const migratedPoolAddress = tokenInfo?.migrated_pool_address;
-    const migrationTimestamp = tokenInfo?.launchpad_completed_at;
+    const migrationTimestamp = tokenInfo?.graduated_at;
     
     if (migratedPoolAddress) {
-      console.log(`🎓 [OHLCV] Token ${mintAddress.slice(0, 8)}... migrated to Raydium: ${migratedPoolAddress.slice(0, 8)}... at ${migrationTimestamp ? new Date(migrationTimestamp).toISOString() : 'unknown'}`);
+      console.log(`🎓 [OHLCV] Token ${mintAddress.slice(0, 8)}... migrated to Raydium: ${migratedPoolAddress.slice(0, 8)}... at ${migrationTimestamp ? new Date(migrationTimestamp * 1000).toISOString() : 'unknown'}`);
     }
     
     // Fetch ALL pools from GeckoTerminal using global rate limiter
