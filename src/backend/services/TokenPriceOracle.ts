@@ -433,7 +433,7 @@ export class TokenPriceOracle {
           launchpad_migrated_pool_address,
           top_pool_address,
           raw_response,
-          last_updated
+          updated_at
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
         )
