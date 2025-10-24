@@ -273,12 +273,12 @@ export class TokenPriceOracle {
         SELECT DISTINCT token_mint as address
         FROM (
           SELECT DISTINCT token_mint FROM wallet_token_holdings
-          WHERE last_updated > datetime('now', '-7 days')
+          WHERE updated_at > strftime('%s', 'now', '-7 days')
           
           UNION
           
           SELECT DISTINCT token_mint FROM trading_transactions
-          WHERE created_at > datetime('now', '-7 days')
+          WHERE created_at > strftime('%s', 'now', '-7 days')
           
           UNION
           
