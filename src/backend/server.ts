@@ -411,6 +411,13 @@ const technicalIndicatorCalculator = new TechnicalIndicatorCalculator();
 
 console.log('✅ [Init] Services initialized - Use Settings panel to start monitoring');
 
+// Initialize OHLCV collector - restore previous running state
+ohlcvCollector.initialize().then(() => {
+  console.log('📊 [Init] OHLCV collector initialization complete');
+}).catch(err => {
+  console.error('Failed to initialize OHLCV collector:', err);
+});
+
 // Initialize Telegram entity cache for forwarding reliability
 telegramEntityCache.initialize().then(() => {
   console.log('📋 [Init] Telegram entity cache initialized');
@@ -1496,24 +1503,24 @@ app.get('/api/monitoring/status', async (_req, res) => {
 });
 
 // OHLCV Collector control endpoints - PROTECTED
-app.post('/api/ohlcv/start', authService.requireSuperAdmin(), (_req, res) => {
+app.post('/api/ohlcv/start', authService.requireSuperAdmin(), async (_req, res) => {
   try {
-    ohlcvCollector.start();
+    await ohlcvCollector.start();
     res.json({ 
       success: true, 
-      message: 'OHLCV collector started' 
+      message: 'OHLCV collector started (state persisted)' 
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/ohlcv/stop', authService.requireSuperAdmin(), (_req, res) => {
+app.post('/api/ohlcv/stop', authService.requireSuperAdmin(), async (_req, res) => {
   try {
-    ohlcvCollector.stop();
+    await ohlcvCollector.stop();
     res.json({ 
       success: true, 
-      message: 'OHLCV collector stopped' 
+      message: 'OHLCV collector stopped (state persisted)' 
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

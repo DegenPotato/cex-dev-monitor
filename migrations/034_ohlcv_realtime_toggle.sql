@@ -50,7 +50,3 @@ SELECT
   COUNT(CASE WHEN last_update > strftime('%s', 'now', '-1 hour') THEN 1 END) as updated_last_hour
 FROM ohlcv_update_schedule
 GROUP BY update_tier;
-
--- Migration metadata
-INSERT INTO migration_history (migration_name, applied_at)
-VALUES ('034_ohlcv_realtime_toggle', strftime('%s', 'now'));

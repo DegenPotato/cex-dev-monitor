@@ -51,8 +51,8 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
   /**
    * Start the enhanced collector with activity-based updates
    */
-  start() {
-    super.start(); // Start base collector for backfilling
+  async start() {
+    await super.start(); // Start base collector for backfilling
     
     console.log('🚀 [OHLCV] Starting activity-based updates...');
     
@@ -72,8 +72,8 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
   /**
    * Stop the enhanced collector
    */
-  stop() {
-    super.stop();
+  async stop() {
+    await super.stop();
     
     if (this.activityCheckInterval) {
       clearInterval(this.activityCheckInterval);

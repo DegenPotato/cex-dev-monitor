@@ -2,6 +2,7 @@ import fetch from 'cross-fetch';
 import { saveDatabase } from '../database/connection.js';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { globalGeckoTerminalLimiter } from './GeckoTerminalRateLimiter.js';
+import { ConfigProvider } from '../providers/ConfigProvider.js';
 
 /**
  * OHLCV Data Collector using GeckoTerminal API
@@ -58,7 +59,7 @@ export class OHLCVCollector {
   /**
    * Start the OHLCV backfilling process
    */
-  start() {
+  async start() {
     if (this.isRunning) {
       console.log('📊 [OHLCV] Already running');
       return;
@@ -66,6 +67,9 @@ export class OHLCVCollector {
     
     this.isRunning = true;
     console.log('📊 [OHLCV] Starting backfill collector...');
+    
+    // Save running state
+    await ConfigProvider.set('ohlcv_collector_running', 'true');
     
     // Run immediately, then every 5 minutes
     this.runBackfillCycle();
@@ -77,13 +81,35 @@ export class OHLCVCollector {
   /**
    * Stop the collector
    */
-  stop() {
+  async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
     this.isRunning = false;
+    
+    // Save running state
+    await ConfigProvider.set('ohlcv_collector_running', 'false');
+    
     console.log('📊 [OHLCV] Collector stopped');
+  }
+  
+  /**
+   * Initialize collector on startup - restore previous running state
+   */
+  async initialize() {
+    try {
+      const wasRunning = await ConfigProvider.get('ohlcv_collector_running');
+      
+      if (wasRunning === 'true') {
+        console.log('📊 [OHLCV] Restoring previous running state - auto-starting...');
+        await this.start();
+      } else {
+        console.log('📊 [OHLCV] Previous state: stopped (not auto-starting)');
+      }
+    } catch (error) {
+      console.error('📊 [OHLCV] Error restoring state:', error);
+    }
   }
   
   /**
