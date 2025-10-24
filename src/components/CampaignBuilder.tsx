@@ -1,12 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Save, Play, Pause, Zap, Filter, Eye, Bell, X } from 'lucide-react';
+import { Plus, Save, Play, Pause, Zap, Filter, Eye, Bell, Trash2, CheckCircle, AlertCircle, Loader, Wallet, ChevronDown, ChevronUp } from 'lucide-react';
 import { config } from '../config';
+
+interface TriggerConfig {
+    trigger_type: 'transfer_credited' | 'signature_to_address' | 'program_log' | 'account_created' | 'token_mint';
+    wallets?: string[];
+    lamports_exact?: number;
+    lamports_min?: number;
+    lamports_max?: number;
+    sender_list?: string[];
+    program_id?: string;
+    log_pattern?: string;
+}
+
+interface FilterConfig {
+    filter_type: 'account_age' | 'prior_balance' | 'inbound_sources' | 'token_interaction' | 'custom';
+    expression?: string;
+    max_age_seconds?: number;
+    min_balance?: number;
+    max_balance?: number;
+}
+
+interface MonitorConfig {
+    window_ms: number;
+    programs_to_watch?: string[];
+    events?: string[];
+    min_events?: number;
+    max_events?: number;
+}
+
+interface ActionConfig {
+    action_type: 'webhook' | 'tag_db' | 'send_to_fetcher' | 'create_alert';
+    webhook_url?: string;
+    tag_name?: string;
+    alert_message?: string;
+}
 
 interface CampaignNode {
     node_id: string;
     node_type: 'trigger' | 'filter' | 'monitor' | 'action';
     parent_node_id?: string;
-    config: any;
+    config: TriggerConfig | FilterConfig | MonitorConfig | ActionConfig;
 }
 
 interface Campaign {
@@ -24,9 +58,11 @@ const CampaignBuilder: React.FC = () => {
     const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [nodes, setNodes] = useState<CampaignNode[]>([]);
-    const [selectedNode, setSelectedNode] = useState<CampaignNode | null>(null);
     const [activeTab, setActiveTab] = useState<'builder' | 'monitor'>('builder');
     const [instances, setInstances] = useState<any[]>([]);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         loadCampaigns();
@@ -102,6 +138,18 @@ const CampaignBuilder: React.FC = () => {
 
     const saveCampaign = async () => {
         if (!selectedCampaign) return;
+        
+        // Validate that trigger nodes have wallets
+        const triggerNodes = nodes.filter(n => n.node_type === 'trigger');
+        for (const node of triggerNodes) {
+            const config = node.config as TriggerConfig;
+            if (!config.wallets || config.wallets.length === 0) {
+                alert('Please add at least one wallet to monitor in the trigger node');
+                return;
+            }
+        }
+
+        setSaveStatus('saving');
         try {
             const response = await fetch(`${config.apiUrl}/api/campaigns/${selectedCampaign.id}`, {
                 method: 'PUT',
@@ -110,11 +158,15 @@ const CampaignBuilder: React.FC = () => {
                 body: JSON.stringify({ ...selectedCampaign, nodes })
             });
             if (response.ok) {
-                alert('Campaign saved!');
+                setSaveStatus('saved');
+                setTimeout(() => setSaveStatus('idle'), 3000);
                 loadCampaigns();
+            } else {
+                setSaveStatus('error');
             }
         } catch (error) {
             console.error('Failed to save campaign:', error);
+            setSaveStatus('error');
         }
     };
 
@@ -132,38 +184,56 @@ const CampaignBuilder: React.FC = () => {
     };
 
     const addNode = (type: string) => {
-        const newNode: CampaignNode = {
-            node_id: `${type[0]}${Date.now()}`,
-            node_type: type as any,
-            config: getDefaultConfig(type)
+        const defaultConfigs: Record<string, any> = {
+            trigger: {
+                trigger_type: 'transfer_credited',
+                wallets: [],
+            },
+            filter: {
+                filter_type: 'account_age',
+                max_age_seconds: 300,
+            },
+            monitor: {
+                window_ms: 3600000, // 1 hour
+                events: [],
+            },
+            action: {
+                action_type: 'create_alert',
+                alert_message: 'Campaign triggered!',
+            }
         };
-        
-        // Set parent to last node if exists
-        if (nodes.length > 0) {
-            newNode.parent_node_id = nodes[nodes.length - 1].node_id;
-        }
-        
+
+        const newNode: CampaignNode = {
+            node_id: `node_${Date.now()}`,
+            node_type: type as any,
+            config: defaultConfigs[type] || {},
+            parent_node_id: nodes.length > 0 ? nodes[nodes.length - 1].node_id : undefined
+        };
         setNodes([...nodes, newNode]);
+        setEditingNodeId(newNode.node_id);
+        setExpandedNodes(new Set([...expandedNodes, newNode.node_id]));
     };
 
-    const getDefaultConfig = (type: string) => {
-        switch (type) {
-            case 'trigger':
-                return { trigger_type: 'transfer_credited', lamports_exact: 1000000000 };
-            case 'filter':
-                return { filter_type: 'account_age', expression: 'account_age_seconds <= 300' };
-            case 'monitor':
-                return { window_ms: 3600000, events: ['InitializeMint'] };
-            case 'action':
-                return { action_type: 'create_alert', alert_title: 'Alert' };
-            default:
-                return {};
-        }
+
+    const updateNodeConfig = (nodeId: string, config: any) => {
+        setNodes(nodes.map(node => 
+            node.node_id === nodeId ? { ...node, config } : node
+        ));
     };
 
     const deleteNode = (nodeId: string) => {
-        setNodes(nodes.filter(n => n.node_id !== nodeId));
-        if (selectedNode?.node_id === nodeId) setSelectedNode(null);
+        setNodes(nodes.filter(node => node.node_id !== nodeId));
+        if (editingNodeId === nodeId) setEditingNodeId(null);
+    };
+
+    const toggleNodeExpanded = (nodeId: string) => {
+        const newExpanded = new Set(expandedNodes);
+        if (newExpanded.has(nodeId)) {
+            newExpanded.delete(nodeId);
+        } else {
+            newExpanded.add(nodeId);
+        }
+        setExpandedNodes(newExpanded);
     };
 
     const getNodeIcon = (type: string) => {
@@ -186,6 +256,251 @@ const CampaignBuilder: React.FC = () => {
         }
     };
 
+    const getNodeTextColor = (type: string) => {
+        switch (type) {
+            case 'trigger': return 'text-yellow-400';
+            case 'filter': return 'text-blue-400';
+            case 'monitor': return 'text-purple-400';
+            case 'action': return 'text-green-400';
+            default: return 'text-gray-400';
+        }
+    };
+
+    const renderNodeConfig = (node: CampaignNode) => {
+        const config = node.config as any;
+        
+        switch (node.node_type) {
+            case 'trigger':
+                return (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">
+                                <Wallet className="w-4 h-4 inline mr-1" />
+                                Wallets to Monitor
+                            </label>
+                            <textarea
+                                value={(config.wallets || []).join('\n')}
+                                onChange={(e) => {
+                                    const wallets = e.target.value.split('\n').filter(w => w.trim());
+                                    updateNodeConfig(node.node_id, { ...config, wallets });
+                                }}
+                                placeholder="Enter wallet addresses (one per line)\n\nExample:\n7EYnhQoR9YM3N7UoaKRoA44Uy8JeaZV3qyouov87awMs\nDezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+                                className="w-full h-24 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500"
+                            />
+                            {config.wallets && config.wallets.length > 0 && (
+                                <p className="text-xs text-gray-500 mt-1">Monitoring {config.wallets.length} wallet{config.wallets.length !== 1 ? 's' : ''}</p>
+                            )}
+                        </div>
+                        
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Trigger Type</label>
+                            <select
+                                value={config.trigger_type || 'transfer_credited'}
+                                onChange={(e) => updateNodeConfig(node.node_id, { ...config, trigger_type: e.target.value })}
+                                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                            >
+                                <option value="transfer_credited">SOL Received</option>
+                                <option value="signature_to_address">Any Transaction</option>
+                                <option value="token_mint">Token Minted</option>
+                                <option value="account_created">Account Created</option>
+                                <option value="program_log">Program Log</option>
+                            </select>
+                        </div>
+                        
+                        {config.trigger_type === 'transfer_credited' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Amount (SOL)</label>
+                                    <input
+                                        type="number"
+                                        value={(config.lamports_exact || 0) / 1e9}
+                                        onChange={(e) => updateNodeConfig(node.node_id, { 
+                                            ...config, 
+                                            lamports_exact: parseFloat(e.target.value) * 1e9 
+                                        })}
+                                        placeholder="Leave empty for any amount"
+                                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                        step="0.001"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">From Specific Wallets (optional)</label>
+                                    <textarea
+                                        value={(config.sender_list || []).join('\n')}
+                                        onChange={(e) => {
+                                            const senders = e.target.value.split('\n').filter(w => w.trim());
+                                            updateNodeConfig(node.node_id, { ...config, sender_list: senders });
+                                        }}
+                                        placeholder="Enter sender addresses (one per line)"
+                                        className="w-full h-20 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                );
+                
+            case 'filter':
+                return (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Filter Type</label>
+                            <select
+                                value={config.filter_type || 'account_age'}
+                                onChange={(e) => updateNodeConfig(node.node_id, { ...config, filter_type: e.target.value })}
+                                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                            >
+                                <option value="account_age">Account Age</option>
+                                <option value="prior_balance">Balance Check</option>
+                                <option value="custom">Custom Expression</option>
+                            </select>
+                        </div>
+                        
+                        {config.filter_type === 'account_age' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Max Age (seconds)</label>
+                                <input
+                                    type="number"
+                                    value={config.max_age_seconds || 300}
+                                    onChange={(e) => updateNodeConfig(node.node_id, { 
+                                        ...config, 
+                                        max_age_seconds: parseInt(e.target.value) 
+                                    })}
+                                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Only process if account is younger than {config.max_age_seconds || 300} seconds</p>
+                            </div>
+                        )}
+                        
+                        {config.filter_type === 'prior_balance' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Min Balance (SOL)</label>
+                                    <input
+                                        type="number"
+                                        value={(config.min_balance || 0) / 1e9}
+                                        onChange={(e) => updateNodeConfig(node.node_id, { 
+                                            ...config, 
+                                            min_balance: parseFloat(e.target.value) * 1e9 
+                                        })}
+                                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                        step="0.001"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Max Balance (SOL)</label>
+                                    <input
+                                        type="number"
+                                        value={(config.max_balance || 0) / 1e9}
+                                        onChange={(e) => updateNodeConfig(node.node_id, { 
+                                            ...config, 
+                                            max_balance: parseFloat(e.target.value) * 1e9 
+                                        })}
+                                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                        step="0.001"
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                );
+                
+            case 'monitor':
+                return (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Monitor Duration</label>
+                            <select
+                                value={config.window_ms || 3600000}
+                                onChange={(e) => updateNodeConfig(node.node_id, { ...config, window_ms: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                            >
+                                <option value={300000}>5 minutes</option>
+                                <option value={900000}>15 minutes</option>
+                                <option value={1800000}>30 minutes</option>
+                                <option value={3600000}>1 hour</option>
+                                <option value={7200000}>2 hours</option>
+                                <option value={14400000}>4 hours</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Watch for Events</label>
+                            <textarea
+                                value={(config.events || []).join('\n')}
+                                onChange={(e) => {
+                                    const events = e.target.value.split('\n').filter(e => e.trim());
+                                    updateNodeConfig(node.node_id, { ...config, events });
+                                }}
+                                placeholder="Enter events to watch (one per line)\n\nExample:\nInitializeMint\nMintTo\nTransfer"
+                                className="w-full h-20 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                            />
+                        </div>
+                    </div>
+                );
+                
+            case 'action':
+                return (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Action Type</label>
+                            <select
+                                value={config.action_type || 'create_alert'}
+                                onChange={(e) => updateNodeConfig(node.node_id, { ...config, action_type: e.target.value })}
+                                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                            >
+                                <option value="create_alert">Create Alert</option>
+                                <option value="tag_db">Add Database Tag</option>
+                                <option value="send_to_fetcher">Send to Fetcher</option>
+                                <option value="webhook">Call Webhook</option>
+                            </select>
+                        </div>
+                        
+                        {config.action_type === 'create_alert' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Alert Message</label>
+                                <textarea
+                                    value={config.alert_message || ''}
+                                    onChange={(e) => updateNodeConfig(node.node_id, { ...config, alert_message: e.target.value })}
+                                    placeholder="Enter alert message"
+                                    className="w-full h-20 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                />
+                            </div>
+                        )}
+                        
+                        {config.action_type === 'webhook' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Webhook URL</label>
+                                <input
+                                    type="url"
+                                    value={config.webhook_url || ''}
+                                    onChange={(e) => updateNodeConfig(node.node_id, { ...config, webhook_url: e.target.value })}
+                                    placeholder="https://your-webhook.com/endpoint"
+                                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                />
+                            </div>
+                        )}
+                        
+                        {config.action_type === 'tag_db' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Tag Name</label>
+                                <input
+                                    type="text"
+                                    value={config.tag_name || ''}
+                                    onChange={(e) => updateNodeConfig(node.node_id, { ...config, tag_name: e.target.value })}
+                                    placeholder="e.g., suspicious, dev_wallet, etc."
+                                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
+                                />
+                            </div>
+                        )}
+                    </div>
+                );
+                
+            default:
+                return null;
+        }
+    };
+
     return (
         <div className="h-full flex flex-col bg-gray-900 text-gray-100">
             {/* Header */}
@@ -201,10 +516,25 @@ const CampaignBuilder: React.FC = () => {
                         />
                     )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-3">
+                    {saveStatus !== 'idle' && (
+                        <div className={`flex items-center gap-2 px-3 py-1 rounded text-sm ${
+                            saveStatus === 'saving' ? 'bg-yellow-500/20 text-yellow-400' :
+                            saveStatus === 'saved' ? 'bg-green-500/20 text-green-400' :
+                            'bg-red-500/20 text-red-400'
+                        }`}>
+                            {saveStatus === 'saving' && <><Loader className="w-3 h-3 animate-spin" /> Saving...</>}
+                            {saveStatus === 'saved' && <><CheckCircle className="w-3 h-3" /> Saved!</>}
+                            {saveStatus === 'error' && <><AlertCircle className="w-3 h-3" /> Error saving</>}
+                        </div>
+                    )}
                     {selectedCampaign && (
                         <>
-                            <button onClick={saveCampaign} className="px-3 py-1 bg-blue-600 rounded flex items-center gap-1">
+                            <button 
+                                onClick={saveCampaign} 
+                                disabled={saveStatus === 'saving'}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded flex items-center gap-1"
+                            >
                                 <Save className="w-4 h-4" /> Save
                             </button>
                             <button 
@@ -294,46 +624,71 @@ const CampaignBuilder: React.FC = () => {
                                         ))}
                                     </div>
 
-                                    <div className="space-y-2">
-                                        {nodes.map((node, idx) => (
-                                            <div key={node.node_id} className="flex items-center gap-2">
-                                                {idx > 0 && <div className="w-8 h-0.5 bg-gray-600" />}
-                                                <div
-                                                    onClick={() => setSelectedNode(node)}
-                                                    className={`flex-1 p-3 rounded border ${
-                                                        selectedNode?.node_id === node.node_id ? 'border-blue-500' : 'border-gray-600'
-                                                    } ${getNodeColor(node.node_type)} cursor-pointer`}
-                                                >
-                                                    <div className="flex justify-between items-center">
-                                                        <div className="flex items-center gap-2">
-                                                            {getNodeIcon(node.node_type)}
-                                                            <span className="font-semibold">{node.node_id}</span>
-                                                        </div>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                deleteNode(node.node_id);
-                                                            }}
-                                                            className="text-white hover:text-red-300"
-                                                        >
-                                                            <X className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                    <div className="space-y-4">
+                                        {nodes.length === 0 ? (
+                                            <div className="text-center py-8 text-gray-500">
+                                                <p className="mb-2">No nodes added yet</p>
+                                                <p className="text-sm">Click the buttons above to add trigger, filter, monitor, or action nodes</p>
                                             </div>
-                                        ))}
+                                        ) : (
+                                            nodes.map((node, idx) => {
+                                                const isExpanded = expandedNodes.has(node.node_id);
+                                                const config = node.config as any;
+                                                
+                                                return (
+                                                    <div key={node.node_id} className="relative">
+                                                        {idx > 0 && (
+                                                            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-0.5 h-4 bg-gray-600" />
+                                                        )}
+                                                        <div className={`border rounded-lg p-4 ${isExpanded ? 'border-cyan-500/50 bg-gray-900/50' : 'border-gray-700 bg-gray-800/50'}`}>
+                                                            <div className="flex justify-between items-start mb-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {getNodeIcon(node.node_type)}
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`font-bold text-lg capitalize ${getNodeTextColor(node.node_type)}`}>
+                                                                                {node.node_type} Node
+                                                                            </span>
+                                                                            {node.node_type === 'trigger' && (!config.wallets || config.wallets.length === 0) && (
+                                                                                <span className="text-xs px-2 py-1 bg-red-500/20 text-red-400 rounded flex items-center gap-1">
+                                                                                    <AlertCircle className="w-3 h-3" />
+                                                                                    No wallets
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="text-xs text-gray-500">ID: {node.node_id}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={() => toggleNodeExpanded(node.node_id)}
+                                                                        className="p-1 hover:bg-gray-700 rounded"
+                                                                    >
+                                                                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => deleteNode(node.node_id)}
+                                                                        className="p-1 hover:bg-red-500/20 rounded text-red-400"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {isExpanded && (
+                                                                <div className="space-y-3 mt-4 pt-4 border-t border-gray-700">
+                                                                    {renderNodeConfig(node)}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Config Panel */}
-                                {selectedNode && (
-                                    <div className="w-80 p-4 bg-gray-800 border-l border-gray-700">
-                                        <h3 className="font-semibold mb-3">Configuration</h3>
-                                        <pre className="text-xs bg-gray-900 p-2 rounded overflow-auto">
-                                            {JSON.stringify(selectedNode.config, null, 2)}
-                                        </pre>
-                                    </div>
-                                )}
+                                {/* Removed old config panel since we now have inline editing */}
                             </div>
                         )}
 
