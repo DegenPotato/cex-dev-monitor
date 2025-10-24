@@ -1318,10 +1318,10 @@ app.get('/api/tokens', async (req, res) => {
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint as mint_address,
-        COALESCE(gtd.symbol, tr.token_symbol) as symbol,
-        COALESCE(gtd.name, tr.token_name) as name,
+        COALESCE(gtd.symbol, tr.token_symbol, 'UNKNOWN') as symbol,
+        COALESCE(gtd.name, tr.token_name, 'Unknown Token') as name,
         tr.creator_address,
-        tr.platform,
+        COALESCE(tr.platform, 'unknown') as platform,
         tr.creation_signature as signature,
         tr.first_seen_at * 1000 as timestamp,
         tr.is_graduated as launchpad_completed,
