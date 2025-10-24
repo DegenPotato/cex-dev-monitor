@@ -1,8 +1,8 @@
-import { Connection, PublicKey, ParsedTransactionWithMeta, ConfirmedSignatureInfo, Logs } from '@solana/web3.js';
+import { Connection, PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import { getDb, queryOne, queryAll, execute } from '../database/helpers.js';
-import { Campaign, CampaignNode, TriggerConfig, RuntimeInstance } from '../models/Campaign.js';
+import { queryAll, execute } from '../database/helpers.js';
+import { Campaign, CampaignNode, TriggerConfig } from '../models/Campaign.js';
 
 interface DetectedEvent {
     type: 'transfer' | 'program_log' | 'account_created' | 'token_mint';
@@ -92,7 +92,7 @@ export class SolanaEventDetector extends EventEmitter {
 
     private async loadActiveCampaigns(): Promise<void> {
         try {
-            const campaigns = await queryAll(
+            const campaigns = await queryAll<any>(
                 `SELECT c.*, 
                     (SELECT json_group_array(json_object(
                         'node_id', node_id,

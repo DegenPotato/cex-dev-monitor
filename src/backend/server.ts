@@ -117,6 +117,10 @@ geckoNetworksSyncService.start().then(() => {
 // Start Campaign services
 import { getCampaignExecutor } from './services/CampaignExecutor.js';
 import { getSolanaEventDetector } from './services/SolanaEventDetector.js';
+import { setWebSocketServer } from './services/WebSocketService.js';
+
+// Set the WebSocket server for campaign events
+setWebSocketServer(io);
 
 const campaignExecutor = getCampaignExecutor();
 const solanaEventDetector = getSolanaEventDetector();

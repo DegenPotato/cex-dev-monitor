@@ -29,9 +29,12 @@ export async function queryAll<T>(sql: string, params: any[] = []): Promise<T[]>
   });
 }
 
-export async function execute(sql: string, params: any[] = []): Promise<void> {
+export async function execute(sql: string, params: any[] = []): Promise<{ lastInsertRowid: number; changes: number }> {
   const db = await getDb();
   db.run(sql, sanitizeParams(params));
+  const lastInsertRowid = db.exec('SELECT last_insert_rowid()')[0].values[0][0] as number;
+  const changes = db.getRowsModified();
+  return { lastInsertRowid, changes };
 }
 
 export async function getLastInsertId(): Promise<number> {
@@ -39,3 +42,6 @@ export async function getLastInsertId(): Promise<number> {
   const result = db.exec('SELECT last_insert_rowid()');
   return result[0].values[0][0] as number;
 }
+
+// Re-export getDb for modules that need it
+export { getDb } from './connection.js';

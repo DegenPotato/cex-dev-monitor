@@ -1,9 +1,19 @@
-import express from 'express';
+import express, { Request } from 'express';
 import { getCampaignManager } from '../services/CampaignManager.js';
-import { getCampaignExecutor } from '../services/CampaignExecutor.js';
 import { getSolanaEventDetector } from '../services/SolanaEventDetector.js';
-import SecureAuthService from '../lib/auth/SecureAuthService.js';
+import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { Campaign, CampaignNode } from '../models/Campaign.js';
+
+// Extend Express Request type to include user property from auth middleware
+interface AuthenticatedRequest extends Request {
+    user?: {
+        id: number;
+        wallet_address?: string;
+        solana_wallet_address?: string;
+        is_admin?: boolean;
+        is_super_admin?: boolean;
+    };
+}
 
 const router = express.Router();
 const authService = new SecureAuthService();
@@ -12,9 +22,9 @@ const campaignManager = getCampaignManager();
 // ==================== Campaign CRUD ====================
 
 // Create new campaign
-router.post('/campaigns', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignData: Partial<Campaign> = req.body;
 
         const campaign = await campaignManager.createCampaign(userId, campaignData);
@@ -33,9 +43,9 @@ router.post('/campaigns', authService.requireSecureAuth(), async (req, res) => {
 });
 
 // Get all user campaigns
-router.get('/campaigns', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaigns = await campaignManager.getUserCampaigns(userId);
         
         res.json({
@@ -52,7 +62,7 @@ router.get('/campaigns', authService.requireSecureAuth(), async (req, res) => {
 });
 
 // Get campaign templates
-router.get('/campaigns/templates', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/templates', authService.requireSecureAuth(), async (_req: AuthenticatedRequest, res) => {
     try {
         const templates = campaignManager.getPresetTemplates();
         
@@ -70,9 +80,9 @@ router.get('/campaigns/templates', authService.requireSecureAuth(), async (req, 
 });
 
 // Get campaign stats
-router.get('/campaigns/stats', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/stats', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const stats = await campaignManager.getCampaignStats(userId);
         
         res.json({
@@ -89,9 +99,9 @@ router.get('/campaigns/stats', authService.requireSecureAuth(), async (req, res)
 });
 
 // Get single campaign with details
-router.get('/campaigns/:id', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/:id', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignId = parseInt(req.params.id);
         
         const campaign = await campaignManager.getCampaign(campaignId, userId);
@@ -117,9 +127,9 @@ router.get('/campaigns/:id', authService.requireSecureAuth(), async (req, res) =
 });
 
 // Update campaign
-router.put('/campaigns/:id', authService.requireSecureAuth(), async (req, res) => {
+router.put('/campaigns/:id', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignId = parseInt(req.params.id);
         const updates: Partial<Campaign> = req.body;
         
@@ -139,9 +149,9 @@ router.put('/campaigns/:id', authService.requireSecureAuth(), async (req, res) =
 });
 
 // Delete campaign
-router.delete('/campaigns/:id', authService.requireSecureAuth(), async (req, res) => {
+router.delete('/campaigns/:id', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignId = parseInt(req.params.id);
         
         const deleted = await campaignManager.deleteCampaign(campaignId, userId);
@@ -167,9 +177,9 @@ router.delete('/campaigns/:id', authService.requireSecureAuth(), async (req, res
 });
 
 // Activate campaign
-router.post('/campaigns/:id/activate', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/:id/activate', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignId = parseInt(req.params.id);
         
         await campaignManager.activateCampaign(campaignId, userId);
@@ -188,9 +198,9 @@ router.post('/campaigns/:id/activate', authService.requireSecureAuth(), async (r
 });
 
 // Deactivate campaign
-router.post('/campaigns/:id/deactivate', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/:id/deactivate', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const campaignId = parseInt(req.params.id);
         
         await campaignManager.deactivateCampaign(campaignId, userId);
@@ -211,7 +221,7 @@ router.post('/campaigns/:id/deactivate', authService.requireSecureAuth(), async 
 // ==================== Node Management ====================
 
 // Add node to campaign
-router.post('/campaigns/:id/nodes', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/:id/nodes', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const node: CampaignNode = req.body;
@@ -232,7 +242,7 @@ router.post('/campaigns/:id/nodes', authService.requireSecureAuth(), async (req,
 });
 
 // Update node
-router.put('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), async (req, res) => {
+router.put('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const nodeId = req.params.nodeId;
@@ -254,7 +264,7 @@ router.put('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), asyn
 });
 
 // Delete node
-router.delete('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), async (req, res) => {
+router.delete('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const nodeId = req.params.nodeId;
@@ -277,7 +287,7 @@ router.delete('/campaigns/:id/nodes/:nodeId', authService.requireSecureAuth(), a
 // ==================== Runtime & Monitoring ====================
 
 // Get campaign instances/logs
-router.get('/campaigns/:id/logs', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/:id/logs', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const limit = parseInt(req.query.limit as string) || 50;
@@ -298,7 +308,7 @@ router.get('/campaigns/:id/logs', authService.requireSecureAuth(), async (req, r
 });
 
 // Get instance events
-router.get('/campaigns/instances/:instanceId/events', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/instances/:instanceId/events', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const instanceId = parseInt(req.params.instanceId);
         const events = await campaignManager.getCampaignEvents(instanceId);
@@ -317,9 +327,9 @@ router.get('/campaigns/instances/:instanceId/events', authService.requireSecureA
 });
 
 // Get running instances
-router.get('/campaigns/instances/running', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/instances/running', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const instances = await campaignManager.getRunningInstances(userId);
         
         res.json({
@@ -336,7 +346,7 @@ router.get('/campaigns/instances/running', authService.requireSecureAuth(), asyn
 });
 
 // Get campaign metrics
-router.get('/campaigns/:id/metrics', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/:id/metrics', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const days = parseInt(req.query.days as string) || 7;
@@ -359,9 +369,9 @@ router.get('/campaigns/:id/metrics', authService.requireSecureAuth(), async (req
 // ==================== Alerts ====================
 
 // Get alerts
-router.get('/campaigns/alerts', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/alerts', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const acknowledged = req.query.acknowledged === 'true';
         
         const alerts = await campaignManager.getCampaignAlerts(userId, acknowledged);
@@ -380,9 +390,9 @@ router.get('/campaigns/alerts', authService.requireSecureAuth(), async (req, res
 });
 
 // Acknowledge alert
-router.post('/campaigns/alerts/:id/acknowledge', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/alerts/:id/acknowledge', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const alertId = parseInt(req.params.id);
         
         await campaignManager.acknowledgeAlert(alertId, userId);
@@ -403,9 +413,9 @@ router.post('/campaigns/alerts/:id/acknowledge', authService.requireSecureAuth()
 // ==================== Templates ====================
 
 // Import campaign from template
-router.post('/campaigns/import', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/import', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const template = req.body;
         
         const campaign = await campaignManager.importCampaignFromTemplate(userId, template);
@@ -424,7 +434,7 @@ router.post('/campaigns/import', authService.requireSecureAuth(), async (req, re
 });
 
 // Export campaign as template
-router.get('/campaigns/:id/export', authService.requireSecureAuth(), async (req, res) => {
+router.get('/campaigns/:id/export', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const campaignId = parseInt(req.params.id);
         const template = await campaignManager.exportCampaignAsTemplate(campaignId);
@@ -445,7 +455,7 @@ router.get('/campaigns/:id/export', authService.requireSecureAuth(), async (req,
 // ==================== Manual Testing ====================
 
 // Manually trigger campaign for testing (dev only)
-router.post('/campaigns/:id/test-trigger', authService.requireSecureAuth(), async (req, res) => {
+router.post('/campaigns/:id/test-trigger', authService.requireSecureAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         if (process.env.NODE_ENV === 'production') {
             return res.status(403).json({
@@ -455,7 +465,7 @@ router.post('/campaigns/:id/test-trigger', authService.requireSecureAuth(), asyn
         }
 
         const campaignId = parseInt(req.params.id);
-        const { wallet, signature } = req.body;
+        const { wallet } = req.body;
         
         // Get campaign
         const campaign = await campaignManager.getCampaign(campaignId);

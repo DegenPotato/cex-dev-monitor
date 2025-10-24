@@ -1,13 +1,12 @@
-import { getDb, queryOne, queryAll, execute } from '../database/helpers.js';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { 
     Campaign, 
     CampaignNode, 
-    CampaignAlert,
+    RuntimeInstance, 
+    CampaignAlert, 
     CampaignMetrics,
-    RuntimeInstance,
     CampaignTemplate
 } from '../models/Campaign.js';
-import { getCampaignExecutor } from './CampaignExecutor.js';
 import { getSolanaEventDetector } from './SolanaEventDetector.js';
 
 export class CampaignManager {
@@ -60,7 +59,7 @@ export class CampaignManager {
         const whereClause = userId ? 'c.id = ? AND c.user_id = ?' : 'c.id = ?';
         const params = userId ? [campaignId, userId] : [campaignId];
 
-        const campaign = await queryOne(
+        const campaign = await queryOne<any>(
             `SELECT c.*,
                 (SELECT json_group_array(json_object(
                     'node_id', node_id,
@@ -97,7 +96,7 @@ export class CampaignManager {
     }
 
     async getUserCampaigns(userId: number): Promise<Campaign[]> {
-        const campaigns = await queryAll(
+        const campaigns = await queryAll<any>(
             `SELECT c.*,
                 (SELECT COUNT(*) FROM campaign_runtime_instances 
                  WHERE campaign_id = c.id AND status = 'running') as active_instances,
@@ -289,7 +288,7 @@ export class CampaignManager {
             : `ri.status = 'running'`;
         const params = userId ? [userId] : [];
 
-        const instances = await queryAll(
+        const instances = await queryAll<any>(
             `SELECT ri.*, c.name as campaign_name
              FROM campaign_runtime_instances ri
              JOIN campaigns c ON ri.campaign_id = c.id
@@ -308,7 +307,7 @@ export class CampaignManager {
     }
 
     async getInstanceHistory(campaignId: number, limit: number = 50): Promise<RuntimeInstance[]> {
-        const instances = await queryAll(
+        const instances = await queryAll<any>(
             `SELECT * FROM campaign_runtime_instances 
              WHERE campaign_id = ?
              ORDER BY started_at DESC
@@ -326,7 +325,7 @@ export class CampaignManager {
     }
 
     async getCampaignEvents(instanceId: number): Promise<any[]> {
-        const events = await queryAll(
+        const events = await queryAll<any>(
             `SELECT * FROM campaign_events 
              WHERE instance_id = ?
              ORDER BY created_at ASC`,
@@ -343,7 +342,7 @@ export class CampaignManager {
     }
 
     async getCampaignAlerts(userId: number, acknowledged: boolean = false): Promise<CampaignAlert[]> {
-        const alerts = await queryAll(
+        const alerts = await queryAll<any>(
             `SELECT a.*, c.name as campaign_name
              FROM campaign_alerts a
              JOIN campaigns c ON a.campaign_id = c.id
@@ -379,7 +378,7 @@ export class CampaignManager {
         startDate.setDate(startDate.getDate() - days);
         const startDateStr = startDate.toISOString().split('T')[0];
 
-        const metrics = await queryAll(
+        const metrics = await queryAll<any>(
             `SELECT * FROM campaign_metrics 
              WHERE campaign_id = ? AND metric_date >= ?
              ORDER BY metric_date DESC`,
@@ -541,7 +540,7 @@ export class CampaignManager {
     // ==================== Analytics ====================
 
     async getCampaignStats(userId: number): Promise<any> {
-        const stats = await queryOne(
+        const stats = await queryOne<any>(
             `SELECT 
                 COUNT(*) as total_campaigns,
                 COUNT(CASE WHEN enabled = 1 THEN 1 END) as active_campaigns,

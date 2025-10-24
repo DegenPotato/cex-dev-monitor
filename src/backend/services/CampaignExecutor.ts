@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import axios from 'axios';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { getDb, queryOne, queryAll, execute } from '../database/helpers.js';
+import { queryAll, execute } from '../database/helpers.js';
 import { 
     Campaign, 
     CampaignNode, 
@@ -9,9 +9,7 @@ import {
     ExecutionStep,
     FilterConfig,
     MonitorConfig,
-    ActionConfig,
-    InstanceStatus,
-    CampaignEvent
+    ActionConfig
 } from '../models/Campaign.js';
 import { getSolanaEventDetector } from './SolanaEventDetector.js';
 import { getWebSocketServer } from './WebSocketService.js';
@@ -65,7 +63,7 @@ export class CampaignExecutor extends EventEmitter {
 
     private async loadIncompleteInstances(): Promise<void> {
         try {
-            const instances = await queryAll(
+            const instances = await queryAll<any>(
                 `SELECT * FROM campaign_runtime_instances 
                  WHERE status = 'running' 
                  AND (expires_at IS NULL OR expires_at > ?)`,
@@ -79,7 +77,7 @@ export class CampaignExecutor extends EventEmitter {
                 if (instance.trigger_data) {
                     instance.trigger_data = JSON.parse(instance.trigger_data);
                 }
-                this.activeInstances.set(instance.id, instance);
+                this.activeInstances.set(instance.id, instance as RuntimeInstance);
             }
 
             console.log(`📋 Loaded ${instances.length} incomplete instances`);
@@ -254,7 +252,7 @@ export class CampaignExecutor extends EventEmitter {
             }
             
             // Add nodes (parallel groups will be handled separately)
-            for (const [group, groupNodes] of groups.entries()) {
+            for (const [, groupNodes] of groups.entries()) {
                 for (const child of groupNodes) {
                     addNode(child);
                 }
@@ -588,7 +586,7 @@ export class CampaignExecutor extends EventEmitter {
     }
 
     private async handleMonitorDetected(data: { campaign_id: number, instance_id: number, detection: any }): Promise<void> {
-        const { instance_id, detection } = data;
+        const { instance_id } = data;
         const instance = this.activeInstances.get(instance_id);
         
         if (!instance) return;
