@@ -1318,10 +1318,10 @@ app.get('/api/tokens', async (req, res) => {
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint as mint_address,
-        COALESCE(gtd.symbol, tr.token_symbol, 'UNKNOWN') as symbol,
-        COALESCE(gtd.name, tr.token_name, 'Unknown Token') as name,
+        tr.symbol,
+        tr.name,
         tr.creator_address,
-        COALESCE(tr.platform, 'unknown') as platform,
+        tr.platform,
         tr.creation_signature as signature,
         tr.first_seen_at * 1000 as timestamp,
         tr.is_graduated as launchpad_completed,
@@ -1387,15 +1387,12 @@ app.get('/api/tokens', async (req, res) => {
       LIMIT ?
     `, [limit]);
     
-    // Map for frontend compatibility and ensure no nulls on critical fields
+    // Map for frontend compatibility
     const mappedTokens = tokens.map((token: any) => ({
       ...token,
       id: token.mint_address,
-      platform: token.platform || 'unknown',  // Double-check platform is never null
-      symbol: token.symbol || 'UNKNOWN',
-      name: token.name || 'Unknown Token',
       launch_time: token.timestamp,
-      graduation_percentage: (token.platform === 'pump.fun' || token.platform === 'pumpfun') && token.current_mcap ? 
+      graduation_percentage: token.platform === 'pump.fun' && token.current_mcap ? 
         Math.min(100, (token.current_mcap / 69000) * 100) : null
     }));
     
