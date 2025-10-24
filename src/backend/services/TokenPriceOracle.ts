@@ -8,17 +8,80 @@ import { queryAll, execute } from '../database/helpers.js';
 import { apiProviderTracker } from './ApiProviderTracker.js';
 
 interface TokenPrice {
-  address: string;
-  symbol?: string;
-  name?: string;
-  priceUSD: number;
-  priceSOL?: number;
-  priceChange24h?: number;
-  volume24h?: number;
-  marketCapUSD?: number;
-  fdv?: number;
-  liquidityUSD?: number;
+  mintAddress: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  priceSol: number;
+  priceChange24h: number;
+  volume24h: number;
+  marketCap: number;
+  fdv: number;
+  liquidity: number;
   lastUpdated: number;
+  
+  // Additional fields from comprehensive data
+  imageUrl?: string;
+  totalSupply?: string;
+  normalizedTotalSupply?: string;
+  totalReserveUsd?: number;
+  
+  // Launchpad details
+  launchpadCompleted?: boolean;
+  launchpadGraduationPercentage?: number;
+  launchpadCompletedAt?: string;
+  launchpadMigratedPoolAddress?: string;
+  
+  // Price changes for multiple timeframes
+  priceChange6h?: number;
+  priceChange1h?: number;
+  priceChange30m?: number;
+  priceChange15m?: number;
+  priceChange5m?: number;
+  
+  // Top pool info
+  topPoolAddress?: string;
+  poolData?: PoolData;
+}
+
+interface PoolData {
+  address: string;
+  name: string;
+  dexId: string;
+  baseTokenAddress: string;
+  quoteTokenAddress: string;
+  poolCreatedAt: string;
+  reserveInUsd: number;
+  
+  // Transaction metrics
+  transactions: {
+    h24: { buys: number; sells: number; buyers: number; sellers: number };
+    h6: { buys: number; sells: number; buyers: number; sellers: number };
+    h1: { buys: number; sells: number; buyers: number; sellers: number };
+    m30: { buys: number; sells: number; buyers: number; sellers: number };
+    m15: { buys: number; sells: number; buyers: number; sellers: number };
+    m5: { buys: number; sells: number; buyers: number; sellers: number };
+  };
+  
+  // Volume by timeframe
+  volume: {
+    h24: number;
+    h6: number;
+    h1: number;
+    m30: number;
+    m15: number;
+    m5: number;
+  };
+  
+  // Price changes
+  priceChanges: {
+    h24: number;
+    h6: number;
+    h1: number;
+    m30: number;
+    m15: number;
+    m5: number;
+  };
 }
 
 interface GeckoTerminalToken {
@@ -28,12 +91,37 @@ interface GeckoTerminalToken {
     address: string;
     symbol: string;
     name: string;
+    decimals?: number;
+    image_url?: string;
+    coingecko_coin_id?: string | null;
+    total_supply?: string;
+    normalized_total_supply?: string;
     price_usd: string;
-    price_change_percentage_h24: string;
-    volume_usd_h24: string;
-    market_cap_usd?: string;
     fdv_usd?: string;
     total_reserve_in_usd?: string;
+    volume_usd?: {
+      h24?: string;
+      h6?: string;
+      h1?: string;
+      m30?: string;
+      m15?: string;
+      m5?: string;
+    };
+    market_cap_usd?: string | null;
+    price_change?: {
+      h24?: string;
+      h6?: string;
+      h1?: string;
+      m30?: string;
+      m15?: string;
+      m5?: string;
+    };
+    launchpad_details?: {
+      graduation_percentage?: number;
+      completed?: boolean;
+      completed_at?: string;
+      migrated_destination_pool_address?: string;
+    };
   };
 }
 
@@ -184,7 +272,7 @@ export class TokenPriceOracle {
         for (const token of data.data as GeckoTerminalToken[]) {
           const price = this.parseTokenData(token);
           if (price) {
-            this.priceCache.set(price.address, price);
+            this.priceCache.set(price.mintAddress, price);
             await this.saveToDatabase(price);
           }
         }
@@ -205,17 +293,36 @@ export class TokenPriceOracle {
       const attrs = token.attributes;
       
       return {
-        address: attrs.address,
-        symbol: attrs.symbol,
-        name: attrs.name,
-        priceUSD: parseFloat(attrs.price_usd || '0'),
-        priceSOL: this.solPrice > 0 ? parseFloat(attrs.price_usd || '0') / this.solPrice : undefined,
-        priceChange24h: parseFloat(attrs.price_change_percentage_h24 || '0'),
-        volume24h: parseFloat(attrs.volume_usd_h24 || '0'),
-        marketCapUSD: attrs.market_cap_usd ? parseFloat(attrs.market_cap_usd) : undefined,
-        fdv: attrs.fdv_usd ? parseFloat(attrs.fdv_usd) : undefined,
-        liquidityUSD: attrs.total_reserve_in_usd ? parseFloat(attrs.total_reserve_in_usd) : undefined,
-        lastUpdated: Date.now()
+        mintAddress: attrs.address,
+        symbol: attrs.symbol || 'UNKNOWN',
+        name: attrs.name || 'Unknown Token',
+        priceUsd: parseFloat(attrs.price_usd) || 0,
+        priceSol: this.solPrice > 0 ? parseFloat(attrs.price_usd) / this.solPrice : 0,
+        priceChange24h: attrs.price_change?.h24 ? parseFloat(attrs.price_change.h24) : 0,
+        volume24h: attrs.volume_usd?.h24 ? parseFloat(attrs.volume_usd.h24) : 0,
+        marketCap: attrs.market_cap_usd ? parseFloat(attrs.market_cap_usd) : 0,
+        fdv: attrs.fdv_usd ? parseFloat(attrs.fdv_usd) : 0,
+        liquidity: attrs.total_reserve_in_usd ? parseFloat(attrs.total_reserve_in_usd) : 0,
+        lastUpdated: Date.now(),
+        
+        // Additional comprehensive data
+        imageUrl: attrs.image_url,
+        totalSupply: attrs.total_supply,
+        normalizedTotalSupply: attrs.normalized_total_supply,
+        totalReserveUsd: attrs.total_reserve_in_usd ? parseFloat(attrs.total_reserve_in_usd) : undefined,
+        
+        // Launchpad details
+        launchpadCompleted: attrs.launchpad_details?.completed || false,
+        launchpadGraduationPercentage: attrs.launchpad_details?.graduation_percentage,
+        launchpadCompletedAt: attrs.launchpad_details?.completed_at,
+        launchpadMigratedPoolAddress: attrs.launchpad_details?.migrated_destination_pool_address,
+        
+        // Extended price changes
+        priceChange6h: attrs.price_change?.h6 ? parseFloat(attrs.price_change.h6) : undefined,
+        priceChange1h: attrs.price_change?.h1 ? parseFloat(attrs.price_change.h1) : undefined,
+        priceChange30m: attrs.price_change?.m30 ? parseFloat(attrs.price_change.m30) : undefined,
+        priceChange15m: attrs.price_change?.m15 ? parseFloat(attrs.price_change.m15) : undefined,
+        priceChange5m: attrs.price_change?.m5 ? parseFloat(attrs.price_change.m5) : undefined,
       };
     } catch (error) {
       console.error('🪙 [Token Oracle] Error parsing token data:', error);
@@ -228,6 +335,7 @@ export class TokenPriceOracle {
    */
   private async saveToDatabase(price: TokenPrice): Promise<void> {
     try {
+      // Save to existing token_market_data table for backward compatibility
       await execute(`
         INSERT OR REPLACE INTO token_market_data (
           mint_address,
@@ -242,18 +350,257 @@ export class TokenPriceOracle {
           last_updated
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now') * 1000)
       `, [
-        price.address,
+        price.mintAddress,
         price.symbol || null,
         price.name || null,
-        price.priceUSD,
-        price.priceSOL || null,
+        price.priceUsd,
+        price.priceSol || null,
         price.priceChange24h || null,
         price.volume24h || null,
-        price.marketCapUSD || null,
-        price.liquidityUSD || null
+        price.marketCap || null,
+        price.liquidity || null
       ]);
+      
+      // Save comprehensive data to new gecko_token_data table
+      await this.saveComprehensiveData(price);
+      
     } catch (error) {
       console.error('🪙 [Token Oracle] Error saving to database:', error);
+    }
+  }
+  
+  /**
+   * Save comprehensive token and pool data
+   */
+  private async saveComprehensiveData(price: TokenPrice): Promise<void> {
+    try {
+      // Save token data
+      await execute(`
+        INSERT INTO gecko_token_data (
+          mint_address,
+          symbol,
+          name,
+          decimals,
+          image_url,
+          total_supply,
+          normalized_total_supply,
+          price_usd,
+          price_sol,
+          fdv_usd,
+          market_cap_usd,
+          total_reserve_in_usd,
+          volume_24h_usd,
+          volume_6h_usd,
+          volume_1h_usd,
+          price_change_24h,
+          price_change_6h,
+          price_change_1h,
+          price_change_30m,
+          price_change_15m,
+          price_change_5m,
+          launchpad_graduation_percentage,
+          launchpad_completed,
+          launchpad_completed_at,
+          launchpad_migrated_pool_address,
+          top_pool_address,
+          raw_response,
+          fetched_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
+        )
+      `, [
+        price.mintAddress,
+        price.symbol,
+        price.name,
+        null, // decimals - not in TokenPrice interface yet
+        price.imageUrl,
+        price.totalSupply,
+        price.normalizedTotalSupply,
+        price.priceUsd,
+        price.priceSol,
+        price.fdv,
+        price.marketCap,
+        price.totalReserveUsd,
+        price.volume24h,
+        null, // volume_6h - need to add
+        null, // volume_1h - need to add
+        price.priceChange24h,
+        price.priceChange6h,
+        price.priceChange1h,
+        price.priceChange30m,
+        price.priceChange15m,
+        price.priceChange5m,
+        price.launchpadGraduationPercentage,
+        price.launchpadCompleted ? 1 : 0,
+        price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
+        price.launchpadMigratedPoolAddress,
+        price.topPoolAddress,
+        null, // raw_response - will add later
+      ]);
+      
+      // Save pool data if available
+      if (price.poolData) {
+        await this.savePoolData(price.poolData);
+      }
+      
+      // Create snapshot for historical tracking
+      await this.createSnapshot(price);
+      
+    } catch (error) {
+      console.error('🪙 [Token Oracle] Error saving comprehensive data:', error);
+    }
+  }
+  
+  /**
+   * Save pool data to database
+   */
+  private async savePoolData(pool: PoolData): Promise<void> {
+    try {
+      await execute(`
+        INSERT INTO gecko_pool_data (
+          pool_address,
+          name,
+          base_token_address,
+          quote_token_address,
+          dex_id,
+          pool_created_at,
+          reserve_in_usd,
+          price_change_24h,
+          price_change_6h,
+          price_change_1h,
+          price_change_30m,
+          price_change_15m,
+          price_change_5m,
+          txns_24h_buys,
+          txns_24h_sells,
+          txns_24h_buyers,
+          txns_24h_sellers,
+          txns_6h_buys,
+          txns_6h_sells,
+          txns_6h_buyers,
+          txns_6h_sellers,
+          txns_1h_buys,
+          txns_1h_sells,
+          txns_1h_buyers,
+          txns_1h_sellers,
+          txns_30m_buys,
+          txns_30m_sells,
+          txns_30m_buyers,
+          txns_30m_sellers,
+          txns_15m_buys,
+          txns_15m_sells,
+          txns_15m_buyers,
+          txns_15m_sellers,
+          txns_5m_buys,
+          txns_5m_sells,
+          txns_5m_buyers,
+          txns_5m_sellers,
+          volume_24h_usd,
+          volume_6h_usd,
+          volume_1h_usd,
+          volume_30m_usd,
+          volume_15m_usd,
+          volume_5m_usd,
+          fetched_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
+        )
+      `, [
+        pool.address,
+        pool.name,
+        pool.baseTokenAddress,
+        pool.quoteTokenAddress,
+        pool.dexId,
+        pool.poolCreatedAt ? Math.floor(new Date(pool.poolCreatedAt).getTime() / 1000) : null,
+        pool.reserveInUsd,
+        pool.priceChanges.h24,
+        pool.priceChanges.h6,
+        pool.priceChanges.h1,
+        pool.priceChanges.m30,
+        pool.priceChanges.m15,
+        pool.priceChanges.m5,
+        pool.transactions.h24.buys,
+        pool.transactions.h24.sells,
+        pool.transactions.h24.buyers,
+        pool.transactions.h24.sellers,
+        pool.transactions.h6.buys,
+        pool.transactions.h6.sells,
+        pool.transactions.h6.buyers,
+        pool.transactions.h6.sellers,
+        pool.transactions.h1.buys,
+        pool.transactions.h1.sells,
+        pool.transactions.h1.buyers,
+        pool.transactions.h1.sellers,
+        pool.transactions.m30.buys,
+        pool.transactions.m30.sells,
+        pool.transactions.m30.buyers,
+        pool.transactions.m30.sellers,
+        pool.transactions.m15.buys,
+        pool.transactions.m15.sells,
+        pool.transactions.m15.buyers,
+        pool.transactions.m15.sellers,
+        pool.transactions.m5.buys,
+        pool.transactions.m5.sells,
+        pool.transactions.m5.buyers,
+        pool.transactions.m5.sellers,
+        pool.volume.h24,
+        pool.volume.h6,
+        pool.volume.h1,
+        pool.volume.m30,
+        pool.volume.m15,
+        pool.volume.m5
+      ]);
+    } catch (error) {
+      console.error('🪙 [Token Oracle] Error saving pool data:', error);
+    }
+  }
+  
+  /**
+   * Create historical snapshot
+   */
+  private async createSnapshot(price: TokenPrice): Promise<void> {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      
+      await execute(`
+        INSERT OR IGNORE INTO gecko_token_snapshots (
+          mint_address,
+          price_usd,
+          market_cap_usd,
+          fdv_usd,
+          volume_24h_usd,
+          reserve_usd,
+          txns_24h_buys,
+          txns_24h_sells,
+          unique_buyers_24h,
+          unique_sellers_24h,
+          price_change_24h,
+          price_change_6h,
+          price_change_1h,
+          is_graduated,
+          graduation_percentage,
+          snapshot_timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        price.mintAddress,
+        price.priceUsd,
+        price.marketCap,
+        price.fdv,
+        price.volume24h,
+        price.totalReserveUsd,
+        price.poolData?.transactions.h24.buys || null,
+        price.poolData?.transactions.h24.sells || null,
+        price.poolData?.transactions.h24.buyers || null,
+        price.poolData?.transactions.h24.sellers || null,
+        price.priceChange24h,
+        price.priceChange6h,
+        price.priceChange1h,
+        price.launchpadCompleted ? 1 : 0,
+        price.launchpadGraduationPercentage,
+        now
+      ]);
+    } catch (error) {
+      // Snapshots are optional, don't log errors
     }
   }
 
