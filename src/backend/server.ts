@@ -1318,13 +1318,13 @@ app.get('/api/tokens', async (req, res) => {
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint as mint_address,
-        tr.token_symbol as symbol,
-        tr.token_name as name,
-        tr.creator_address,
-        tr.platform,
+        COALESCE(tr.token_symbol, 'UNKNOWN') as symbol,
+        COALESCE(tr.token_name, 'Unknown Token') as name,
+        COALESCE(tr.creator_address, '') as creator_address,
+        COALESCE(tr.platform, 'unknown') as platform,
         tr.creation_signature as signature,
         tr.first_seen_at * 1000 as timestamp,
-        tr.is_graduated as launchpad_completed,
+        COALESCE(tr.is_graduated, 0) as launchpad_completed,
         CASE 
           WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000
           ELSE NULL
@@ -1374,13 +1374,22 @@ app.get('/api/tokens', async (req, res) => {
       LIMIT ?
     `, [limit]);
     
-    // Map for frontend compatibility
+    // Map for frontend compatibility and ensure no null crashes
     const mappedTokens = tokens.map((token: any) => ({
       ...token,
-      id: token.mint_address,
-      launch_time: token.timestamp,
+      id: token.mint_address || 'unknown',
+      launch_time: token.timestamp || Date.now(),
+      // Ensure platform is always a string
+      platform: (token.platform || 'unknown').toLowerCase(),
+      // Calculate graduation percentage safely
       graduation_percentage: token.platform === 'pump.fun' && token.current_mcap ? 
-        Math.min(100, (token.current_mcap / 69000) * 100) : null
+        Math.min(100, (token.current_mcap / 69000) * 100) : null,
+      // Ensure numeric fields are numbers or null
+      current_mcap: token.current_mcap || null,
+      starting_mcap: token.starting_mcap || null,
+      ath_mcap: token.ath_mcap || null,
+      price_usd: token.price_usd || null,
+      price_sol: token.price_sol || null
     }));
     
     res.json(mappedTokens);
