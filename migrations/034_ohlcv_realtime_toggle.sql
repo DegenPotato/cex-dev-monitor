@@ -1,10 +1,10 @@
 -- Migration: Add real-time OHLCV toggle and activity tracking
 -- Purpose: Allow per-token real-time chart updates and track pool activity tiers
 
--- Add real-time toggle to token_mints
-ALTER TABLE token_mints ADD COLUMN ohlcv_realtime_enabled INTEGER DEFAULT 0;
-ALTER TABLE token_mints ADD COLUMN ohlcv_update_tier TEXT DEFAULT 'NORMAL';
-ALTER TABLE token_mints ADD COLUMN ohlcv_last_activity_check INTEGER;
+-- Add real-time toggle to token_registry (token_mints was unified into token_registry in migration 031)
+ALTER TABLE token_registry ADD COLUMN ohlcv_realtime_enabled INTEGER DEFAULT 0;
+ALTER TABLE token_registry ADD COLUMN ohlcv_update_tier TEXT DEFAULT 'NORMAL';
+ALTER TABLE token_registry ADD COLUMN ohlcv_last_activity_check INTEGER;
 
 -- Add activity metrics to token_pools table
 ALTER TABLE token_pools ADD COLUMN activity_tier TEXT DEFAULT 'NORMAL';
@@ -16,8 +16,8 @@ ALTER TABLE token_pools ADD COLUMN next_update_at INTEGER;
 
 -- Create index for efficient tier-based queries
 CREATE INDEX IF NOT EXISTS idx_token_pools_activity_tier ON token_pools(activity_tier, next_update_at);
-CREATE INDEX IF NOT EXISTS idx_token_mints_ohlcv_realtime ON token_mints(ohlcv_realtime_enabled);
-CREATE INDEX IF NOT EXISTS idx_token_mints_update_tier ON token_mints(ohlcv_update_tier);
+CREATE INDEX IF NOT EXISTS idx_token_registry_ohlcv_realtime ON token_registry(ohlcv_realtime_enabled);
+CREATE INDEX IF NOT EXISTS idx_token_registry_update_tier ON token_registry(ohlcv_update_tier);
 
 -- Add table to track OHLCV update schedules
 CREATE TABLE IF NOT EXISTS ohlcv_update_schedule (
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS ohlcv_update_schedule (
   consecutive_dormant_checks INTEGER DEFAULT 0,
   created_at INTEGER DEFAULT (strftime('%s', 'now')),
   
-  FOREIGN KEY (mint_address) REFERENCES token_mints(mint_address)
+  FOREIGN KEY (mint_address) REFERENCES token_registry(token_mint)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ohlcv_schedule_next_update ON ohlcv_update_schedule(next_update);
