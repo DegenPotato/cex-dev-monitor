@@ -37,8 +37,11 @@ import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import { telegramEntityCache } from './services/TelegramEntityCache.js';
 import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
 import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
-import { tokenPriceOracle } from './services/TokenPriceOracle.js';
+import { TokenPriceOracle } from './services/TokenPriceOracle.js';
 import { geckoNetworksSyncService } from './services/GeckoNetworksSyncService.js';
+import { tokenRegistrySync } from './services/TokenRegistrySync.js';
+
+const tokenPriceOracle = TokenPriceOracle.getInstance();
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -96,6 +99,10 @@ solPriceOracle.start().then(async () => {
   const solPrice = solPriceOracle.getPrice();
   await tokenPriceOracle.start(solPrice);
   console.log('🪙 Token Price Oracle started for Trading Bot');
+  
+  // Start token registry sync service
+  await tokenRegistrySync.start();
+  console.log('🔄 Token Registry Sync started');
 }).catch(err => {
   console.error('Failed to start price oracles:', err);
 });
@@ -431,15 +438,20 @@ const clients = new Set<WebSocket>();
 wss.on('connection', (ws) => {
   console.log('🔌 New WebSocket client connected');
   clients.add(ws);
+  
+  // Register with Token Price Oracle for real-time price updates
+  tokenPriceOracle.registerClient(ws);
 
   ws.on('close', () => {
     console.log('🔌 Client disconnected');
     clients.delete(ws);
+    tokenPriceOracle.unregisterClient(ws);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
+    tokenPriceOracle.unregisterClient(ws);
   });
 
   // Send initial data

@@ -138,6 +138,7 @@ export class TokenPriceOracle {
   private isRunning = false;
   
   private solPrice: number = 150; // Fallback SOL price
+  private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting
 
   private constructor() {}
 
@@ -180,6 +181,46 @@ export class TokenPriceOracle {
     }
     
     console.log('🪙 [Token Oracle] Stopped');
+  }
+
+  /**
+   * Register a WebSocket client for price updates
+   */
+  registerClient(ws: any) {
+    this.wsClients.add(ws);
+    console.log(`🪙 [Token Oracle] Client registered. Total clients: ${this.wsClients.size}`);
+  }
+
+  /**
+   * Unregister a WebSocket client
+   */
+  unregisterClient(ws: any) {
+    this.wsClients.delete(ws);
+    console.log(`🪙 [Token Oracle] Client unregistered. Total clients: ${this.wsClients.size}`);
+  }
+
+  /**
+   * Broadcast price updates to all connected clients
+   */
+  private broadcastPriceUpdate(prices: Map<string, TokenPrice>) {
+    if (this.wsClients.size === 0) return;
+
+    const priceArray = Array.from(prices.values());
+    const message = JSON.stringify({
+      type: 'token_prices_update',
+      data: priceArray,
+      timestamp: Date.now()
+    });
+
+    this.wsClients.forEach(ws => {
+      try {
+        if (ws.readyState === 1) { // WebSocket.OPEN
+          ws.send(message);
+        }
+      } catch (error) {
+        console.error('🪙 [Token Oracle] Error broadcasting to client:', error);
+      }
+    });
   }
 
   /**
@@ -644,6 +685,9 @@ export class TokenPriceOracle {
       console.log(`🪙 [Token Oracle] Fetching prices for ${addresses.length} tokens...`);
       
       await this.fetchTokenPrices(addresses);
+      
+      // Broadcast updates to WebSocket clients
+      this.broadcastPriceUpdate(this.priceCache);
       
       const elapsed = Date.now() - startTime;
       console.log(`🪙 [Token Oracle] Updated ${addresses.length} token prices in ${elapsed}ms`);

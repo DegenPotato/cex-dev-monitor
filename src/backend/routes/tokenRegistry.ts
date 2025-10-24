@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { queryAll, queryOne } from '../database/helpers.js';
+import { tokenRegistrySync } from '../services/TokenRegistrySync.js';
 // TEMPORARILY COMMENTED OUT - RESTORE WHEN RE-ENABLING AUTH
 // import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
@@ -164,7 +165,22 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get analytics overview
+// Get tokens with real-time pricing from Token Price Oracle
+router.get('/with-pricing', async (req, res) => {
+  try {
+    const { limit = 100, offset = 0 } = req.query;
+    const tokens = await tokenRegistrySync.getTokensWithPricing(
+      parseInt(limit as string),
+      parseInt(offset as string)
+    );
+    res.json(tokens);
+  } catch (error: any) {
+    console.error('Error fetching tokens with pricing:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get analytics overview (using TokenRegistrySync)
 // TEMPORARILY REMOVED AUTH FOR TESTING - RESTORE LATER
 router.get('/analytics/overview', async (req, res) => {
   try {
