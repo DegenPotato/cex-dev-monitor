@@ -132,8 +132,8 @@ export class TokenPriceOracle {
   
   private readonly GECKOTERMINAL_API = 'https://api.geckoterminal.com/api/v2';
   private readonly BATCH_SIZE = 30; // GeckoTerminal max is 30 tokens per request
-  private readonly UPDATE_INTERVAL = 30000; // Update every 30 seconds
-  private readonly CACHE_DURATION = 30000; // Cache prices for 30 seconds
+  private readonly UPDATE_INTERVAL = 60000; // Update every 30 seconds
+  private readonly CACHE_DURATION = 60000; // Cache prices for 30 seconds
   private readonly NEW_TOKEN_FETCH_DELAY = 3000; // 3 seconds between new token fetches
   
   private priceCache: Map<string, TokenPrice> = new Map();
