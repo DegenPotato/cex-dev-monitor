@@ -135,14 +135,7 @@ FROM token_registry tr
 LEFT JOIN token_market_data tmd ON tr.token_mint = tmd.mint_address
 GROUP BY tr.first_source_type;
 
--- Step 9: Add migration notes
-INSERT INTO migrations_log (migration_name, executed_at, notes)
-VALUES (
-  '031_unify_token_tables',
-  strftime('%s', 'now'),
-  'Migrated token_mints to token_registry + token_market_data. Created backward compatibility view token_mints_view.'
-)
-WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='migrations_log');
+-- Step 9: Skip migration notes (migrations_log table may not exist)
 
 -- Note: We're NOT dropping token_mints table yet to ensure nothing breaks
 -- Once all code is updated to use token_registry, run:
