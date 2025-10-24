@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Flame, ExternalLink, TrendingUp, TrendingDown, DollarSign, BarChart3, Clock, User, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Flame, ExternalLink, TrendingUp, TrendingDown, DollarSign, BarChart3, Clock, User, ArrowUpDown, RefreshCw, Radio } from 'lucide-react';
 import { apiUrl } from '../config';
 
 interface Token {
@@ -39,15 +39,67 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('newest');
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [refreshCooldowns, setRefreshCooldowns] = useState<Record<string, number>>({});
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     fetchTokens();
-    const interval = setInterval(() => {
-      fetchTokens();
-    }, 10000); // Refresh every 10s
-    return () => clearInterval(interval);
+    
+    // Set up WebSocket for real-time price updates - NO POLLING
+    const wsUrl = apiUrl('/ws').replace('http', 'ws');
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    
+    ws.onopen = () => {
+      console.log('🚀 Token Sniffer connected to real-time updates');
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        
+        // Handle real-time price updates from Token Price Oracle
+        if (message.type === 'token_prices_update') {
+          const priceUpdates = message.data as Array<{
+            mintAddress: string;
+            priceUsd: number;
+            priceSol: number;
+            priceChange24h: number;
+            marketCap: number;
+            volume24h: number;
+          }>;
+          
+          setTokens(prevTokens => {
+            const updatedTokens = [...prevTokens];
+            priceUpdates.forEach(update => {
+              const index = updatedTokens.findIndex(t => t.mint_address === update.mintAddress);
+              if (index !== -1) {
+                updatedTokens[index].price_usd = update.priceUsd;
+                updatedTokens[index].price_sol = update.priceSol;
+                updatedTokens[index].market_cap_usd = update.marketCap;
+                updatedTokens[index].current_mcap = update.marketCap;
+              }
+            });
+            setLastUpdate(Date.now());
+            return updatedTokens;
+          });
+        }
+      } catch (error) {
+        console.error('WebSocket message error:', error);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const fetchTokens = async () => {
@@ -152,7 +204,15 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
             <Flame className="w-6 h-6 text-purple-400" />
             Token Launch History ({tokens.length})
           </h2>
-          <p className="text-sm text-gray-400 mt-1">Real-time data from Token Price Oracle</p>
+          <span className="text-xs text-gray-500">
+            Real-time data from Token Price Oracle
+          </span>
+          {lastUpdate && (
+            <span className="text-xs text-gray-400 ml-2">
+              <Radio className="inline w-3 h-3 text-green-400 animate-pulse" />
+              Live Updates
+            </span>
+          )}
         </div>
       </div>
 
