@@ -4,7 +4,6 @@
  */
 
 import { execute, queryOne, queryAll } from '../database/helpers.js';
-import { saveDatabase } from '../database/connection.js';
 import { TokenPriceOracle } from './TokenPriceOracle.js';
 
 const tokenPriceOracle = TokenPriceOracle.getInstance();
