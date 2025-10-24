@@ -240,7 +240,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       
       // Check if user has enabled real-time for this token
       const tokenSettings = await queryOne<{ ohlcv_realtime_enabled: number }>(
-        `SELECT ohlcv_realtime_enabled FROM token_mints WHERE mint_address = ?`,
+        `SELECT ohlcv_realtime_enabled FROM token_registry WHERE token_mint = ?`,
         [poolData.id?.split('_')[1] || '']
       );
       
@@ -515,7 +515,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       
       // Get real-time enabled tokens
       const realtimeCount = await queryOne<{ count: number }>(
-        `SELECT COUNT(*) as count FROM token_mints WHERE ohlcv_realtime_enabled = 1`
+        `SELECT COUNT(*) as count FROM token_registry WHERE ohlcv_realtime_enabled = 1`
       );
       
       return {

@@ -2907,7 +2907,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Log token mint to database
    */
-  private async logTokenMint(contractAddress: string, data: {
+  private async logTokenMint(_contractAddress: string, _data: {
     platform?: string;
     firstSeenSource?: string;
     chatName?: string;
@@ -2919,29 +2919,9 @@ export class TelegramClientService extends EventEmitter {
     userId?: number;
   }) {
     try {
-      // Use TokenSourceTracker for comprehensive token_registry tracking
-      // Properly map the source type - keep distinction between realtime and backlog
-      const sourceType = 'telegram'; // Base type is always telegram for now
-      const detectionType = data.firstSeenSource || 'telegram_realtime';
-      
-      await tokenSourceTracker.registerToken({
-        tokenMint: contractAddress,
-        firstSourceType: sourceType as any,
-        firstSourceDetails: {
-          platform: data.platform || 'pumpfun',
-          isBacklog: data.isBacklog || false,
-          detectionType: detectionType,  // Preserves telegram_realtime vs telegram_backlog
-          messageTimestamp: data.messageTimestamp
-        },
-        telegramChatId: data.chatId,
-        telegramChatName: data.chatName,
-        telegramMessageId: data.messageId ? parseInt(data.messageId) : undefined,
-        telegramSender: data.senderId,
-        discoveredByUserId: data.userId || 1
-      });
-      
-      // Note: token_mints table is deprecated - all data now in token_registry
-      // The tokenSourceTracker.registerToken() call above handles everything
+      // NOTE: Token registration moved to logTelegramDetection() to prevent duplicate sightings
+      // This function is now a no-op but kept for backward compatibility
+      // logTelegramDetection() already calls tokenSourceTracker.registerToken()
       
     } catch (error: any) {
       console.error(`   ❌ Failed to log token mint:`, error.message);
