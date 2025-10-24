@@ -21,6 +21,7 @@ import { OHLCVCollector } from './OHLCVCollector.js';
 export class ActivityBasedOHLCVCollector extends OHLCVCollector {
   private activityCheckInterval: NodeJS.Timeout | null = null;
   private realtimeUpdateInterval: NodeJS.Timeout | null = null;
+  private poolDiscoveryInterval: NodeJS.Timeout | null = null;
   
   // Update tier configurations (in milliseconds)
   private readonly UPDATE_TIERS = {
@@ -59,6 +60,11 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
     // Discover missing pools on startup
     await this.discoverMissingPools();
     
+    // Continue discovering missing pools every 5 minutes
+    this.poolDiscoveryInterval = setInterval(() => {
+      this.discoverMissingPools();
+    }, 5 * 60 * 1000); // Run every 5 minutes to gradually process all 488 tokens
+    
     // Check pool activity every minute
     this.checkPoolActivity();
     this.activityCheckInterval = setInterval(() => {
@@ -79,7 +85,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
     try {
       console.log('🔍 [OHLCV] Discovering pools for tokens without pools...');
       
-      // Get tokens that have no pools
+      // Get tokens that have no pools - increased limit to process more tokens
       const tokensWithoutPools = await queryAll<{ mint_address: string }>(
         `SELECT DISTINCT r.token_mint as mint_address 
          FROM token_registry r
@@ -87,7 +93,8 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
            SELECT 1 FROM token_pools p 
            WHERE p.mint_address = r.token_mint
          )
-         LIMIT 20`
+         ORDER BY r.first_seen_time DESC
+         LIMIT 100`  // Process 100 tokens per batch instead of 20
       );
       
       if (tokensWithoutPools.length === 0) {
@@ -99,12 +106,12 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       
       for (const token of tokensWithoutPools) {
         try {
-          // Use parent class processToken which discovers and stores pools
-          // Pass 0 as timestamp and false for justPools to only fetch pools, not OHLCV data
-          await this.processToken(token.mint_address, Date.now(), false);
+          // Use parent class processToken to discover and store pools
+          const tokenCreationTime = Date.now() - (30 * 24 * 60 * 60 * 1000); // Default to 30 days ago
+          await this.processToken(token.mint_address, tokenCreationTime);
           
           // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error: any) {
           console.error(`❌ [OHLCV] Error fetching pools for ${token.mint_address.slice(0, 8)}...:`, error.message);
         }
@@ -130,6 +137,11 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
     if (this.realtimeUpdateInterval) {
       clearInterval(this.realtimeUpdateInterval);
       this.realtimeUpdateInterval = null;
+    }
+    
+    if (this.poolDiscoveryInterval) {
+      clearInterval(this.poolDiscoveryInterval);
+      this.poolDiscoveryInterval = null;
     }
     
     console.log('🚀 [OHLCV] Activity-based collector stopped');
