@@ -1309,16 +1309,93 @@ app.get('/api/transactions/:address', async (req, res) => {
   res.json(transactions);
 });
 
-// Get token mints
+// Get token mints with full market data from token_registry
 app.get('/api/tokens', async (req, res) => {
-  const limit = parseInt(req.query.limit as string) || 50;
-  const tokens = await TokenMintProvider.findRecent(limit);
-  // Map timestamp to launch_time for frontend compatibility
-  const mappedTokens = tokens.map(token => ({
-    ...token,
-    launch_time: token.timestamp
-  }));
-  res.json(mappedTokens);
+  const limit = parseInt(req.query.limit as string) || 1000;
+  
+  try {
+    // Query from token_registry with market data, pool info, and price data
+    const tokens = await queryAll<any>(`
+      SELECT 
+        tr.token_mint as mint_address,
+        tr.symbol,
+        tr.name,
+        tr.creator_address,
+        tr.platform,
+        tr.creation_signature as signature,
+        tr.first_seen_at * 1000 as timestamp,  -- Convert seconds to milliseconds
+        tr.is_graduated as launchpad_completed,
+        tr.graduated_at * 1000 as launchpad_completed_at,  -- Convert seconds to milliseconds
+        tr.migrated_pool_address,
+        tr.telegram_mentions,
+        tr.wallet_transactions,
+        tr.first_source_type,
+        tr.telegram_chat_name,
+        
+        -- Market data from token_market_data
+        tmd.price_usd,
+        tmd.market_cap_usd as current_mcap,
+        tmd.volume_24h_usd,
+        tmd.price_change_24h,
+        tmd.liquidity_usd,
+        tmd.ath_price_usd,
+        tmd.ath_market_cap_usd as ath_mcap,
+        
+        -- Primary pool data
+        tp.pool_address as primary_pool,
+        tp.dex as primary_dex,
+        tp.volume_24h_usd as pool_volume_24h,
+        tp.liquidity_usd as pool_liquidity,
+        tp.activity_tier,
+        
+        -- Calculate price in SOL (using SOL price from config)
+        CASE 
+          WHEN tmd.price_usd IS NOT NULL THEN tmd.price_usd / CAST(COALESCE(
+            (SELECT value FROM config WHERE key = 'sol_price'), 
+            '150'
+          ) AS REAL)
+          ELSE NULL
+        END as price_sol,
+        
+        -- Starting market cap (first recorded or assume small for pump.fun)
+        CASE 
+          WHEN tr.platform = 'pump.fun' THEN 5000
+          ELSE tr.first_price_usd * 1000000000
+        END as starting_mcap
+        
+      FROM token_registry tr
+      LEFT JOIN token_market_data tmd ON tr.token_mint = tmd.mint_address
+      LEFT JOIN (
+        SELECT 
+          mint_address,
+          pool_address,
+          dex,
+          volume_24h_usd,
+          liquidity_usd,
+          activity_tier
+        FROM token_pools
+        WHERE is_primary = 1
+      ) tp ON tr.token_mint = tp.mint_address
+      
+      ORDER BY tr.first_seen_at DESC
+      LIMIT ?
+    `, [limit]);
+    
+    // Map for frontend compatibility
+    const mappedTokens = tokens.map(token => ({
+      ...token,
+      id: token.mint_address, // Use mint_address as ID
+      launch_time: token.timestamp,
+      // Calculate graduation percentage for pump.fun tokens
+      graduation_percentage: token.platform === 'pump.fun' && token.current_mcap ? 
+        Math.min(100, (token.current_mcap / 69000) * 100) : null
+    }));
+    
+    res.json(mappedTokens);
+  } catch (error) {
+    console.error('Error fetching tokens:', error);
+    res.status(500).json({ error: 'Failed to fetch tokens' });
+  }
 });
 
 // Get recent token mints (alias for /api/tokens)
