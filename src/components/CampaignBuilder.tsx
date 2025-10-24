@@ -366,8 +366,68 @@ const CampaignBuilder: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        Select or create a campaign to get started
+                    <div className="flex-1 p-8">
+                        <div className="max-w-4xl mx-auto">
+                            <h2 className="text-2xl font-bold text-cyan-400 mb-6">Welcome to Campaign Builder</h2>
+                            
+                            <div className="bg-gray-900/50 rounded-lg p-6 mb-6 border border-cyan-500/20">
+                                <h3 className="text-lg font-semibold text-white mb-4">🚀 Quick Start</h3>
+                                <p className="text-gray-300 mb-4">
+                                    Campaigns let you track Solana blockchain events and take automated actions.
+                                </p>
+                                
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-cyan-400 font-bold">1.</span>
+                                        <div>
+                                            <p className="text-white font-medium">Create from Template</p>
+                                            <p className="text-gray-400 text-sm">Click on a template in the left sidebar to start with a pre-built campaign</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-cyan-400 font-bold">2.</span>
+                                        <div>
+                                            <p className="text-white font-medium">Or Build Custom</p>
+                                            <p className="text-gray-400 text-sm">Click "+ New" to create a blank campaign</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-cyan-400 font-bold">3.</span>
+                                        <div>
+                                            <p className="text-white font-medium">Add Nodes</p>
+                                            <p className="text-gray-400 text-sm">
+                                                • <span className="text-yellow-400">Trigger</span>: What starts the campaign (e.g., wallet receives SOL)<br/>
+                                                • <span className="text-blue-400">Filter</span>: Conditions to check (e.g., new wallet, amount {'>'} 2 SOL)<br/>
+                                                • <span className="text-purple-400">Monitor</span>: Watch for follow-up activity (e.g., token creation)<br/>
+                                                • <span className="text-green-400">Action</span>: What to do (e.g., alert, add to database)
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gray-900/50 rounded-lg p-6 border border-purple-500/20">
+                                <h3 className="text-lg font-semibold text-white mb-4">💡 Example: Track Fresh Wallet Token Launches</h3>
+                                <p className="text-gray-300 mb-4">
+                                    This campaign detects when a new wallet receives exactly 2 SOL and then creates a token:
+                                </p>
+                                <ol className="space-y-2 text-gray-400">
+                                    <li>1. <span className="text-yellow-400">Trigger</span>: Wallet receives 2 SOL</li>
+                                    <li>2. <span className="text-blue-400">Filter</span>: Account age {'<'} 5 minutes</li>
+                                    <li>3. <span className="text-purple-400">Monitor</span>: Watch for token creation (1 hour window)</li>
+                                    <li>4. <span className="text-green-400">Action</span>: Create alert {'&'} add to database</li>
+                                </ol>
+                                
+                                <button 
+                                    onClick={() => createCampaign(templates[0])}
+                                    className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-white font-medium"
+                                >
+                                    Try This Template →
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

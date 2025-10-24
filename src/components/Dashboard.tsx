@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap, BarChart3, Workflow } from 'lucide-react';
+import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap, BarChart3 } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { config } from '../config';
 import { SettingsPanel } from './SettingsPanel';
@@ -10,11 +10,11 @@ import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
 import { FetcherTab } from './FetcherTab';
 import { TokenIndexTab } from './TokenIndexTab';
-import CampaignBuilder from './CampaignBuilder';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
 import { useAudio } from '../contexts/AudioContext';
+import CampaignBuilder from './CampaignBuilder';
 
 type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher' | 'campaigns';
 
@@ -580,8 +580,8 @@ export function Dashboard() {
             {activeTab === 'campaigns' && (
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
             )}
-            <Workflow className="w-5 h-5 relative z-10" />
-            <span className="relative z-10">Campaign Builder</span>
+            <Activity className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Campaigns</span>
             {activeTab === 'campaigns' && (
               <ChevronRight className="w-4 h-4 ml-2 text-cyan-300 relative z-10" />
             )}
