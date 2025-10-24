@@ -60,10 +60,12 @@ class TokenRegistrySyncService {
     
     // Initial sync
     await this.syncTokens();
+    await this.syncGeckoDataToRegistry();
     
     // Periodic sync
     this.syncInterval = setInterval(() => {
       this.syncTokens();
+      this.syncGeckoDataToRegistry();
     }, this.SYNC_INTERVAL_MS);
     
     console.log('✅ [TokenSync] Token registry sync service started');
@@ -147,6 +149,77 @@ class TokenRegistrySyncService {
       if (!error.message.includes('UNIQUE constraint')) {
         console.error(`❌ [TokenSync] Error adding token ${token.mint_address}:`, error.message);
       }
+    }
+  }
+
+  /**
+   * Sync data from gecko_token_latest to token_registry
+   * Updates symbol, name, decimals, graduation status, etc.
+   */
+  private async syncGeckoDataToRegistry() {
+    try {
+      // Get tokens that exist in both gecko_token_latest and token_registry
+      const tokensToUpdate = await queryAll<{
+        mint_address: string;
+        symbol: string | null;
+        name: string | null;
+        decimals: number | null;
+        launchpad_completed: number;
+        launchpad_completed_at: number | null;
+        launchpad_migrated_pool_address: string | null;
+      }>(`
+        SELECT 
+          g.mint_address,
+          g.symbol,
+          g.name,
+          g.decimals,
+          g.launchpad_completed,
+          g.launchpad_completed_at,
+          g.launchpad_migrated_pool_address
+        FROM gecko_token_latest g
+        INNER JOIN token_registry tr ON tr.token_mint = g.mint_address
+        WHERE 
+          -- Only update if data differs
+          (tr.token_symbol IS NULL OR tr.token_symbol != g.symbol)
+          OR (tr.token_name IS NULL OR tr.token_name != g.name)
+          OR (tr.token_decimals IS NULL OR tr.token_decimals != g.decimals)
+          OR (tr.is_graduated IS NULL OR tr.is_graduated != g.launchpad_completed)
+          OR (tr.graduated_at IS NULL AND g.launchpad_completed_at IS NOT NULL)
+          OR (tr.migrated_pool_address IS NULL AND g.launchpad_migrated_pool_address IS NOT NULL)
+      `);
+
+      if (tokensToUpdate.length === 0) {
+        return;
+      }
+
+      console.log(`🔄 [TokenSync] Updating ${tokensToUpdate.length} tokens from Gecko data...`);
+
+      for (const token of tokensToUpdate) {
+        await execute(`
+          UPDATE token_registry
+          SET 
+            token_symbol = COALESCE(?, token_symbol),
+            token_name = COALESCE(?, token_name),
+            token_decimals = COALESCE(?, token_decimals),
+            is_graduated = ?,
+            graduated_at = COALESCE(?, graduated_at),
+            migrated_pool_address = COALESCE(?, migrated_pool_address),
+            updated_at = strftime('%s', 'now')
+          WHERE token_mint = ?
+        `, [
+          token.symbol,
+          token.name,
+          token.decimals,
+          token.launchpad_completed,
+          token.launchpad_completed_at,
+          token.launchpad_migrated_pool_address,
+          token.mint_address
+        ]);
+      }
+
+      console.log(`✅ [TokenSync] Updated ${tokensToUpdate.length} tokens with Gecko data`);
+    } catch (error: any) {
+      console.error('❌ [TokenSync] Error syncing Gecko data:', error.message);
     }
   }
 
