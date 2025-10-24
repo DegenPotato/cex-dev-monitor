@@ -89,8 +89,8 @@ class TokenRegistrySyncService {
       const missingTokens = await queryAll<TokenMint>(`
         SELECT DISTINCT 
           tm.mint_address,
-          tm.token_name,
-          tm.token_symbol,
+          tm.name as token_name,
+          tm.symbol as token_symbol,
           tm.creator_address,
           tm.timestamp,
           tm.platform
