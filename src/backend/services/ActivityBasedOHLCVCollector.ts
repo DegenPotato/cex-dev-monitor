@@ -93,7 +93,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
            SELECT 1 FROM token_pools p 
            WHERE p.mint_address = r.token_mint
          )
-         ORDER BY r.first_seen_time DESC
+         ORDER BY r.first_seen_at DESC
          LIMIT 100`  // Process 100 tokens per batch instead of 20
       );
       

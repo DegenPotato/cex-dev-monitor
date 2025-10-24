@@ -120,11 +120,12 @@ export class OHLCVCollector {
     try {
       console.log('📊 [OHLCV] Starting backfill cycle...');
       
-      // Get all tokens
+      // Get all tokens from token_registry (source of truth)
       const tokens = await queryAll<{ mint_address: string; creation_timestamp: number }>(
-        `SELECT mint_address, timestamp as creation_timestamp 
-         FROM token_mints 
-         ORDER BY timestamp DESC`
+        `SELECT token_mint as mint_address, 
+                COALESCE(first_seen_at, strftime('%s', 'now')) as creation_timestamp 
+         FROM token_registry 
+         ORDER BY first_seen_at DESC`
       );
       
       if (tokens.length === 0) {
