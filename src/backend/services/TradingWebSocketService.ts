@@ -227,8 +227,8 @@ class TradingWebSocketService {
               if (price) {
                 return {
                   ...h,
-                  avg_price: price.priceUSD,
-                  total_value: h.total_amount * price.priceUSD,
+                  avg_price: price.priceUsd,
+                  total_value: h.total_amount * price.priceUsd,
                   price_change_24h: price.priceChange24h
                 };
               }

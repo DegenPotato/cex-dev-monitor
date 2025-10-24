@@ -28,7 +28,6 @@ import { globalRPCServerRotator } from './services/RPCServerRotator.js';
 import { globalAnalysisQueue } from './services/AnalysisQueue.js';
 import { globalConcurrencyLimiter } from './services/GlobalConcurrencyLimiter.js';
 import { defiActivityAnalyzer } from './services/DefiActivityAnalyzer.js';
-import { MarketDataTracker } from './services/MarketDataTracker.js';
 import { OHLCVCollector } from './services/OHLCVCollector.js';
 import { OHLCVMetricsCalculator } from './services/OHLCVMetricsCalculator.js';
 import { TechnicalIndicatorCalculator } from './services/TechnicalIndicatorCalculator.js';
@@ -370,7 +369,6 @@ if (hasProxies) {
 const solanaMonitor = new SolanaMonitor();
 const pumpFunMonitor = new PumpFunMonitor();
 const tradingActivityMonitor = new TradingActivityMonitor();
-const marketDataTracker = new MarketDataTracker();
 const ohlcvCollector = new OHLCVCollector();
 const metricsCalculator = new OHLCVMetricsCalculator();
 const technicalIndicatorCalculator = new TechnicalIndicatorCalculator();
@@ -1490,7 +1488,7 @@ app.get('/api/monitoring/status', async (_req, res) => {
       active: pumpFunMonitor.getActiveMonitors().length > 0,
       monitored: pumpFunMonitor.getActiveMonitors().length
     },
-    marketDataTracker: marketDataTracker.getStatus(),
+    tokenPriceOracle: tokenPriceOracle.getStatus(),
     solPriceOracle: solPriceOracle.getStatus(),
     ohlcvCollector: ohlcvStatus,
     metricsCalculator: metricsCalculator.getStatus()
@@ -2364,9 +2362,9 @@ app.post('/api/rpc-rotation/toggle', (_req, res) => {
   }
 });
 
-// Market Data Tracker endpoints
+// Token Price Oracle endpoints
 app.get('/api/market-data/status', (_req, res) => {
-  res.json(marketDataTracker.getStatus());
+  res.json(tokenPriceOracle.getStatus());
 });
 
 // Test DexScreener API for specific tokens
@@ -2629,11 +2627,11 @@ app.post('/api/market-data/start', async (_req, res) => {
     // Start SOL price oracle (needed for price calculations)
     await solPriceOracle.start();
     
-    marketDataTracker.start();
+    // Token oracle already started with SOL oracle
     res.json({ 
       success: true, 
-      message: 'Market data tracker started - polling every 1 minute',
-      status: marketDataTracker.getStatus()
+      message: 'Token price oracle already running - updates every 60 seconds',
+      status: tokenPriceOracle.getStatus()
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2642,7 +2640,7 @@ app.post('/api/market-data/start', async (_req, res) => {
 
 app.post('/api/market-data/stop', (_req, res) => {
   try {
-    marketDataTracker.stop();
+    tokenPriceOracle.stop();
     
     // Stop SOL price oracle too (unless main monitoring is running)
     if (pumpFunMonitor.getActiveMonitors().length === 0) {
@@ -2651,8 +2649,8 @@ app.post('/api/market-data/stop', (_req, res) => {
     
     res.json({ 
       success: true, 
-      message: 'Market data tracker stopped',
-      status: marketDataTracker.getStatus()
+      message: 'Token price oracle stopped',
+      status: tokenPriceOracle.getStatus()
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -2838,7 +2836,7 @@ app.post('/api/database/wipe', async (req, res) => {
     globalAnalysisQueue.stop();
     solanaMonitor.stopAll();
     pumpFunMonitor.stopAll();
-    marketDataTracker.stop();
+    tokenPriceOracle.stop();
     
     // Wipe all data tables (keep config and user accounts)
     await TransactionProvider.deleteAll();

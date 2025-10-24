@@ -666,6 +666,21 @@ export class TokenPriceOracle {
   setSolPrice(price: number) {
     this.solPrice = price;
   }
+  
+  /**
+   * Get oracle status
+   */
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      pollInterval: this.UPDATE_INTERVAL,
+      cacheSize: this.priceCache.size,
+      solPrice: this.solPrice,
+      lastUpdate: this.priceCache.size > 0 
+        ? Math.max(...Array.from(this.priceCache.values()).map(p => p.lastUpdated || 0))
+        : 0
+    };
+  }
 }
 
 // Export singleton instance
