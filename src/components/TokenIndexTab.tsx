@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  Flame, ExternalLink, TrendingUp, TrendingDown,
-  BarChart3, Clock, User, RefreshCw, Search,
-  Eye, AlertCircle, Activity, MessageCircle, 
-  Zap, Trophy, Hash, Globe, Radio, DollarSign
+  ExternalLink,
+  BarChart3, Clock, RefreshCw, Search, AlertCircle, Trophy, Hash, Radio
 } from 'lucide-react';
 import { apiUrl } from '../config';
 import { formatDistanceToNow } from 'date-fns';
