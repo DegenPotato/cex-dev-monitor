@@ -6,7 +6,7 @@ import {
 import { apiUrl } from '../config';
 import { formatDistanceToNow } from 'date-fns';
 
-// Token with comprehensive pricing and metrics from Token Price Oracle
+// Token with comprehensive pricing and metrics from Token Price Oracle.
 interface TokenWithPricing {
   token_mint: string;
   token_symbol?: string;
