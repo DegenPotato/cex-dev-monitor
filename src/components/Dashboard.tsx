@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap, BarChart3 } from 'lucide-react';
+import { Settings, Circle, Flame, Database, Activity, TrendingUp, ChevronRight, Lock, AlertTriangle, MessageSquare, Zap, BarChart3, Workflow } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { config } from '../config';
 import { SettingsPanel } from './SettingsPanel';
@@ -10,12 +10,13 @@ import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
 import { FetcherTab } from './FetcherTab';
 import { TokenIndexTab } from './TokenIndexTab';
+import CampaignBuilder from './CampaignBuilder';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
 import { useAudio } from '../contexts/AudioContext';
 
-type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher';
+type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher' | 'campaigns';
 
 // Sound-reactive glow component
 function SoundReactiveGlow({ analyser }: { analyser: AnalyserNode | null }) {
@@ -569,6 +570,23 @@ export function Dashboard() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('campaigns')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
+              activeTab === 'campaigns'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
+            }`}
+          >
+            {activeTab === 'campaigns' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <Workflow className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Campaign Builder</span>
+            {activeTab === 'campaigns' && (
+              <ChevronRight className="w-4 h-4 ml-2 text-cyan-300 relative z-10" />
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('database')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'database'
@@ -627,6 +645,11 @@ export function Dashboard() {
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
             <FetcherTab />
+          </div>
+        ) : activeTab === 'campaigns' ? (
+          <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+            <CampaignBuilder />
           </div>
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
