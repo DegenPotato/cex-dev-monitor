@@ -10,12 +10,12 @@ export type AlertLevel = 'info' | 'warning' | 'critical';
 
 // Trigger types and configurations
 export interface TriggerConfig {
-    trigger_type: 'transfer_credited' | 'signature_to_address' | 'program_log' | 'account_created' | 'token_mint';
+    trigger_type: 'transfer_credited' | 'transfer_debited' | 'signature_to_address' | 'program_log' | 'account_created' | 'token_mint';
     condition?: string; // e.g., "net_credited == 2000000000" for 2 SOL
     lamports_exact?: number;
     lamports_min?: number;
     lamports_max?: number;
-    sender_list?: string[]; // List of allowed senders
+    sender_list?: string[]; // List of allowed senders (for credited) or recipients (for debited)
     program_id?: string; // Program to monitor
     log_pattern?: string; // Regex pattern for log matching
     aggregation?: 'per_tx' | 'per_block';

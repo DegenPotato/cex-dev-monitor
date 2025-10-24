@@ -527,6 +527,45 @@ export class SolanaEventDetector extends EventEmitter {
                                     timestamp: sigInfo.blockTime || Date.now()
                                 });
                             }
+                        } else if (config.trigger_type === 'transfer_debited') {
+                            // For transfer_debited, we check for negative netLamports (SOL sent out)
+                            const debitedAmount = Math.abs(netLamports);
+                            let matches = false;
+
+                            // Only trigger if there was an actual debit (negative balance change)
+                            if (netLamports < 0) {
+                                if (config.lamports_exact && debitedAmount === config.lamports_exact) {
+                                    matches = true;
+                                } else if (config.lamports_min && config.lamports_max && 
+                                          debitedAmount >= config.lamports_min && 
+                                          debitedAmount <= config.lamports_max) {
+                                    matches = true;
+                                } else if (config.lamports_min && !config.lamports_max && 
+                                          debitedAmount >= config.lamports_min) {
+                                    matches = true;
+                                } else if (!config.lamports_exact && !config.lamports_min && !config.lamports_max) {
+                                    // No amount specified, trigger on any debit
+                                    matches = true;
+                                } else if (config.condition) {
+                                    // Evaluate condition using the debited amount
+                                    const condition = config.condition.replace('net_debited', debitedAmount.toString());
+                                    try {
+                                        matches = eval(condition);
+                                    } catch (e) {
+                                        console.error('Failed to evaluate condition:', e);
+                                    }
+                                }
+
+                                if (matches) {
+                                    await this.handleTriggerFired(campaign, node, {
+                                        type: 'transfer',
+                                        wallet,
+                                        signature: sigInfo.signature,
+                                        lamports: -debitedAmount, // Store as negative to indicate debit
+                                        timestamp: sigInfo.blockTime || Date.now()
+                                    });
+                                }
+                            }
                         }
                     }
                 }

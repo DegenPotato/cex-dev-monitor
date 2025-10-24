@@ -3,7 +3,7 @@ import { Plus, Save, Play, Pause, Zap, Filter, Eye, Bell, Trash2, CheckCircle, A
 import { config } from '../config';
 
 interface TriggerConfig {
-    trigger_type: 'transfer_credited' | 'signature_to_address' | 'program_log' | 'account_created' | 'token_mint';
+    trigger_type: 'transfer_credited' | 'transfer_debited' | 'signature_to_address' | 'program_log' | 'account_created' | 'token_mint';
     wallets?: string[];
     lamports_exact?: number;
     lamports_min?: number;
@@ -300,6 +300,7 @@ const CampaignBuilder: React.FC = () => {
                                 className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
                             >
                                 <option value="transfer_credited">SOL Received</option>
+                                <option value="transfer_debited">SOL Sent</option>
                                 <option value="signature_to_address">Any Transaction</option>
                                 <option value="token_mint">Token Minted</option>
                                 <option value="account_created">Account Created</option>
@@ -307,7 +308,7 @@ const CampaignBuilder: React.FC = () => {
                             </select>
                         </div>
                         
-                        {config.trigger_type === 'transfer_credited' && (
+                        {(config.trigger_type === 'transfer_credited' || config.trigger_type === 'transfer_debited') && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-1">Amount (SOL)</label>
@@ -324,14 +325,18 @@ const CampaignBuilder: React.FC = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">From Specific Wallets (optional)</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                                        {config.trigger_type === 'transfer_debited' ? 'To Specific Wallets (optional)' : 'From Specific Wallets (optional)'}
+                                    </label>
                                     <textarea
                                         value={(config.sender_list || []).join('\n')}
                                         onChange={(e) => {
                                             const senders = e.target.value.split('\n').filter(w => w.trim());
                                             updateNodeConfig(node.node_id, { ...config, sender_list: senders });
                                         }}
-                                        placeholder="Enter sender addresses (one per line)"
+                                        placeholder={config.trigger_type === 'transfer_debited' 
+                                            ? "Enter recipient addresses (one per line)" 
+                                            : "Enter sender addresses (one per line)"}
                                         className="w-full h-20 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm"
                                     />
                                 </div>
