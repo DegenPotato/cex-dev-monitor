@@ -1318,8 +1318,8 @@ app.get('/api/tokens', async (req, res) => {
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint as mint_address,
-        tr.symbol,
-        tr.name,
+        COALESCE(gtd.symbol, tr.token_symbol) as symbol,
+        COALESCE(gtd.name, tr.token_name) as name,
         tr.creator_address,
         tr.platform,
         tr.creation_signature as signature,
@@ -1330,8 +1330,8 @@ app.get('/api/tokens', async (req, res) => {
           ELSE NULL
         END as launchpad_completed_at,
         tr.migrated_pool_address,
-        tr.telegram_mentions,
-        tr.wallet_transactions,
+        tr.total_mentions as telegram_mentions,
+        tr.total_trades as wallet_transactions,
         tr.first_source_type,
         tr.telegram_chat_name,
         
