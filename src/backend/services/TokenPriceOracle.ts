@@ -599,35 +599,9 @@ export class TokenPriceOracle {
           txns_5m_sells,
           txns_5m_buyers,
           txns_5m_sellers,
-          txns_6h_buys,
-          txns_6h_sells,
-          txns_6h_buyers,
-          txns_6h_sellers,
-          txns_1h_buys,
-          txns_1h_sells,
-          txns_1h_buyers,
-          txns_1h_sellers,
-          txns_30m_buys,
-          txns_30m_sells,
-          txns_30m_buyers,
-          txns_30m_sellers,
-          txns_15m_buys,
-          txns_15m_sells,
-          txns_15m_buyers,
-          txns_15m_sellers,
-          txns_5m_buys,
-          txns_5m_sells,
-          txns_5m_buyers,
-          txns_5m_sellers,
-          volume_24h_usd,
-          volume_6h_usd,
-          volume_1h_usd,
-          volume_30m_usd,
-          volume_15m_usd,
-          volume_5m_usd,
           updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
         )
       `, [
         attrs.address,
