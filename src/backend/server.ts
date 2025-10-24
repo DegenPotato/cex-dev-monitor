@@ -2700,10 +2700,11 @@ app.post('/api/sol-oracle/stop', (_req, res) => {
   }
 });
 
-// GeckoTerminal Networks & DEXes endpoints
+// GeckoTerminal Networks & DEXes endpoints (Solana only)
 app.get('/api/gecko/networks', async (_req, res) => {
   try {
-    const networks = await queryAll(`
+    // Only return Solana network since we're only syncing Solana
+    const solanaNetwork = await queryOne(`
       SELECT 
         network_id, 
         name, 
@@ -2715,26 +2716,27 @@ app.get('/api/gecko/networks', async (_req, res) => {
         is_testnet,
         last_sync_at
       FROM gecko_networks 
-      WHERE is_active = 1
-      ORDER BY 
-        CASE 
-          WHEN network_id = 'solana' THEN 0
-          WHEN network_id = 'eth' THEN 1
-          WHEN network_id = 'base' THEN 2
-          ELSE 3
-        END,
-        name ASC
+      WHERE network_id = 'solana'
     `);
     
-    res.json({ success: true, data: networks });
+    res.json({ success: true, data: solanaNetwork ? [solanaNetwork] : [] });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.get('/api/gecko/dexes/:network', async (req, res) => {
+app.get('/api/gecko/dexes/:network?', async (req, res) => {
   try {
-    const { network } = req.params;
+    // Default to Solana since we only sync Solana
+    const network = req.params.network || 'solana';
+    
+    if (network !== 'solana') {
+      return res.json({ 
+        success: true, 
+        data: [],
+        message: 'Only Solana DEXes are synced' 
+      });
+    }
     
     const dexes = await queryAll(`
       SELECT 
@@ -2772,19 +2774,12 @@ app.get('/api/gecko/sync-status', async (_req, res) => {
   }
 });
 
-app.post('/api/gecko/force-sync', async (req, res) => {
+app.post('/api/gecko/force-sync', async (_req, res) => {
   try {
-    const { type, networkId } = req.body;
+    // Only sync Solana DEXes - no longer syncing all networks
+    await geckoNetworksSyncService.forceSync();
     
-    if (type === 'networks') {
-      await geckoNetworksSyncService.syncNetworks();
-    } else if (type === 'dexes' && networkId) {
-      await geckoNetworksSyncService.forceSyncNetwork(networkId);
-    } else {
-      await geckoNetworksSyncService.forceSyncAll();
-    }
-    
-    res.json({ success: true, message: 'Sync initiated' });
+    res.json({ success: true, message: 'Solana DEXes sync initiated' });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
