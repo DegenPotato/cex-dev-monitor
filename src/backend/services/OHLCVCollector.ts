@@ -457,15 +457,27 @@ export class OHLCVCollector {
       }
       
       // Determine fetch target
-      // If we have data, fetch before oldest; otherwise start from creation
-      const targetTimestamp = progress?.oldest_timestamp 
-        ? progress.oldest_timestamp 
-        : Math.floor(Date.now() / 1000); // Start from now and go backwards
-      
       const creationUnix = Math.floor(creationTimestamp / 1000);
+      const nowUnix = Math.floor(Date.now() / 1000);
       
-      // Don't fetch before token creation
-      if (targetTimestamp <= creationUnix) {
+      // Convert timeframe to seconds (1m=60, 15m=900, 1h=3600, 4h=14400)
+      const timeframeSeconds = timeframe.aggregate * (timeframe.name.includes('m') ? 60 : 3600);
+      
+      let targetTimestamp: number;
+      
+      if (!progress?.oldest_timestamp) {
+        // FIRST FETCH: Get the oldest data possible
+        // Add small buffer after creation to ensure we get data
+        targetTimestamp = creationUnix + (timeframeSeconds * 10); // 10 candles after creation
+        console.log(`🎯 [OHLCV] Initial fetch - getting oldest data first`);
+      } else if (progress.newest_timestamp && progress.newest_timestamp < nowUnix - timeframeSeconds) {
+        // SUBSEQUENT FETCHES: Work forward from what we have
+        // Fetch data after our newest timestamp to fill the gap
+        targetTimestamp = progress.newest_timestamp + (timeframeSeconds * 1000); // Jump forward
+        console.log(`⏩ [OHLCV] Working forward - filling gap from ${progress.newest_timestamp} to now`);
+      } else {
+        // We're caught up, switch to real-time mode
+        console.log(`✅ [OHLCV] Caught up to present - switching to real-time`);
         await this.markBackfillComplete(poolAddress, timeframe.name);
         return;
       }
@@ -566,7 +578,13 @@ export class OHLCVCollector {
       const oldestFetched = Math.min(...timestamps);
       const newestFetched = Math.max(...timestamps);
       
-      const isComplete = oldestFetched <= creationUnix;
+      // Mark complete if: 1) reached token creation, OR 2) not making progress (same oldest timestamp)
+      const notMakingProgress = !!(progress?.oldest_timestamp && oldestFetched >= progress.oldest_timestamp);
+      const isComplete = oldestFetched <= creationUnix || notMakingProgress;
+      
+      if (notMakingProgress) {
+        console.log(`✅ [OHLCV] No more historical data - oldest timestamp unchanged (${oldestFetched})`);
+      }
       
       // Update final progress with completion status
       await this.updateProgress(poolAddress, timeframe.name, mintAddress, {
