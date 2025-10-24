@@ -1075,6 +1075,7 @@ export class TelegramClientService extends EventEmitter {
             const senderUsername = await this.getSenderUsername(client, message.senderId);
             await this.saveDetectedContract(userId, {
               chatId: chatId!,
+              chatName: monitoredChat.chatName,  // Add chatName to prevent duplicate sightings
               messageId: message.id,
               senderId: message.senderId?.toString(),
               senderUsername,
@@ -2918,8 +2919,6 @@ export class TelegramClientService extends EventEmitter {
     userId?: number;
   }) {
     try {
-      const now = Math.floor(Date.now() / 1000);
-      
       // Use TokenSourceTracker for comprehensive token_registry tracking
       // Properly map the source type - keep distinction between realtime and backlog
       const sourceType = 'telegram'; // Base type is always telegram for now
@@ -2941,41 +2940,9 @@ export class TelegramClientService extends EventEmitter {
         discoveredByUserId: data.userId || 1
       });
       
-      // Also maintain legacy token_mints table for backwards compatibility
-      const existing = await queryOne(`
-        SELECT id, telegram_mentions FROM token_mints WHERE mint_address = ?
-      `, [contractAddress]);
+      // Note: token_mints table is deprecated - all data now in token_registry
+      // The tokenSourceTracker.registerToken() call above handles everything
       
-      if (!existing) {
-        // Insert new token
-        await execute(`
-          INSERT INTO token_mints (
-            mint_address, 
-            creator_address, 
-            platform, 
-            timestamp,
-            first_seen_source, 
-            first_seen_at, 
-            telegram_mentions
-          ) VALUES (?, ?, ?, ?, ?, ?, 1)
-        `, [
-          contractAddress,
-          'unknown', // We'll fetch this from chain later
-          data.platform || 'pumpfun',
-          now,
-          data.firstSeenSource || 'telegram',
-          data.messageTimestamp || now
-        ]);
-        console.log(`   📝 New token logged: ${contractAddress.substring(0, 8)}...`);
-      } else {
-        // Update mention count
-        await execute(`
-          UPDATE token_mints 
-          SET telegram_mentions = telegram_mentions + 1,
-              last_updated = ?
-          WHERE mint_address = ?
-        `, [now, contractAddress]);
-      }
     } catch (error: any) {
       console.error(`   ❌ Failed to log token mint:`, error.message);
     }
