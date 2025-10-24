@@ -39,6 +39,7 @@ import { telegramEntityCache } from './services/TelegramEntityCache.js';
 import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
 import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
 import { tokenPriceOracle } from './services/TokenPriceOracle.js';
+import { geckoNetworksSyncService } from './services/GeckoNetworksSyncService.js';
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -98,6 +99,13 @@ solPriceOracle.start().then(async () => {
   console.log('🪙 Token Price Oracle started for Trading Bot');
 }).catch(err => {
   console.error('Failed to start price oracles:', err);
+});
+
+// Start GeckoTerminal networks/DEXes sync service
+geckoNetworksSyncService.start().then(() => {
+  console.log('🌐 GeckoTerminal Networks & DEXes sync service started');
+}).catch(err => {
+  console.error('Failed to start GeckoNetworks sync service:', err);
 });
 
 // Start Telegram Redis Stream Consumer (if enabled)
@@ -2689,6 +2697,96 @@ app.post('/api/sol-oracle/stop', (_req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GeckoTerminal Networks & DEXes endpoints
+app.get('/api/gecko/networks', async (_req, res) => {
+  try {
+    const networks = await queryAll(`
+      SELECT 
+        network_id, 
+        name, 
+        coingecko_asset_platform_id,
+        chain_type,
+        native_token_symbol,
+        total_dexes,
+        is_active,
+        is_testnet,
+        last_sync_at
+      FROM gecko_networks 
+      WHERE is_active = 1
+      ORDER BY 
+        CASE 
+          WHEN network_id = 'solana' THEN 0
+          WHEN network_id = 'eth' THEN 1
+          WHEN network_id = 'base' THEN 2
+          ELSE 3
+        END,
+        name ASC
+    `);
+    
+    res.json({ success: true, data: networks });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/gecko/dexes/:network', async (req, res) => {
+  try {
+    const { network } = req.params;
+    
+    const dexes = await queryAll(`
+      SELECT 
+        d.dex_id,
+        d.name,
+        d.dex_type,
+        d.total_pools,
+        d.total_volume_24h_usd,
+        d.total_liquidity_usd,
+        d.is_active,
+        d.last_sync_at
+      FROM gecko_dexes d
+      WHERE d.network_id = ? AND d.is_active = 1
+      ORDER BY 
+        CASE 
+          WHEN d.dex_type = 'launchpad' THEN 0
+          WHEN d.name LIKE '%Pump%' THEN 1
+          ELSE 2
+        END,
+        d.total_volume_24h_usd DESC
+    `, [network]);
+    
+    res.json({ success: true, data: dexes });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/gecko/sync-status', async (_req, res) => {
+  try {
+    const stats = await geckoNetworksSyncService.getSyncStats();
+    res.json({ success: true, data: stats });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/gecko/force-sync', async (req, res) => {
+  try {
+    const { type, networkId } = req.body;
+    
+    if (type === 'networks') {
+      await geckoNetworksSyncService.syncNetworks();
+    } else if (type === 'dexes' && networkId) {
+      await geckoNetworksSyncService.forceSyncNetwork(networkId);
+    } else {
+      await geckoNetworksSyncService.forceSyncAll();
+    }
+    
+    res.json({ success: true, message: 'Sync initiated' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
