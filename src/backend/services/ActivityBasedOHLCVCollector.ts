@@ -379,13 +379,13 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       pool_address: string;
       creation_timestamp: number;
     }>(
-      `SELECT DISTINCT p.mint_address, p.pool_address, t.timestamp as creation_timestamp
+      `SELECT DISTINCT p.mint_address, p.pool_address, r.first_seen_at * 1000 as creation_timestamp
        FROM token_pools p
-       INNER JOIN token_mints t ON p.mint_address = t.mint_address
+       INNER JOIN token_registry r ON p.mint_address = r.token_mint
        LEFT JOIN ohlcv_backfill_progress bp 
          ON p.pool_address = bp.pool_address AND bp.timeframe = '15m'
        WHERE bp.backfill_complete IS NULL OR bp.backfill_complete = 0
-       ORDER BY t.timestamp DESC
+       ORDER BY r.first_seen_at DESC
        LIMIT 20`  // Process 20 pools per cycle for backfill
     );
     
