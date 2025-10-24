@@ -1339,9 +1339,9 @@ app.get('/api/tokens', async (req, res) => {
         gtd.price_change_24h,
         gtd.total_reserve_in_usd as liquidity_usd,
         
-        -- Calculate ATH from gecko_token_data history
-        (SELECT MAX(price_usd) FROM gecko_token_data WHERE mint_address = tr.token_mint) as ath_price_usd,
-        (SELECT MAX(market_cap_usd) FROM gecko_token_data WHERE mint_address = tr.token_mint) as ath_mcap,
+        -- ATH data is now stored directly in the table (no subquery needed!)
+        gtd.ath_price_usd,
+        gtd.ath_market_cap_usd as ath_mcap,
         
         -- Primary pool data
         tp.pool_address as primary_pool,
@@ -1352,14 +1352,8 @@ app.get('/api/tokens', async (req, res) => {
         5000 as starting_mcap
         
       FROM token_registry tr
-      LEFT JOIN (
-        -- Get latest gecko_token_data for each token
-        SELECT * FROM gecko_token_data gtd1
-        WHERE fetched_at = (
-          SELECT MAX(fetched_at) FROM gecko_token_data gtd2 
-          WHERE gtd2.mint_address = gtd1.mint_address
-        )
-      ) gtd ON tr.token_mint = gtd.mint_address
+      -- After migration 038, gecko_token_data has only one row per token
+      LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
       LEFT JOIN (
         SELECT 
           mint_address,

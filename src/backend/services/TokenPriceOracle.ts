@@ -4,7 +4,7 @@
  * Stores prices in token_market_data table for dashboard/portfolio use
  */
 
-import { queryAll, execute } from '../database/helpers.js';
+import { queryAll, queryOne, execute } from '../database/helpers.js';
 import { apiProviderTracker } from './ApiProviderTracker.js';
 
 interface TokenPrice {
@@ -388,12 +388,22 @@ export class TokenPriceOracle {
   
   /**
    * Save comprehensive token and pool data
+   * Now uses INSERT OR REPLACE to maintain single row per token
    */
   private async saveComprehensiveData(price: TokenPrice): Promise<void> {
     try {
-      // Save token data
+      // Update ATH if current price is higher
+      const existing = await queryOne<{ ath_price_usd: number; ath_market_cap_usd: number }>(
+        'SELECT ath_price_usd, ath_market_cap_usd FROM gecko_token_data WHERE mint_address = ?',
+        [price.mintAddress]
+      );
+      
+      const athPrice = Math.max(price.priceUsd || 0, existing?.ath_price_usd || 0);
+      const athMcap = Math.max(price.marketCap || 0, existing?.ath_market_cap_usd || 0);
+      
+      // Save token data - INSERT OR REPLACE maintains single row per token
       await execute(`
-        INSERT INTO gecko_token_data (
+        INSERT OR REPLACE INTO gecko_token_data (
           mint_address,
           symbol,
           name,
@@ -415,15 +425,17 @@ export class TokenPriceOracle {
           price_change_30m,
           price_change_15m,
           price_change_5m,
+          ath_price_usd,
+          ath_market_cap_usd,
           launchpad_graduation_percentage,
           launchpad_completed,
           launchpad_completed_at,
           launchpad_migrated_pool_address,
           top_pool_address,
           raw_response,
-          fetched_at
+          last_updated
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')
         )
       `, [
         price.mintAddress,
@@ -447,6 +459,8 @@ export class TokenPriceOracle {
         price.priceChange30m,
         price.priceChange15m,
         price.priceChange5m,
+        athPrice,  // Use calculated ATH price
+        athMcap,   // Use calculated ATH market cap
         price.launchpadGraduationPercentage,
         price.launchpadCompleted ? 1 : 0,
         price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
