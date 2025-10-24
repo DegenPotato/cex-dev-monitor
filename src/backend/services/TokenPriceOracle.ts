@@ -231,18 +231,16 @@ export class TokenPriceOracle {
       await execute(`
         INSERT OR REPLACE INTO token_market_data (
           mint_address,
-          symbol,
-          name,
+          token_symbol,
+          token_name,
           price_usd,
           price_sol,
           price_change_24h,
           volume_24h_usd,
           market_cap_usd,
-          fdv,
           liquidity_usd,
-          platform,
           last_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'geckoterminal', datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now') * 1000)
       `, [
         price.address,
         price.symbol || null,
@@ -252,7 +250,6 @@ export class TokenPriceOracle {
         price.priceChange24h || null,
         price.volume24h || null,
         price.marketCapUSD || null,
-        price.fdv || null,
         price.liquidityUSD || null
       ]);
     } catch (error) {
