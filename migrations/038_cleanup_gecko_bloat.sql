@@ -3,8 +3,12 @@
 -- Purpose: Convert gecko_token_data from time-series to single-row-per-token
 -- Reduces 700K+ rows/day to ~500 rows total
 
--- Step 1: Create new table with latest data only (single row per token)
-CREATE TABLE IF NOT EXISTS gecko_token_latest (
+-- Step 1: Drop any existing gecko_token_latest (might be a view from earlier attempts)
+DROP TABLE IF EXISTS gecko_token_latest;
+DROP VIEW IF EXISTS gecko_token_latest;
+
+-- Create new table with latest data only (single row per token)
+CREATE TABLE gecko_token_latest (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mint_address TEXT NOT NULL UNIQUE,  -- UNIQUE ensures one row per token
   
@@ -63,47 +67,11 @@ CREATE TABLE IF NOT EXISTS gecko_token_latest (
   created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
--- Step 2: Populate with latest data from existing table
-INSERT INTO gecko_token_latest (
-  mint_address,
-  symbol,
-  name,
-  decimals,
-  image_url,
-  coingecko_coin_id,
-  total_supply,
-  normalized_total_supply,
-  circulating_supply,
-  price_usd,
-  price_sol,
-  price_native,
-  market_cap_usd,
-  fdv_usd,
-  total_reserve_in_usd,
-  volume_24h_usd,
-  volume_6h_usd,
-  volume_1h_usd,
-  volume_30m_usd,
-  price_change_24h,
-  price_change_6h,
-  price_change_1h,
-  price_change_30m,
-  price_change_15m,
-  price_change_5m,
-  ath_price_usd,
-  ath_market_cap_usd,
-  ath_date,
-  launchpad_graduation_percentage,
-  launchpad_completed,
-  launchpad_completed_at,
-  launchpad_migrated_pool_address,
-  top_pool_address,
-  network_id,
-  data_source,
-  last_updated,
-  created_at
-)
+-- Step 2: Only populate if gecko_token_data exists and has data
+-- We need to check if the table exists and handle the case where it doesn't
+INSERT INTO gecko_token_latest 
 SELECT 
+  NULL as id,  -- Let it auto-increment
   gtd.mint_address,
   gtd.symbol,
   gtd.name,
