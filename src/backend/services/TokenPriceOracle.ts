@@ -132,8 +132,9 @@ export class TokenPriceOracle {
   
   private readonly GECKOTERMINAL_API = 'https://api.geckoterminal.com/api/v2';
   private readonly BATCH_SIZE = 30; // GeckoTerminal max is 30 tokens per request
-  private readonly UPDATE_INTERVAL = 60000; // Update every 60 seconds
+  private readonly UPDATE_INTERVAL = 30000; // Update every 30 seconds
   private readonly CACHE_DURATION = 30000; // Cache prices for 30 seconds
+  private readonly NEW_TOKEN_FETCH_DELAY = 3000; // 3 seconds between new token fetches
   
   private priceCache: Map<string, TokenPrice> = new Map();
   private updateInterval: NodeJS.Timeout | null = null;
@@ -141,6 +142,11 @@ export class TokenPriceOracle {
   
   private solPrice: number = 150; // Fallback SOL price
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting
+  
+  // Queue for immediate new token fetches
+  private newTokenQueue: string[] = [];
+  private isProcessingQueue = false;
+  private lastNewTokenFetch = 0;
 
   private constructor() {}
 
@@ -160,7 +166,7 @@ export class TokenPriceOracle {
     this.isRunning = true;
     if (solPrice) this.solPrice = solPrice;
     
-    console.log('🪙 [Token Oracle] Starting with batch updates every 60s');
+    console.log('🪙 [Token Oracle] Starting with batch updates every 30s + instant new token fetches');
     
     // Initial fetch of all known tokens
     await this.updateAllTokenPrices();
@@ -183,6 +189,69 @@ export class TokenPriceOracle {
     }
     
     console.log('🪙 [Token Oracle] Stopped');
+  }
+
+  /**
+   * Fetch price for a newly registered token immediately
+   * Queued with 3-second intervals to prevent rate limiting
+   */
+  async fetchNewToken(mintAddress: string) {
+    // Skip if already in queue or recently cached
+    if (this.newTokenQueue.includes(mintAddress)) {
+      return;
+    }
+    
+    const cached = this.priceCache.get(mintAddress);
+    if (cached && (Date.now() - cached.lastUpdated) < this.CACHE_DURATION) {
+      console.log(`🪙 [Token Oracle] New token ${mintAddress.slice(0, 8)}... already cached`);
+      return;
+    }
+    
+    console.log(`🪙 [Token Oracle] Queueing new token ${mintAddress.slice(0, 8)}... for immediate fetch`);
+    this.newTokenQueue.push(mintAddress);
+    
+    // Start processing queue if not already running
+    if (!this.isProcessingQueue) {
+      this.processNewTokenQueue();
+    }
+  }
+
+  /**
+   * Process the new token queue with rate limiting
+   */
+  private async processNewTokenQueue() {
+    if (this.isProcessingQueue) return;
+    
+    this.isProcessingQueue = true;
+    
+    while (this.newTokenQueue.length > 0) {
+      const mintAddress = this.newTokenQueue.shift();
+      if (!mintAddress) continue;
+      
+      // Rate limiting: wait 3 seconds between fetches
+      const timeSinceLastFetch = Date.now() - this.lastNewTokenFetch;
+      if (timeSinceLastFetch < this.NEW_TOKEN_FETCH_DELAY) {
+        const delay = this.NEW_TOKEN_FETCH_DELAY - timeSinceLastFetch;
+        console.log(`🪙 [Token Oracle] Rate limiting: waiting ${delay}ms before next fetch`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      try {
+        console.log(`🪙 [Token Oracle] Fetching new token ${mintAddress.slice(0, 8)}...`);
+        const prices = await this.getTokenPrices([mintAddress]);
+        
+        if (prices.size > 0) {
+          console.log(`✅ [Token Oracle] Fetched price for new token ${mintAddress.slice(0, 8)}...`);
+          this.broadcastPriceUpdate(prices);
+        }
+        
+        this.lastNewTokenFetch = Date.now();
+      } catch (error: any) {
+        console.error(`❌ [Token Oracle] Failed to fetch new token ${mintAddress.slice(0, 8)}...`, error.message);
+      }
+    }
+    
+    this.isProcessingQueue = false;
   }
 
   /**

@@ -4,6 +4,10 @@
  */
 
 import { execute, queryOne, queryAll } from '../database/helpers.js';
+import { saveDatabase } from '../database/connection.js';
+import { TokenPriceOracle } from './TokenPriceOracle.js';
+
+const tokenPriceOracle = TokenPriceOracle.getInstance();
 
 export interface TokenRegistryEntry {
   tokenMint: string;
@@ -101,6 +105,11 @@ class TokenSourceTracker {
 
       // Log token discovery (WebSocket notification can be added later)
       console.log(`   🆕 NEW TOKEN REGISTERED: ${entry.tokenMint.substring(0, 8)}... from ${entry.firstSourceType} (${entry.telegramChatName || 'unknown chat'})`);
+      
+      // Trigger immediate price fetch for new token
+      tokenPriceOracle.fetchNewToken(entry.tokenMint).catch(err => {
+        console.error(`❌ [TokenSourceTracker] Failed to trigger price fetch for ${entry.tokenMint.substring(0, 8)}...`, err);
+      });
       
       return result?.id || 0;
     } catch (error: any) {

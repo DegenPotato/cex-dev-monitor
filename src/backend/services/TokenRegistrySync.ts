@@ -144,6 +144,12 @@ class TokenRegistrySyncService {
           creator: token.creator_address
         })
       ]);
+      
+      // Trigger immediate price fetch for new token
+      console.log(`🪙 [TokenSync] New token registered: ${token.mint_address.slice(0, 8)}... - triggering price fetch`);
+      tokenPriceOracle.fetchNewToken(token.mint_address).catch(err => {
+        console.error(`❌ [TokenSync] Failed to trigger price fetch for ${token.mint_address.slice(0, 8)}...`, err);
+      });
     } catch (error: any) {
       // Ignore duplicates
       if (!error.message.includes('UNIQUE constraint')) {
