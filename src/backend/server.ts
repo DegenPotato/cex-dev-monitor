@@ -1387,12 +1387,15 @@ app.get('/api/tokens', async (req, res) => {
       LIMIT ?
     `, [limit]);
     
-    // Map for frontend compatibility
+    // Map for frontend compatibility and ensure no nulls on critical fields
     const mappedTokens = tokens.map((token: any) => ({
       ...token,
       id: token.mint_address,
+      platform: token.platform || 'unknown',  // Double-check platform is never null
+      symbol: token.symbol || 'UNKNOWN',
+      name: token.name || 'Unknown Token',
       launch_time: token.timestamp,
-      graduation_percentage: token.platform === 'pump.fun' && token.current_mcap ? 
+      graduation_percentage: (token.platform === 'pump.fun' || token.platform === 'pumpfun') && token.current_mcap ? 
         Math.min(100, (token.current_mcap / 69000) * 100) : null
     }));
     
