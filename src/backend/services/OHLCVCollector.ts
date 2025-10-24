@@ -483,6 +483,11 @@ export class OHLCVCollector {
       
       if (candles.length === 0) {
         console.log(`📊 [OHLCV] No data for ${mintAddress.slice(0, 8)}... ${timeframe.name}`);
+        // If we already have some data and now get 0 candles, we've reached the limit of available data
+        if (progress?.oldest_timestamp) {
+          console.log(`✅ [OHLCV] Marking backfill complete - no more historical data available`);
+          await this.markBackfillComplete(poolAddress, timeframe.name);
+        }
         return;
       }
       
