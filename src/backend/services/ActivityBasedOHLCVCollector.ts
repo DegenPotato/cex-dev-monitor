@@ -56,6 +56,9 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
     
     console.log('🚀 [OHLCV] Starting activity-based updates...');
     
+    // Discover missing pools on startup
+    await this.discoverMissingPools();
+    
     // Check pool activity every minute
     this.checkPoolActivity();
     this.activityCheckInterval = setInterval(() => {
@@ -67,6 +70,50 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
     this.realtimeUpdateInterval = setInterval(() => {
       this.processRealtimeTier();
     }, 60 * 1000);
+  }
+  
+  /**
+   * Discover pools for tokens that don't have any pools yet
+   */
+  private async discoverMissingPools() {
+    try {
+      console.log('🔍 [OHLCV] Discovering pools for tokens without pools...');
+      
+      // Get tokens that have no pools
+      const tokensWithoutPools = await queryAll<{ mint_address: string }>(
+        `SELECT DISTINCT r.mint_address 
+         FROM token_registry r
+         WHERE NOT EXISTS (
+           SELECT 1 FROM token_pools p 
+           WHERE p.mint_address = r.mint_address
+         )
+         LIMIT 20`
+      );
+      
+      if (tokensWithoutPools.length === 0) {
+        console.log('✅ [OHLCV] All tokens have pools');
+        return;
+      }
+      
+      console.log(`🔍 [OHLCV] Fetching pools for ${tokensWithoutPools.length} tokens...`);
+      
+      for (const token of tokensWithoutPools) {
+        try {
+          // Use parent class processToken which discovers and stores pools
+          // Pass 0 as timestamp and false for justPools to only fetch pools, not OHLCV data
+          await this.processToken(token.mint_address, Date.now(), false);
+          
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error: any) {
+          console.error(`❌ [OHLCV] Error fetching pools for ${token.mint_address.slice(0, 8)}...:`, error.message);
+        }
+      }
+      
+      console.log('✅ [OHLCV] Pool discovery complete');
+    } catch (error: any) {
+      console.error('❌ [OHLCV] Error discovering pools:', error);
+    }
   }
   
   /**
@@ -104,12 +151,9 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       }>(
         `SELECT DISTINCT p.pool_address, p.mint_address, p.last_activity_check
          FROM token_pools p
-         INNER JOIN ohlcv_backfill_progress bp 
-           ON p.pool_address = bp.pool_address
-         WHERE bp.backfill_complete = 1
-           AND (p.last_activity_check IS NULL 
-                OR p.last_activity_check < strftime('%s', 'now', '-5 minutes'))
-         ORDER BY p.last_activity_check ASC
+         WHERE p.last_activity_check IS NULL 
+            OR p.last_activity_check < strftime('%s', 'now') * 1000 - 300000  -- 5 minutes in ms
+         ORDER BY p.last_activity_check ASC NULLS FIRST
          LIMIT 300`  // Process up to 300 pools (10 API calls)
       );
       
@@ -215,6 +259,14 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
              next_update_at = ?
          WHERE pool_address = ?`,
         [tier, volume15m, volume1h, txns15m, now, now + nextUpdateMs, poolAddress]
+      );
+      
+      // Also ensure pool exists in backfill progress (for compatibility)
+      await execute(
+        `INSERT OR IGNORE INTO ohlcv_backfill_progress 
+         (pool_address, mint_address, timeframe, backfill_complete, oldest_timestamp, newest_timestamp)
+         VALUES (?, ?, '15m', 0, 0, 0)`,
+        [poolAddress, poolData.id?.split('_')[1] || '']
       );
       
       // Update or insert into schedule table
