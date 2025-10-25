@@ -440,6 +440,70 @@ router.post('/api/trading/transfer', authService.requireSecureAuth(), async (req
 });
 
 /**
+ * Get trade history (formatted for frontend)
+ */
+router.get('/api/trading/history', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { limit = 50, walletId } = req.query;
+    
+    let query = `
+      SELECT 
+        t.id,
+        t.signature,
+        t.tx_type as type,
+        t.status,
+        t.token_mint as tokenAddress,
+        t.token_symbol as tokenSymbol,
+        t.token_name as tokenName,
+        t.amount_in as amount,
+        t.amount_out,
+        t.price_per_token as pricePerToken,
+        t.total_fee_sol as totalCost,
+        t.created_at as timestamp,
+        w.wallet_address as walletAddress,
+        w.wallet_name as walletName
+      FROM trading_transactions t
+      JOIN trading_wallets w ON t.wallet_id = w.id
+      WHERE t.user_id = ?
+    `;
+    const params: any[] = [userId];
+    
+    if (walletId) {
+      query += ' AND t.wallet_id = ?';
+      params.push(walletId);
+    }
+    
+    query += ' ORDER BY t.created_at DESC LIMIT ?';
+    params.push(limit);
+    
+    const trades = await queryAll(query, params);
+    
+    // Format for frontend TradeHistory interface
+    const formatted = trades.map((t: any) => ({
+      id: t.id?.toString() || '',
+      walletName: t.walletName || '',
+      walletAddress: t.walletAddress || '',
+      type: t.type,
+      tokenAddress: t.tokenAddress || '',
+      tokenSymbol: t.tokenSymbol,
+      tokenName: t.tokenName,
+      amount: t.amount || 0,
+      signature: t.signature,
+      status: t.status === 'completed' ? 'success' : t.status,
+      timestamp: new Date(t.timestamp * 1000), // Convert Unix to Date
+      pricePerToken: t.pricePerToken,
+      totalCost: t.totalCost
+    }));
+    
+    res.json({ success: true, trades: formatted });
+  } catch (error: any) {
+    console.error('Error fetching trade history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Get transaction history
  */
 router.get('/api/trading/transactions', authService.requireSecureAuth(), async (req: Request, res: Response) => {

@@ -6,8 +6,8 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
-import { telegramRateLimiter } from './TelegramRateLimiter.js';
 import { tokenSourceTracker } from './TokenSourceTracker.js';
+import { telegramIntelligence } from './TelegramIntelligenceService.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { PublicKey } from '@solana/web3.js';
 
@@ -117,7 +117,7 @@ export class TelegramClientService extends EventEmitter {
         FROM telegram_monitored_chats 
         WHERE is_active = 1
       `) as any[];
-
+      
       if (activeChats.length === 0) {
         console.log('   ℹ️ No active monitored chats to refresh');
         return;
@@ -885,18 +885,18 @@ export class TelegramClientService extends EventEmitter {
               
               // Still log the detection but mark as skipped
               await this.logTelegramDetection({
+                userId: userId,
                 contractAddress: contract.address,
                 chatId: chatId!,
                 chatName: monitoredChat.chatName,
-                chatUsername: monitoredChat.username,
-                messageId: message.id.toString(),
-                messageText: message.message.substring(0, 500),
+                messageId: message.id,
+                messageText: message.message?.substring(0, 500),
                 messageTimestamp: message.date,
-                senderId: message.senderId?.toJSNumber(),
+                senderId: message.senderId?.toString(),
                 senderUsername: await this.getSenderUsername(client, message.senderId),
                 detectionType: contract.type,
-                detectedByUserId: userId,
                 detectedAt: Math.floor(Date.now() / 1000),
+                forwarded: false,
                 isFirstMention: false,
                 isBacklog: false,
                 processedAction: shouldProcess.reason
@@ -1483,476 +1483,113 @@ export class TelegramClientService extends EventEmitter {
         fetchedAt: now,
         updatedAt: now
       };
-
+      
       // Get full chat information (for groups/channels)
-      if (chatType === 'supergroup' || chatType === 'channel' || chatType === 'group') {
+      if (chatType === 'supergroup' || chatType === 'channel') {
         try {
-          const fullChat: any = await telegramRateLimiter.executeCall(
-            'GetFullChannel',
-            () => client.invoke(
-              new Api.channels.GetFullChannel({
-                channel: chat
-              })
-            ),
-            userId,
-            'normal'
+          const exportedInvite = await client.invoke(
+            new Api.messages.ExportChatInvite({
+              peer: chat,
+              legacyRevokePermanent: false
+            })
+          );
+          if (exportedInvite && (exportedInvite as any).link) {
+            metadata.inviteLink = (exportedInvite as any).link;
+          }
+        } catch (e) {
+          // User might not have permission to export invite
+          console.log(`   ℹ️ Could not export invite link: ${e}`);
+        }
+        
+        // If no invite link but we have username, generate it
+        if (!metadata.inviteLink && metadata.username) {
+          metadata.inviteLink = `https://t.me/${metadata.username}`;
+          console.log(`   ✅ Generated invite link from username: ${metadata.inviteLink}`);
+        }
+
+        // Get current user's participant status
+        try {
+          const me = await client.getMe();
+          const participant: any = await client.invoke(
+            new Api.channels.GetParticipant({
+              channel: chat,
+              participant: me.id
+            })
           );
 
-          const fullChatInfo = fullChat.fullChat;
-
-          // Extract detailed information
-          metadata.description = fullChatInfo.about;
-          metadata.memberCount = fullChatInfo.participantsCount || 0;
-          metadata.adminCount = fullChatInfo.adminsCount || 0;
-          metadata.kickedCount = fullChatInfo.kickedCount || 0;
-          metadata.onlineCount = fullChatInfo.onlineCount || 0;
-
-          // Get export invite link if available
-          try {
-            const exportedInvite = await telegramRateLimiter.executeCall(
-              'ExportChatInvite',
-              () => client.invoke(
-                new Api.messages.ExportChatInvite({
-                  peer: chat
-                })
-              ),
-              userId,
-              'low'
-            );
-            if (exportedInvite && (exportedInvite as any).link) {
-              metadata.inviteLink = (exportedInvite as any).link;
+          if (participant && participant.participant) {
+            const p = participant.participant;
+            
+            // Check role
+            metadata.isCreator = p.className === 'ChannelParticipantCreator';
+            metadata.isAdmin = p.className === 'ChannelParticipantAdmin' || metadata.isCreator;
+            metadata.isMember = true;
+            
+            // Get join date if available
+            if (p.date) {
+              metadata.joinDate = p.date;
             }
-          } catch (e) {
-            // User might not have permission to export invite
-            console.log(`   ℹ️ Could not export invite link: ${e}`);
+
+            console.log(`   👤 User role in ${chatType}: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
           }
-          
-          // If no invite link but we have username, generate it
-          if (!metadata.inviteLink && metadata.username) {
-            metadata.inviteLink = `https://t.me/${metadata.username}`;
-            console.log(`   ✅ Generated invite link from username: ${metadata.inviteLink}`);
-          }
-
-          // Get current user's participant status
-          try {
-            const me = await client.getMe();
-            const participant: any = await telegramRateLimiter.executeCall(
-              'GetParticipant',
-              () => client.invoke(
-                new Api.channels.GetParticipant({
-                  channel: chat,
-                  participant: me.id
-                })
-              ),
-              userId,
-              'normal'
-            );
-
-            if (participant && participant.participant) {
-              const p = participant.participant;
-              
-              // Check role
-              metadata.isCreator = p.className === 'ChannelParticipantCreator';
-              metadata.isAdmin = p.className === 'ChannelParticipantAdmin' || metadata.isCreator;
-              metadata.isMember = true;
-              
-              // Get join date if available
-              if (p.date) {
-                metadata.joinDate = p.date;
-              }
-
-              console.log(`   👤 User role in ${chatType}: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
-            }
-          } catch (e) {
-            // Not a member or can't fetch participant info
-            console.log(`   ⚠️  Could not fetch participant status: ${e}`);
-          }
-
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not fetch full chat info: ${error.message}`);
+        } catch (e) {
+          // Not a member or can't fetch participant info
+          console.log(`   ⚠️  Could not fetch participant status: ${e}`);
         }
       } else if (chatType === 'group') {
-        // For regular groups (not supergroups)
-        try {
-          const fullChat: any = await telegramRateLimiter.executeCall(
-            'GetFullChat',
-            () => client.invoke(
-              new Api.messages.GetFullChat({
-                chatId: chat.id
-              })
-            ),
-            userId,
-            'normal'
-          );
-
-          const fullChatInfo = fullChat.fullChat;
-          metadata.memberCount = fullChatInfo.participants?.participants?.length || 0;
-          
-          // Check if current user is admin
-          const me = await client.getMe();
-          const participants = fullChatInfo.participants?.participants || [];
-          const myParticipant = participants.find((p: any) => p.userId?.toString() === me.id.toString());
-          
-          if (myParticipant) {
-            metadata.isMember = true;
-            metadata.isCreator = myParticipant.className === 'ChatParticipantCreator';
-            metadata.isAdmin = myParticipant.className === 'ChatParticipantAdmin' || metadata.isCreator;
-            if (myParticipant.date) {
-              metadata.joinDate = myParticipant.date;
-            }
-
-            console.log(`   👤 User role in group: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
-          }
-
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not fetch full group info: ${error.message}`);
-        }
-      }
-
-      // Enhanced metadata for private chats and bots (User entities)
-      if (chatType === 'private') {
-        try {
-          // Get full user information
-          const fullUser: any = await telegramRateLimiter.executeCall(
-            'GetFullUser',
-            () => client.invoke(
-              new Api.users.GetFullUser({
-                id: chat
-              })
-            ),
-            userId,
-            'normal'
-          );
-
-          const fullUserInfo = fullUser.fullUser;
-          
-          // Extract enhanced user data
-          metadata.bio = fullUserInfo.about;
-          metadata.phoneNumber = chat.phone || null;
-          metadata.commonChatsCount = fullUserInfo.commonChatsCount || 0;
-          
-          // Extract restriction reason if any
-          if (chat.restrictionReason && chat.restrictionReason.length > 0) {
-            metadata.restrictionReason = chat.restrictionReason[0].text;
-          }
-          
-          // Get last seen status
-          if (chat.status) {
-            const status = chat.status;
-            if (status.className === 'UserStatusOnline') {
-              metadata.lastSeenStatus = 'online';
-              metadata.lastSeenTimestamp = Math.floor(Date.now() / 1000);
-            } else if (status.className === 'UserStatusRecently') {
-              metadata.lastSeenStatus = 'recently';
-            } else if (status.className === 'UserStatusLastWeek') {
-              metadata.lastSeenStatus = 'within_week';
-            } else if (status.className === 'UserStatusLastMonth') {
-              metadata.lastSeenStatus = 'within_month';
-            } else if (status.className === 'UserStatusOffline') {
-              metadata.lastSeenStatus = 'offline';
-              metadata.lastSeenTimestamp = status.wasOnline;
-            } else if (status.className === 'UserStatusEmpty') {
-              metadata.lastSeenStatus = 'hidden';
-            }
-          }
-
-          console.log(`   👤 User info: ${metadata.bio ? 'Has bio' : 'No bio'}, Phone: ${metadata.phoneNumber ? 'Yes' : 'No'}, Verified: ${metadata.isVerified}, Premium: ${metadata.isPremium}, Scam: ${metadata.isScam}`);
-
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not fetch full user info: ${error.message}`);
-        }
-      }
-
-      // Download profile photo (for all chat types)
-      if (chat.photo) {
-        try {
-          metadata.photoId = chat.photo.photoId?.toString() || null;
-          // Note: Actual photo download can be implemented later if needed
-          // Would require: client.downloadProfilePhoto(chat) and storing to disk
-          console.log(`   📷 Profile photo available: ${metadata.photoId}`);
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not process profile photo: ${error.message}`);
-        }
-      }
-
-      // Store in database with ALL columns (33 total, excluding auto-increment id)
-      await execute(`
-        INSERT OR REPLACE INTO telegram_chat_metadata (
-          user_id, chat_id, title, username, chat_type, description, photo_url, invite_link,
-          member_count, online_count, admin_count, restricted_count, kicked_count,
-          is_member, is_admin, is_creator, has_left, join_date,
-          message_count, last_message_date, last_message_text, avg_messages_per_day, peak_activity_hour,
-          common_keywords, language, spam_score, bot_percentage,
-          contracts_detected_30d, last_contract_date, most_active_sender,
-          phone_number, bio, is_verified, is_scam, is_fake, is_premium,
-          restriction_reason, common_chats_count, last_seen_status, last_seen_timestamp,
-          photo_id, photo_local_path, access_hash,
-          fetched_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        metadata.userId, metadata.chatId, metadata.title, metadata.username, metadata.chatType,
-        metadata.description, metadata.photoUrl, metadata.inviteLink, metadata.memberCount, metadata.onlineCount,
-        metadata.adminCount, metadata.restrictedCount, metadata.kickedCount,
-        metadata.isMember ? 1 : 0, metadata.isAdmin ? 1 : 0, metadata.isCreator ? 1 : 0,
-        metadata.hasLeft ? 1 : 0, metadata.joinDate,
-        0, null, null, 0, null, // message_count, last_message_date, last_message_text, avg_messages_per_day, peak_activity_hour
-        null, null, 0, 0, // common_keywords, language, spam_score, bot_percentage
-        0, null, null, // contracts_detected_30d, last_contract_date, most_active_sender
-        metadata.phoneNumber, metadata.bio, metadata.isVerified ? 1 : 0, metadata.isScam ? 1 : 0,
-        metadata.isFake ? 1 : 0, metadata.isPremium ? 1 : 0, metadata.restrictionReason,
-        metadata.commonChatsCount, metadata.lastSeenStatus, metadata.lastSeenTimestamp,
-        metadata.photoId, metadata.photoLocalPath, metadata.accessHash,
-        metadata.fetchedAt, metadata.updatedAt
-      ]);
-
-      console.log(`   ✅ Metadata stored: ${metadata.memberCount} members, Admin: ${metadata.isAdmin}, Creator: ${metadata.isCreator}`);
-
-      return metadata;
-    } catch (error: any) {
-      // Handle common expected errors gracefully
-      if (error.errorMessage === 'CHANNEL_INVALID' || 
-          error.errorMessage === 'CHANNEL_PRIVATE' ||
-          error.errorMessage === 'USER_NOT_PARTICIPANT' ||
-          error.message?.includes('Could not find the input entity')) {
-        console.log(`   ⚠️  Skipping ${chatId}: ${error.errorMessage || 'Chat left or inaccessible'}`);
-        return null; // Return null instead of throwing - chat is inaccessible
-      }
-      
-      // For other errors, log and throw
-      console.error(`❌ [Telegram] Error fetching metadata for chat ${chatId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Leave or delete a chat from Telegram account
-   * For channels/groups: Leaves the chat
-   * For private chats: Deletes the conversation history
-   */
-  async leaveChatFromTelegram(userId: number, chatId: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const client = this.activeClients.get(userId);
-      if (!client) {
-        return { success: false, message: 'No active Telegram client' };
-      }
-
-      console.log(`🚪 [Telegram] Leaving chat ${chatId}...`);
-
-      // Get the chat entity
-      let chat;
+      // For regular groups (not supergroups)
       try {
-        chat = await client.getEntity(chatId);
-      } catch (entityError: any) {
-        // Chat already left or doesn't exist
-        return { success: true, message: 'Chat not found or already left' };
-      }
-
-      // Determine chat type and leave accordingly
-      if (chat.className === 'Channel') {
-        // Leave channel/supergroup
-        await client.invoke(
-          new Api.channels.LeaveChannel({
-            channel: chat
+        const fullChat: any = await client.invoke(
+          new Api.messages.GetFullChat({
+            chatId: chat.id
           })
         );
-        console.log(`   ✅ Left channel/supergroup: ${chatId}`);
-        return { success: true, message: 'Left channel/supergroup successfully' };
+
+        const fullChatInfo = fullChat.fullChat;
+        metadata.memberCount = fullChatInfo.participants?.participants?.length || 0;
         
-      } else if (chat.className === 'Chat') {
-        // Leave regular group
+        // Check if current user is admin
         const me = await client.getMe();
-        await client.invoke(
-          new Api.messages.DeleteChatUser({
-            chatId: chat.id,
-            userId: me.id
-          })
-        );
-        console.log(`   ✅ Left group: ${chatId}`);
-        return { success: true, message: 'Left group successfully' };
+        const participants = fullChatInfo.participants?.participants || [];
+        const myParticipant = participants.find((p: any) => p.userId?.toString() === me.id.toString());
         
-      } else if (chat.className === 'User') {
-        // Delete private conversation
-        await client.invoke(
-          new Api.messages.DeleteHistory({
-            justClear: false,
-            revoke: false,
-            peer: chat,
-            maxId: 0
+        if (myParticipant) {
+          metadata.isMember = true;
+          metadata.isCreator = myParticipant.className === 'ChatParticipantCreator';
+          metadata.isAdmin = myParticipant.className === 'ChatParticipantAdmin' || metadata.isCreator;
+          if (myParticipant.date) {
+            metadata.joinDate = myParticipant.date;
+          }
+
+          console.log(`   👤 User role in group: ${metadata.isCreator ? 'CREATOR' : metadata.isAdmin ? 'ADMIN' : 'MEMBER'}`);
+        }
+
+      } catch (error: any) {
+        console.log(`   ⚠️  Could not fetch full group info: ${error.message}`);
+      }
+    }
+
+    // Enhanced metadata for private chats and bots (User entities)
+    if (chatType === 'private') {
+      try {
+        // Get full user information
+        const fullUser: any = await client.invoke(
+          new Api.users.GetFullUser({
+            id: chat
           })
         );
-        console.log(`   ✅ Deleted private conversation: ${chatId}`);
-        return { success: true, message: 'Deleted private conversation successfully' };
-      }
-
-      return { success: false, message: 'Unknown chat type' };
-      
-    } catch (error: any) {
-      console.error(`❌ [Telegram] Error leaving chat ${chatId}:`, error);
-      return { success: false, message: error.message || 'Failed to leave chat' };
-    }
-  }
-
-  /**
-   * Bulk leave multiple chats from Telegram
-   */
-  async bulkLeaveChatsTelegram(userId: number, chatIds: string[]): Promise<{ 
-    successful: string[]; 
-    failed: { chatId: string; error: string }[] 
-  }> {
-    const successful: string[] = [];
-    const failed: { chatId: string; error: string }[] = [];
-
-    for (const chatId of chatIds) {
-      const result = await this.leaveChatFromTelegram(userId, chatId);
-      if (result.success) {
-        successful.push(chatId);
-      } else {
-        failed.push({ chatId, error: result.message });
-      }
-      
-      // Rate limit: wait 500ms between leave operations
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    return { successful, failed };
-  }
-
-  /**
-   * Fetch participants from a chat for user targeting
-   * Returns list of users with their IDs, names, and metadata
-   */
-  async fetchChatParticipants(userId: number, chatId: string, limit: number = 100) {
-    try {
-      const client = this.activeClients.get(userId);
-      if (!client) {
-        throw new Error(`No active client for user ${userId}`);
-      }
-
-      console.log(`👥 [Telegram] Fetching participants for chat ${chatId}...`);
-
-      const chat = await client.getEntity(chatId);
-      const participants: any[] = [];
-
-      // For supergroups/channels
-      if (chat.className === 'Channel') {
-        try {
-          const result: any = await telegramRateLimiter.executeCall(
-            'GetParticipants',
-            () => client.invoke(
-              new Api.channels.GetParticipants({
-                channel: chat,
-                filter: new Api.ChannelParticipantsRecent(),
-                offset: 0,
-                limit: Math.min(limit, 200),
-                hash: BigInt(0)
-              })
-            ),
-            userId,
-            'low'
-          );
-
-          if (result.users) {
-            for (const user of result.users) {
-              participants.push({
-                userId: user.id.toString(),
-                firstName: user.firstName,
-                lastName: user.lastName,
-                username: user.username,
-                isBot: user.bot || false,
-                isVerified: user.verified || false,
-                isPremium: user.premium || false,
-                phone: user.phone,
-                displayName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${user.id}`
-              });
-            }
-          }
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not fetch participants (may need admin rights): ${error.message}`);
+        
+        const me = await client.getMe();
+        
+        // Extract photo info
+        let photoId = null;
+        let photoDcId = null;
+        let photoHasVideo = false;
+        if (me.photo && me.photo.photoId) {
+          photoId = me.photo.photoId.toString();
+          photoDcId = me.photo.dcId;
+          photoHasVideo = me.photo.hasVideo || false;
         }
-      } else if (chat.className === 'Chat') {
-        // For regular groups
-        try {
-          const fullChat: any = await telegramRateLimiter.executeCall(
-            'GetFullChat',
-            () => client.invoke(
-              new Api.messages.GetFullChat({
-                chatId: chat.id
-              })
-            ),
-            userId,
-            'low'
-          );
-
-          if (fullChat.users) {
-            for (const user of fullChat.users) {
-              participants.push({
-                userId: user.id.toString(),
-                firstName: user.firstName,
-                lastName: user.lastName,
-                username: user.username,
-                isBot: user.bot || false,
-                isVerified: user.verified || false,
-                isPremium: user.premium || false,
-                phone: user.phone,
-                displayName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${user.id}`
-              });
-            }
-          }
-        } catch (error: any) {
-          console.log(`   ⚠️  Could not fetch group participants: ${error.message}`);
-        }
-      }
-
-      console.log(`   ✅ Fetched ${participants.length} participants`);
-      return participants;
-    } catch (error: any) {
-      console.error(`❌ [Telegram] Error fetching participants for chat ${chatId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Save session to database
-   */
-  private async saveSession(userId: number, sessionString: string) {
-    const encrypted = this.encrypt(sessionString);
-    await execute(
-      'UPDATE telegram_user_accounts SET session_string = ?, is_verified = 1, last_connected_at = ?, updated_at = ? WHERE user_id = ?',
-      [encrypted, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000), userId]
-    );
-  }
-
-  /**
-   * Save comprehensive user profile data to database
-   */
-  private async saveUserProfile(userId: number, client: any) {
-    try {
-      // Get complete user info
-      const me = await client.getMe();
-      
-      // Get full user details
-      const fullUser: any = await telegramRateLimiter.executeCall(
-        'GetFullUser',
-        () => client.invoke(
-          new Api.users.GetFullUser({
-            id: me
-          })
-        ),
-        userId,
-        'low'
-      );
-      
-      const now = Math.floor(Date.now() / 1000);
-      
-      // Extract photo info
-      let photoId = null;
-      let photoDcId = null;
-      let photoHasVideo = false;
-      if (me.photo && me.photo.photoId) {
-        photoId = me.photo.photoId.toString();
-        photoDcId = me.photo.dcId;
-        photoHasVideo = me.photo.hasVideo || false;
-      }
       
       // Extract status info
       let statusType = 'offline';
@@ -2122,6 +1759,12 @@ export class TelegramClientService extends EventEmitter {
       // Don't throw - profile save failure shouldn't break authentication
     }
   }
+  
+  } catch (error: any) {
+    console.error(`❌ [Telegram] Failed to fetch and store chat metadata:`, error.message);
+    throw error;
+  }
+}
 
   /**
    * Get monitored chats from database
@@ -2931,27 +2574,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Log Telegram detection to database
    */
-  private async logTelegramDetection(data: {
-    contractAddress: string;
-    chatId: string;
-    chatName?: string;
-    chatUsername?: string;
-    messageId: string;
-    messageText: string;
-    messageTimestamp?: number;
-    senderId?: number;
-    senderUsername?: string;
-    detectionType: string;
-    detectedByUserId: number;
-    detectedAt: number;
-    isFirstMention?: boolean;
-    isBacklog?: boolean;
-    forwarded?: boolean;
-    forwardedTo?: string;
-    forwardLatency?: number;
-    forwardError?: string;
-    processedAction?: string;
-  }) {
+  private async logTelegramDetection(data: any): Promise<void> {
     try {
       await execute(`
         INSERT INTO telegram_detections (
@@ -3016,7 +2639,24 @@ export class TelegramClientService extends EventEmitter {
         telegramChatName: data.chatName,
         telegramMessageId: data.messageId ? parseInt(data.messageId) : undefined,
         telegramSender: data.senderUsername || data.senderId?.toString(),
-        discoveredByUserId: data.detectedByUserId
+        discoveredByUserId: data.userId || data.detectedByUserId
+      });
+      
+      // Process for intelligence tracking
+      await telegramIntelligence.processDetection({
+        userId: data.userId || data.detectedByUserId,
+        chatId: data.chatId,
+        messageId: data.messageId?.toString() || '',
+        senderId: data.senderId?.toString(),
+        senderUsername: data.senderUsername,
+        senderFirstName: data.senderFirstName,
+        senderLastName: data.senderLastName,
+        senderIsPremium: data.senderIsPremium,
+        senderIsVerified: data.senderIsVerified,
+        senderIsBot: data.senderIsBot,
+        contractAddress: data.contractAddress,
+        messageText: data.messageText,
+        detectedAt: data.detectedAt || Math.floor(Date.now() / 1000)
       });
       
     } catch (error: any) {
@@ -3041,6 +2681,164 @@ export class TelegramClientService extends EventEmitter {
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     return decrypted.toString();
   }
+
+  /**
+   * Save session string to database
+   */
+  private async saveSession(userId: number, sessionString: string): Promise<void> {
+    await execute(
+      'UPDATE telegram_user_accounts SET session_string = ?, is_verified = 1 WHERE user_id = ?',
+      [this.encrypt(sessionString), userId]
+    );
+  }
+
+  /**
+   * Save user profile data
+   */
+  private async saveUserProfile(userId: number, client: any): Promise<void> {
+    try {
+      const me = await client.getMe();
+      const now = Math.floor(Date.now() / 1000);
+      
+      await execute(`
+        UPDATE telegram_user_accounts SET
+          telegram_user_id = ?,
+          first_name = ?,
+          last_name = ?,
+          username = ?,
+          phone = ?,
+          is_bot = ?,
+          is_verified_telegram = ?,
+          is_premium = ?,
+          profile_fetched_at = ?,
+          updated_at = ?
+        WHERE user_id = ?
+      `, [
+        me.id?.toString(),
+        me.firstName || null,
+        me.lastName || null,
+        me.username || null,
+        me.phone || null,
+        me.bot ? 1 : 0,
+        me.verified ? 1 : 0,
+        me.premium ? 1 : 0,
+        now,
+        now,
+        userId
+      ]);
+      
+      console.log(`✅ [Telegram] Saved profile for user ${userId} (@${me.username || me.firstName})`);
+    } catch (error: any) {
+      console.error(`❌ [Telegram] Failed to save user profile for ${userId}:`, error.message);
+    }
+  }
+
+  /**
+   * Leave a chat from Telegram
+   */
+  async leaveChatFromTelegram(userId: number, chatId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const client = this.activeClients.get(userId);
+      if (!client) {
+        return { success: false, message: 'No active Telegram client' };
+      }
+
+      // Leave the chat
+      await client.invoke(
+        new Api.channels.LeaveChannel({
+          channel: chatId
+        })
+      );
+
+      // Update database to mark as inactive
+      await execute(
+        'UPDATE telegram_monitored_chats SET is_active = 0, left_at = ? WHERE user_id = ? AND chat_id = ?',
+        [Date.now(), userId, chatId]
+      );
+
+      return { success: true, message: 'Successfully left the chat' };
+    } catch (error: any) {
+      console.error(`Failed to leave chat ${chatId}:`, error.message);
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Bulk leave multiple chats
+   */
+  async bulkLeaveChatsTelegram(userId: number, chatIds: string[]): Promise<{ 
+    success: boolean; 
+    successful: string[];
+    failed: Array<{ chatId: string; error: string }>;
+  }> {
+    const successful: string[] = [];
+    const failed: Array<{ chatId: string; error: string }> = [];
+    
+    for (const chatId of chatIds) {
+      try {
+        const result = await this.leaveChatFromTelegram(userId, chatId);
+        if (result.success) {
+          successful.push(chatId);
+        } else {
+          failed.push({ chatId, error: result.message });
+        }
+      } catch (error: any) {
+        failed.push({ chatId, error: error.message });
+      }
+    }
+
+    return { 
+      success: failed.length === 0,
+      successful,
+      failed
+    };
+  }
+
+  /**
+   * Fetch chat participants
+   */
+  async fetchChatParticipants(userId: number, chatId: string, limit: number = 200): Promise<any[]> {
+    try {
+      const client = this.activeClients.get(userId);
+      if (!client) {
+        throw new Error('No active Telegram client');
+      }
+
+      const chat = await client.getEntity(chatId);
+      
+      // Fetch participants
+      const result: any = await client.invoke(
+        new Api.channels.GetParticipants({
+          channel: chat,
+          filter: new Api.ChannelParticipantsSearch({ q: '' }),
+          offset: 0,
+          limit: limit,
+          hash: BigInt(0)
+        })
+      );
+
+      if (!result || !result.participants) {
+        return [];
+      }
+
+      // Map participants to simplified format
+      return result.participants.map((p: any) => ({
+        id: p.userId?.toString(),
+        username: p.username || null,
+        firstName: p.firstName || null,
+        lastName: p.lastName || null,
+        isBot: p.bot || false,
+        isPremium: p.premium || false,
+        isVerified: p.verified || false,
+        role: p.participant?.className || 'member',
+        joinDate: p.participant?.date || null
+      }));
+    } catch (error: any) {
+      console.error(`Failed to fetch participants for chat ${chatId}:`, error.message);
+      throw error;
+    }
+  }
+
 }
 
 // Export singleton instance
