@@ -3145,6 +3145,21 @@ app.post('/api/database/wipe', async (req, res) => {
     await safeDelete('gecko_cross_network_pools');
     await safeDelete('token_mentions');
     await safeDelete('trade_source_attribution');
+    await safeDelete('contract_first_mentions');
+    await safeDelete('gecko_token_snapshots');
+    
+    // Wipe GeckoTerminal reference data
+    await safeDelete('gecko_dexes');
+    await safeDelete('gecko_networks');
+    await safeDelete('gecko_pool_data');
+    await safeDelete('gecko_sync_status');
+    
+    // Wipe pool data
+    await safeDelete('pool_info');
+    await safeDelete('pool_pricing');
+    await safeDelete('pool_price_changes');
+    await safeDelete('pool_transactions');
+    await safeDelete('pool_volume');
     
     // Wipe OHLCV data
     await safeDelete('ohlcv_data');
@@ -3160,6 +3175,8 @@ app.post('/api/database/wipe', async (req, res) => {
     // Wipe Telegram data
     await safeDelete('telegram_detected_contracts');
     await safeDelete('telegram_forwarding_history');
+    await safeDelete('telegram_chat_metadata');
+    await safeDelete('telegram_detections');
     
     saveDatabase();
     

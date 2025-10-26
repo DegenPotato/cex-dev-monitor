@@ -10,7 +10,7 @@ import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
 import { FetcherTab } from './FetcherTab';
 import { TokenIndexTab } from './TokenIndexTab';
-import { PriceOracleTab } from './PriceOracleTab';
+import { ServiceControlPanel } from './ServiceControlPanel';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
@@ -599,7 +599,7 @@ export function Dashboard() {
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
             )}
             <TrendingUp className="w-5 h-5 relative z-10" />
-            <span className="relative z-10">Price Oracle</span>
+            <span className="relative z-10">Services</span>
             {activeTab === 'price-oracle' && (
               <ChevronRight className="w-4 h-4 ml-2 text-cyan-300 relative z-10" />
             )}
@@ -672,7 +672,7 @@ export function Dashboard() {
         ) : activeTab === 'price-oracle' ? (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
-            <PriceOracleTab />
+            <ServiceControlPanel />
           </div>
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">

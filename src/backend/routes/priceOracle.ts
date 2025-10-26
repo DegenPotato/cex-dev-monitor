@@ -243,6 +243,145 @@ router.post('/resume/bulk', authService.requireSecureAuth(), async (req: Request
 });
 
 /**
+ * Get unified token services status (all tokens with their services)
+ * GET /api/price-oracle/tokens
+ * Query: ?limit=100&search=symbol
+ */
+router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const search = (req.query.search as string) || '';
+    const { queryAll } = await import('../database/helpers.js');
+    
+    // Get all tokens with comprehensive service status
+    const tokens = await queryAll<any>(`
+      SELECT 
+        tr.token_mint,
+        tr.symbol,
+        tr.name,
+        tr.first_source_type,
+        json_extract(tr.first_source_details, '$.detectionType') as detection_type,
+        tr.first_seen_at,
+        tr.total_mentions,
+        tr.total_trades,
+        
+        -- Price Oracle status (if filtered = paused)
+        CASE 
+          WHEN tpof.token_mint IS NOT NULL THEN 0
+          ELSE 1
+        END as price_oracle_active,
+        tpof.filter_reason as price_oracle_pause_reason,
+        
+        -- OHLCV Update Tier
+        ous.update_tier,
+        ous.pool_address as main_pool_address,
+        ous.last_update as ohlcv_last_update,
+        ous.next_update as ohlcv_next_update,
+        
+        -- Pool data from gecko_token_data
+        gtd.top_pool_address,
+        gtd.market_cap_usd,
+        gtd.volume_24h_usd,
+        gtd.price_usd,
+        gtd.price_change_24h,
+        gtd.liquidity_usd,
+        gtd.total_supply,
+        gtd.fdv_usd,
+        
+        -- Pool pricing from pool_info
+        pi.dex_id,
+        pi.reserve_in_usd as pool_reserve,
+        
+        -- Latest market data
+        md.price_usd as latest_price_usd,
+        md.price_sol as latest_price_sol,
+        md.market_cap_usd as latest_market_cap,
+        md.fdv_usd as latest_fdv,
+        md.volume_24h as latest_volume_24h,
+        md.price_change_24h as latest_price_change_24h,
+        md.price_change_7d as latest_price_change_7d,
+        md.updated_at as market_data_updated
+        
+      FROM token_registry tr
+      
+      -- Check if filtered/paused
+      LEFT JOIN token_price_oracle_filters tpof ON tr.token_mint = tpof.token_mint
+      
+      -- OHLCV schedule
+      LEFT JOIN ohlcv_update_schedule ous ON tr.token_mint = ous.mint_address
+      
+      -- Gecko token data
+      LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
+        AND gtd.fetched_at = (SELECT MAX(fetched_at) FROM gecko_token_data WHERE mint_address = tr.token_mint)
+      
+      -- Pool info
+      LEFT JOIN pool_info pi ON gtd.top_pool_address = pi.pool_address
+      
+      -- Latest market data
+      LEFT JOIN token_market_data md ON tr.token_mint = md.token_mint
+      
+      WHERE tr.token_mint IS NOT NULL
+        AND tr.token_mint != ''
+        AND tr.token_mint != 'So11111111111111111111111111111111111111112'
+        ${search ? `AND (tr.symbol LIKE '%${search}%' OR tr.name LIKE '%${search}%' OR tr.token_mint LIKE '%${search}%')` : ''}
+      
+      ORDER BY tr.first_seen_at DESC
+      LIMIT ?
+    `, [limit]);
+    
+    res.json({ 
+      success: true, 
+      data: tokens,
+      count: tokens.length
+    });
+  } catch (error: any) {
+    console.error('Error getting token services:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Update OHLCV update tier for a token
+ * POST /api/price-oracle/ohlcv/update-tier
+ * Body: { tokenMint: string, poolAddress: string, updateTier: 'REALTIME' | 'NORMAL' | 'DORMANT' }
+ */
+router.post('/ohlcv/update-tier', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint, poolAddress, updateTier } = req.body;
+    
+    if (!tokenMint || !poolAddress || !updateTier) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'tokenMint, poolAddress, and updateTier are required' 
+      });
+    }
+    
+    if (!['REALTIME', 'NORMAL', 'DORMANT'].includes(updateTier)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'updateTier must be REALTIME, NORMAL, or DORMANT' 
+      });
+    }
+    
+    const { execute } = await import('../database/helpers.js');
+    
+    await execute(`
+      INSERT OR REPLACE INTO ohlcv_update_schedule 
+        (pool_address, mint_address, update_tier, last_update, next_update)
+      VALUES (?, ?, ?, strftime('%s', 'now'), strftime('%s', 'now'))
+    `, [poolAddress, tokenMint, updateTier]);
+    
+    res.json({ 
+      success: true, 
+      message: `OHLCV update tier set to ${updateTier}` 
+    });
+  } catch (error: any) {
+    console.error('Error updating OHLCV tier:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * Pause all backlog tokens
  * POST /api/price-oracle/pause/backlog
  */
