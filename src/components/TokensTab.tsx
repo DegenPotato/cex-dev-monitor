@@ -12,6 +12,7 @@ interface Token {
   platform: string;
   signature?: string;
   starting_mcap?: number;
+  first_seen_mcap?: number;
   current_mcap?: number;
   ath_mcap?: number;
   last_updated?: number;
@@ -163,8 +164,10 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
   };
 
   const calculateGain = (token: Token) => {
-    if (!token.starting_mcap || !token.current_mcap) return null;
-    return ((token.current_mcap - token.starting_mcap) / token.starting_mcap) * 100;
+    // Use first_seen_mcap (when YOU discovered it) instead of starting_mcap (absolute launch)
+    const baseMcap = token.first_seen_mcap || token.starting_mcap;
+    if (!baseMcap || !token.current_mcap) return null;
+    return ((token.current_mcap - baseMcap) / baseMcap) * 100;
   };
 
   const getGainColor = (gain: number | null) => {

@@ -1398,12 +1398,20 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp DESC 
          LIMIT 1) as current_mcap,
         
-        -- Launch market cap from FIRST OHLCV candle at first_seen_at
+        -- Launch market cap from FIRST OHLCV candle (absolute launch)
         (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
          FROM ohlcv_data 
          WHERE mint_address = tr.token_mint 
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
+        
+        -- First seen market cap (price at YOUR discovery time for gain/loss calc)
+        (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint 
+           AND timestamp >= tr.first_seen_at * 1000
+         ORDER BY timestamp ASC 
+         LIMIT 1) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
         (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1512,12 +1520,20 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp DESC 
        LIMIT 1) as current_mcap,
       
-      -- Launch market cap from first OHLCV candle
+      -- Launch market cap from first OHLCV candle (absolute launch)
       (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
        FROM ohlcv_data 
        WHERE mint_address = tr.token_mint 
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
+      
+      -- First seen market cap (price at YOUR discovery time for gain/loss calc)
+      (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+       FROM ohlcv_data 
+       WHERE mint_address = tr.token_mint 
+         AND timestamp >= tr.first_seen_at * 1000
+       ORDER BY timestamp ASC 
+       LIMIT 1) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
       (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
