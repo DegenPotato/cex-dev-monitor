@@ -15,6 +15,11 @@ interface Token {
   first_seen_mcap?: number;
   current_mcap?: number;
   ath_mcap?: number;
+  // Debug fields
+  first_seen_at_unix?: number;
+  first_seen_at_ms?: number;
+  first_ohlcv_timestamp?: number;
+  last_ohlcv_timestamp?: number;
   last_updated?: number;
   price_usd?: number;
   price_sol?: number;
@@ -164,10 +169,10 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
   };
 
   const calculateGain = (token: Token) => {
-    // Use first_seen_mcap (when YOU discovered it) instead of starting_mcap (absolute launch)
-    const baseMcap = token.first_seen_mcap || token.starting_mcap;
-    if (!baseMcap || !token.current_mcap) return null;
-    return ((token.current_mcap - baseMcap) / baseMcap) * 100;
+    // ONLY use first_seen_mcap - NO FALLBACKS
+    // If OHLCV data doesn't exist at first_seen_at yet, return null
+    if (!token.first_seen_mcap || !token.current_mcap) return null;
+    return ((token.current_mcap - token.first_seen_mcap) / token.first_seen_mcap) * 100;
   };
 
   const getGainColor = (gain: number | null) => {
@@ -347,6 +352,16 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
                       <div className="text-xs text-gray-400 mb-1">Launch MCap</div>
                       <div className="text-sm font-semibold text-white">
                         {formatMarketCap(token.starting_mcap)}
+                      </div>
+                      {/* Debug: Show timestamp data */}
+                      <div className="text-xs text-red-400">
+                        First Seen MCap: {formatMarketCap(token.first_seen_mcap)}
+                      </div>
+                      <div className="text-xs text-yellow-400">
+                        First Seen: {token.first_seen_at_ms ? new Date(token.first_seen_at_ms).toLocaleTimeString() : 'N/A'}
+                      </div>
+                      <div className="text-xs text-blue-400">
+                        OHLCV: {token.first_ohlcv_timestamp ? new Date(token.first_ohlcv_timestamp).toLocaleTimeString() : 'N/A'} - {token.last_ohlcv_timestamp ? new Date(token.last_ohlcv_timestamp).toLocaleTimeString() : 'N/A'}
                       </div>
                     </div>
                     <div>
