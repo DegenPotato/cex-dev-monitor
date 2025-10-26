@@ -13,7 +13,8 @@ if (fs.existsSync(envPath)) {
 module.exports = {
   apps: [{
     name: 'cex-monitor',
-    script: 'dist/backend/server.js',
+    script: './start-production.sh',
+    interpreter: '/bin/bash',
     instances: 1,
     autorestart: true,
     watch: false,
