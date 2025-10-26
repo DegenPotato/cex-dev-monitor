@@ -223,6 +223,18 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       const poolAddress = poolData.attributes?.address;
       if (!poolAddress) continue;
       
+      // Get mint_address from database using pool_address
+      const poolInfo = await queryOne<{ mint_address: string }>(
+        `SELECT mint_address FROM token_pools WHERE pool_address = ?`,
+        [poolAddress]
+      );
+      
+      if (!poolInfo?.mint_address) {
+        console.warn(`⚠️ [OHLCV] No mint_address found for pool ${poolAddress.slice(0, 8)}...`);
+        continue;
+      }
+      
+      const mintAddress = poolInfo.mint_address;
       const attrs = poolData.attributes;
       
       // Extract activity metrics
@@ -241,7 +253,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       // Check if user has enabled real-time for this token
       const tokenSettings = await queryOne<{ ohlcv_realtime_enabled: number }>(
         `SELECT ohlcv_realtime_enabled FROM token_registry WHERE token_mint = ?`,
-        [poolData.id?.split('_')[1] || '']
+        [mintAddress]
       );
       
       if (tokenSettings?.ohlcv_realtime_enabled === 1) {
@@ -278,7 +290,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
         `INSERT OR IGNORE INTO ohlcv_backfill_progress 
          (pool_address, mint_address, timeframe, backfill_complete, oldest_timestamp, newest_timestamp)
          VALUES (?, ?, '15m', 0, 0, 0)`,
-        [poolAddress, poolData.id?.split('_')[1] || '']
+        [poolAddress, mintAddress]
       );
       
       // Update or insert into schedule table
@@ -289,7 +301,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           poolAddress,
-          poolData.id?.split('_')[1] || '',
+          mintAddress,
           tier,
           volume1h,
           txns1h,
