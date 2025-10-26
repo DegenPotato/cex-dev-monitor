@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import { tokenSourceTracker } from './TokenSourceTracker.js';
-import { telegramIntelligence } from './TelegramIntelligenceService.js';
+// import { telegramIntelligence } from './TelegramIntelligenceService.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { PublicKey } from '@solana/web3.js';
 
@@ -2642,22 +2642,22 @@ export class TelegramClientService extends EventEmitter {
         discoveredByUserId: data.userId || data.detectedByUserId
       });
       
-      // Process for intelligence tracking
-      await telegramIntelligence.processDetection({
-        userId: data.userId || data.detectedByUserId,
-        chatId: data.chatId,
-        messageId: data.messageId?.toString() || '',
-        senderId: data.senderId?.toString(),
-        senderUsername: data.senderUsername,
-        senderFirstName: data.senderFirstName,
-        senderLastName: data.senderLastName,
-        senderIsPremium: data.senderIsPremium,
-        senderIsVerified: data.senderIsVerified,
-        senderIsBot: data.senderIsBot,
-        contractAddress: data.contractAddress,
-        messageText: data.messageText,
-        detectedAt: data.detectedAt || Math.floor(Date.now() / 1000)
-      });
+      // Process for intelligence tracking (temporarily disabled)
+      // await telegramIntelligence.processDetection({
+      //   userId: data.userId || data.detectedByUserId,
+      //   chatId: data.chatId,
+      //   messageId: data.messageId?.toString() || '',
+      //   senderId: data.senderId?.toString(),
+      //   senderUsername: data.senderUsername,
+      //   senderFirstName: data.senderFirstName,
+      //   senderLastName: data.senderLastName,
+      //   senderIsPremium: data.senderIsPremium,
+      //   senderIsVerified: data.senderIsVerified,
+      //   senderIsBot: data.senderIsBot,
+      //   contractAddress: data.contractAddress,
+      //   messageText: data.messageText,
+      //   detectedAt: data.detectedAt || Math.floor(Date.now() / 1000)
+      // });
       
     } catch (error: any) {
       console.error(`   ❌ Failed to log Telegram detection:`, error.message);
