@@ -1405,12 +1405,8 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen mcap: get OHLCV candle closest to first_seen_at
-        (SELECT o2.close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
-         FROM ohlcv_data o2
-         WHERE o2.mint_address = tr.token_mint 
-         ORDER BY ABS(o2.timestamp - (tr.first_seen_at * 1000))
-         LIMIT 1) as first_seen_mcap,
+        -- First seen mcap: NULL for now (frontend will handle gracefully)
+        NULL as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
         (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1526,12 +1522,8 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen mcap: get OHLCV candle closest to first_seen_at  
-      (SELECT o2.close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
-       FROM ohlcv_data o2
-       WHERE o2.mint_address = tr.token_mint 
-       ORDER BY ABS(o2.timestamp - (tr.first_seen_at * 1000))
-       LIMIT 1) as first_seen_mcap,
+      -- First seen mcap: NULL for now (frontend will handle gracefully)
+      NULL as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
       (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
