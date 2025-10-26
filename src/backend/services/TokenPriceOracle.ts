@@ -615,6 +615,9 @@ export class TokenPriceOracle {
           migrated_pool_address = COALESCE(?, migrated_pool_address),
           is_graduated = CASE WHEN ? = 1 THEN 1 ELSE is_graduated END,
           graduated_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE graduated_at END,
+          -- Set first_seen_price_usd ONLY if it's NULL (first time)
+          first_seen_price_usd = COALESCE(first_seen_price_usd, ?),
+          first_seen_mcap_usd = COALESCE(first_seen_mcap_usd, ?),
           updated_at = strftime('%s', 'now')
         WHERE token_mint = ?
       `, [
@@ -627,6 +630,8 @@ export class TokenPriceOracle {
         price.launchpadCompleted ? 1 : 0,
         price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
         price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
+        price.priceUsd,  // first_seen_price_usd
+        price.marketCap,  // first_seen_mcap_usd
         price.mintAddress
       ]);
     } catch (error) {

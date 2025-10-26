@@ -1405,12 +1405,13 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen mcap: use starting_mcap for now (temporary fix to restore site)
-        (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
-         FROM ohlcv_data 
-         WHERE mint_address = tr.token_mint 
-         ORDER BY timestamp ASC 
-         LIMIT 1) as first_seen_mcap,
+        -- First seen mcap: use the price captured when token first entered our system
+        COALESCE(tr.first_seen_mcap_usd, 
+          (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+           FROM ohlcv_data 
+           WHERE mint_address = tr.token_mint 
+           ORDER BY timestamp ASC 
+           LIMIT 1)) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
         (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1526,12 +1527,13 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen mcap: use starting_mcap for now (temporary fix)
-      (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
-       FROM ohlcv_data 
-       WHERE mint_address = tr.token_mint 
-       ORDER BY timestamp ASC 
-       LIMIT 1) as first_seen_mcap,
+      -- First seen mcap: use the price captured when token first entered our system
+      COALESCE(tr.first_seen_mcap_usd,
+        (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint 
+         ORDER BY timestamp ASC 
+         LIMIT 1)) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
       (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
