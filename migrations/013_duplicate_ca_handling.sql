@@ -2,10 +2,25 @@
 -- Date: 2024-10-21
 -- Description: Adds support for multiple duplicate handling strategies and comprehensive token tracking
 
--- 1. Add new columns to token_mints table if they don't exist
+-- 0. Create token_mints table if it doesn't exist
+CREATE TABLE IF NOT EXISTS token_mints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mint_address TEXT NOT NULL UNIQUE,
+  mint_name TEXT,
+  mint_symbol TEXT,
+  mint_decimals INTEGER,
+  timestamp INTEGER NOT NULL,
+  first_seen_source TEXT,
+  first_seen_at INTEGER,
+  telegram_mentions INTEGER DEFAULT 0,
+  wallet_transactions INTEGER DEFAULT 0
+);
+
+-- 1. Add new columns to token_mints table if they don't exist (will fail silently if already exists)
 -- Note: SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS
 -- These columns may already exist from direct schema modifications
 
+-- Try to add columns (will fail silently if they exist)
 -- Add first_seen_source column
 ALTER TABLE token_mints ADD COLUMN first_seen_source TEXT;
 
