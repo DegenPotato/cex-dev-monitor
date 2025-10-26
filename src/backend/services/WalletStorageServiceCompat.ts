@@ -352,5 +352,24 @@ export class WalletStorageServiceCompat {
   }
 }
 
-// Export singleton instance
-export const walletStorageServiceCompat = new WalletStorageServiceCompat();
+// Export singleton instance with lazy initialization
+let instance: WalletStorageServiceCompat | null = null;
+
+function getInstance(): WalletStorageServiceCompat {
+  if (!instance) {
+    instance = new WalletStorageServiceCompat();
+  }
+  return instance;
+}
+
+export const walletStorageServiceCompat = {
+  // Proxy all method calls to the lazily initialized instance
+  getSchemaVersion: () => getInstance().getSchemaVersion(),
+  getUserWallets: (userId: number) => getInstance().getUserWallets(userId),
+  getWalletKeypair: (walletId: number, userId: number) => getInstance().getWalletKeypair(walletId, userId),
+  createWallet: (userId: number, walletName?: string) => getInstance().createWallet(userId, walletName),
+  importWallet: (userId: number, privateKey: string, walletName?: string) => getInstance().importWallet(userId, privateKey, walletName),
+  deleteWallet: (walletId: number, userId: number) => getInstance().deleteWallet(walletId, userId),
+  updateWalletBalance: (walletId: number, balance: number) => getInstance().updateWalletBalance(walletId, balance),
+  exportWallet: (walletId: number, userId: number) => getInstance().exportWallet(walletId, userId)
+};
