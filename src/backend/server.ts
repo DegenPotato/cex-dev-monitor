@@ -1347,7 +1347,7 @@ app.get('/api/tokens', async (req, res) => {
   try {
     // Simple query - just get basic info from token_registry and gecko_token_data
     const tokens = await queryAll<any>(`
-      SELECT 
+      SELECT DISTINCT
         tr.token_mint as mint_address,
         COALESCE(tr.token_symbol, 'UNKNOWN') as symbol,
         COALESCE(tr.token_name, 'Unknown Token') as name,
@@ -1395,6 +1395,7 @@ app.get('/api/tokens', async (req, res) => {
         WHERE is_primary = 1
       ) tp ON tr.token_mint = tp.mint_address
       
+      GROUP BY tr.token_mint
       ORDER BY tr.first_seen_at DESC
       LIMIT ?
     `, [limit]);
