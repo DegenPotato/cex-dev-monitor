@@ -474,7 +474,7 @@ export class OHLCVCollectorV3 {
   
   private async fetchPoolsFromGecko(mintAddress: string): Promise<Pool[]> {
     const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
-      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}`;
+      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/tokens/${mintAddress}?include=top_pools`;
       const response = await fetch(url, {
         headers: { 'Accept': 'application/json' }
       });
