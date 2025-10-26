@@ -12,12 +12,7 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "incremental": false,
-    "tsBuildInfoFile": null,
-    "disableSourceOfProjectReferenceRedirect": true,
-    "disableSolutionSearching": true,
-    "disableReferencedProjectLoad": true
+    "isolatedModules": true
   },
   "include": [
     "src/backend/**/*",
