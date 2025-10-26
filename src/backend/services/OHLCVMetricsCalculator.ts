@@ -1,4 +1,4 @@
-import { queryOne, queryAll, execute } from '../database/helpers.js';
+import { queryOne, queryAll } from '../database/helpers.js';
 import { saveDatabase } from '../database/connection.js';
 
 /**
@@ -59,9 +59,9 @@ export class OHLCVMetricsCalculator {
     try {
       // Get all tokens that have OHLCV data
       const tokensWithData = await queryAll<{ mint_address: string; platform: string }>(`
-        SELECT DISTINCT tm.mint_address, tm.platform
-        FROM token_mints tm
-        INNER JOIN ohlcv_data od ON tm.mint_address = od.mint_address
+        SELECT DISTINCT tr.token_mint as mint_address, 'pumpfun' as platform
+        FROM token_registry tr
+        INNER JOIN ohlcv_data od ON tr.token_mint = od.mint_address
       `);
       
       if (tokensWithData.length === 0) {
@@ -76,22 +76,8 @@ export class OHLCVMetricsCalculator {
         const metrics = await this.calculateTokenMetrics(token.mint_address);
         
         if (metrics) {
-          // Get current ATH to ensure we never decrease it
-          const currentData = await queryOne<{ ath_mcap: number | null }>(`
-            SELECT ath_mcap FROM token_mints WHERE mint_address = ?
-          `, [token.mint_address]);
-          
-          // Only update ATH if new value is higher (or if no ATH exists yet)
-          const finalAthMcap = currentData?.ath_mcap 
-            ? Math.max(currentData.ath_mcap, metrics.ath_mcap)
-            : metrics.ath_mcap;
-          
-          await execute(
-            `UPDATE token_mints 
-             SET starting_mcap = ?, ath_mcap = ?, current_mcap = ?, last_updated = ?
-             WHERE mint_address = ?`,
-            [metrics.starting_mcap, finalAthMcap, metrics.current_mcap, Date.now(), token.mint_address]
-          );
+          // Market cap metrics calculated but not stored to database
+          // This data is now handled by TokenPriceOracle and stored in token_market_data
           updated++;
         }
       }
@@ -144,14 +130,14 @@ export class OHLCVMetricsCalculator {
       }
       
       // Fetch total supply from database (provided by GeckoTerminal)
-      const tokenData = await queryOne<{ total_supply: number | null }>(`
+      const tokenData = await queryOne<{ total_supply: string | null }>(`
         SELECT total_supply
-        FROM token_mints
+        FROM gecko_token_latest
         WHERE mint_address = ?
       `, [mintAddress]);
       
       // Default to 1B if not available (Pump.fun standard)
-      const totalSupply = tokenData?.total_supply || 1_000_000_000;
+      const totalSupply = tokenData?.total_supply ? parseFloat(tokenData.total_supply) : 1_000_000_000;
       
       const starting_mcap = oldestCandle.open * totalSupply;
       const ath_mcap = athData.max_high * totalSupply;

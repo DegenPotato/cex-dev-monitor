@@ -168,12 +168,13 @@ router.get('/token-stats', authService.requireSecureAuth(), async (_req, res) =>
 });
 
 /**
- * Update token market data (to be called by background job)
+ * Update token metadata (name/symbol only)
+ * Note: Market cap data is now handled by TokenPriceOracle
  */
 router.post('/token/:address/update-market-data', authService.requireSecureAuth(), async (req, res) => {
   try {
     const { address } = req.params;
-    const { currentMcap, athMcap, name, symbol } = req.body;
+    const { name, symbol } = req.body;
     
     await execute(`
       UPDATE token_registry 

@@ -129,11 +129,11 @@ export class OHLCVScheduler {
       timestamp: number;
     }>(`
       SELECT 
-        mint_address,
+        token_mint as mint_address,
         telegram_mentions,
-        current_mcap,
-        timestamp
-      FROM token_mints
+        0 as current_mcap,
+        first_seen_at as timestamp
+      FROM token_registry
     `);
     
     for (const token of tokens) {

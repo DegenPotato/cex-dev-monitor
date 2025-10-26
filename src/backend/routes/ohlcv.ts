@@ -45,7 +45,7 @@ router.get('/api/ohlcv/v2/status', authService.requireSecureAuth(), async (_req:
       incomplete_backfills: number;
     }>(`
       SELECT 
-        (SELECT COUNT(DISTINCT mint_address) FROM token_mints) as total_tokens,
+        (SELECT COUNT(DISTINCT token_mint) FROM token_registry) as total_tokens,
         (SELECT COUNT(DISTINCT mint_address) FROM ohlcv_backfill_progress) as tokens_with_data,
         (SELECT COUNT(*) FROM ohlcv_data) as total_candles,
         (SELECT COUNT(*) FROM ohlcv_backfill_progress WHERE backfill_complete = 0) as incomplete_backfills

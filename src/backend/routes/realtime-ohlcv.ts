@@ -100,10 +100,10 @@ router.get('/api/realtime-ohlcv/history', authService.requireSecureAuth(), async
     const history = await queryAll(`
       SELECT 
         ros.*,
-        tm.token_name,
-        tm.token_symbol
+        tr.token_name,
+        tr.token_symbol
       FROM realtime_ohlcv_subscriptions ros
-      LEFT JOIN token_mints tm ON ros.mint_address = tm.mint_address
+      LEFT JOIN token_registry tr ON ros.mint_address = tr.token_mint
       WHERE ros.user_id = ?
       ORDER BY ros.started_at DESC
       LIMIT ?

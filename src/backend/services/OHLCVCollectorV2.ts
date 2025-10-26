@@ -92,17 +92,17 @@ export class OHLCVCollectorV2 {
       // Get tokens ordered by priority (newest first, then by activity)
       const tokens = await queryAll<Token>(`
         SELECT 
-          tm.mint_address,
-          tm.timestamp
-        FROM token_mints tm
+          tr.token_mint as mint_address,
+          tr.first_seen_at as timestamp
+        FROM token_registry tr
         LEFT JOIN (
           SELECT mint_address, MAX(newest_timestamp) as last_update
           FROM ohlcv_backfill_progress
           GROUP BY mint_address
-        ) obp ON tm.mint_address = obp.mint_address
+        ) obp ON tr.token_mint = obp.mint_address
         ORDER BY 
           CASE WHEN obp.last_update IS NULL THEN 0 ELSE 1 END, -- Prioritize tokens with no data
-          tm.timestamp DESC -- Then newest tokens
+          tr.first_seen_at DESC -- Then newest tokens
         LIMIT 50 -- Process 50 tokens per cycle to avoid overload
       `);
       
