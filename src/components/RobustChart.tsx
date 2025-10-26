@@ -97,15 +97,28 @@ const RobustChart: React.FC<RobustChartProps> = ({
         
         return true;
       })
-      .map(candle => ({
-        timestamp: Number(candle.timestamp), // Keep in milliseconds internally
-        open: Number(candle.open),
-        high: Number(candle.high),
-        low: Number(candle.low),
-        close: Number(candle.close),
-        volume: Number(candle.volume || 0),
-        pool_address: candle.pool_address
-      }))
+      .map(candle => {
+        // Already validated these are not null and are valid numbers
+        const mapped: OHLCVData = {
+          timestamp: Number(candle.timestamp), // Keep in milliseconds internally
+          open: Number(candle.open),
+          high: Number(candle.high),
+          low: Number(candle.low),
+          close: Number(candle.close),
+          volume: Number(candle.volume || 0),
+          pool_address: candle.pool_address
+        };
+        
+        // Double-check the mapping didn't introduce NaN
+        if (!isFinite(mapped.open) || !isFinite(mapped.high) || 
+            !isFinite(mapped.low) || !isFinite(mapped.close)) {
+          console.error(`[RobustChart] Mapping produced NaN for candle:`, candle, '-> mapped:', mapped);
+          return null;
+        }
+        
+        return mapped;
+      })
+      .filter((candle): candle is OHLCVData => candle !== null && candle !== undefined)
       .sort((a, b) => a.timestamp - b.timestamp);
 
     setValidData(cleaned);
@@ -208,16 +221,14 @@ const RobustChart: React.FC<RobustChartProps> = ({
       });
 
       // Set data - timestamps from OHLCV are already in seconds (Unix timestamp)
+      // validData is already clean, no need for fallbacks
       const candleData = validData.map(candle => ({
         time: Math.floor(candle.timestamp) as any, // Already in seconds from GeckoTerminal
-        open: candle.open || 0,
-        high: candle.high || 0,
-        low: candle.low || 0,
-        close: candle.close || 0,
-      })).filter(candle => 
-        // Final safety check - ensure no zeros or invalid values
-        candle.open > 0 && candle.high > 0 && candle.low > 0 && candle.close > 0
-      );
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      }));
 
       const volumeData = validData.map(candle => {
         const vol = candle.volume || 0;
@@ -243,12 +254,38 @@ const RobustChart: React.FC<RobustChartProps> = ({
 
       // Try to set candle data first to catch specific errors
       try {
-        candleSeries.setData(candleData);
-        console.log(`[RobustChart] ✅ Candlestick data set successfully`);
+        // Additional validation before passing to chart
+        const finalCandleData = candleData.filter(candle => {
+          // One final check to ensure all values are valid numbers
+          if (!candle.time || !isFinite(candle.time)) {
+            console.warn(`[RobustChart] Skipping candle with invalid time:`, candle);
+            return false;
+          }
+          if (!isFinite(candle.open) || !isFinite(candle.high) || 
+              !isFinite(candle.low) || !isFinite(candle.close)) {
+            console.warn(`[RobustChart] Skipping candle with non-finite values:`, candle);
+            return false;
+          }
+          if (candle.open <= 0 || candle.high <= 0 || candle.low <= 0 || candle.close <= 0) {
+            console.warn(`[RobustChart] Skipping candle with zero or negative values:`, candle);
+            return false;
+          }
+          return true;
+        });
+
+        if (finalCandleData.length === 0) {
+          console.error(`[RobustChart] No valid candles after final filtering`);
+          setChartError('No valid price data available for this timeframe');
+          return;
+        }
+
+        candleSeries.setData(finalCandleData);
+        console.log(`[RobustChart] ✅ Candlestick data set successfully with ${finalCandleData.length} candles`);
       } catch (err) {
         console.error(`[RobustChart] ❌ Error setting candlestick data:`, err);
         console.error(`[RobustChart] Problem candles:`, candleData);
-        throw err;
+        setChartError('Failed to render chart: ' + (err as Error).message);
+        return;
       }
       
       try {
