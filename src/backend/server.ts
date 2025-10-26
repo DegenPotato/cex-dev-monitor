@@ -273,6 +273,10 @@ app.use('/api/tokens', tokenRoutes);
 import tokenRegistryRoutes from './routes/tokenRegistry.js';
 app.use('/api/token-registry', tokenRegistryRoutes);
 
+// Register price oracle routes
+import priceOracleRoutes from './routes/priceOracle.js';
+app.use('/api/price-oracle', priceOracleRoutes);
+
 // Register campaign routes
 import campaignRoutes from './routes/campaigns.js';
 app.use('/api', campaignRoutes);

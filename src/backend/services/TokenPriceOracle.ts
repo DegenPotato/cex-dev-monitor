@@ -830,13 +830,37 @@ export class TokenPriceOracle {
 
   /**
    * Update all token prices in the database
+   * Now respects filters: backlog tokens and manually paused tokens
    */
   private async updateAllTokenPrices(): Promise<void> {
     try {
       console.log('🪙 [Token Oracle] Updating all token prices...');
       const startTime = Date.now();
       
+      // Check if oracle is globally enabled
+      const config = await queryOne<any>(
+        'SELECT is_running, filter_backlog_tokens FROM token_price_oracle_config WHERE id = 1'
+      );
+      
+      if (config && !config.is_running) {
+        console.log('🪙 [Token Oracle] Skipping update - oracle is globally paused');
+        return;
+      }
+      
+      const filterBacklog = config?.filter_backlog_tokens !== 0; // Default true
+      
       // Get all unique token addresses from recent trades and holdings
+      // EXCLUDING filtered tokens and optionally backlog tokens
+      let backlogCondition = '';
+      if (filterBacklog) {
+        backlogCondition = `
+          AND NOT EXISTS (
+            SELECT 1 FROM token_registry tr2 
+            WHERE tr2.token_mint = token_mint
+            AND json_extract(tr2.first_source_details, '$.detectionType') = 'telegram_backlog'
+          )`;
+      }
+      
       const tokens = await queryAll(`
         SELECT DISTINCT token_mint as address
         FROM (
@@ -856,6 +880,13 @@ export class TokenPriceOracle {
         WHERE token_mint IS NOT NULL
         AND token_mint != ''
         AND token_mint != 'So11111111111111111111111111111111111111112'
+        -- Exclude manually filtered tokens
+        AND NOT EXISTS (
+          SELECT 1 FROM token_price_oracle_filters 
+          WHERE token_mint = token_mint
+          AND (resume_after IS NULL OR resume_after > strftime('%s', 'now'))
+        )
+        ${backlogCondition}
         LIMIT 300
       `);
       
@@ -865,7 +896,7 @@ export class TokenPriceOracle {
       }
       
       const addresses = tokens.map((t: any) => t.address as string);
-      console.log(`🪙 [Token Oracle] Fetching prices for ${addresses.length} tokens...`);
+      console.log(`🪙 [Token Oracle] Fetching prices for ${addresses.length} tokens... (backlog filtering: ${filterBacklog ? 'ON' : 'OFF'})`);
       
       await this.fetchTokenPrices(addresses);
       
@@ -895,18 +926,150 @@ export class TokenPriceOracle {
   }
   
   /**
-   * Get oracle status
+   * Get oracle status with config
    */
-  getStatus() {
+  async getStatus() {
+    const config = await queryOne<any>(
+      'SELECT * FROM token_price_oracle_config WHERE id = 1'
+    );
+    
+    const filteredCount = await queryOne<any>(
+      'SELECT COUNT(*) as count FROM token_price_oracle_filters'
+    );
+    
     return {
       isRunning: this.isRunning,
+      globallyEnabled: config?.is_running !== 0,
       pollInterval: this.UPDATE_INTERVAL,
       cacheSize: this.priceCache.size,
       solPrice: this.solPrice,
       lastUpdate: this.priceCache.size > 0 
         ? Math.max(...Array.from(this.priceCache.values()).map(p => p.lastUpdated || 0))
-        : 0
+        : 0,
+      filterBacklogTokens: config?.filter_backlog_tokens !== 0,
+      filterInactiveTokens: config?.filter_inactive_tokens !== 0,
+      filteredTokensCount: filteredCount?.count || 0
     };
+  }
+  
+  /**
+   * Pause specific token from price updates
+   */
+  async pauseToken(tokenMint: string, reason: string = 'manual_pause', userId?: number, notes?: string) {
+    await execute(`
+      INSERT OR REPLACE INTO token_price_oracle_filters 
+        (token_mint, filter_reason, paused_by_user_id, notes, updated_at)
+      VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+    `, [tokenMint, reason, userId || null, notes || null]);
+    
+    console.log(`🪙 [Token Oracle] Paused token ${tokenMint.slice(0, 8)}... (reason: ${reason})`);
+  }
+  
+  /**
+   * Resume specific token price updates
+   */
+  async resumeToken(tokenMint: string) {
+    await execute(
+      'DELETE FROM token_price_oracle_filters WHERE token_mint = ?',
+      [tokenMint]
+    );
+    
+    console.log(`🪙 [Token Oracle] Resumed token ${tokenMint.slice(0, 8)}...`);
+  }
+  
+  /**
+   * Pause multiple tokens at once
+   */
+  async pauseTokensBulk(tokenMints: string[], reason: string = 'manual_pause', userId?: number) {
+    for (const mint of tokenMints) {
+      await this.pauseToken(mint, reason, userId);
+    }
+    
+    console.log(`🪙 [Token Oracle] Bulk paused ${tokenMints.length} tokens`);
+  }
+  
+  /**
+   * Resume multiple tokens at once
+   */
+  async resumeTokensBulk(tokenMints: string[]) {
+    if (tokenMints.length === 0) return;
+    
+    const placeholders = tokenMints.map(() => '?').join(',');
+    await execute(
+      `DELETE FROM token_price_oracle_filters WHERE token_mint IN (${placeholders})`,
+      tokenMints
+    );
+    
+    console.log(`🪙 [Token Oracle] Bulk resumed ${tokenMints.length} tokens`);
+  }
+  
+  /**
+   * Get list of filtered tokens
+   */
+  async getFilteredTokens(limit: number = 100) {
+    return await queryAll<any>(`
+      SELECT 
+        tpof.*,
+        tr.symbol,
+        tr.name,
+        json_extract(tr.first_source_details, '$.detectionType') as detection_type
+      FROM token_price_oracle_filters tpof
+      LEFT JOIN token_registry tr ON tpof.token_mint = tr.token_mint
+      ORDER BY tpof.created_at DESC
+      LIMIT ?
+    `, [limit]);
+  }
+  
+  /**
+   * Update global oracle config
+   */
+  async updateConfig(updates: {
+    isRunning?: boolean;
+    filterBacklogTokens?: boolean;
+    filterInactiveTokens?: boolean;
+    userId?: number;
+  }) {
+    const setClause: string[] = [];
+    const params: any[] = [];
+    
+    if (updates.isRunning !== undefined) {
+      setClause.push('is_running = ?');
+      params.push(updates.isRunning ? 1 : 0);
+      
+      if (updates.isRunning) {
+        setClause.push('last_started_at = strftime(\'%s\', \'now\')');
+        if (updates.userId) {
+          setClause.push('started_by_user_id = ?');
+          params.push(updates.userId);
+        }
+      } else {
+        setClause.push('last_stopped_at = strftime(\'%s\', \'now\')');
+        if (updates.userId) {
+          setClause.push('stopped_by_user_id = ?');
+          params.push(updates.userId);
+        }
+      }
+    }
+    
+    if (updates.filterBacklogTokens !== undefined) {
+      setClause.push('filter_backlog_tokens = ?');
+      params.push(updates.filterBacklogTokens ? 1 : 0);
+    }
+    
+    if (updates.filterInactiveTokens !== undefined) {
+      setClause.push('filter_inactive_tokens = ?');
+      params.push(updates.filterInactiveTokens ? 1 : 0);
+    }
+    
+    setClause.push('updated_at = strftime(\'%s\', \'now\')');
+    params.push(1); // WHERE id = 1
+    
+    await execute(
+      `UPDATE token_price_oracle_config SET ${setClause.join(', ')} WHERE id = ?`,
+      params
+    );
+    
+    console.log(`🪙 [Token Oracle] Config updated:`, updates);
   }
 }
 

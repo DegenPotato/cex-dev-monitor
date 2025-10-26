@@ -10,13 +10,14 @@ import { TokenPage } from './TokenPage';
 import { TelegramSnifferTab } from './TelegramSnifferTab';
 import { FetcherTab } from './FetcherTab';
 import { TokenIndexTab } from './TokenIndexTab';
+import { PriceOracleTab } from './PriceOracleTab';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { UnifiedMusicController } from './UnifiedMusicController';
 import { useAudio } from '../contexts/AudioContext';
 import CampaignBuilder from './CampaignBuilder';
 
-type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher' | 'campaigns';
+type Tab = 'wallets' | 'tokens' | 'token-index' | 'database' | 'telegram' | 'fetcher' | 'campaigns' | 'price-oracle';
 
 // Sound-reactive glow component
 function SoundReactiveGlow({ analyser }: { analyser: AnalyserNode | null }) {
@@ -587,6 +588,23 @@ export function Dashboard() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('price-oracle')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
+              activeTab === 'price-oracle'
+                ? 'bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/20 border border-cyan-500/40'
+                : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/5'
+            }`}
+          >
+            {activeTab === 'price-oracle' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-transparent to-cyan-500/20 animate-pulse" />
+            )}
+            <TrendingUp className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Price Oracle</span>
+            {activeTab === 'price-oracle' && (
+              <ChevronRight className="w-4 h-4 ml-2 text-cyan-300 relative z-10" />
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('database')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all relative overflow-hidden group ${
               activeTab === 'database'
@@ -650,6 +668,11 @@ export function Dashboard() {
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
             <CampaignBuilder />
+          </div>
+        ) : activeTab === 'price-oracle' ? (
+          <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
+            <PriceOracleTab />
           </div>
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 h-[calc(100vh-250px)] overflow-hidden relative">
