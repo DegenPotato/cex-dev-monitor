@@ -1352,7 +1352,15 @@ app.get('/api/tokens', async (req, res) => {
         COALESCE(tr.token_symbol, 'UNKNOWN') as symbol,
         COALESCE(tr.token_name, 'Unknown Token') as name,
         COALESCE(tr.creator_address, '') as creator_address,
-        COALESCE(tr.platform, 'unknown') as platform,
+        -- Infer platform from available data
+        COALESCE(
+          tr.platform,
+          CASE 
+            WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun'
+            WHEN tp.dex IS NOT NULL THEN tp.dex
+            ELSE 'raydium'
+          END
+        ) as platform,
         tr.creation_signature as signature,
         tr.first_seen_at * 1000 as timestamp,
         COALESCE(tr.is_graduated, 0) as launchpad_completed,
@@ -1460,7 +1468,11 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       tr.token_symbol as symbol,
       tr.token_name as name,
       tr.creator_address,
-      tr.platform,
+      -- Infer platform from migrated_pool_address or default to raydium
+      COALESCE(
+        tr.platform,
+        CASE WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun' ELSE 'raydium' END
+      ) as platform,
       tr.first_seen_at * 1000 as timestamp,
       tr.is_graduated as launchpad_completed,
       CASE WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000 ELSE NULL END as launchpad_completed_at,
