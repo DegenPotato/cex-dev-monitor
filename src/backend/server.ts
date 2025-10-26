@@ -1352,10 +1352,8 @@ app.get('/api/tokens', async (req, res) => {
     // - token_pools: primary pool/DEX info
     const tokens = await queryAll<any>(`
       WITH token_first_seen_ohlcv AS (
-        -- Get the closest OHLCV candle to first_seen_at for each token
         SELECT 
           tr2.token_mint,
-          tr2.first_seen_at,
           (SELECT o.close 
            FROM ohlcv_data o 
            WHERE o.mint_address = tr2.token_mint 
@@ -1417,7 +1415,7 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen mcap: use pre-calculated value from CTE
+        -- First seen mcap: use CTE pre-calculated value
         fso.first_seen_close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
@@ -1431,7 +1429,6 @@ app.get('/api/tokens', async (req, res) => {
         tp.activity_tier
         
       FROM token_registry tr
-      -- Join with CTE to get first_seen_close
       LEFT JOIN token_first_seen_ohlcv fso ON tr.token_mint = fso.token_mint
       -- After migration 038, gecko_token_data has only one row per token
       LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
@@ -1492,10 +1489,8 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
   // - ohlcv_data: prices
   const token = await queryOne<any>(`
     WITH token_first_seen_ohlcv AS (
-      -- Get the closest OHLCV candle to first_seen_at for this token
       SELECT 
         tr2.token_mint,
-        tr2.first_seen_at,
         (SELECT o.close 
          FROM ohlcv_data o 
          WHERE o.mint_address = tr2.token_mint 
@@ -1549,7 +1544,7 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen mcap: use pre-calculated value from CTE
+      -- First seen mcap: use CTE pre-calculated value
       fso.first_seen_close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
@@ -1567,7 +1562,6 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       END as price_change_24h
       
     FROM token_registry tr
-    -- Join with CTE to get first_seen_close
     LEFT JOIN token_first_seen_ohlcv fso ON tr.token_mint = fso.token_mint
     LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
     WHERE tr.token_mint = ?
