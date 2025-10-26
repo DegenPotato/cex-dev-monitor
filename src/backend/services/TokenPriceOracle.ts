@@ -581,6 +581,9 @@ export class TokenPriceOracle {
         null, // raw_response - will add later
       ]);
       
+      // Auto-sync metadata to token_registry
+      await this.syncToTokenRegistry(price);
+      
       // Save pool data if available
       if (price.poolData) {
         await this.savePoolData(price.poolData);
@@ -591,6 +594,43 @@ export class TokenPriceOracle {
       
     } catch (error) {
       console.error('🪙 [Token Oracle] Error saving comprehensive data:', error);
+    }
+  }
+  
+  /**
+   * Sync metadata from gecko_token_data to token_registry
+   */
+  private async syncToTokenRegistry(price: TokenPrice): Promise<void> {
+    try {
+      // Infer platform from launchpad data
+      const platform = price.launchpadMigratedPoolAddress ? 'pump.fun' : null;
+      
+      await execute(`
+        UPDATE token_registry
+        SET 
+          token_symbol = COALESCE(?, token_symbol),
+          token_name = COALESCE(?, token_name),
+          token_decimals = COALESCE(?, token_decimals),
+          platform = COALESCE(platform, ?),
+          migrated_pool_address = COALESCE(?, migrated_pool_address),
+          is_graduated = CASE WHEN ? = 1 THEN 1 ELSE is_graduated END,
+          graduated_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE graduated_at END,
+          updated_at = strftime('%s', 'now')
+        WHERE token_mint = ?
+      `, [
+        price.symbol,
+        price.name,
+        price.decimals,
+        platform,
+        price.launchpadMigratedPoolAddress,
+        price.launchpadCompleted ? 1 : 0,
+        price.launchpadCompleted ? 1 : 0,
+        price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
+        price.launchpadCompletedAt ? Math.floor(new Date(price.launchpadCompletedAt).getTime() / 1000) : null,
+        price.mintAddress
+      ]);
+    } catch (error) {
+      console.error('🪙 [Token Oracle] Error syncing to token_registry:', error);
     }
   }
   
