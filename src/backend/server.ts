@@ -2647,7 +2647,7 @@ app.post('/api/tokens/:mintAddress/refresh', async (req, res) => {
       INSERT OR REPLACE INTO gecko_token_data (
         mint_address, price_usd, price_sol, market_cap_usd, ath_market_cap_usd,
         volume_24h_usd, price_change_24h, total_supply, total_reserve_in_usd,
-        coingecko_id, gt_score, last_updated
+        coingecko_coin_id, gt_score, last_updated
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       mintAddress,
@@ -3008,9 +3008,33 @@ app.post('/api/database/wipe', async (req, res) => {
     await TokenMintProvider.deleteAll();
     await TokenPoolProvider.deleteAll();
     
-    // Wipe OHLCV data (no provider, use execute helper)
+    // Wipe ALL token-related data
+    await execute('DELETE FROM token_registry', []);
+    await execute('DELETE FROM token_mints', []);  // Legacy table
+    await execute('DELETE FROM token_pools', []);
+    await execute('DELETE FROM token_sightings', []);
+    await execute('DELETE FROM token_source_tracking', []);
+    await execute('DELETE FROM gecko_token_data', []);
+    await execute('DELETE FROM gecko_multi_network_tokens', []);
+    await execute('DELETE FROM gecko_cross_network_pools', []);
+    await execute('DELETE FROM token_mentions', []);
+    await execute('DELETE FROM trade_source_attribution', []);
+    
+    // Wipe OHLCV data
     await execute('DELETE FROM ohlcv_data', []);
     await execute('DELETE FROM ohlcv_backfill_progress', []);
+    await execute('DELETE FROM ohlcv_update_schedule', []);
+    await execute('DELETE FROM ohlcv_aggregated', []);
+    
+    // Wipe trading and portfolio data
+    await execute('DELETE FROM trading_transactions', []);
+    await execute('DELETE FROM trading_portfolios', []);
+    await execute('DELETE FROM trading_wallet_balances', []);
+    
+    // Wipe Telegram data
+    await execute('DELETE FROM telegram_detected_contracts', []);
+    await execute('DELETE FROM telegram_forwarding_history', []);
+    
     saveDatabase();
     
     console.log('🗑️  Database wiped successfully');
