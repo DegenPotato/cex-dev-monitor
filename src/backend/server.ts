@@ -1362,31 +1362,42 @@ app.get('/api/tokens', async (req, res) => {
         END as launchpad_completed_at,
         tr.migrated_pool_address,
         
-        -- Market data from latest gecko_token_data
-        gtd.price_usd,
-        gtd.price_sol,
-        gtd.market_cap_usd as current_mcap,
-        gtd.volume_24h_usd,
-        gtd.price_change_24h,
-        gtd.total_reserve_in_usd as liquidity_usd,
+        -- Supply and decimals from gecko_token_data
         gtd.total_supply,
         COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
+        gtd.volume_24h_usd,
+        gtd.total_reserve_in_usd as liquidity_usd,
         
-        -- ATH data is now stored directly in the table (no subquery needed!)
-        gtd.ath_price_usd,
-        gtd.ath_market_cap_usd as ath_mcap,
+        -- Current price from LATEST OHLCV candle
+        (SELECT close 
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint 
+         ORDER BY timestamp DESC 
+         LIMIT 1) as price_usd,
         
-        -- Primary pool data
-        tp.pool_address as primary_pool,
-        tp.dex as primary_dex,
-        tp.activity_tier,
+        -- Current market cap from latest OHLCV
+        (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint 
+         ORDER BY timestamp DESC 
+         LIMIT 1) as current_mcap,
         
-        -- Starting market cap from first OHLCV candle
+        -- Launch market cap from FIRST OHLCV candle at first_seen_at
         (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
          FROM ohlcv_data 
          WHERE mint_address = tr.token_mint 
          ORDER BY timestamp ASC 
-         LIMIT 1) as starting_mcap
+         LIMIT 1) as starting_mcap,
+        
+        -- ATH market cap from highest OHLCV candle
+        (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint) as ath_mcap,
+        
+        -- Primary pool data
+        tp.pool_address as primary_pool,
+        tp.dex as primary_dex,
+        tp.activity_tier
         
       FROM token_registry tr
       -- After migration 038, gecko_token_data has only one row per token
@@ -1442,7 +1453,7 @@ app.get('/api/tokens/recent', async (req, res) => {
 app.get('/api/tokens/:mintAddress', async (req, res) => {
   const { mintAddress } = req.params;
   
-  // Get token from token_registry with gecko data
+  // Get token from token_registry with OHLCV data
   const token = await queryOne<any>(`
     SELECT 
       tr.token_mint as mint_address,
@@ -1454,14 +1465,45 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       tr.is_graduated as launchpad_completed,
       CASE WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000 ELSE NULL END as launchpad_completed_at,
       tr.migrated_pool_address,
-      gtd.price_usd,
-      gtd.price_sol,
-      gtd.market_cap_usd as current_mcap,
-      gtd.ath_market_cap_usd as ath_mcap,
       gtd.volume_24h_usd,
       gtd.total_supply,
       COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
-      gtd.price_change_24h
+      
+      -- Current price from latest OHLCV candle
+      (SELECT close 
+       FROM ohlcv_data 
+       WHERE mint_address = tr.token_mint 
+       ORDER BY timestamp DESC 
+       LIMIT 1) as price_usd,
+      
+      -- Current market cap from latest OHLCV
+      (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+       FROM ohlcv_data 
+       WHERE mint_address = tr.token_mint 
+       ORDER BY timestamp DESC 
+       LIMIT 1) as current_mcap,
+      
+      -- Launch market cap from first OHLCV candle
+      (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+       FROM ohlcv_data 
+       WHERE mint_address = tr.token_mint 
+       ORDER BY timestamp ASC 
+       LIMIT 1) as starting_mcap,
+      
+      -- ATH market cap from highest OHLCV candle
+      (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
+       FROM ohlcv_data 
+       WHERE mint_address = tr.token_mint) as ath_mcap,
+       
+      -- Price change percentage (current vs launch)
+      CASE 
+        WHEN (SELECT open FROM ohlcv_data WHERE mint_address = tr.token_mint ORDER BY timestamp ASC LIMIT 1) > 0
+        THEN ((SELECT close FROM ohlcv_data WHERE mint_address = tr.token_mint ORDER BY timestamp DESC LIMIT 1) - 
+              (SELECT open FROM ohlcv_data WHERE mint_address = tr.token_mint ORDER BY timestamp ASC LIMIT 1)) /
+             (SELECT open FROM ohlcv_data WHERE mint_address = tr.token_mint ORDER BY timestamp ASC LIMIT 1) * 100
+        ELSE 0
+      END as price_change_24h
+      
     FROM token_registry tr
     LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
     WHERE tr.token_mint = ?
