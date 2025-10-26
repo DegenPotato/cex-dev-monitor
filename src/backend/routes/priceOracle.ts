@@ -288,9 +288,8 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
         gtd.total_supply,
         gtd.fdv_usd,
         
-        -- Pool pricing from pool_info
+        -- Pool info
         pi.dex_id,
-        pi.reserve_in_usd as pool_reserve,
         
         -- Latest market data
         md.price_usd as latest_price_usd,
