@@ -1405,13 +1405,20 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen mcap: use the price captured when token first entered our system
-        COALESCE(tr.first_seen_mcap_usd, 
+        -- First seen mcap: calculate from first_seen_price_usd * supply, or use stored mcap, or fallback to launch
+        COALESCE(
+          CASE 
+            WHEN tr.first_seen_price_usd IS NOT NULL AND gtd.total_supply IS NOT NULL 
+            THEN tr.first_seen_price_usd * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+            ELSE NULL
+          END,
+          tr.first_seen_mcap_usd,
           (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
            FROM ohlcv_data 
            WHERE mint_address = tr.token_mint 
            ORDER BY timestamp ASC 
-           LIMIT 1)) as first_seen_mcap,
+           LIMIT 1)
+        ) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
         (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1527,13 +1534,20 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen mcap: use the price captured when token first entered our system
-      COALESCE(tr.first_seen_mcap_usd,
+      -- First seen mcap: calculate from first_seen_price_usd * supply, or use stored mcap, or fallback to launch
+      COALESCE(
+        CASE 
+          WHEN tr.first_seen_price_usd IS NOT NULL AND gtd.total_supply IS NOT NULL 
+          THEN tr.first_seen_price_usd * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+          ELSE NULL
+        END,
+        tr.first_seen_mcap_usd,
         (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
          FROM ohlcv_data 
          WHERE mint_address = tr.token_mint 
          ORDER BY timestamp ASC 
-         LIMIT 1)) as first_seen_mcap,
+         LIMIT 1)
+      ) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
       (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
