@@ -1436,7 +1436,31 @@ app.get('/api/tokens/recent', async (req, res) => {
 // Get single token by mint address
 app.get('/api/tokens/:mintAddress', async (req, res) => {
   const { mintAddress } = req.params;
-  const token = await TokenMintProvider.findByMintAddress(mintAddress);
+  
+  // Get token from token_registry with gecko data
+  const token = await queryOne<any>(`
+    SELECT 
+      tr.token_mint as mint_address,
+      tr.token_symbol as symbol,
+      tr.token_name as name,
+      tr.creator_address,
+      tr.platform,
+      tr.first_seen_at * 1000 as timestamp,
+      tr.is_graduated as launchpad_completed,
+      CASE WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000 ELSE NULL END as launchpad_completed_at,
+      tr.migrated_pool_address,
+      gtd.price_usd,
+      gtd.price_sol,
+      gtd.market_cap_usd as current_mcap,
+      gtd.ath_market_cap_usd as ath_mcap,
+      gtd.volume_24h_usd,
+      gtd.total_supply,
+      gtd.price_change_24h
+    FROM token_registry tr
+    LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
+    WHERE tr.token_mint = ?
+  `, [mintAddress]);
+  
   if (!token) {
     return res.status(404).json({ error: 'Token not found' });
   }
@@ -2594,10 +2618,13 @@ app.post('/api/tokens/:mintAddress/refresh', async (req, res) => {
   try {
     const { mintAddress } = req.params;
     
-    // Check if token exists
-    const token = await TokenMintProvider.findByMintAddress(mintAddress);
+    // Check if token exists in token_registry
+    const token = await queryOne<any>(
+      'SELECT * FROM token_registry WHERE token_mint = ?', 
+      [mintAddress]
+    );
     if (!token) {
-      return res.status(404).json({ error: 'Token not found' });
+      return res.status(404).json({ error: 'Token not found in registry' });
     }
     
     // Fetch fresh metadata from both GeckoTerminal endpoints
@@ -2609,38 +2636,42 @@ app.post('/api/tokens/:mintAddress/refresh', async (req, res) => {
       return res.status(404).json({ error: 'No metadata found for token' });
     }
     
-    // Update token with fresh data
-    await TokenMintProvider.update(mintAddress, {
-      current_mcap: metadata.fdvUsd,
-      price_usd: metadata.priceUsd,
-      graduation_percentage: metadata.launchpadGraduationPercentage,
-      launchpad_completed: metadata.launchpadCompleted ? 1 : 0,
-      launchpad_completed_at: metadata.launchpadCompletedAt ? new Date(metadata.launchpadCompletedAt).getTime() : undefined,
-      total_supply: metadata.totalSupply,
-      market_cap_usd: metadata.marketCapUsd,
-      coingecko_coin_id: metadata.coingeckoCoinId || undefined,
-      gt_score: metadata.gtScore,
-      description: metadata.description,
-      last_updated: Date.now(),
-      metadata: JSON.stringify({
-        ...JSON.parse(token.metadata || '{}'),
-        decimals: metadata.decimals,
-        image: metadata.image,
-        totalReserveUsd: metadata.totalReserveUsd,
-        volumeUsd24h: metadata.volumeUsd24h,
-        gtScoreDetails: metadata.gtScoreDetails,
-        holders: metadata.holders,
-        twitterHandle: metadata.twitterHandle,
-        telegramHandle: metadata.telegramHandle,
-        discordUrl: metadata.discordUrl,
-        websites: metadata.websites,
-        categories: metadata.categories,
-        mintAuthority: metadata.mintAuthority,
-        freezeAuthority: metadata.freezeAuthority,
-        isHoneypot: metadata.isHoneypot,
-        geckoTerminal: metadata
-      })
-    });
+    // Update gecko_token_data with fresh data
+    await execute(`
+      INSERT OR REPLACE INTO gecko_token_data (
+        mint_address, price_usd, price_sol, market_cap_usd, ath_market_cap_usd,
+        volume_24h_usd, price_change_24h, total_supply, total_reserve_in_usd,
+        coingecko_id, gt_score, last_updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      mintAddress,
+      metadata.priceUsd || 0,
+      metadata.priceUsd && metadata.totalReserveUsd ? metadata.priceUsd / (metadata.totalReserveUsd / 2) : 0,
+      metadata.marketCapUsd || 0,
+      Math.max(metadata.marketCapUsd || 0, metadata.fdvUsd || 0),
+      metadata.volumeUsd24h || 0,
+      0, // price_change_24h
+      metadata.totalSupply || '0',
+      metadata.totalReserveUsd || 0,
+      metadata.coingeckoCoinId || null,
+      metadata.gtScore || 0,
+      Date.now()
+    ]);
+    
+    // Update token_registry graduation status if needed
+    if (metadata.launchpadCompleted) {
+      await execute(`
+        UPDATE token_registry 
+        SET is_graduated = 1, 
+            graduated_at = ?
+        WHERE token_mint = ?
+      `, [
+        metadata.launchpadCompletedAt ? Math.floor(new Date(metadata.launchpadCompletedAt).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        mintAddress
+      ]);
+    }
+    
+    saveDatabase();
     
     res.json({
       success: true,
