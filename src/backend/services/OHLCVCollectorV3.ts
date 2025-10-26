@@ -388,40 +388,64 @@ export class OHLCVCollectorV3 {
       ]);
     }
     
-    // 3. Always fetch from GeckoTerminal to discover new pools
-    // This is important for PumpFun tokens that graduate from bonding curve to DEX
-    try {
-      const geckoData = await this.fetchPoolsFromGecko(mintAddress);
-      
-      for (const pool of geckoData) {
-        // Only add if not already in our list
-        if (!pools.some(p => p.pool_address === pool.pool_address)) {
-          console.log(`  🆕 Discovered new pool: ${pool.pool_address.slice(0, 8)}... (${pool.dex})`);
-          pools.push(pool);
-        }
+    // 3. Fetch from GeckoTerminal to discover new pools if we don't have enough
+    // Only query if we have fewer than 2 pools (prevents excessive API calls)
+    if (pools.length < 2) {
+      try {
+        const geckoData = await this.fetchPoolsFromGecko(mintAddress);
         
-        // Always update cache with latest data from GeckoTerminal
-        await execute(`
-          INSERT OR REPLACE INTO token_pools
-          (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          mintAddress,
-          pool.pool_address,
-          pool.dex,
-          pool.volume_24h_usd,
-          pool.liquidity_usd,
-          0, // price_usd
-          geckoData.indexOf(pool) === 0 ? 1 : 0, // First is primary
-          Date.now(),
-          Date.now()
-        ]);
-      }
-    } catch (error: any) {
-      console.log(`  ⚠️ GeckoTerminal fetch failed: ${error.message}`);
-      // If GeckoTerminal fails but we have cached pools, continue with those
-      if (pools.length === 0) {
-        console.log(`  ❌ No pools available for token`);
+        for (const pool of geckoData) {
+          // Check if pool already exists in database
+          const existingPool = await queryOne<{ is_primary: number; discovered_at: number }>(
+            `SELECT is_primary, discovered_at FROM token_pools 
+             WHERE mint_address = ? AND pool_address = ?`,
+            [mintAddress, pool.pool_address]
+          );
+          
+          if (!existingPool) {
+            // New pool - add to list and database
+            console.log(`  🆕 Discovered new pool: ${pool.pool_address.slice(0, 8)}... (${pool.dex})`);
+            pools.push(pool);
+            
+            // Determine is_primary: DEX pools are primary for graduated tokens, bonding curves otherwise
+            const poolType = this.detectPoolType(pool.dex, pool.pool_address);
+            const isPrimary = poolType === 'dex' ? 1 : 0;
+            
+            await execute(`
+              INSERT INTO token_pools
+              (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              mintAddress,
+              pool.pool_address,
+              pool.dex,
+              pool.volume_24h_usd,
+              pool.liquidity_usd,
+              0, // price_usd
+              isPrimary,
+              Date.now(),
+              Date.now()
+            ]);
+          } else if (!pools.some(p => p.pool_address === pool.pool_address)) {
+            // Pool exists in DB but not in our current list - add it
+            pools.push({
+              pool_address: pool.pool_address,
+              dex: pool.dex,
+              pool_type: this.detectPoolType(pool.dex, pool.pool_address),
+              volume_24h_usd: pool.volume_24h_usd,
+              liquidity_usd: pool.liquidity_usd
+            });
+            
+            // Update last_verified timestamp only (preserve is_primary and discovered_at)
+            await execute(`
+              UPDATE token_pools 
+              SET last_verified = ?, volume_24h_usd = ?, liquidity_usd = ?
+              WHERE mint_address = ? AND pool_address = ?
+            `, [Date.now(), pool.volume_24h_usd, pool.liquidity_usd, mintAddress, pool.pool_address]);
+          }
+        }
+      } catch (error: any) {
+        console.log(`  ⚠️ GeckoTerminal fetch failed: ${error.message}`);
       }
     }
     
