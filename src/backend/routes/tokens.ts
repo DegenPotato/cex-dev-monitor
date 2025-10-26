@@ -17,34 +17,28 @@ router.get('/detected-tokens', authService.requireSecureAuth(), async (req, res)
     
     let query = `
       SELECT 
-        tm.mint_address,
-        tm.creator_address,
-        tm.name,
-        tm.symbol,
-        tm.platform,
-        tm.timestamp,
-        tm.starting_mcap,
-        tm.current_mcap,
-        tm.ath_mcap,
-        tm.first_seen_source,
+        tm.token_mint as mint_address,
+        tm.token_name as name,
+        tm.token_symbol as symbol,
         tm.first_seen_at,
+        tm.first_source_type as first_seen_source,
         tm.telegram_mentions,
         tm.wallet_transactions,
-        tm.last_updated,
+        tm.updated_at as last_updated,
         COUNT(DISTINCT td.chat_id) as unique_chat_mentions,
         COUNT(DISTINCT td.sender_id) as unique_senders,
         SUM(CASE WHEN td.forwarded = 1 THEN 1 ELSE 0 END) as times_forwarded,
         AVG(CASE WHEN td.forward_latency IS NOT NULL THEN td.forward_latency ELSE NULL END) as avg_forward_latency
-      FROM token_mints tm
-      LEFT JOIN telegram_detections td ON tm.mint_address = td.contract_address
+      FROM token_registry tm
+      LEFT JOIN telegram_detections td ON tm.token_mint = td.contract_address
     `;
     
     if (source) {
-      query += ` WHERE tm.first_seen_source = ?`;
+      query += ` WHERE tm.first_source_type = ?`;
     }
     
     query += `
-      GROUP BY tm.mint_address
+      GROUP BY tm.token_mint
       ORDER BY tm.first_seen_at DESC
       LIMIT ? OFFSET ?
     `;
@@ -68,7 +62,7 @@ router.get('/token/:address', authService.requireSecureAuth(), async (req, res) 
     
     // Get token basic info
     const token = await queryOne(`
-      SELECT * FROM token_mints WHERE mint_address = ?
+      SELECT * FROM token_registry WHERE token_mint = ?
     `, [address]);
     
     if (!token) {
@@ -182,15 +176,13 @@ router.post('/token/:address/update-market-data', authService.requireSecureAuth(
     const { currentMcap, athMcap, name, symbol } = req.body;
     
     await execute(`
-      UPDATE token_mints 
+      UPDATE token_registry 
       SET 
-        current_mcap = COALESCE(?, current_mcap),
-        ath_mcap = COALESCE(?, ath_mcap),
-        name = COALESCE(?, name),
-        symbol = COALESCE(?, symbol),
-        last_updated = ?
-      WHERE mint_address = ?
-    `, [currentMcap, athMcap, name, symbol, Math.floor(Date.now() / 1000), address]);
+        token_name = COALESCE(?, token_name),
+        token_symbol = COALESCE(?, token_symbol),
+        updated_at = ?
+      WHERE token_mint = ?
+    `, [name, symbol, Math.floor(Date.now() / 1000), address]);
     
     res.json({ success: true });
   } catch (error: any) {

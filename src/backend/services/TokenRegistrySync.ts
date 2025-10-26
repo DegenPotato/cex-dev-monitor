@@ -1,5 +1,5 @@
 /**
- * TokenRegistrySync - Ensures all tokens from token_mints are in token_registry
+ * TokenRegistrySync - Syncs token data from GeckoTerminal to token_registry
  * and provides comprehensive token data with real-time price updates
  */
 
@@ -7,15 +7,6 @@ import { queryAll, queryOne, execute } from '../database/helpers.js';
 import { TokenPriceOracle } from './TokenPriceOracle.js';
 
 const tokenPriceOracle = TokenPriceOracle.getInstance();
-
-interface TokenMint {
-  mint_address: string;
-  token_name?: string;
-  token_symbol?: string;
-  creator_address?: string;
-  timestamp: number;
-  platform?: string;
-}
 
 interface TokenWithPricing {
   token_mint: string;
@@ -83,80 +74,14 @@ class TokenRegistrySyncService {
   }
 
   /**
-   * Sync tokens from token_mints to token_registry
+   * Sync tokens - DEPRECATED: token_mints table is obsolete
+   * This method is now a no-op as all tokens should be in token_registry directly
    */
   private async syncTokens() {
-    try {
-      // Get all tokens from token_mints that aren't in token_registry
-      const missingTokens = await queryAll<TokenMint>(`
-        SELECT DISTINCT 
-          tm.mint_address,
-          tm.mint_name as token_name,
-          tm.mint_symbol as token_symbol,
-          tm.creator_address,
-          tm.timestamp,
-          tm.platform
-        FROM token_mints tm
-        WHERE NOT EXISTS (
-          SELECT 1 FROM token_registry tr 
-          WHERE tr.token_mint = tm.mint_address
-        )
-      `);
-
-      if (missingTokens.length === 0) {
-        return;
-      }
-
-      console.log(`🔄 [TokenSync] Syncing ${missingTokens.length} tokens to registry...`);
-
-      for (const token of missingTokens) {
-        await this.addTokenToRegistry(token);
-      }
-
-      console.log(`✅ [TokenSync] Synced ${missingTokens.length} tokens to registry`);
-    } catch (error: any) {
-      console.error('❌ [TokenSync] Error syncing tokens:', error.message);
-    }
+    // No-op: token_mints is obsolete, tokens are added directly to token_registry
+    return;
   }
 
-  /**
-   * Add a token from token_mints to token_registry
-   */
-  private async addTokenToRegistry(token: TokenMint) {
-    try {
-      await execute(`
-        INSERT INTO token_registry (
-          token_mint,
-          token_symbol,
-          token_name,
-          token_decimals,
-          first_seen_at,
-          first_source_type,
-          first_source_details
-        ) VALUES (?, ?, ?, 9, ?, 'dex_scan', ?)
-      `, [
-        token.mint_address,
-        token.token_symbol || null,
-        token.token_name || null,
-        token.timestamp || Date.now(),
-        JSON.stringify({
-          platform: token.platform,
-          creator: token.creator_address
-        })
-      ]);
-      
-      // Trigger immediate price fetch for new token
-      console.log(`🪙 [TokenSync] New token registered: ${token.mint_address.slice(0, 8)}... - triggering price fetch`);
-      tokenPriceOracle.fetchNewToken(token.mint_address).catch(err => {
-        console.error(`❌ [TokenSync] Failed to trigger price fetch for ${token.mint_address.slice(0, 8)}...`, err);
-      });
-    } catch (error: any) {
-      // Ignore duplicates
-      if (!error.message.includes('UNIQUE constraint')) {
-        console.error(`❌ [TokenSync] Error adding token ${token.mint_address}:`, error.message);
-      }
-    }
-  }
 
   /**
    * Sync data from gecko_token_latest to token_registry
@@ -243,9 +168,8 @@ class TokenRegistrySyncService {
           tr.token_decimals,
           tr.first_seen_at,
           tr.first_source_type,
-          tm.ohlcv_realtime_enabled
+          tr.ohlcv_realtime_enabled
         FROM token_registry tr
-        LEFT JOIN token_mints tm ON tm.mint_address = tr.token_mint
         ORDER BY tr.first_seen_at DESC
         LIMIT ? OFFSET ?
       `, [limit, offset]);
