@@ -257,8 +257,8 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
     const tokens = await queryAll<any>(`
       SELECT 
         tr.token_mint,
-        tr.symbol,
-        tr.name,
+        tr.token_symbol as symbol,
+        tr.token_name as name,
         tr.first_source_type,
         json_extract(tr.first_source_details, '$.detectionType') as detection_type,
         tr.first_seen_at,
@@ -323,7 +323,7 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
       WHERE tr.token_mint IS NOT NULL
         AND tr.token_mint != ''
         AND tr.token_mint != 'So11111111111111111111111111111111111111112'
-        ${search ? `AND (tr.symbol LIKE '%${search}%' OR tr.name LIKE '%${search}%' OR tr.token_mint LIKE '%${search}%')` : ''}
+        ${search ? `AND (tr.token_symbol LIKE '%${search}%' OR tr.token_name LIKE '%${search}%' OR tr.token_mint LIKE '%${search}%')` : ''}
       
       ORDER BY tr.first_seen_at DESC
       LIMIT ?
