@@ -27,7 +27,12 @@ interface AuthenticatedRequest extends Request {
 
 const router = Router();
 // const walletManager = getWalletManager(); // Removed - using walletStorageService
-const tradingEngine = getTradingEngine();
+// Lazy load tradingEngine to ensure env vars are loaded first
+let tradingEngine: ReturnType<typeof getTradingEngine> | null = null;
+const getTradingEngineInstance = () => {
+  if (!tradingEngine) tradingEngine = getTradingEngine();
+  return tradingEngine;
+};
 
 /**
  * Get all wallets for authenticated user
@@ -280,7 +285,7 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       return res.status(400).json({ error: 'Token address and amount required' });
     }
     
-    const result = await tradingEngine.buyToken({
+    const result = await getTradingEngineInstance().buyToken({
       userId,
       walletAddress,
       tokenMint,
@@ -354,7 +359,7 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       return res.status(400).json({ error: 'Token address and amount/percentage required' });
     }
     
-    const result = await tradingEngine.sellToken({
+    const result = await getTradingEngineInstance().sellToken({
       userId,
       walletAddress,
       tokenMint,
@@ -419,7 +424,7 @@ router.post('/api/trading/transfer', authService.requireSecureAuth(), async (req
       return res.status(400).json({ error: 'Token, destination and amount required' });
     }
     
-    const result = await tradingEngine.transferToken({
+    const result = await getTradingEngineInstance().transferToken({
       userId,
       walletAddress,
       tokenMint,
