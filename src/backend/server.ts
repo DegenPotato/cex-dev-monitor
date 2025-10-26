@@ -2643,24 +2643,34 @@ app.post('/api/tokens/:mintAddress/refresh', async (req, res) => {
     }
     
     // Update gecko_token_data with fresh data
+    // Note: gecko_token_data has unique constraint on (mint_address, fetched_at)
+    // so we INSERT with current timestamp for fetched_at
+    const now = Math.floor(Date.now() / 1000);
     await execute(`
-      INSERT OR REPLACE INTO gecko_token_data (
-        mint_address, price_usd, price_sol, market_cap_usd, ath_market_cap_usd,
+      INSERT INTO gecko_token_data (
+        mint_address, price_usd, price_sol, market_cap_usd, fdv_usd,
+        ath_price_usd, ath_market_cap_usd,
         volume_24h_usd, price_change_24h, total_supply, total_reserve_in_usd,
-        coingecko_coin_id, gt_score, last_updated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        coingecko_coin_id, gt_score, decimals, 
+        fetched_at, updated_at, last_updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       mintAddress,
       metadata.priceUsd || 0,
       metadata.priceUsd && metadata.totalReserveUsd ? metadata.priceUsd / (metadata.totalReserveUsd / 2) : 0,
       metadata.marketCapUsd || 0,
-      Math.max(metadata.marketCapUsd || 0, metadata.fdvUsd || 0),
+      metadata.fdvUsd || 0,
+      metadata.priceUsd || 0, // ath_price_usd (set to current as starting point)
+      Math.max(metadata.marketCapUsd || 0, metadata.fdvUsd || 0), // ath_market_cap_usd
       metadata.volumeUsd24h || 0,
       0, // price_change_24h
       metadata.totalSupply || '0',
       metadata.totalReserveUsd || 0,
       metadata.coingeckoCoinId || null,
       metadata.gtScore || 0,
+      metadata.decimals || 9,
+      now,
+      now,
       Date.now()
     ]);
     
