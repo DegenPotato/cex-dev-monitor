@@ -85,19 +85,25 @@ fetched_at                      -- Fetch timestamp
 ### ✅ Actual Columns:
 ```sql
 mint_address           -- Primary key (NOT token_mint!)
+symbol                 -- Token symbol
+name                   -- Token name
 price_usd              -- USD price
 price_sol              -- SOL price
 market_cap_usd         -- Market cap
-fdv_usd                -- FDV
-volume_24h             -- 24h volume
-price_change_24h       -- 24h change
-price_change_7d        -- 7d change
+fdv                    -- FDV (NOT fdv_usd!)
+volume_24h_usd         -- 24h volume (NOT volume_24h!)
 liquidity_usd          -- Liquidity
-updated_at             -- Last update
+price_change_24h       -- 24h change %
+total_supply           -- Total supply
+last_updated           -- Last update timestamp (NOT updated_at!)
 ```
 
 ### ❌ Common Mistakes:
 - Using `md.token_mint` instead of `md.mint_address` in JOIN conditions
+- Using `md.volume_24h` instead of `md.volume_24h_usd`
+- Using `md.fdv_usd` instead of `md.fdv`
+- Using `md.updated_at` instead of `md.last_updated`
+- Trying to query `md.price_change_7d` - this column doesn't exist!
 
 ---
 
