@@ -25,8 +25,10 @@ CREATE TABLE users (
     FOREIGN KEY (referred_by) REFERENCES users(id)
 );
 
--- Restore data
-INSERT INTO users SELECT * FROM users_backup;
+-- Restore data (specify columns to handle schema differences)
+INSERT INTO users (id, wallet_address, solana_wallet_address, username, role, status, referral_code, referred_by, last_login, login_count, created_at, updated_at)
+SELECT id, wallet_address, solana_wallet_address, username, role, status, referral_code, referred_by, last_login, login_count, created_at, updated_at
+FROM users_backup;
 
 -- Drop backup
 DROP TABLE users_backup;
