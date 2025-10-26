@@ -1351,6 +1351,18 @@ app.get('/api/tokens', async (req, res) => {
     // - ohlcv_data: real-time prices (current, launch, ATH)
     // - token_pools: primary pool/DEX info
     const tokens = await queryAll<any>(`
+      WITH token_first_seen_ohlcv AS (
+        -- Get the closest OHLCV candle to first_seen_at for each token
+        SELECT 
+          tr2.token_mint,
+          tr2.first_seen_at,
+          (SELECT o.close 
+           FROM ohlcv_data o 
+           WHERE o.mint_address = tr2.token_mint 
+           ORDER BY ABS(o.timestamp - (tr2.first_seen_at * 1000)) 
+           LIMIT 1) as first_seen_close
+        FROM token_registry tr2
+      )
       SELECT DISTINCT
         tr.token_mint as mint_address,
         
@@ -1405,8 +1417,8 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen mcap: NULL for now (frontend will handle gracefully)
-        NULL as first_seen_mcap,
+        -- First seen mcap: use pre-calculated value from CTE
+        fso.first_seen_close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
         (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1419,6 +1431,8 @@ app.get('/api/tokens', async (req, res) => {
         tp.activity_tier
         
       FROM token_registry tr
+      -- Join with CTE to get first_seen_close
+      LEFT JOIN token_first_seen_ohlcv fso ON tr.token_mint = fso.token_mint
       -- After migration 038, gecko_token_data has only one row per token
       LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
       LEFT JOIN (
@@ -1477,6 +1491,19 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
   // - token_registry: discovery tracking
   // - ohlcv_data: prices
   const token = await queryOne<any>(`
+    WITH token_first_seen_ohlcv AS (
+      -- Get the closest OHLCV candle to first_seen_at for this token
+      SELECT 
+        tr2.token_mint,
+        tr2.first_seen_at,
+        (SELECT o.close 
+         FROM ohlcv_data o 
+         WHERE o.mint_address = tr2.token_mint 
+         ORDER BY ABS(o.timestamp - (tr2.first_seen_at * 1000)) 
+         LIMIT 1) as first_seen_close
+      FROM token_registry tr2
+      WHERE tr2.token_mint = ?
+    )
     SELECT 
       tr.token_mint as mint_address,
       
@@ -1522,8 +1549,8 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen mcap: NULL for now (frontend will handle gracefully)
-      NULL as first_seen_mcap,
+      -- First seen mcap: use pre-calculated value from CTE
+      fso.first_seen_close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
       (SELECT MAX(high * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9))))
@@ -1540,9 +1567,11 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       END as price_change_24h
       
     FROM token_registry tr
+    -- Join with CTE to get first_seen_close
+    LEFT JOIN token_first_seen_ohlcv fso ON tr.token_mint = fso.token_mint
     LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
     WHERE tr.token_mint = ?
-  `, [mintAddress]);
+  `, [mintAddress, mintAddress]);
   
   if (!token) {
     return res.status(404).json({ error: 'Token not found' });
