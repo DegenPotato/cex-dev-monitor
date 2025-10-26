@@ -1,0 +1,723 @@
+import { PublicKey } from '@solana/web3.js';
+import { TokenMintProvider } from '../providers/TokenMintProvider.js';
+import { TokenPoolProvider } from '../providers/TokenPoolProvider.js';
+import { MonitoredWalletProvider } from '../providers/MonitoredWalletProvider.js';
+import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
+import { WalletRateLimiter } from './WalletRateLimiter.js';
+import { TokenMetadataFetcher } from './TokenMetadataFetcher.js';
+import { EventEmitter } from 'events';
+import fetch from 'cross-fetch';
+// Pump.fun program ID
+const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+export class PumpFunMonitor extends EventEmitter {
+    constructor() {
+        super();
+        this.activeSubscriptions = new Map();
+        this.isBackfilling = new Map();
+        this.monitoringState = new Map();
+        this.rateLimiters = new Map();
+        // Proxied connection for unlimited pump.fun monitoring (10,000 proxies!)
+        this.proxiedConnection = new ProxiedSolanaConnection('https://api.mainnet-beta.solana.com', { commitment: 'confirmed' }, './proxies.txt', 'PumpFunMonitor');
+        // Initialize metadata fetcher (uses GeckoTerminal API, no blockchain connection needed)
+        this.metadataFetcher = new TokenMetadataFetcher();
+        console.log(`🎯 [PumpFunMonitor] Proxy mode: ${this.proxiedConnection.isProxyEnabled() ? 'ENABLED ✅' : 'DISABLED'}`);
+        console.log(`🎛️  [PumpFunMonitor] Using Global Concurrency Limiter for request pacing`);
+    }
+    getProxiedConnection() {
+        return this.proxiedConnection;
+    }
+    async startMonitoringWallet(walletAddress) {
+        if (this.activeSubscriptions.has(walletAddress)) {
+            console.log(`⚠️  Already monitoring ${walletAddress.slice(0, 8)}...`);
+            return;
+        }
+        console.log(`🚀 [PumpFun] Starting monitoring for ${walletAddress.slice(0, 8)}...`);
+        // Get wallet configuration (supports both 'pumpfun' and 'both' monitoring types)
+        const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+        if (!wallet) {
+            console.error(`❌ Wallet not found: ${walletAddress}`);
+            return;
+        }
+        // Verify wallet supports pumpfun monitoring
+        if (wallet.monitoring_type !== 'pumpfun' && wallet.monitoring_type !== 'both') {
+            console.error(`❌ Wallet ${walletAddress.slice(0, 8)}... has monitoring_type '${wallet.monitoring_type}', not 'pumpfun' or 'both'`);
+            return;
+        }
+        // Initialize rate limiter for this wallet
+        const rps = wallet.rate_limit_rps || 1; // Default: 1 request per second
+        const enabled = wallet.rate_limit_enabled !== 0; // Default: enabled
+        const rateLimiter = new WalletRateLimiter(walletAddress, rps, enabled);
+        this.rateLimiters.set(walletAddress, rateLimiter);
+        console.log(`🎚️  [RateLimit] Initialized for ${walletAddress.slice(0, 8)}... at ${rps} RPS (${enabled ? 'enabled' : 'disabled'})`);
+        // Check if wallet needs backfill or catch-up
+        if (wallet.last_processed_signature) {
+            // Has checkpoint (either from completed or interrupted backfill)
+            if (!wallet.dev_checked) {
+                // Interrupted backfill - resume from checkpoint
+                console.log(`🔄 [Resume] Wallet ${walletAddress.slice(0, 8)}... has checkpoint from interrupted backfill, resuming...`);
+                await this.catchUpFromCheckpoint(walletAddress, wallet);
+                // Mark as backfilled after catching up to current
+                await MonitoredWalletProvider.update(walletAddress, { dev_checked: 1 }, 'pumpfun');
+            }
+            else {
+                // Fully backfilled - check if we need to catch up to current
+                const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
+                if (needsCatchUp) {
+                    console.log(`🔄 [Catch-up] Wallet ${walletAddress.slice(0, 8)}... has gap, catching up...`);
+                    await this.catchUpFromCheckpoint(walletAddress, wallet);
+                }
+                else {
+                    console.log(`✅ [Up-to-date] Wallet ${walletAddress.slice(0, 8)}... is current, no catch-up needed`);
+                }
+            }
+        }
+        else {
+            // No checkpoint - start fresh backfill
+            console.log(`📚 [Backfill] First-time setup for ${walletAddress.slice(0, 8)}...`);
+            await this.backfillWalletHistory(walletAddress);
+        }
+        // Step 2: Start real-time monitoring (websocket subscription)
+        await this.startRealtimeMonitoring(walletAddress);
+    }
+    /**
+     * Force re-backfill from a specific slot (for recovering missed deployments)
+     */
+    async forceRebackfill(walletAddress, minSlot) {
+        const slotMsg = minSlot ? ` from slot ${minSlot}` : ' (FULL HISTORY)';
+        console.log(`🔄 [Force-Rebackfill] Starting for ${walletAddress.slice(0, 8)}...${slotMsg}`);
+        console.log(`🔄 [Force-Rebackfill] minSlot parameter value:`, minSlot, `(type: ${typeof minSlot})`);
+        // Reset checkpoint
+        await MonitoredWalletProvider.update(walletAddress, {
+            dev_checked: 0,
+            last_processed_signature: ''
+        }, 'pumpfun');
+        // Stop monitoring if active
+        await this.stopMonitoringWallet(walletAddress);
+        // Wait a bit for cleanup
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Get wallet config
+        const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+        if (!wallet) {
+            throw new Error('Wallet not found');
+        }
+        // Verify wallet supports pumpfun monitoring
+        if (wallet.monitoring_type !== 'pumpfun' && wallet.monitoring_type !== 'both') {
+            throw new Error(`Wallet has monitoring_type '${wallet.monitoring_type}', not 'pumpfun' or 'both'`);
+        }
+        // Initialize rate limiter (though backfill won't use it - global limiter handles everything)
+        const rps = wallet.rate_limit_rps || 1;
+        const enabled = wallet.rate_limit_enabled !== 0;
+        const rateLimiter = new WalletRateLimiter(walletAddress, rps, enabled);
+        this.rateLimiters.set(walletAddress, rateLimiter);
+        // Trigger backfill with minSlot
+        await this.backfillWalletHistory(walletAddress, minSlot);
+        // Start real-time monitoring after backfill
+        await this.startRealtimeMonitoring(walletAddress);
+    }
+    async stopMonitoringWallet(walletAddress) {
+        const intervalId = this.activeSubscriptions.get(walletAddress);
+        if (intervalId !== undefined) {
+            clearInterval(intervalId); // Stop HTTP polling
+            this.activeSubscriptions.delete(walletAddress);
+            console.log(`⛔ [PumpFun] Stopped monitoring ${walletAddress.slice(0, 8)}...`);
+        }
+        // Clean up backfill, state, and rate limiter
+        this.isBackfilling.delete(walletAddress);
+        this.monitoringState.delete(walletAddress);
+        this.rateLimiters.delete(walletAddress);
+    }
+    /**
+     * Get monitoring state for a wallet
+     */
+    getMonitoringState(walletAddress) {
+        return this.monitoringState.get(walletAddress) || 'idle';
+    }
+    /**
+     * Get all monitoring states
+     */
+    getAllMonitoringStates() {
+        const states = {};
+        this.monitoringState.forEach((state, address) => {
+            states[address] = state;
+        });
+        return states;
+    }
+    /**
+     * Check if wallet needs catch-up (has new transactions since last checkpoint)
+     */
+    async checkIfCatchUpNeeded(walletAddress, wallet) {
+        try {
+            const publicKey = new PublicKey(walletAddress);
+            // Fetch the most recent signature
+            const recentSignatures = await this.proxiedConnection.withProxy(conn => conn.getSignaturesForAddress(publicKey, { limit: 1 }));
+            if (recentSignatures.length === 0) {
+                return false; // No new transactions
+            }
+            const mostRecentSig = recentSignatures[0].signature;
+            // Compare with our checkpoint
+            if (wallet.last_processed_signature === mostRecentSig) {
+                return false; // Already up-to-date
+            }
+            console.log(`🔍 [Check] Wallet ${walletAddress.slice(0, 8)}... has new transactions`);
+            console.log(`   Last processed: ${wallet.last_processed_signature?.slice(0, 8)}... (${new Date(wallet.last_processed_time).toLocaleString()})`);
+            console.log(`   Most recent: ${mostRecentSig.slice(0, 8)}... (${new Date(recentSignatures[0].blockTime * 1000).toLocaleString()})`);
+            return true; // Need to catch up
+        }
+        catch (error) {
+            console.error(`❌ Error checking catch-up status:`, error);
+            return true; // On error, assume we need catch-up
+        }
+    }
+    /**
+     * Catch up from last checkpoint to current state
+     * Only fetches and processes NEW transactions since last checkpoint
+     */
+    async catchUpFromCheckpoint(walletAddress, wallet) {
+        this.isBackfilling.set(walletAddress, true);
+        try {
+            const publicKey = new PublicKey(walletAddress);
+            const checkpointSlot = wallet.last_processed_slot || 0;
+            console.log(`🔄 [Catch-up] Fetching new transactions since slot ${checkpointSlot} (${wallet.last_processed_signature?.slice(0, 8)}...)`);
+            // Fetch ALL signatures newer than checkpoint slot (reliable even for very active wallets)
+            const newSignatures = [];
+            let lastSignature;
+            let hasMore = true;
+            while (hasMore) {
+                // NO RATE LIMITING - Global limiter handles everything
+                const signatures = await this.proxiedConnection.withProxy(conn => conn.getSignaturesForAddress(publicKey, {
+                    limit: 1000,
+                    before: lastSignature
+                }));
+                if (signatures.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+                // Filter by slot number (reliable checkpoint method)
+                for (const sig of signatures) {
+                    if (sig.slot > checkpointSlot) {
+                        newSignatures.push(sig);
+                    }
+                    else {
+                        // Reached checkpoint - stop searching
+                        hasMore = false;
+                        break;
+                    }
+                }
+                lastSignature = signatures[signatures.length - 1].signature;
+                if (signatures.length < 1000) {
+                    hasMore = false;
+                }
+            }
+            if (newSignatures.length === 0) {
+                console.log(`✅ [Catch-up] No new transactions for ${walletAddress.slice(0, 8)}...`);
+                this.monitoringState.set(walletAddress, 'realtime');
+                return;
+            }
+            // Reverse to process chronologically (oldest → newest)
+            newSignatures.reverse();
+            // Only set to "catching-up" if there's a significant backlog (>10 txs)
+            // Otherwise keep "realtime" status for normal activity
+            if (newSignatures.length > 10) {
+                this.monitoringState.set(walletAddress, 'catching-up');
+                console.log(`🔄 [Catch-up] Processing ${newSignatures.length} new transactions (backlog)...`);
+            }
+            else {
+                // Keep realtime status for small batches
+                console.log(`🔄 [Live] Processing ${newSignatures.length} new transaction(s)...`);
+            }
+            let mintsFound = 0;
+            const batchSize = 100; // Save checkpoint every 100 transactions
+            // Process in batches with checkpoints
+            for (let i = 0; i < newSignatures.length; i += batchSize) {
+                const batch = newSignatures.slice(i, Math.min(i + batchSize, newSignatures.length));
+                console.log(`🔄 [Catch-up] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(newSignatures.length / batchSize)} (${batch.length} transactions)...`);
+                // Process in parallel chunks within each batch
+                const chunkSize = 2; // Match GlobalLimiter max concurrent
+                for (let j = 0; j < batch.length; j += chunkSize) {
+                    const chunk = batch.slice(j, Math.min(j + chunkSize, batch.length));
+                    await Promise.all(chunk.map(async (sigInfo) => {
+                        // NO RATE LIMITING - Global limiter handles everything
+                        const tx = await this.proxiedConnection.withProxy(conn => conn.getParsedTransaction(sigInfo.signature, {
+                            maxSupportedTransactionVersion: 0
+                        }));
+                        if (tx) {
+                            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+                            if (foundMint)
+                                mintsFound++;
+                        }
+                    }));
+                }
+                // Save incremental checkpoint after each batch
+                const lastSigInBatch = batch[batch.length - 1];
+                await MonitoredWalletProvider.update(walletAddress, {
+                    last_processed_signature: lastSigInBatch.signature,
+                    last_processed_slot: lastSigInBatch.slot,
+                    last_processed_time: lastSigInBatch.blockTime ? lastSigInBatch.blockTime * 1000 : Date.now()
+                }, 'pumpfun');
+                console.log(`💾 [Checkpoint] Saved after batch ${Math.floor(i / batchSize) + 1} (slot: ${lastSigInBatch.slot})`);
+            }
+            // Update checkpoint to newest processed transaction
+            const newestSig = newSignatures[newSignatures.length - 1];
+            await MonitoredWalletProvider.update(walletAddress, {
+                last_processed_signature: newestSig.signature,
+                last_processed_slot: newestSig.slot,
+                last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now(),
+                last_history_check: Date.now()
+            }, 'pumpfun');
+            // Always return to realtime after processing
+            this.monitoringState.set(walletAddress, 'realtime');
+            const statusLabel = newSignatures.length > 10 ? 'Catch-up' : 'Live';
+            console.log(`✅ [${statusLabel}] Complete for ${walletAddress.slice(0, 8)}...`);
+            console.log(`   New transactions processed: ${newSignatures.length}`);
+            console.log(`   New mints found: ${mintsFound}`);
+            console.log(`   Checkpoint updated to: ${newestSig.signature.slice(0, 8)}... (${new Date(newestSig.blockTime * 1000).toLocaleString()})`);
+        }
+        catch (error) {
+            console.error(`❌ [Catch-up] Error for ${walletAddress.slice(0, 8)}...:`, error);
+        }
+        finally {
+            this.isBackfilling.set(walletAddress, false);
+        }
+    }
+    /**
+     * Step 1: Historical Backfill
+     * Fetches ALL past transactions from OLDEST to NEWEST (chronological order)
+     * Establishes the starting point for real-time monitoring
+     */
+    async backfillWalletHistory(walletAddress, minSlot) {
+        this.isBackfilling.set(walletAddress, true);
+        try {
+            const publicKey = new PublicKey(walletAddress);
+            const minSlotMsg = minSlot ? ` from slot ${minSlot}` : '';
+            console.log(`📚 [Backfill] Phase 1: Fetching signatures${minSlotMsg} for ${walletAddress.slice(0, 8)}...`);
+            // Phase 1: Collect ALL signatures (newest → oldest)
+            const allSignatures = [];
+            let lastSignature;
+            let hasMore = true;
+            while (hasMore) {
+                // NO RATE LIMITING - Global limiter handles all requests
+                const signatures = await this.proxiedConnection.withProxy(conn => conn.getSignaturesForAddress(publicKey, {
+                    limit: 1000,
+                    before: lastSignature,
+                    ...(minSlot ? { minContextSlot: minSlot } : {})
+                }));
+                if (signatures.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+                // Filter by slot if specified
+                const filteredSigs = minSlot
+                    ? signatures.filter(sig => sig.slot >= minSlot)
+                    : signatures;
+                if (filteredSigs.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+                allSignatures.push(...filteredSigs);
+                lastSignature = signatures[signatures.length - 1].signature;
+                console.log(`📚 [Backfill] Collected ${allSignatures.length} signatures...`);
+                if (signatures.length < 1000) {
+                    hasMore = false;
+                }
+            }
+            if (allSignatures.length === 0) {
+                console.log(`📚 [Backfill] No transactions found for ${walletAddress.slice(0, 8)}...`);
+                await MonitoredWalletProvider.update(walletAddress, {
+                    dev_checked: 1,
+                    last_history_check: Date.now()
+                });
+                return;
+            }
+            // Reverse to get chronological order (oldest → newest)
+            allSignatures.reverse();
+            const oldestSig = allSignatures[0];
+            const newestSig = allSignatures[allSignatures.length - 1];
+            console.log(`📚 [Backfill] Phase 2: Processing ${allSignatures.length} transactions chronologically...`);
+            console.log(`   Oldest: ${new Date(oldestSig.blockTime * 1000).toISOString()} (${oldestSig.signature.slice(0, 8)}...)`);
+            console.log(`   Newest: ${new Date(newestSig.blockTime * 1000).toISOString()} (${newestSig.signature.slice(0, 8)}...)`);
+            // Phase 2: Process in chronological order (oldest → newest)
+            let totalProcessed = 0;
+            let mintsFound = 0;
+            const batchSize = 100;
+            for (let i = 0; i < allSignatures.length; i += batchSize) {
+                const batch = allSignatures.slice(i, Math.min(i + batchSize, allSignatures.length));
+                console.log(`📚 [Backfill] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allSignatures.length / batchSize)} (${batch.length} transactions)...`);
+                // Process transactions in parallel chunks for max concurrency
+                const chunkSize = 2; // Match GlobalLimiter max concurrent
+                for (let j = 0; j < batch.length; j += chunkSize) {
+                    const chunk = batch.slice(j, Math.min(j + chunkSize, batch.length));
+                    await Promise.all(chunk.map(async (sigInfo) => {
+                        // NO RATE LIMITING - Global limiter handles all requests
+                        const tx = await this.proxiedConnection.withProxy(conn => conn.getParsedTransaction(sigInfo.signature, {
+                            maxSupportedTransactionVersion: 0
+                        }));
+                        if (tx) {
+                            const foundMint = await this.analyzeTransactionForMint(tx, walletAddress, sigInfo.signature);
+                            if (foundMint)
+                                mintsFound++;
+                        }
+                        totalProcessed++;
+                    }));
+                }
+                // Save incremental checkpoint after each batch (in case of interruption)
+                const lastSigInBatch = batch[batch.length - 1];
+                await MonitoredWalletProvider.update(walletAddress, {
+                    last_processed_signature: lastSigInBatch.signature,
+                    last_processed_slot: lastSigInBatch.slot,
+                    last_processed_time: lastSigInBatch.blockTime ? lastSigInBatch.blockTime * 1000 : Date.now()
+                }, 'pumpfun');
+                console.log(`💾 [Checkpoint] Saved after batch ${Math.floor(i / batchSize) + 1} (slot: ${lastSigInBatch.slot})`);
+            }
+            // Mark wallet as backfilled and save checkpoint (newest signature)
+            await MonitoredWalletProvider.update(walletAddress, {
+                dev_checked: 1,
+                last_history_check: Date.now(),
+                last_processed_signature: newestSig.signature,
+                last_processed_slot: newestSig.slot,
+                last_processed_time: newestSig.blockTime ? newestSig.blockTime * 1000 : Date.now()
+            }, 'pumpfun');
+            console.log(`✅ [Backfill] Complete for ${walletAddress.slice(0, 8)}...`);
+            console.log(`   Total Transactions: ${totalProcessed}`);
+            console.log(`   Pumpfun Mints Found: ${mintsFound}`);
+            console.log(`   Timespan: ${new Date(oldestSig.blockTime * 1000).toLocaleDateString()} → ${new Date(newestSig.blockTime * 1000).toLocaleDateString()}`);
+            console.log(`   Checkpoint saved: ${newestSig.signature.slice(0, 8)}...`);
+            console.log(`   Ready for real-time monitoring from: ${new Date(newestSig.blockTime * 1000).toISOString()}`);
+        }
+        catch (error) {
+            console.error(`❌ [Backfill] Error for ${walletAddress.slice(0, 8)}...:`, error);
+        }
+        finally {
+            this.isBackfilling.set(walletAddress, false);
+        }
+    }
+    /**
+     * Step 2: Real-time Monitoring
+     * Uses HTTP polling (same as catch-up) to check for new transactions every 10 seconds
+     */
+    async startRealtimeMonitoring(walletAddress) {
+        this.monitoringState.set(walletAddress, 'realtime');
+        console.log(`🔴 [Live] Starting real-time monitoring (HTTP polling) for ${walletAddress.slice(0, 8)}...`);
+        // Poll every 10 seconds for new transactions
+        const pollInterval = setInterval(async () => {
+            try {
+                const wallet = await MonitoredWalletProvider.findByAddress(walletAddress, 'pumpfun');
+                if (!wallet || !wallet.is_active) {
+                    console.log(`⏹️  [Live] Wallet ${walletAddress.slice(0, 8)}... is inactive, stopping poll`);
+                    clearInterval(pollInterval);
+                    this.activeSubscriptions.delete(walletAddress);
+                    return;
+                }
+                // Check if there are new transactions (same logic as catch-up check)
+                const needsCatchUp = await this.checkIfCatchUpNeeded(walletAddress, wallet);
+                if (needsCatchUp) {
+                    console.log(`🔄 [Live] New activity detected for ${walletAddress.slice(0, 8)}..., processing...`);
+                    await this.catchUpFromCheckpoint(walletAddress, wallet);
+                }
+            }
+            catch (error) {
+                console.error(`❌ [Live] Error polling ${walletAddress.slice(0, 8)}...:`, error);
+            }
+        }, 10000); // 10 seconds
+        // Store interval ID so we can stop it later
+        this.activeSubscriptions.set(walletAddress, pollInterval);
+        console.log(`✅ [Live] Real-time monitoring active (polling every 10s) for ${walletAddress.slice(0, 8)}...`);
+    }
+    async analyzeTransactionForMint(tx, walletAddress, signature) {
+        if (!tx.meta || tx.meta.err)
+            return false;
+        // Get the actual blockchain timestamp (launch time)
+        const launchTimestamp = tx.blockTime ? tx.blockTime * 1000 : Date.now();
+        const accountKeys = tx.transaction.message.accountKeys;
+        // CRITICAL: Verify the transaction signer is the monitored wallet (the dev/creator)
+        const txSigner = accountKeys[0].pubkey.toBase58();
+        if (txSigner !== walletAddress) {
+            return false; // Not created by our monitored wallet - skip
+        }
+        // Check if transaction involves pump.fun program
+        const involvesPumpFun = accountKeys.some(key => key.pubkey.toBase58() === PUMPFUN_PROGRAM_ID);
+        if (!involvesPumpFun)
+            return false;
+        let mintFound = false;
+        // ONLY METHOD: Check INNER INSTRUCTIONS for mint initialization
+        // This is the ONLY reliable way - initializeMint ONLY happens on token creation, never on buys/sells
+        if (tx.meta.innerInstructions) {
+            for (const innerSet of tx.meta.innerInstructions) {
+                for (const instruction of innerSet.instructions) {
+                    if ('parsed' in instruction && instruction.parsed) {
+                        const parsed = instruction.parsed;
+                        // Check for InitializeMint in inner instructions
+                        if (parsed.type === 'initializeMint' || parsed.type === 'initializeMint2') {
+                            const mintAddress = parsed.info?.mint;
+                            if (mintAddress) {
+                                console.log(`🔍 [PumpFun] Found initializeMint for ${mintAddress.slice(0, 8)} in tx ${signature.slice(0, 8)}`);
+                                await this.processMintDetection(mintAddress, walletAddress, signature, launchTimestamp);
+                                mintFound = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return mintFound;
+    }
+    // Helper method to process mint detection and avoid duplicates
+    async processMintDetection(mintAddress, walletAddress, signature, launchTimestamp) {
+        // Check if we already recorded this mint
+        const existing = await TokenMintProvider.findByMintAddress(mintAddress);
+        if (existing)
+            return;
+        try {
+            // CRITICAL: Verify on-chain metadata creator matches monitored wallet
+            const mintPubkey = new PublicKey(mintAddress);
+            // Derive Pump.fun bonding curve pool address (PDA)
+            const PUMPFUN_PROGRAM = new PublicKey(PUMPFUN_PROGRAM_ID);
+            const [bondingCurvePool] = PublicKey.findProgramAddressSync([
+                Buffer.from('bonding-curve'),
+                mintPubkey.toBuffer(),
+            ], PUMPFUN_PROGRAM);
+            const poolAddress = bondingCurvePool.toBase58();
+            console.log(`💧 [PumpFun] Derived bonding curve pool: ${poolAddress.slice(0, 8)}... for mint ${mintAddress.slice(0, 8)}...`);
+            // Derive metadata account address (Metaplex standard)
+            const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+            const [metadataAccount] = PublicKey.findProgramAddressSync([
+                Buffer.from('metadata'),
+                TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+                mintPubkey.toBuffer(),
+            ], TOKEN_METADATA_PROGRAM_ID);
+            // Fetch metadata account
+            const metadataInfo = await this.proxiedConnection.withProxy(conn => conn.getAccountInfo(metadataAccount));
+            if (metadataInfo && metadataInfo.data) {
+                // Parse creator from metadata (creator is at byte 1 + 32 + 4 + 4 + remaining_data + creators_offset)
+                // Metaplex metadata structure: key(1) + update_authority(32) + mint(32) + name(4+len) + symbol(4+len) + uri(4+len) + seller_fee(2) + creators...
+                // For simplicity, check if monitored wallet appears in the first creator slot
+                const creatorOffset = 1 + 32 + 32; // After key, update_authority, mint
+                // Skip variable length strings (name, symbol, uri)
+                let offset = creatorOffset;
+                // Name length + string
+                const nameLen = metadataInfo.data.readUInt32LE(offset);
+                offset += 4 + nameLen;
+                // Symbol length + string  
+                const symbolLen = metadataInfo.data.readUInt32LE(offset);
+                offset += 4 + symbolLen;
+                // URI length + string
+                const uriLen = metadataInfo.data.readUInt32LE(offset);
+                offset += 4 + uriLen;
+                // Seller fee basis points
+                offset += 2;
+                // Now we're at creators section
+                // has_creator (1 byte)
+                const hasCreator = metadataInfo.data.readUInt8(offset);
+                offset += 1;
+                if (hasCreator) {
+                    // Number of creators (4 bytes)
+                    offset += 4;
+                    // First creator address (32 bytes)
+                    const creatorAddress = new PublicKey(metadataInfo.data.slice(offset, offset + 32)).toBase58();
+                    if (creatorAddress !== walletAddress) {
+                        console.log(`⚠️  [PumpFun] Metadata creator mismatch: ${creatorAddress.slice(0, 8)} != ${walletAddress.slice(0, 8)}`);
+                        return; // Skip - not created by monitored wallet
+                    }
+                    console.log(`✅ [PumpFun] Metadata creator verified: ${creatorAddress.slice(0, 8)}`);
+                }
+            }
+            // Try to fetch token metadata from GeckoTerminal
+            const tokenInfo = await this.fetchTokenMetadata(mintAddress);
+            // Use migrated pool address from GeckoTerminal if available
+            let migratedPoolAddress = tokenInfo.migratedDestinationPoolAddress || undefined;
+            // Log graduation status if applicable
+            if (tokenInfo.launchpadCompleted) {
+                if (migratedPoolAddress) {
+                    console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... already graduated! Migrated pool: ${migratedPoolAddress.slice(0, 8)}...`);
+                }
+                else {
+                    // Fallback: Try to detect Raydium pool if GeckoTerminal doesn't have it yet
+                    migratedPoolAddress = await this.detectRaydiumPool(mintAddress);
+                    if (migratedPoolAddress) {
+                        console.log(`🎓 [PumpFun] Token ${mintAddress.slice(0, 8)}... graduated, detected pool: ${migratedPoolAddress.slice(0, 8)}...`);
+                    }
+                }
+                // Create TokenPool entry for OHLCV tracking
+                if (migratedPoolAddress) {
+                    await TokenPoolProvider.create({
+                        mint_address: mintAddress,
+                        pool_address: migratedPoolAddress,
+                        pool_name: `${tokenInfo.symbol}/SOL`,
+                        dex: 'raydium',
+                        base_token: mintAddress,
+                        quote_token: 'So11111111111111111111111111111111111111112', // Wrapped SOL
+                        volume_24h_usd: tokenInfo.volumeUsd24h,
+                        liquidity_usd: tokenInfo.totalReserveUsd,
+                        price_usd: tokenInfo.priceUsd,
+                        is_primary: 1, // Mark as primary pool
+                        discovered_at: Date.now(),
+                        last_verified: Date.now()
+                    });
+                    console.log(`✅ [PumpFun] Created pool entry for OHLCV tracking: ${migratedPoolAddress.slice(0, 8)}...`);
+                }
+            }
+            await TokenMintProvider.create({
+                mint_address: mintAddress,
+                creator_address: walletAddress,
+                name: tokenInfo.name,
+                symbol: tokenInfo.symbol,
+                timestamp: launchTimestamp, // Actual blockchain launch time
+                platform: 'pumpfun',
+                signature: signature, // Store transaction signature
+                // Save market data from GeckoTerminal (starting_mcap will be added later from internal data)
+                current_mcap: tokenInfo.fdvUsd,
+                price_usd: tokenInfo.priceUsd,
+                graduation_percentage: tokenInfo.launchpadGraduationPercentage,
+                launchpad_completed: tokenInfo.launchpadCompleted ? 1 : 0,
+                launchpad_completed_at: tokenInfo.launchpadCompletedAt ? new Date(tokenInfo.launchpadCompletedAt).getTime() : undefined,
+                migrated_pool_address: migratedPoolAddress, // Save Raydium pool if graduated
+                total_supply: tokenInfo.totalSupply,
+                market_cap_usd: tokenInfo.marketCapUsd,
+                coingecko_coin_id: tokenInfo.coingeckoCoinId || undefined,
+                gt_score: tokenInfo.gtScore,
+                description: tokenInfo.description,
+                last_updated: Date.now(),
+                metadata: JSON.stringify({
+                    launchTime: new Date(launchTimestamp).toISOString(),
+                    decimals: tokenInfo.decimals,
+                    image: tokenInfo.image,
+                    totalReserveUsd: tokenInfo.totalReserveUsd,
+                    volumeUsd24h: tokenInfo.volumeUsd24h,
+                    // Social/Score data from /info endpoint
+                    gtScoreDetails: tokenInfo.gtScoreDetails,
+                    holders: tokenInfo.holders,
+                    twitterHandle: tokenInfo.twitterHandle,
+                    telegramHandle: tokenInfo.telegramHandle,
+                    discordUrl: tokenInfo.discordUrl,
+                    websites: tokenInfo.websites,
+                    categories: tokenInfo.categories,
+                    mintAuthority: tokenInfo.mintAuthority,
+                    freezeAuthority: tokenInfo.freezeAuthority,
+                    isHoneypot: tokenInfo.isHoneypot,
+                    // Store complete metadata for future use
+                    geckoTerminal: {
+                        ...tokenInfo
+                    }
+                })
+            });
+            const launchDate = new Date(launchTimestamp).toLocaleString();
+            console.log(`🚀 NEW PUMP.FUN TOKEN MINT: ${tokenInfo.symbol || mintAddress.slice(0, 8)}... by ${walletAddress.slice(0, 8)}...`);
+            console.log(`   Mint Address: ${mintAddress}`);
+            console.log(`   Pool Address: ${poolAddress}`);
+            console.log(`   Launch Time: ${launchDate}`);
+            console.log(`   Signature: ${signature}`);
+            // Save the Pump.fun bonding curve pool
+            await TokenPoolProvider.create({
+                mint_address: mintAddress,
+                pool_address: poolAddress,
+                pool_name: `${tokenInfo.symbol || 'TOKEN'}/SOL`,
+                dex: 'pumpfun',
+                base_token: mintAddress,
+                quote_token: 'So11111111111111111111111111111111111111112', // SOL
+                volume_24h_usd: tokenInfo.volumeUsd24h,
+                liquidity_usd: tokenInfo.totalReserveUsd,
+                price_usd: tokenInfo.priceUsd,
+                is_primary: 1, // Pumpfun pool is primary until migration
+                discovered_at: launchTimestamp,
+                last_verified: launchTimestamp // Set initial verification time
+            });
+            // IMMEDIATELY mark wallet as dev wallet (real-time detection)
+            const wallet = await MonitoredWalletProvider.findByAddress(walletAddress);
+            if (wallet) {
+                const currentTokens = wallet.tokens_deployed || 0;
+                await MonitoredWalletProvider.update(walletAddress, {
+                    is_dev_wallet: 1,
+                    tokens_deployed: currentTokens + 1,
+                    dev_checked: 1
+                }, 'pumpfun');
+                console.log(`🔥 Wallet marked as DEV: ${walletAddress.slice(0, 8)}... (${currentTokens + 1} tokens)`);
+                // Emit dev wallet event
+                this.emit('dev_wallet_found', {
+                    address: walletAddress,
+                    tokensDeployed: currentTokens + 1,
+                    deployments: [{ mintAddress, signature, timestamp: Date.now() }]
+                });
+            }
+            this.emit('token_mint', {
+                mintAddress,
+                creator: walletAddress,
+                name: tokenInfo.name,
+                symbol: tokenInfo.symbol,
+                timestamp: launchTimestamp, // Actual blockchain launch time
+                launchTime: new Date(launchTimestamp).toISOString(),
+                signature
+            });
+        }
+        catch (error) {
+            if (!error.message?.includes('UNIQUE constraint failed')) {
+                console.error('Error saving token mint:', error);
+            }
+        }
+    }
+    /**
+     * Detect migrated pool for a graduated token (PumpSwap or Raydium)
+     */
+    async detectRaydiumPool(mintAddress) {
+        try {
+            const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mintAddress}?include=top_pools`;
+            const response = await this.proxiedConnection.withProxy(() => fetch(url, { headers: { 'Accept': 'application/json' } }));
+            if (!response.ok) {
+                return undefined;
+            }
+            const data = await response.json();
+            const relationships = data?.data?.relationships;
+            const included = data?.included || [];
+            const topPoolData = relationships?.top_pools?.data;
+            if (!topPoolData || topPoolData.length === 0) {
+                return undefined;
+            }
+            // Find PumpSwap pool first (new standard), fallback to Raydium (legacy)
+            for (const poolRef of topPoolData) {
+                const poolId = poolRef.id; // Format: "solana_POOL_ADDRESS"
+                if (!poolId)
+                    continue;
+                const poolAddress = poolId.replace('solana_', '');
+                const poolDetails = included.find((item) => item.id === poolId);
+                const dexId = poolDetails?.attributes?.dex_id;
+                // Return first PumpSwap or Raydium pool found
+                if (dexId === 'pumpswap' || dexId === 'raydium') {
+                    console.log(`🔄 [PumpFun] Found ${dexId} pool: ${poolAddress.slice(0, 8)}...`);
+                    return poolAddress;
+                }
+            }
+            return undefined;
+        }
+        catch (error) {
+            console.error(`❌ [PumpFun] Error detecting migrated pool for ${mintAddress.slice(0, 8)}...:`, error);
+            return undefined;
+        }
+    }
+    async fetchTokenMetadata(mintAddress) {
+        try {
+            console.log(`🔍 [PumpFun] Fetching metadata for ${mintAddress.slice(0, 8)}...`);
+            const metadata = await this.metadataFetcher.fetchMetadata(mintAddress);
+            if (metadata) {
+                console.log(`✅ [PumpFun] Metadata found: ${metadata.name || 'N/A'} (${metadata.symbol || 'N/A'})`);
+                // Return ALL fields from GeckoTerminal
+                return metadata;
+            }
+            console.log(`⚠️ [PumpFun] No metadata found for ${mintAddress.slice(0, 8)}...`);
+            return {};
+        }
+        catch (error) {
+            console.error(`❌ [PumpFun] Error fetching metadata:`, error);
+            return {};
+        }
+    }
+    async stopAll() {
+        console.log(`⏹️  Stopping all pump.fun monitors...`);
+        const walletAddresses = Array.from(this.activeSubscriptions.keys());
+        for (const walletAddress of walletAddresses) {
+            await this.stopMonitoringWallet(walletAddress);
+            console.log(`  ❌ Stopped monitoring ${walletAddress.slice(0, 8)}...`);
+        }
+        console.log(`✅ All pump.fun monitoring stopped`);
+    }
+    getActiveMonitors() {
+        return Array.from(this.activeSubscriptions.keys());
+    }
+}
