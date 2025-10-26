@@ -9,6 +9,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "tsc && vite build",
     "build:backend": "tsc --project tsconfig.backend.json",
+    "build:backend:fast": "node -e \"console.log('Skipping build - using ts-node in production')\"",
     "build:frontend": "vite build",
     "preview": "vite preview",
     "migrate": "node run-all-migrations.mjs",
