@@ -359,7 +359,7 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
                           )}
                           {token.migrated_pool_address && (
                             <a
-                              href={`https://gmgn.ai/sol/token/${token.migrated_pool_address}`}
+                              href={`https://gmgn.ai/sol/token/${token.mint_address}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
@@ -396,7 +396,7 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-3 h-3" />
-                      <span>{new Date(token.timestamp * 1000).toLocaleString()}</span>
+                      <span>{new Date(token.timestamp).toLocaleString()}</span>
                     </div>
                     {token.last_updated && (
                       <div className="text-xs text-green-400">
