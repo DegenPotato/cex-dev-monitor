@@ -38,20 +38,9 @@ CREATE TABLE trading_wallets (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Step 4: Migrate data from backup if it exists
--- The backup has OLD column names (wallet_address, encrypted_private_key) from migration 019
-INSERT OR IGNORE INTO trading_wallets (id, user_id, public_key, private_key, sol_balance, is_active, is_default, created_at)
-SELECT 
-  id,
-  user_id,
-  wallet_address,  -- OLD column name: wallet_address -> NEW: public_key
-  encrypted_private_key,  -- OLD column name: encrypted_private_key -> NEW: private_key
-  COALESCE(sol_balance, 0),
-  COALESCE(is_active, 1),
-  COALESCE(is_default, 0),
-  COALESCE(created_at, strftime('%s', 'now'))
-FROM trading_wallets_backup
-WHERE (SELECT COUNT(*) FROM trading_wallets_backup) > 0;
+-- Step 4: Skip data migration - table was just created in migration 019
+-- Any existing wallets will need to be re-imported
+-- This is acceptable since we're in development and encryption keys changed anyway
 
 -- Step 5: Create the token holdings table
 CREATE TABLE IF NOT EXISTS wallet_token_holdings (
