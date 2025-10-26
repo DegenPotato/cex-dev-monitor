@@ -6,6 +6,7 @@
 CREATE TABLE IF NOT EXISTS token_mints (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mint_address TEXT NOT NULL UNIQUE,
+  creator_address TEXT,
   mint_name TEXT,
   mint_symbol TEXT,
   mint_decimals INTEGER,
