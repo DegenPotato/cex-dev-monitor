@@ -1345,22 +1345,26 @@ app.get('/api/tokens', async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 1000;
   
   try {
-    // Simple query - just get basic info from token_registry and gecko_token_data
+    // Query combines:
+    // - token_registry: source tracking, discovery metadata
+    // - gecko_token_data: comprehensive token metadata (symbol, name, decimals, supply)
+    // - ohlcv_data: real-time prices (current, launch, ATH)
+    // - token_pools: primary pool/DEX info
     const tokens = await queryAll<any>(`
       SELECT DISTINCT
         tr.token_mint as mint_address,
-        COALESCE(tr.token_symbol, 'UNKNOWN') as symbol,
-        COALESCE(tr.token_name, 'Unknown Token') as name,
+        
+        -- Metadata from gecko_token_data (source of truth)
+        COALESCE(gtd.symbol, tr.token_symbol, 'UNKNOWN') as symbol,
+        COALESCE(gtd.name, tr.token_name, 'Unknown Token') as name,
+        COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
+        gtd.total_supply,
+        gtd.volume_24h_usd,
+        gtd.total_reserve_in_usd as liquidity_usd,
+        gtd.image_url,
+        
+        -- Discovery metadata from token_registry
         COALESCE(tr.creator_address, '') as creator_address,
-        -- Infer platform from available data
-        COALESCE(
-          tr.platform,
-          CASE 
-            WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun'
-            WHEN tp.dex IS NOT NULL THEN tp.dex
-            ELSE 'raydium'
-          END
-        ) as platform,
         tr.creation_signature as signature,
         tr.first_seen_at * 1000 as timestamp,
         COALESCE(tr.is_graduated, 0) as launchpad_completed,
@@ -1370,11 +1374,15 @@ app.get('/api/tokens', async (req, res) => {
         END as launchpad_completed_at,
         tr.migrated_pool_address,
         
-        -- Supply and decimals from gecko_token_data
-        gtd.total_supply,
-        COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
-        gtd.volume_24h_usd,
-        gtd.total_reserve_in_usd as liquidity_usd,
+        -- Platform inference (pump.fun vs DEX)
+        COALESCE(
+          tr.platform,
+          CASE 
+            WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun'
+            WHEN tp.dex IS NOT NULL THEN tp.dex
+            ELSE 'raydium'
+          END
+        ) as platform,
         
         -- Current price from LATEST OHLCV candle
         (SELECT close 
@@ -1461,25 +1469,34 @@ app.get('/api/tokens/recent', async (req, res) => {
 app.get('/api/tokens/:mintAddress', async (req, res) => {
   const { mintAddress } = req.params;
   
-  // Get token from token_registry with OHLCV data
+  // Get token combining:
+  // - gecko_token_data: metadata (symbol, name, decimals, supply)
+  // - token_registry: discovery tracking
+  // - ohlcv_data: prices
   const token = await queryOne<any>(`
     SELECT 
       tr.token_mint as mint_address,
-      tr.token_symbol as symbol,
-      tr.token_name as name,
+      
+      -- Metadata from gecko_token_data (source of truth)
+      COALESCE(gtd.symbol, tr.token_symbol, 'UNKNOWN') as symbol,
+      COALESCE(gtd.name, tr.token_name, 'Unknown Token') as name,
+      COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
+      gtd.total_supply,
+      gtd.volume_24h_usd,
+      gtd.image_url,
+      
+      -- Discovery metadata from token_registry
       tr.creator_address,
-      -- Infer platform from migrated_pool_address or default to raydium
-      COALESCE(
-        tr.platform,
-        CASE WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun' ELSE 'raydium' END
-      ) as platform,
       tr.first_seen_at * 1000 as timestamp,
       tr.is_graduated as launchpad_completed,
       CASE WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000 ELSE NULL END as launchpad_completed_at,
       tr.migrated_pool_address,
-      gtd.volume_24h_usd,
-      gtd.total_supply,
-      COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
+      
+      -- Platform inference
+      COALESCE(
+        tr.platform,
+        CASE WHEN tr.migrated_pool_address IS NOT NULL THEN 'pump.fun' ELSE 'raydium' END
+      ) as platform,
       
       -- Current price from latest OHLCV candle
       (SELECT close 
