@@ -1409,7 +1409,7 @@ app.get('/api/tokens', async (req, res) => {
         (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
          FROM ohlcv_data
          WHERE mint_address = tr.token_mint 
-         ORDER BY ABS(timestamp - (SELECT first_seen_at * 1000 FROM token_registry WHERE token_mint = tr.token_mint))
+         ORDER BY ABS(timestamp - (SELECT first_seen_at * 1000 FROM token_registry WHERE token_mint = ohlcv_data.mint_address))
          LIMIT 1) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
@@ -1530,7 +1530,7 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
        FROM ohlcv_data
        WHERE mint_address = tr.token_mint 
-       ORDER BY ABS(timestamp - (SELECT first_seen_at * 1000 FROM token_registry WHERE token_mint = tr.token_mint))
+       ORDER BY ABS(timestamp - (SELECT first_seen_at * 1000 FROM token_registry WHERE token_mint = ohlcv_data.mint_address))
        LIMIT 1) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
