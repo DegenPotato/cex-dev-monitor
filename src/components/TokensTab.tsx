@@ -22,6 +22,7 @@ interface Token {
   launchpad_completed_at?: number;
   migrated_pool_address?: string;
   total_supply?: string;
+  decimals?: number;
   market_cap_usd?: number;
   coingecko_coin_id?: string;
   gt_score?: number;
@@ -80,8 +81,12 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
                 updatedTokens[index].price_sol = update.priceSol;
                 
                 // Calculate market cap from price × supply if backend doesn't provide it
-                const calculatedMcap = update.priceUsd && updatedTokens[index].total_supply
-                  ? update.priceUsd * parseFloat(updatedTokens[index].total_supply || '0')
+                const decimals = updatedTokens[index].decimals || 9;
+                const actualSupply = updatedTokens[index].total_supply
+                  ? parseFloat(updatedTokens[index].total_supply || '0') / Math.pow(10, decimals)
+                  : null;
+                const calculatedMcap = update.priceUsd && actualSupply
+                  ? update.priceUsd * actualSupply
                   : null;
                 
                 updatedTokens[index].current_mcap = update.marketCap || calculatedMcap || undefined;
@@ -121,8 +126,14 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
         const data = await response.json();
         // Calculate market cap from price × supply if not provided
         const enrichedData = data.map((token: Token) => {
-          const calculatedMcap = token.price_usd && token.total_supply 
-            ? token.price_usd * parseFloat(token.total_supply)
+          // Convert total_supply to actual token amount using decimals
+          const decimals = token.decimals || 9;
+          const actualSupply = token.total_supply 
+            ? parseFloat(token.total_supply) / Math.pow(10, decimals)
+            : null;
+          
+          const calculatedMcap = token.price_usd && actualSupply
+            ? token.price_usd * actualSupply
             : null;
           
           return {

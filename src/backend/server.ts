@@ -1370,6 +1370,7 @@ app.get('/api/tokens', async (req, res) => {
         gtd.price_change_24h,
         gtd.total_reserve_in_usd as liquidity_usd,
         gtd.total_supply,
+        COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
         
         -- ATH data is now stored directly in the table (no subquery needed!)
         gtd.ath_price_usd,
@@ -1380,8 +1381,12 @@ app.get('/api/tokens', async (req, res) => {
         tp.dex as primary_dex,
         tp.activity_tier,
         
-        -- Starting market cap (assume pump.fun starts at ~$5k)
-        5000 as starting_mcap
+        -- Starting market cap from first OHLCV candle
+        (SELECT open * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
+         FROM ohlcv_data 
+         WHERE mint_address = tr.token_mint 
+         ORDER BY timestamp ASC 
+         LIMIT 1) as starting_mcap
         
       FROM token_registry tr
       -- After migration 038, gecko_token_data has only one row per token
@@ -1455,6 +1460,7 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       gtd.ath_market_cap_usd as ath_mcap,
       gtd.volume_24h_usd,
       gtd.total_supply,
+      COALESCE(gtd.decimals, tr.token_decimals, 9) as decimals,
       gtd.price_change_24h
     FROM token_registry tr
     LEFT JOIN gecko_token_data gtd ON tr.token_mint = gtd.mint_address
