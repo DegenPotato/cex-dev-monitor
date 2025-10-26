@@ -1,28 +1,14 @@
-const dotenv = require('dotenv');
-const fs = require('fs');
-const path = require('path');
-
-// Load .env file
-const envPath = path.resolve(__dirname, '.env');
-let envVars = {};
-if (fs.existsSync(envPath)) {
-  const envConfig = dotenv.parse(fs.readFileSync(envPath, 'utf8'));
-  envVars = envConfig;
-}
-
 module.exports = {
   apps: [{
     name: 'cex-monitor',
-    script: './start-production.sh',
-    interpreter: '/bin/bash',
+    script: 'dist/backend/server.js',
     instances: 1,
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',
     env_production: {
       NODE_ENV: 'production',
-      PORT: 3001,
-      ...envVars
+      PORT: 3001
     },
     error_file: './logs/err.log',
     out_file: './logs/out.log',
