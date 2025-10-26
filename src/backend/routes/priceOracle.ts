@@ -284,7 +284,7 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
         gtd.volume_24h_usd,
         gtd.price_usd,
         gtd.price_change_24h,
-        gtd.liquidity_usd,
+        gtd.total_reserve_in_usd as liquidity_usd,
         gtd.total_supply,
         gtd.fdv_usd,
         
@@ -318,7 +318,7 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
       LEFT JOIN pool_info pi ON gtd.top_pool_address = pi.pool_address
       
       -- Latest market data
-      LEFT JOIN token_market_data md ON tr.token_mint = md.token_mint
+      LEFT JOIN token_market_data md ON tr.token_mint = md.mint_address
       
       WHERE tr.token_mint IS NOT NULL
         AND tr.token_mint != ''
