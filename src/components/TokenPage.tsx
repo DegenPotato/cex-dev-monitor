@@ -6,28 +6,31 @@ import RobustChart from './RobustChart';
 
 interface TokenData {
   mint_address: string;
-  creator_address: string;
-  name: string;
-  symbol: string;
-  timestamp: number;
-  platform: string;
-  signature: string;
-  starting_mcap: number;
-  current_mcap: number;
-  ath_mcap: number;
-  price_usd: number;
-  price_sol: number;
-  graduation_percentage: number;
-  launchpad_completed: number;
-  launchpad_completed_at: number | null;
-  migrated_pool_address: string | null;
+  creator_address?: string;
+  name?: string;
+  symbol?: string;
+  timestamp?: number;
+  platform?: string;
+  signature?: string;
+  starting_mcap?: number;
+  current_mcap?: number;
+  ath_mcap?: number;
+  price_usd?: number;
+  price_sol?: number;
+  graduation_percentage?: number;
+  launchpad_completed?: number;
+  launchpad_completed_at?: number | null;
+  migrated_pool_address?: string | null;
   total_supply?: string;
+  decimals?: number;
   market_cap_usd?: number;
   coingecko_coin_id?: string;
   gt_score?: number;
   description?: string;
-  last_updated: number;
-  metadata: string;
+  volume_24h_usd?: number;
+  price_change_24h?: number;
+  last_updated?: number;
+  metadata?: string;
 }
 
 interface OHLCVCandle {
@@ -291,22 +294,24 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span>Creator:</span>
-                  <code className="bg-slate-900/50 px-2 py-1 rounded">{token.creator_address.slice(0, 8)}...{token.creator_address.slice(-4)}</code>
-                  <button 
-                    onClick={() => copyToClipboard(token.creator_address, 'creator')}
-                    className="text-cyan-400 hover:text-cyan-300">
-                    {copied === 'creator' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                  <a 
-                    href={`https://solscan.io/account/${token.creator_address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-cyan-400 hover:text-cyan-300">
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
+                {token.creator_address && (
+                  <div className="flex items-center gap-2">
+                    <span>Creator:</span>
+                    <code className="bg-slate-900/50 px-2 py-1 rounded">{token.creator_address.slice(0, 8)}...{token.creator_address.slice(-4)}</code>
+                    <button 
+                      onClick={() => copyToClipboard(token.creator_address!, 'creator')}
+                      className="text-cyan-400 hover:text-cyan-300">
+                      {copied === 'creator' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <a 
+                      href={`https://solscan.io/account/${token.creator_address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:text-cyan-300">
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
             <div className="text-right">
@@ -358,10 +363,10 @@ export function TokenPage({ address: propAddress }: TokenPageProps = {}) {
               Launch Time
             </div>
             <div className="text-white text-xl font-bold">
-              {new Date(token.timestamp * 1000).toLocaleDateString()}
+              {token.timestamp ? new Date(token.timestamp).toLocaleDateString() : 'N/A'}
             </div>
             <div className="text-gray-500 text-xs">
-              {new Date(token.timestamp * 1000).toLocaleTimeString()}
+              {token.timestamp ? new Date(token.timestamp).toLocaleTimeString() : 'N/A'}
             </div>
           </div>
         </div>
