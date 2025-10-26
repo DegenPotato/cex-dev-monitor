@@ -39,13 +39,13 @@ CREATE TABLE trading_wallets (
 );
 
 -- Step 4: Migrate data from backup if it exists
--- The backup has NEW column names (public_key, private_key) from migration 019
+-- The backup has OLD column names (wallet_address, encrypted_private_key) from migration 019
 INSERT OR IGNORE INTO trading_wallets (id, user_id, public_key, private_key, sol_balance, is_active, is_default, created_at)
 SELECT 
   id,
   user_id,
-  public_key,
-  private_key,
+  wallet_address,  -- OLD column name: wallet_address -> NEW: public_key
+  encrypted_private_key,  -- OLD column name: encrypted_private_key -> NEW: private_key
   COALESCE(sol_balance, 0),
   COALESCE(is_active, 1),
   COALESCE(is_default, 0),
