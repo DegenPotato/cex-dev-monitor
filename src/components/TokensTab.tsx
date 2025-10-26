@@ -78,8 +78,20 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
               if (index !== -1) {
                 updatedTokens[index].price_usd = update.priceUsd;
                 updatedTokens[index].price_sol = update.priceSol;
-                updatedTokens[index].market_cap_usd = update.marketCap;
-                updatedTokens[index].current_mcap = update.marketCap;
+                
+                // Calculate market cap from price × supply if backend doesn't provide it
+                const calculatedMcap = update.priceUsd && updatedTokens[index].total_supply
+                  ? update.priceUsd * parseFloat(updatedTokens[index].total_supply || '0')
+                  : null;
+                
+                updatedTokens[index].current_mcap = update.marketCap || calculatedMcap || undefined;
+                updatedTokens[index].last_updated = Date.now();
+                
+                // Update ATH if current exceeds it
+                if (updatedTokens[index].current_mcap && 
+                    (!updatedTokens[index].ath_mcap || updatedTokens[index].current_mcap! > updatedTokens[index].ath_mcap!)) {
+                  updatedTokens[index].ath_mcap = updatedTokens[index].current_mcap;
+                }
               }
             });
             setLastUpdate(Date.now());
@@ -107,7 +119,20 @@ export function TokensTab({ onTokenSelect }: TokensTabProps) {
       const response = await fetch(apiUrl('/api/tokens?limit=1000'), { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
-        setTokens(data);
+        // Calculate market cap from price × supply if not provided
+        const enrichedData = data.map((token: Token) => {
+          const calculatedMcap = token.price_usd && token.total_supply 
+            ? token.price_usd * parseFloat(token.total_supply)
+            : null;
+          
+          return {
+            ...token,
+            current_mcap: token.current_mcap || calculatedMcap,
+            // If we have calculated mcap but no ATH, use current as ATH initially
+            ath_mcap: token.ath_mcap || (calculatedMcap && calculatedMcap > 0 ? calculatedMcap : null)
+          };
+        });
+        setTokens(enrichedData);
       } else {
         console.error('Failed to fetch tokens');
       }
