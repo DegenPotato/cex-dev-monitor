@@ -75,21 +75,19 @@ const RobustChart: React.FC<RobustChartProps> = ({
     }
 
     const cleaned = data
-      .filter(candle => {
-        // Check all required fields exist and are valid numbers
+      .filter((candle): candle is OHLCVData => {
         if (!candle || !candle.timestamp) return false;
         
-        const t = Number(candle.timestamp);
+        // Check for null/undefined BEFORE conversion
+        if (candle.open == null || candle.high == null || candle.low == null || candle.close == null) return false;
+        
         const o = Number(candle.open);
         const h = Number(candle.high);
         const l = Number(candle.low);
         const c = Number(candle.close);
         
-        // Check for valid timestamp (must be positive number)
-        if (isNaN(t) || t <= 0) return false;
-        
-        // Check for valid numbers
-        if (isNaN(o) || isNaN(h) || isNaN(l) || isNaN(c)) return false;
+        // Must have valid numbers (catches NaN, Infinity, etc.)
+        if (!isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(c)) return false;
         if (o <= 0 || h <= 0 || l <= 0 || c <= 0) return false;
         
         // Logical checks
