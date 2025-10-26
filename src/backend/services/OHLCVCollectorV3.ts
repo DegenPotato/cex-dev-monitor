@@ -63,9 +63,17 @@ export class OHLCVCollectorV3 {
     }
     
     this.isRunning = true;
-    console.log('📊 [OHLCV-V3] Starting enhanced collector with PumpFun support...');
+    console.log('📊 [OHLCV-V3] Starting enhanced collector with activity tracking...');
     
-    // Run immediately, then every 15 minutes
+    // Check pool activity immediately, then every hour
+    this.updatePoolActivity();
+    setInterval(() => {
+      if (this.isRunning) {
+        this.updatePoolActivity();
+      }
+    }, 60 * 60 * 1000); // Every hour
+    
+    // Run OHLCV collection immediately, then every 15 minutes
     this.runCycle();
     setInterval(() => {
       if (this.isRunning) {
@@ -79,11 +87,149 @@ export class OHLCVCollectorV3 {
     this.isRunning = false;
   }
   
+  /**
+   * Update pool activity tiers hourly
+   * Scans pools using /pools/multi endpoint and categorizes them by volume/transactions
+   */
+  private async updatePoolActivity() {
+    try {
+      console.log('\n🔍 [OHLCV-V3] Scanning pool activity...');
+      
+      // Get pools that need activity check (all pools, prioritize oldest checks)
+      const pools = await queryAll<{ pool_address: string; mint_address: string }>(
+        `SELECT DISTINCT p.pool_address, p.mint_address
+         FROM token_pools p
+         INNER JOIN token_registry r ON r.token_mint = p.mint_address
+         ORDER BY p.last_activity_check ASC NULLS FIRST
+         LIMIT 300`  // Check up to 300 pools = 10 API calls
+      );
+      
+      if (pools.length === 0) {
+        console.log('🔍 [OHLCV-V3] No pools to check');
+        return;
+      }
+      
+      console.log(`🔍 [OHLCV-V3] Checking activity for ${pools.length} pools...`);
+      
+      // Process in batches of 30 (GeckoTerminal /pools/multi limit)
+      for (let i = 0; i < pools.length; i += 30) {
+        const batch = pools.slice(i, Math.min(i + 30, pools.length));
+        const poolAddresses = batch.map(p => p.pool_address);
+        
+        try {
+          await this.fetchAndUpdatePoolActivity(poolAddresses, batch);
+        } catch (error: any) {
+          console.error(`❌ [OHLCV-V3] Error checking batch ${Math.floor(i / 30) + 1}:`, error.message);
+        }
+      }
+      
+      console.log('✅ [OHLCV-V3] Pool activity scan complete\n');
+    } catch (error: any) {
+      console.error('❌ [OHLCV-V3] Error in activity scan:', error);
+    }
+  }
+  
+  /**
+   * Fetch activity data for pool batch and update tiers
+   */
+  private async fetchAndUpdatePoolActivity(
+    poolAddresses: string[],
+    poolInfos: { pool_address: string; mint_address: string }[]
+  ): Promise<void> {
+    const data = await globalGeckoTerminalLimiter.executeRequest(async () => {
+      const url = `${this.GECKOTERMINAL_BASE}/networks/solana/pools/multi/${poolAddresses.join(',')}`;
+      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      return response.json();
+    });
+    
+    if (!data?.data || !Array.isArray(data.data)) {
+      return;
+    }
+    
+    const now = Date.now();
+    
+    // Process each pool's activity
+    for (const poolData of data.data) {
+      const poolAddress = poolData.attributes?.address;
+      if (!poolAddress) continue;
+      
+      const poolInfo = poolInfos.find(p => p.pool_address === poolAddress);
+      if (!poolInfo) continue;
+      
+      const attrs = poolData.attributes;
+      
+      // Extract volume metrics
+      const volume15m = parseFloat(attrs.volume_usd?.m15 || '0');
+      const volume1h = parseFloat(attrs.volume_usd?.h1 || '0');
+      const volume24h = parseFloat(attrs.volume_usd?.h24 || '0');
+      
+      // Extract transaction counts
+      const txns15m = (attrs.transactions?.m15?.buys || 0) + (attrs.transactions?.m15?.sells || 0);
+      const txns1h = (attrs.transactions?.h1?.buys || 0) + (attrs.transactions?.h1?.sells || 0);
+      
+      // Determine activity tier
+      let tier: 'REALTIME' | 'HOT' | 'ACTIVE' | 'NORMAL' | 'DORMANT' = 'DORMANT';
+      
+      // Check if user manually set REALTIME in ohlcv_update_schedule
+      const schedule = await queryOne<{ update_tier: string }>(
+        `SELECT update_tier FROM ohlcv_update_schedule 
+         WHERE pool_address = ? AND update_tier = 'REALTIME'`,
+        [poolAddress]
+      );
+      
+      if (schedule) {
+        tier = 'REALTIME';
+      } else if (volume15m >= 10000 || txns15m >= 50) {
+        tier = 'HOT';  // $10k+ volume or 50+ txns in 15min
+      } else if (volume1h >= 1000 || txns1h >= 10) {
+        tier = 'ACTIVE';  // $1k+ volume or 10+ txns in 1h
+      } else if (volume24h > 0) {
+        tier = 'NORMAL';  // Any activity in 24h
+      }
+      
+      // Update token_pools with activity data
+      await execute(
+        `UPDATE token_pools 
+         SET activity_tier = ?, 
+             last_activity_volume_15m = ?, 
+             last_activity_volume_1h = ?,
+             last_activity_txns_15m = ?,
+             last_activity_check = ?
+         WHERE pool_address = ?`,
+        [tier, volume15m, volume1h, txns15m, now, poolAddress]
+      );
+      
+      // Update ohlcv_update_schedule (or insert if doesn't exist)
+      await execute(
+        `INSERT OR REPLACE INTO ohlcv_update_schedule 
+         (pool_address, mint_address, update_tier, last_activity_volume, last_activity_txns, next_update)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          poolAddress,
+          poolInfo.mint_address,
+          tier,
+          volume1h,
+          txns1h,
+          now
+        ]
+      );
+      
+      if (tier === 'HOT' || tier === 'ACTIVE') {
+        console.log(`  🔥 ${poolAddress.slice(0, 8)}... → ${tier} (vol15m: $${volume15m.toFixed(0)}, txns: ${txns15m})`);
+      }
+    }
+  }
+  
   private async runCycle() {
     console.log('\n📊 [OHLCV-V3] Starting collection cycle...');
     
     try {
-      // Get tokens with migration info
+      // Get tokens prioritized by activity tier, then by data freshness
       const tokens = await queryAll<Token>(`
         SELECT 
           r.token_mint as mint_address,
@@ -92,14 +238,32 @@ export class OHLCVCollectorV3 {
           r.graduated_at
         FROM token_registry r
         LEFT JOIN (
-          SELECT mint_address, MIN(oldest_timestamp) as first_data
+          SELECT mint_address, MAX(newest_timestamp) as last_update
           FROM ohlcv_backfill_progress
           GROUP BY mint_address
         ) obp ON r.token_mint = obp.mint_address
+        LEFT JOIN (
+          SELECT mint_address, 
+                 MAX(CASE 
+                   WHEN update_tier = 'REALTIME' THEN 5
+                   WHEN update_tier = 'HOT' THEN 4
+                   WHEN update_tier = 'ACTIVE' THEN 3
+                   WHEN update_tier = 'NORMAL' THEN 2
+                   ELSE 1
+                 END) as priority
+          FROM ohlcv_update_schedule
+          GROUP BY mint_address
+        ) ous ON r.token_mint = ous.mint_address
         ORDER BY 
-          CASE WHEN obp.first_data IS NULL THEN 0 ELSE 1 END,
+          -- 1. HIGHEST PRIORITY: Active pools (REALTIME/HOT/ACTIVE)
+          COALESCE(ous.priority, 0) DESC,
+          -- 2. Tokens with no data
+          CASE WHEN obp.last_update IS NULL THEN 0 ELSE 1 END,
+          -- 3. Tokens with outdated data (oldest first)
+          COALESCE(obp.last_update, 0) ASC,
+          -- 4. Recent tokens
           r.first_seen_at DESC
-        LIMIT 30
+        LIMIT 100
       `);
       
       if (tokens.length === 0) {
@@ -317,6 +481,17 @@ export class OHLCVCollectorV3 {
   /**
    * Collect OHLCV data with migration timestamp tracking
    */
+  /**
+   * OHLCV Collection Strategy (Forward-filling from oldest to newest)
+   * 
+   * GeckoTerminal API uses before_timestamp which fetches candles BEFORE that time.
+   * To fill gaps and ensure complete data:
+   * 
+   * 1. INITIAL: Fetch from NOW backwards (gets most recent 1000 candles)
+   * 2. BACKFILL: Continue fetching backwards using oldest_timestamp as before_timestamp
+   * 3. COMPLETE: When oldest_timestamp <= creation_time AND newest_timestamp is current
+   * 4. UPDATE: Once complete, just fetch new candles from NOW at regular intervals
+   */
   private async collectTimeframe(
     mintAddress: string,
     pool: Pool,
@@ -324,7 +499,7 @@ export class OHLCVCollectorV3 {
     creationTimestampMs: number,
     migrationTimestampMs?: number | null
   ) {
-    // Check progress
+    // Check progress checkpoint
     const progress = await queryOne<{
       oldest_timestamp: number | null;
       newest_timestamp: number | null;
@@ -343,24 +518,43 @@ export class OHLCVCollectorV3 {
     let beforeTimestamp: number;
     
     if (!progress) {
+      // STEP 1: No data yet - fetch most recent candles first
       fetchMode = 'initial';
       beforeTimestamp = nowUnix;
+      console.log(`    ${timeframe.name}: INITIAL fetch (from NOW backwards)`);
     } else if (progress.backfill_complete) {
+      // STEP 4: Backfill complete - just maintain current data
       fetchMode = 'update';
       beforeTimestamp = nowUnix;
-    } else if (progress.oldest_timestamp && progress.oldest_timestamp > creationUnix) {
-      fetchMode = 'backfill';
-      beforeTimestamp = progress.oldest_timestamp;
+      console.log(`    ${timeframe.name}: UPDATE mode (backfill complete)`);
     } else {
-      fetchMode = 'skip';
-      beforeTimestamp = 0;
+      // STEP 2 & 3: Backfill in progress - alternate between updating current and filling gaps
+      const timeSinceNewest = progress.newest_timestamp ? (nowUnix - progress.newest_timestamp) : 999999;
+      const needsUpdate = timeSinceNewest > 3600; // More than 1 hour old
+      const hasGaps = progress.oldest_timestamp && progress.oldest_timestamp > creationUnix;
+      
+      if (needsUpdate) {
+        // Newest data is stale - update to current time first to avoid chart gaps
+        fetchMode = 'update';
+        beforeTimestamp = nowUnix;
+        console.log(`    ${timeframe.name}: UPDATE (data ${Math.floor(timeSinceNewest / 60)}min old)`);
+      } else if (hasGaps && progress.oldest_timestamp) {
+        // STEP 2: Fill historical gaps - fetch backwards from oldest known timestamp
+        fetchMode = 'backfill';
+        beforeTimestamp = progress.oldest_timestamp;
+        const gapDays = Math.floor((progress.oldest_timestamp - creationUnix) / 86400);
+        console.log(`    ${timeframe.name}: BACKFILL (gap: ${gapDays} days to creation)`);
+      } else {
+        // Edge case: should not reach here
+        fetchMode = 'skip';
+        beforeTimestamp = 0;
+        console.log(`    ${timeframe.name}: SKIP (no gaps, but not marked complete?)`);
+      }
     }
     
     if (fetchMode === 'skip') {
       return;
     }
-    
-    console.log(`    ${timeframe.name}: ${fetchMode} mode (${pool.pool_type})`);
     
     // Fetch candles
     const candles = await this.fetchCandles(
@@ -444,7 +638,22 @@ export class OHLCVCollectorV3 {
         ? Math.max(progress.newest_timestamp, newestFetched)
         : newestFetched;
       
-      const isComplete = newOldest <= creationUnix || candles.length < this.MAX_CANDLES;
+      // Backfill is complete when BOTH conditions are met:
+      // 1. We've reached token creation time (have all historical data)
+      // 2. We're up-to-date with current time (have all recent data)
+      const hasHistoricalData = newOldest <= creationUnix;
+      const hasCurrentData = (nowUnix - newNewest) <= 3600; // Within 1 hour of now
+      const isComplete = hasHistoricalData && hasCurrentData;
+      
+      // Log completion status with gap detection
+      if (isComplete) {
+        console.log(`      ✅ COMPLETE - Full history from ${new Date(newOldest * 1000).toISOString().split('T')[0]} to now`);
+      } else {
+        const missingHistory = !hasHistoricalData ? `${Math.floor((newOldest - creationUnix) / 86400)}d gap to creation` : '';
+        const missingCurrent = !hasCurrentData ? `${Math.floor((nowUnix - newNewest) / 3600)}h behind current` : '';
+        const gaps = [missingHistory, missingCurrent].filter(Boolean).join(', ');
+        console.log(`      ⏳ IN PROGRESS - Missing: ${gaps}`);
+      }
       
       await this.updateProgress(
         mintAddress,
