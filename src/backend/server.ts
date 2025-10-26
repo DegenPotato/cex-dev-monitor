@@ -3002,38 +3002,49 @@ app.post('/api/database/wipe', async (req, res) => {
     pumpFunMonitor.stopAll();
     tokenPriceOracle.stop();
     
+    // Helper to safely delete from table (ignore if table doesn't exist)
+    const safeDelete = async (tableName: string) => {
+      try {
+        await execute(`DELETE FROM ${tableName}`, []);
+      } catch (error: any) {
+        if (!error.message.includes('no such table')) {
+          console.error(`Error deleting from ${tableName}:`, error.message);
+        }
+      }
+    };
+    
     // Wipe all data tables (keep config and user accounts)
     await TransactionProvider.deleteAll();
     await MonitoredWalletProvider.deleteAll();
     await TokenMintProvider.deleteAll();
     await TokenPoolProvider.deleteAll();
     
-    // Wipe ALL token-related data
-    await execute('DELETE FROM token_registry', []);
-    await execute('DELETE FROM token_mints', []);  // Legacy table
-    await execute('DELETE FROM token_pools', []);
-    await execute('DELETE FROM token_sightings', []);
-    await execute('DELETE FROM token_source_tracking', []);
-    await execute('DELETE FROM gecko_token_data', []);
-    await execute('DELETE FROM gecko_multi_network_tokens', []);
-    await execute('DELETE FROM gecko_cross_network_pools', []);
-    await execute('DELETE FROM token_mentions', []);
-    await execute('DELETE FROM trade_source_attribution', []);
+    // Wipe ALL token-related data (safely handle missing tables)
+    await safeDelete('token_registry');
+    await safeDelete('token_mints');  // Legacy table
+    await safeDelete('token_pools');
+    await safeDelete('token_sightings');
+    await safeDelete('token_source_tracking');
+    await safeDelete('gecko_token_data');
+    await safeDelete('gecko_multi_network_tokens');
+    await safeDelete('gecko_cross_network_pools');
+    await safeDelete('token_mentions');
+    await safeDelete('trade_source_attribution');
     
     // Wipe OHLCV data
-    await execute('DELETE FROM ohlcv_data', []);
-    await execute('DELETE FROM ohlcv_backfill_progress', []);
-    await execute('DELETE FROM ohlcv_update_schedule', []);
-    await execute('DELETE FROM ohlcv_aggregated', []);
+    await safeDelete('ohlcv_data');
+    await safeDelete('ohlcv_backfill_progress');
+    await safeDelete('ohlcv_update_schedule');
+    await safeDelete('ohlcv_aggregated');
     
     // Wipe trading and portfolio data
-    await execute('DELETE FROM trading_transactions', []);
-    await execute('DELETE FROM trading_portfolios', []);
-    await execute('DELETE FROM trading_wallet_balances', []);
+    await safeDelete('trading_transactions');
+    await safeDelete('trading_portfolios');
+    await safeDelete('trading_wallet_balances');
     
     // Wipe Telegram data
-    await execute('DELETE FROM telegram_detected_contracts', []);
-    await execute('DELETE FROM telegram_forwarding_history', []);
+    await safeDelete('telegram_detected_contracts');
+    await safeDelete('telegram_forwarding_history');
     
     saveDatabase();
     
