@@ -308,13 +308,17 @@ class SecureAuthService {
         return null;
       }
 
-      console.log('[SecureAuth] 🔍 Searching for wallet:', walletAddress.toLowerCase());
+      // Determine if this is a Solana wallet (case-sensitive) or EVM wallet (case-insensitive)
+      const isSolana = walletAddress.length >= 32 && walletAddress.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(walletAddress);
+      
+      console.log('[SecureAuth] 🔍 Searching for wallet:', isSolana ? walletAddress : walletAddress.toLowerCase());
 
-      // Check both wallet_address and solana_wallet_address (case-insensitive)
+      // Check both wallet_address and solana_wallet_address 
+      // EVM wallets are case-insensitive, Solana wallets are case-sensitive
       const user = await queryOne<UserData>(
         `SELECT * FROM users 
-         WHERE LOWER(wallet_address) = ? OR LOWER(solana_wallet_address) = ?`,
-        [walletAddress.toLowerCase(), walletAddress.toLowerCase()]
+         WHERE LOWER(wallet_address) = ? OR solana_wallet_address = ?`,
+        [walletAddress.toLowerCase(), walletAddress]  // Solana uses exact case
       );
 
       if (!user) {
