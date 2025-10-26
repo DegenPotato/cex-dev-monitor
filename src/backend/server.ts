@@ -1369,6 +1369,7 @@ app.get('/api/tokens', async (req, res) => {
         gtd.volume_24h_usd,
         gtd.price_change_24h,
         gtd.total_reserve_in_usd as liquidity_usd,
+        gtd.total_supply,
         
         -- ATH data is now stored directly in the table (no subquery needed!)
         gtd.ath_price_usd,
