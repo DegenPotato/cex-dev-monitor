@@ -295,7 +295,6 @@ router.get('/tokens', authService.requireSecureAuth(), async (req: Request, res:
         md.price_usd as latest_price_usd,
         md.price_sol as latest_price_sol,
         md.market_cap_usd as latest_market_cap,
-        md.fdv as latest_fdv,
         md.volume_24h_usd as latest_volume_24h,
         md.price_change_24h as latest_price_change_24h,
         md.last_updated as market_data_updated
