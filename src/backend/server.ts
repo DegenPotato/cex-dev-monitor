@@ -1366,7 +1366,7 @@ app.get('/api/tokens', async (req, res) => {
         -- Discovery metadata from token_registry
         COALESCE(tr.creator_address, '') as creator_address,
         tr.creation_signature as signature,
-        tr.first_seen_at * 1000 as timestamp,
+        COALESCE(tr.first_seen_at, tr.created_at) * 1000 as timestamp,
         COALESCE(tr.is_graduated, 0) as launchpad_completed,
         CASE 
           WHEN tr.graduated_at IS NOT NULL THEN tr.graduated_at * 1000
@@ -1405,11 +1405,11 @@ app.get('/api/tokens', async (req, res) => {
          ORDER BY timestamp ASC 
          LIMIT 1) as starting_mcap,
         
-        -- First seen market cap - CLOSEST candle to when token entered system
+        -- First seen market cap - use created_at instead of first_seen_at for now
         (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
          FROM ohlcv_data 
          WHERE mint_address = tr.token_mint 
-         ORDER BY ABS(timestamp - (tr.first_seen_at * 1000)) ASC
+         ORDER BY ABS(timestamp - (COALESCE(tr.created_at, 0) * 1000)) ASC
          LIMIT 1) as first_seen_mcap,
         
         -- ATH market cap from highest OHLCV candle
@@ -1526,11 +1526,11 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
        ORDER BY timestamp ASC 
        LIMIT 1) as starting_mcap,
       
-      -- First seen market cap - CLOSEST candle to when token entered system
+      -- First seen market cap - use created_at
       (SELECT close * (gtd.total_supply / POWER(10, COALESCE(gtd.decimals, tr.token_decimals, 9)))
        FROM ohlcv_data 
        WHERE mint_address = tr.token_mint 
-       ORDER BY ABS(timestamp - (tr.first_seen_at * 1000)) ASC
+       ORDER BY ABS(timestamp - (COALESCE(tr.created_at, 0) * 1000)) ASC
        LIMIT 1) as first_seen_mcap,
       
       -- ATH market cap from highest OHLCV candle
