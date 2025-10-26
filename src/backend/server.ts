@@ -1,12 +1,22 @@
+// Load environment variables BEFORE any other imports
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Get __dirname equivalent for ES modules FIRST
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env from project root (two levels up from dist/backend/)
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+// Now import everything else AFTER env is loaded
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server as SocketIOServer} from 'socket.io';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
 import { queryAll, queryOne, execute } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
@@ -55,13 +65,6 @@ import ohlcvRoutes from './routes/ohlcv.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 import { telegramClientService } from './services/TelegramClientService.js';
-
-// Get __dirname equivalent for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Load .env from project root (two levels up from dist/backend/)
-dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const app = express();
 const httpServer = createServer(app);
