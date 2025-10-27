@@ -222,6 +222,9 @@ export class TelegramClientService extends EventEmitter {
           const stringSession = new StringSession(sessionString);
           const client = new TelegramClient(stringSession, parseInt(account.api_id), account.api_hash, {
             connectionRetries: 5,
+            requestRetries: 3,
+            timeout: 60,
+            floodSleepThreshold: 60
           });
           
           // Connect the client
@@ -291,6 +294,9 @@ export class TelegramClientService extends EventEmitter {
           const stringSession = new StringSession(sessionString);
           const client = new TelegramClient(stringSession, parseInt(account.api_id), account.api_hash, {
             connectionRetries: 5,
+            requestRetries: 3,
+            timeout: 60,
+            floodSleepThreshold: 60
           });
           
           // Connect the client
@@ -344,6 +350,9 @@ export class TelegramClientService extends EventEmitter {
       const session = new StringSession(sessionString);
       const client = new TelegramClient(session, parseInt(apiId), apiHash, {
         connectionRetries: 5,
+        requestRetries: 3,
+        timeout: 60,
+        floodSleepThreshold: 60
       });
 
       // Store session info
@@ -2321,6 +2330,9 @@ export class TelegramClientService extends EventEmitter {
         const session = new StringSession(decrypted);
         client = new TelegramClient(session, parseInt(account.api_id), account.api_hash, {
           connectionRetries: 5,
+          requestRetries: 3,
+          timeout: 60,
+          floodSleepThreshold: 60
         });
         
         await client.connect();
