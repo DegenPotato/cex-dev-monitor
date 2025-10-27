@@ -159,10 +159,10 @@ export class OHLCVCollectorV2 {
   private async discoverPools(mintAddress: string): Promise<Pool[]> {
     // Check cache first
     const cached = await queryAll<Pool>(`
-      SELECT pool_address, dex, volume_24h_usd, liquidity_usd
-      FROM token_pools
-      WHERE mint_address = ?
-      ORDER BY is_primary DESC, volume_24h_usd DESC
+      SELECT pool_address, dex_id as dex, 0 as volume_24h_usd, 0 as liquidity_usd
+      FROM pool_info
+      WHERE token_mint = ?
+      ORDER BY pool_created_at DESC
     `, [mintAddress]);
     
     if (cached.length > 0) {
@@ -208,17 +208,18 @@ export class OHLCVCollectorV2 {
         
         // Store in cache
         await execute(`
-          INSERT OR REPLACE INTO token_pools
-          (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO pool_info
+          (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          mintAddress,
           pool.pool_address,
+          mintAddress,
+          `${pool.dex} Pool`,
+          null,
+          null,
+          null,
+          null,
           pool.dex,
-          pool.volume_24h_usd,
-          pool.liquidity_usd,
-          parseFloat(attributes.base_token_price_usd || '0'),
-          pools.length === 1 ? 1 : 0, // First pool is primary
           Date.now(),
           Date.now()
         ]);

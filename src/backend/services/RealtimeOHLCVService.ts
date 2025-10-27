@@ -99,9 +99,9 @@ export class RealtimeOHLCVService {
     if (!targetPoolAddress) {
       const pool = await queryOne<{ pool_address: string }>(`
         SELECT pool_address 
-        FROM token_pools 
-        WHERE mint_address = ? 
-        ORDER BY is_primary DESC, volume_24h_usd DESC 
+        FROM pool_info 
+        WHERE token_mint = ? 
+        ORDER BY pool_created_at DESC 
         LIMIT 1
       `, [mintAddress]);
       
