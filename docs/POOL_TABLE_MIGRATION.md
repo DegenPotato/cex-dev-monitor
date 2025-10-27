@@ -130,13 +130,29 @@ await execute(`
 `, [poolAddress, mintAddress, `${dex} Pool`, null, null, null, null, dex, Date.now(), Date.now()]);
 ```
 
-## Files to Fix
+## Files Fixed
 
-1. ✅ **OHLCVCollectorV3.ts** - 7 references
-2. ✅ **OHLCVCollector.ts** - 7 references  
-3. ✅ **ActivityBasedOHLCVCollector.ts** - 5 references
-4. ✅ **OHLCVCollectorV2.ts** - 2 references
-5. ✅ **RealtimeOHLCVService.ts** - 1 reference
+1. ✅ **OHLCVCollectorV3.ts** - 7 references (DONE)
+2. ✅ **OHLCVCollector.ts** - 7 references (DONE)
+3. ✅ **ActivityBasedOHLCVCollector.ts** - 5 references (DONE)
+4. ✅ **OHLCVCollectorV2.ts** - 2 references (DONE)
+5. ✅ **RealtimeOHLCVService.ts** - 1 reference (DONE)
+6. ✅ **TokenPoolProvider.ts** - Complete rewrite to use pool_info (DONE)
+
+## Migration Created
+
+**File:** `030_extend_pool_info_schema.sql`
+
+Extends pool_info with additional columns needed by TokenPoolProvider:
+- `pool_name` - Display name
+- `is_primary` - Primary pool flag
+- `discovered_at` - Discovery timestamp
+- `last_verified` - Last verification timestamp  
+- `volume_24h_usd` - Market data (optional)
+- `liquidity_usd` - Market data (optional)
+- `price_usd` - Market data (optional)
+
+Also migrates any existing data from token_pools if it exists (backward compatibility).
 
 ## Testing Checklist
 
