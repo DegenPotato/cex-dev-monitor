@@ -283,7 +283,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       // Store activity tier in ohlcv_update_schedule for prioritization
       await execute(
         `INSERT OR REPLACE INTO ohlcv_update_schedule
-         (token_mint, pool_address, update_tier, last_update, next_update)
+         (mint_address, pool_address, update_tier, last_update, next_update)
          VALUES (?, ?, ?, ?, ?)`,
         [mintAddress, poolAddress, tier, now, now + nextUpdateMs]
       );

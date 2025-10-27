@@ -203,7 +203,7 @@ export class OHLCVCollectorV3 {
       // Store activity tier in ohlcv_update_schedule for prioritization
       await execute(
         `INSERT OR REPLACE INTO ohlcv_update_schedule 
-         (pool_address, token_mint, update_tier, last_activity_volume, last_activity_txns, next_update)
+         (pool_address, mint_address, update_tier, last_activity_volume, last_activity_txns, next_update)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           poolAddress,
