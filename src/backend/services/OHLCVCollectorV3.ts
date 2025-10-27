@@ -97,10 +97,10 @@ export class OHLCVCollectorV3 {
       
       // Get pools that need activity check (all pools, prioritize oldest checks)
       const pools = await queryAll<{ pool_address: string; mint_address: string }>(
-        `SELECT DISTINCT p.pool_address, p.mint_address
-         FROM token_pools p
-         INNER JOIN token_registry r ON r.token_mint = p.mint_address
-         ORDER BY p.last_activity_check ASC NULLS FIRST
+        `SELECT DISTINCT p.pool_address, p.token_mint as mint_address
+         FROM pool_info p
+         INNER JOIN token_registry r ON r.token_mint = p.token_mint
+         ORDER BY p.last_updated ASC NULLS FIRST
          LIMIT 300`  // Check up to 300 pools = 10 API calls
       );
       
@@ -192,22 +192,18 @@ export class OHLCVCollectorV3 {
         tier = 'NORMAL';  // Any activity in 24h
       }
       
-      // Update token_pools with activity data
+      // Update pool_info last_updated and store activity tier in ohlcv_update_schedule
       await execute(
-        `UPDATE token_pools 
-         SET activity_tier = ?, 
-             last_activity_volume_15m = ?, 
-             last_activity_volume_1h = ?,
-             last_activity_txns_15m = ?,
-             last_activity_check = ?
+        `UPDATE pool_info 
+         SET last_updated = ?
          WHERE pool_address = ?`,
-        [tier, volume15m, volume1h, txns15m, now, poolAddress]
+        [now, poolAddress]
       );
       
-      // Update ohlcv_update_schedule (or insert if doesn't exist)
+      // Store activity tier in ohlcv_update_schedule for prioritization
       await execute(
         `INSERT OR REPLACE INTO ohlcv_update_schedule 
-         (pool_address, mint_address, update_tier, last_activity_volume, last_activity_txns, next_update)
+         (pool_address, token_mint, update_tier, last_activity_volume, last_activity_txns, next_update)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           poolAddress,
@@ -341,10 +337,10 @@ export class OHLCVCollectorV3 {
       volume_24h_usd: number;
       liquidity_usd: number;
     }>(`
-      SELECT pool_address, dex, volume_24h_usd, liquidity_usd
-      FROM token_pools
-      WHERE mint_address = ?
-      ORDER BY is_primary DESC, volume_24h_usd DESC
+      SELECT pool_address, dex_id as dex, 0 as volume_24h_usd, 0 as liquidity_usd
+      FROM pool_info
+      WHERE token_mint = ?
+      ORDER BY pool_created_at DESC
     `, [mintAddress]);
     
     // Add cached pools with type detection
@@ -372,17 +368,18 @@ export class OHLCVCollectorV3 {
       
       // Store it
       await execute(`
-        INSERT OR REPLACE INTO token_pools
-        (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO pool_info
+        (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        mintAddress,
         migratedPoolAddress,
+        mintAddress,
+        'Raydium Pool',
+        null,
+        null,
+        null,
+        null,
         'raydium',
-        0,
-        0,
-        0,
-        0, // Not primary, bonding curve is primary
         Date.now(),
         Date.now()
       ]);
@@ -396,9 +393,9 @@ export class OHLCVCollectorV3 {
         
         for (const pool of geckoData) {
           // Check if pool already exists in database
-          const existingPool = await queryOne<{ is_primary: number; discovered_at: number }>(
-            `SELECT is_primary, discovered_at FROM token_pools 
-             WHERE mint_address = ? AND pool_address = ?`,
+          const existingPool = await queryOne<{ pool_created_at: number }>(
+            `SELECT pool_created_at FROM pool_info 
+             WHERE token_mint = ? AND pool_address = ?`,
             [mintAddress, pool.pool_address]
           );
           
@@ -407,22 +404,19 @@ export class OHLCVCollectorV3 {
             console.log(`  🆕 Discovered new pool: ${pool.pool_address.slice(0, 8)}... (${pool.dex})`);
             pools.push(pool);
             
-            // Determine is_primary: DEX pools are primary for graduated tokens, bonding curves otherwise
-            const poolType = this.detectPoolType(pool.dex, pool.pool_address);
-            const isPrimary = poolType === 'dex' ? 1 : 0;
-            
             await execute(`
-              INSERT INTO token_pools
-              (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT OR REPLACE INTO pool_info
+              (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
-              mintAddress,
               pool.pool_address,
+              mintAddress,
+              `${pool.dex} Pool`,
+              null,
+              null,
+              null,
+              null,
               pool.dex,
-              pool.volume_24h_usd,
-              pool.liquidity_usd,
-              0, // price_usd
-              isPrimary,
               Date.now(),
               Date.now()
             ]);
@@ -436,12 +430,12 @@ export class OHLCVCollectorV3 {
               liquidity_usd: pool.liquidity_usd
             });
             
-            // Update last_verified timestamp only (preserve is_primary and discovered_at)
+            // Update last_updated timestamp
             await execute(`
-              UPDATE token_pools 
-              SET last_verified = ?, volume_24h_usd = ?, liquidity_usd = ?
-              WHERE mint_address = ? AND pool_address = ?
-            `, [Date.now(), pool.volume_24h_usd, pool.liquidity_usd, mintAddress, pool.pool_address]);
+              UPDATE pool_info 
+              SET last_updated = ?
+              WHERE token_mint = ? AND pool_address = ?
+            `, [Date.now(), mintAddress, pool.pool_address]);
           }
         }
       } catch (error: any) {

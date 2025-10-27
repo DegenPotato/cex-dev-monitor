@@ -90,8 +90,8 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
         `SELECT DISTINCT r.token_mint as mint_address 
          FROM token_registry r
          WHERE NOT EXISTS (
-           SELECT 1 FROM token_pools p 
-           WHERE p.mint_address = r.token_mint
+           SELECT 1 FROM pool_info p 
+           WHERE p.token_mint = r.token_mint
          )
          ORDER BY r.first_seen_at DESC
          LIMIT 100`  // Process 100 tokens per batch instead of 20
@@ -161,11 +161,11 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
         mint_address: string;
         last_activity_check: number | null;
       }>(
-        `SELECT DISTINCT p.pool_address, p.mint_address, p.last_activity_check
-         FROM token_pools p
-         WHERE p.last_activity_check IS NULL 
-            OR p.last_activity_check < strftime('%s', 'now') * 1000 - 300000  -- 5 minutes in ms
-         ORDER BY p.last_activity_check ASC NULLS FIRST
+        `SELECT DISTINCT p.pool_address, p.token_mint as mint_address, p.last_updated as last_activity_check
+         FROM pool_info p
+         WHERE p.last_updated IS NULL 
+            OR p.last_updated < strftime('%s', 'now') * 1000 - 300000  -- 5 minutes in ms
+         ORDER BY p.last_updated ASC NULLS FIRST
          LIMIT 300`  // Process up to 300 pools (10 API calls)
       );
       
@@ -225,7 +225,7 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       
       // Get mint_address from database using pool_address
       const poolInfo = await queryOne<{ mint_address: string }>(
-        `SELECT mint_address FROM token_pools WHERE pool_address = ?`,
+        `SELECT token_mint as mint_address FROM pool_info WHERE pool_address = ?`,
         [poolAddress]
       );
       
@@ -272,17 +272,20 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
         nextUpdateMs = this.UPDATE_TIERS.NORMAL;
       }
       
-      // Update pool activity data
+      // Update pool last_updated timestamp (activity tier stored in ohlcv_update_schedule)
       await execute(
-        `UPDATE token_pools 
-         SET activity_tier = ?, 
-             last_activity_volume_15m = ?, 
-             last_activity_volume_1h = ?,
-             last_activity_txns_15m = ?,
-             last_activity_check = ?,
-             next_update_at = ?
+        `UPDATE pool_info 
+         SET last_updated = ?
          WHERE pool_address = ?`,
-        [tier, volume15m, volume1h, txns15m, now, now + nextUpdateMs, poolAddress]
+        [now, poolAddress]
+      );
+      
+      // Store activity tier in ohlcv_update_schedule for prioritization
+      await execute(
+        `INSERT OR REPLACE INTO ohlcv_update_schedule
+         (token_mint, pool_address, update_tier, last_update, next_update)
+         VALUES (?, ?, ?, ?, ?)`,
+        [mintAddress, poolAddress, tier, now, now + nextUpdateMs]
       );
       
       // Also ensure pool exists in backfill progress (for compatibility)
@@ -391,9 +394,9 @@ export class ActivityBasedOHLCVCollector extends OHLCVCollector {
       pool_address: string;
       creation_timestamp: number;
     }>(
-      `SELECT DISTINCT p.mint_address, p.pool_address, r.first_seen_at * 1000 as creation_timestamp
-       FROM token_pools p
-       INNER JOIN token_registry r ON p.mint_address = r.token_mint
+      `SELECT DISTINCT p.token_mint as mint_address, p.pool_address, r.first_seen_at * 1000 as creation_timestamp
+       FROM pool_info p
+       INNER JOIN token_registry r ON p.token_mint = r.token_mint
        LEFT JOIN ohlcv_backfill_progress bp 
          ON p.pool_address = bp.pool_address AND bp.timeframe = '15m'
        WHERE bp.backfill_complete IS NULL OR bp.backfill_complete = 0

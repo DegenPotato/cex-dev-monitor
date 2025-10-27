@@ -217,10 +217,10 @@ export class OHLCVCollector {
       volume_24h_usd: number | null;
       is_primary: number;
     }>(
-      `SELECT pool_address, dex, volume_24h_usd, is_primary 
-       FROM token_pools 
-       WHERE mint_address = ?
-       ORDER BY is_primary DESC, volume_24h_usd DESC`,
+      `SELECT pool_address, dex_id as dex, 0 as volume_24h_usd, 0 as is_primary 
+       FROM pool_info 
+       WHERE token_mint = ?
+       ORDER BY pool_created_at DESC`,
       [mintAddress]
     );
     
@@ -332,27 +332,27 @@ export class OHLCVCollector {
         const isPrimary = i === 0 ? 1 : 0;
         
         // Pre-check to avoid overwriting existing pool data (DEDUPLICATION GUARANTEE)
-        const existingPool = await queryOne<{ id: number }>(
-          `SELECT id FROM token_pools WHERE mint_address = ? AND pool_address = ?`,
+        const existingPool = await queryOne<{ pool_address: string }>(
+          `SELECT pool_address FROM pool_info WHERE token_mint = ? AND pool_address = ?`,
           [mintAddress, pool.pool_address]
         );
         
         if (existingPool) {
-          // Pool exists - UPDATE metadata only (preserve discovered_at)
+          // Pool exists - UPDATE metadata only (preserve pool_created_at)
           await execute(
-            `UPDATE token_pools 
-             SET dex = ?, volume_24h_usd = ?, liquidity_usd = ?, price_usd = ?, is_primary = ?, last_verified = ?
-             WHERE mint_address = ? AND pool_address = ?`,
-            [pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now(), mintAddress, pool.pool_address]
+            `UPDATE pool_info 
+             SET dex_id = ?, last_updated = ?
+             WHERE token_mint = ? AND pool_address = ?`,
+            [pool.dex, Date.now(), mintAddress, pool.pool_address]
           );
           console.log(`♻️  [Dedup] Updated pool ${pool.pool_address.slice(0, 8)}... metadata`);
         } else {
           // New pool - INSERT
           await execute(
-            `INSERT INTO token_pools 
-             (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [mintAddress, pool.pool_address, pool.dex, pool.volume_24h_usd, pool.liquidity_usd, pool.price_usd, isPrimary, Date.now(), Date.now()]
+            `INSERT OR REPLACE INTO pool_info 
+             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [pool.pool_address, mintAddress, `${pool.dex} Pool`, null, null, null, null, pool.dex, Date.now(), Date.now()]
           );
           console.log(`✅ [New] Inserted pool ${pool.pool_address.slice(0, 8)}...`);
         }
@@ -364,17 +364,17 @@ export class OHLCVCollector {
         console.log(`⚠️ [OHLCV] Migrated pool ${migratedPoolAddress.slice(0, 8)}... not found in GeckoTerminal, adding manually`);
         
         // Check if already exists in database
-        const existingMigrated = await queryOne<{ id: number }>(
-          `SELECT id FROM token_pools WHERE mint_address = ? AND pool_address = ?`,
+        const existingMigrated = await queryOne<{ pool_address: string }>(
+          `SELECT pool_address FROM pool_info WHERE token_mint = ? AND pool_address = ?`,
           [mintAddress, migratedPoolAddress]
         );
         
         if (!existingMigrated) {
           await execute(
-            `INSERT INTO token_pools 
-             (mint_address, pool_address, dex, volume_24h_usd, liquidity_usd, price_usd, is_primary, discovered_at, last_verified) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [mintAddress, migratedPoolAddress, 'raydium', 0, 0, 0, 1, Date.now(), Date.now()]
+            `INSERT OR REPLACE INTO pool_info 
+             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [migratedPoolAddress, mintAddress, 'Raydium Pool', null, null, null, null, 'raydium', Date.now(), Date.now()]
           );
           console.log(`✅ [OHLCV] Manually added migrated pool ${migratedPoolAddress.slice(0, 8)}...`);
           saveDatabase();
@@ -880,8 +880,8 @@ export class OHLCVCollector {
       const dedupStats = await queryOne<any>(`
         SELECT 
           COUNT(*) as total_pools,
-          COUNT(CASE WHEN last_verified IS NOT NULL THEN 1 END) as verified_pools
-        FROM token_pools
+          COUNT(CASE WHEN last_updated IS NOT NULL THEN 1 END) as verified_pools
+        FROM pool_info
       `);
       
       return {
