@@ -350,9 +350,9 @@ export class OHLCVCollector {
           // New pool - INSERT
           await execute(
             `INSERT OR REPLACE INTO pool_info 
-             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [pool.pool_address, mintAddress, `${pool.dex} Pool`, null, null, null, null, pool.dex, Date.now(), Date.now()]
+             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, is_primary, pool_created_at, last_updated) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [pool.pool_address, mintAddress, `${pool.dex} Pool`, null, null, null, null, pool.dex, isPrimary, Date.now(), Date.now()]
           );
           console.log(`✅ [New] Inserted pool ${pool.pool_address.slice(0, 8)}...`);
         }
@@ -372,9 +372,9 @@ export class OHLCVCollector {
         if (!existingMigrated) {
           await execute(
             `INSERT OR REPLACE INTO pool_info 
-             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, pool_created_at, last_updated) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [migratedPoolAddress, mintAddress, 'Raydium Pool', null, null, null, null, 'raydium', Date.now(), Date.now()]
+             (pool_address, token_mint, name, base_token_address, base_token_symbol, quote_token_address, quote_token_symbol, dex_id, is_primary, pool_created_at, last_updated) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [migratedPoolAddress, mintAddress, 'Raydium Pool', null, null, null, null, 'raydium', 1, Date.now(), Date.now()]
           );
           console.log(`✅ [OHLCV] Manually added migrated pool ${migratedPoolAddress.slice(0, 8)}...`);
           saveDatabase();
