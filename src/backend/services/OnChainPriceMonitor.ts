@@ -229,7 +229,6 @@ export class OnChainPriceMonitor extends EventEmitter {
           if (value > 100000n && value < 1000000000000000000n) {
             const asSol = Number(value) / 1e9;
             const asTokens = Number(value) / 1e6;
-            const asRaw = Number(value);
             console.log(`  0x${offset.toString(16).padStart(3, '0')}: ${value}`);
             console.log(`         As SOL: ${asSol.toFixed(9)}`);
             console.log(`         As tokens (6 dec): ${asTokens.toFixed(6)}`);
