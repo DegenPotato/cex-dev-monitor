@@ -170,11 +170,15 @@ export class TradingEngine {
         signature,
         type: 'buy',
         tokenMint: params.tokenMint,
+        tokenSymbol: params.tokenSymbol || 'UNKNOWN',
         amountIn: params.amount,
         amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
+        netAmount,
+        taxAmount,
         slippageBps: params.slippageBps || 100,
         priorityFee: this.getPriorityFee(params.priorityLevel),
-        jitoTip: params.jitoTip
+        jitoTip: params.jitoTip || 0,
+        priceImpact: quoteData.priceImpactPct || 0
       });
 
       // Wait for confirmation
@@ -313,11 +317,15 @@ export class TradingEngine {
         signature,
         type: 'sell',
         tokenMint: params.tokenMint,
+        tokenSymbol: tokenInfo.symbol || params.tokenSymbol || 'UNKNOWN',
         amountIn: amountToSell,
         amountOut: outputSol,
-        slippageBps: params.slippageBps || 100,
+        netAmount: outputSol,
+        taxAmount: 0,
+        slippageBps: slippageBps,
         priorityFee: this.getPriorityFee(params.priorityLevel),
-        jitoTip: params.jitoTip
+        jitoTip: params.jitoTip || 0,
+        priceImpact: quoteData.priceImpactPct || 0
       });
 
       // Wait for confirmation
@@ -422,11 +430,15 @@ export class TradingEngine {
         signature,
         type: 'transfer',
         tokenMint: params.tokenMint,
+        tokenSymbol: params.tokenSymbol || 'UNKNOWN',
         amountIn: params.amount,
         amountOut: params.amount,
+        netAmount: params.amount,
+        taxAmount: 0,
         slippageBps: 0,
         priorityFee: this.getPriorityFee(params.priorityLevel),
-        jitoTip: 0
+        jitoTip: 0,
+        priceImpact: 0
       });
 
       await this.connection.confirmTransaction(signature, 'confirmed');
