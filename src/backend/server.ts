@@ -56,7 +56,7 @@ import youtubeRoutes from './routes/youtube.js';
 import youtubeAudioRoutes from './routes/youtube-audio.js';
 import { createTelegramRoutes } from './routes/telegram.js';
 import userDataRoutes from './routes/user-data.js';
-import tradingRoutes from './routes/trading.js';
+import tradingRoutes from './routes/trading.js'; // .js extension required for compiled output
 import forwardingDestinationRoutes from './routes/telegram-forwarding-destinations.js';
 import forwardingRulesRoutes from './routes/telegram-forwarding.js';
 // import tokenMetadataRoutes from './routes/token-metadata.js'; // TODO: Create this file
