@@ -37,6 +37,8 @@ export interface TradeResult {
   error?: string;
   amountIn?: number;
   amountOut?: number;
+  tokenSymbol?: string;  // Token symbol (for display)
+  tokenMint?: string;    // Token mint address
   priceImpact?: number;
   fee?: number;
   taxAmount?: number;  // Tax collected
@@ -234,17 +236,18 @@ export class TradingEngine {
       if (params.percentage) {
         const balance = await this.getTokenBalance(walletAddress, params.tokenMint);
         amountToSell = balance * (params.percentage / 100);
+        console.log(`📊 Token balance: ${balance}, selling ${params.percentage}% = ${amountToSell} tokens`);
       }
 
       // Get Jupiter quote
       const inputMint = params.tokenMint;
       const outputMint = 'So11111111111111111111111111111111111111112'; // SOL (native mint)
 
-      // Need to get token decimals
+      // Need to get token decimals and symbol
       const tokenInfo = await this.getTokenInfo(params.tokenMint);
       const amountRaw = Math.floor(amountToSell * Math.pow(10, tokenInfo.decimals));
 
-      console.log(`🎯 Selling ${amountToSell} tokens for SOL`);
+      console.log(`🎯 Selling ${amountToSell} ${tokenInfo.symbol || 'tokens'} (${amountRaw} raw) for SOL`);
 
       // Use higher slippage for sells (500 = 5%) to avoid failures
       const slippageBps = params.slippageBps || 500;
@@ -323,6 +326,8 @@ export class TradingEngine {
         signature,
         amountIn: amountToSell,
         amountOut: outputSol,
+        tokenSymbol: tokenInfo.symbol || 'UNKNOWN',
+        tokenMint: params.tokenMint,
         priceImpact: quoteData.priceImpactPct,
         fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL
       };

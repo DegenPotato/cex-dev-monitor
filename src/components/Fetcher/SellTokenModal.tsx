@@ -331,6 +331,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
                         <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-2">
                           <div className="text-green-400 font-medium">✅ Sell Successful!</div>
                           <div className="text-sm text-gray-300 space-y-1">
+                            <div>Sold: {result.amountIn?.toFixed(4)} {result.tokenSymbol || selectedToken?.symbol || 'tokens'}</div>
                             <div>Received: {result.amountOut?.toFixed(6)} SOL</div>
                             {result.signature && (
                               <div className="font-mono text-xs break-all">
