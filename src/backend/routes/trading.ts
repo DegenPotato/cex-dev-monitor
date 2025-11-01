@@ -465,6 +465,7 @@ router.get('/api/trading/history', authService.requireSecureAuth(), async (req: 
         t.amount_out,
         t.price_per_token as pricePerToken,
         t.total_fee_sol as totalCost,
+        t.error_message as errorMessage,
         t.created_at as timestamp,
         w.public_key as walletAddress,
         w.wallet_name as walletName
@@ -491,14 +492,15 @@ router.get('/api/trading/history', authService.requireSecureAuth(), async (req: 
       walletAddress: t.walletAddress || '',
       type: t.type,
       tokenAddress: t.tokenAddress || '',
-      tokenSymbol: t.tokenSymbol,
-      tokenName: t.tokenName,
+      tokenSymbol: t.tokenSymbol || 'UNKNOWN',
+      tokenName: t.tokenName || t.tokenSymbol || 'Unknown Token',
       amount: t.amount || 0,
-      signature: t.signature,
+      signature: t.signature || '',
       status: t.status === 'completed' ? 'success' : t.status,
       timestamp: new Date(t.timestamp * 1000), // Convert Unix to Date
-      pricePerToken: t.pricePerToken,
-      totalCost: t.totalCost
+      pricePerToken: t.pricePerToken || 0,
+      totalCost: t.totalCost || 0,
+      errorMessage: t.errorMessage
     }));
     
     res.json({ success: true, trades: formatted });
