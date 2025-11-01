@@ -287,15 +287,28 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
     
     // Support both old and new field names
     const finalTokenMint = tokenMint || tokenAddress;
-    const finalWalletAddress = walletAddress || walletId;
     const finalSlippage = slippageBps || (slippage ? slippage * 100 : undefined); // Convert % to bps if needed
     const finalPriorityLevel = priorityLevel || (priorityFee ? 'high' : 'medium');
     
     if (!finalTokenMint || !amount) {
       return res.status(400).json({ 
         error: 'Token address and amount required',
-        received: { tokenMint: finalTokenMint, tokenAddress, amount }
+        received: { tokenMint: finalTokenMint, tokenAddress, amount, walletId, walletAddress }
       });
+    }
+    
+    // Resolve walletAddress from walletId if needed
+    let finalWalletAddress = walletAddress;
+    if (!finalWalletAddress && walletId) {
+      const wallet = await queryOne('SELECT public_key, wallet_address FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
+      if (!wallet) {
+        return res.status(400).json({ error: 'Wallet not found' });
+      }
+      finalWalletAddress = wallet.public_key || wallet.wallet_address;
+    }
+    
+    if (!finalWalletAddress) {
+      return res.status(400).json({ error: 'Wallet address required' });
     }
     
     const result = await getTradingEngineInstance().buyToken({
@@ -374,15 +387,28 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
     
     // Support both old and new field names
     const finalTokenMint = tokenMint || tokenAddress;
-    const finalWalletAddress = walletAddress || walletId;
     const finalSlippage = slippageBps || (slippage ? slippage * 100 : undefined);
     const finalPriorityLevel = priorityLevel || (priorityFee ? 'high' : 'medium');
     
     if (!finalTokenMint || (!amount && !percentage)) {
       return res.status(400).json({ 
         error: 'Token address and amount/percentage required',
-        received: { tokenMint: finalTokenMint, tokenAddress, amount, percentage }
+        received: { tokenMint: finalTokenMint, tokenAddress, amount, percentage, walletId, walletAddress }
       });
+    }
+    
+    // Resolve walletAddress from walletId if needed
+    let finalWalletAddress = walletAddress;
+    if (!finalWalletAddress && walletId) {
+      const wallet = await queryOne('SELECT public_key, wallet_address FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
+      if (!wallet) {
+        return res.status(400).json({ error: 'Wallet not found' });
+      }
+      finalWalletAddress = wallet.public_key || wallet.wallet_address;
+    }
+    
+    if (!finalWalletAddress) {
+      return res.status(400).json({ error: 'Wallet address required' });
     }
     
     const result = await getTradingEngineInstance().sellToken({
