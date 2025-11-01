@@ -166,22 +166,28 @@ export class TradingEngine {
       console.log(`✅ Transaction sent: ${signature}`);
 
       // Log to database
-      await this.logTransaction({
-        userId: params.userId,
-        walletAddress,
-        signature,
-        type: 'buy',
-        tokenMint: params.tokenMint,
-        tokenSymbol: params.tokenSymbol || 'UNKNOWN',
-        amountIn: params.amount,
-        amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
-        netAmount,
-        taxAmount,
-        slippageBps: params.slippageBps || 100,
-        priorityFee: this.getPriorityFee(params.priorityLevel),
-        jitoTip: params.jitoTip || 0,
-        priceImpact: quoteData.priceImpactPct || 0
-      });
+      console.log('💾 Logging buy transaction to database...');
+      try {
+        await this.logTransaction({
+          userId: params.userId,
+          walletAddress,
+          signature,
+          type: 'buy',
+          tokenMint: params.tokenMint,
+          tokenSymbol: params.tokenSymbol || 'UNKNOWN',
+          amountIn: params.amount,
+          amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
+          netAmount,
+          taxAmount,
+          slippageBps: params.slippageBps || 100,
+          priorityFee: this.getPriorityFee(params.priorityLevel),
+          jitoTip: params.jitoTip || 0,
+          priceImpact: quoteData.priceImpactPct || 0
+        });
+        console.log('✅ Buy transaction logged successfully');
+      } catch (logError) {
+        console.error('❌ CRITICAL: Failed to log buy transaction:', logError);
+      }
 
       // Wait for confirmation
       const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
@@ -314,22 +320,28 @@ export class TradingEngine {
       console.log(`✅ Sell transaction sent: ${signature}`);
 
       // Log to database
-      await this.logTransaction({
-        userId: params.userId,
-        walletAddress,
-        signature,
-        type: 'sell',
-        tokenMint: params.tokenMint,
-        tokenSymbol: tokenInfo.symbol || params.tokenSymbol || 'UNKNOWN',
-        amountIn: amountToSell,
-        amountOut: outputSol,
-        netAmount: outputSol,
-        taxAmount: 0,
-        slippageBps: slippageBps,
-        priorityFee: this.getPriorityFee(params.priorityLevel),
-        jitoTip: params.jitoTip || 0,
-        priceImpact: quoteData.priceImpactPct || 0
-      });
+      console.log('💾 Logging sell transaction to database...');
+      try {
+        await this.logTransaction({
+          userId: params.userId,
+          walletAddress,
+          signature,
+          type: 'sell',
+          tokenMint: params.tokenMint,
+          tokenSymbol: tokenInfo.symbol || 'UNKNOWN',
+          amountIn: amountToSell,
+          amountOut: outputSol,
+          netAmount: outputSol,
+          taxAmount: 0,
+          slippageBps: slippageBps,
+          priorityFee: this.getPriorityFee(params.priorityLevel),
+          jitoTip: params.jitoTip || 0,
+          priceImpact: quoteData.priceImpactPct || 0
+        });
+        console.log('✅ Sell transaction logged successfully');
+      } catch (logError) {
+        console.error('❌ CRITICAL: Failed to log sell transaction:', logError);
+      }
 
       // Wait for confirmation
       const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
@@ -583,12 +595,27 @@ export class TradingEngine {
    * Log transaction to database with full details
    */
   private async logTransaction(data: any): Promise<void> {
+    console.log('📝 [logTransaction] Starting with data:', {
+      userId: data.userId,
+      walletAddress: data.walletAddress?.substring(0, 8) + '...',
+      type: data.type,
+      signature: data.signature?.substring(0, 8) + '...',
+      tokenMint: data.tokenMint?.substring(0, 8) + '...'
+    });
+    
     try {
       // Get wallet ID
       const wallet = await queryOne(
         'SELECT id FROM trading_wallets WHERE public_key = ? AND is_deleted = 0',
         [data.walletAddress]
       ) as any;
+      
+      if (!wallet) {
+        console.error('❌ [logTransaction] Wallet not found:', data.walletAddress);
+        throw new Error('Wallet not found in database');
+      }
+      
+      console.log('✅ [logTransaction] Found wallet ID:', wallet.id);
 
       // Get token metadata from oracle
       let tokenName = data.tokenSymbol;
@@ -626,6 +653,16 @@ export class TradingEngine {
         totalValueUsd = (data.amountOut || 0) * solPriceUsd;
       }
 
+      console.log('💾 [logTransaction] Inserting into database:', {
+        userId: data.userId,
+        walletId: wallet?.id,
+        type: data.type,
+        tokenSymbol: data.tokenSymbol,
+        amountIn: data.amountIn,
+        amountOut: data.amountOut,
+        totalValueUsd
+      });
+
       await execute(`
         INSERT INTO trading_transactions (
           user_id, wallet_id, signature, tx_type, status, 
@@ -660,6 +697,8 @@ export class TradingEngine {
         data.priceImpact || 0,
         Math.floor(Date.now() / 1000)
       ]);
+      
+      console.log('✅ [logTransaction] Transaction inserted successfully into trading_transactions table');
 
       // Update wallet last used
       if (wallet?.id) {
@@ -667,6 +706,7 @@ export class TradingEngine {
           'UPDATE trading_wallets SET updated_at = ? WHERE id = ?',
           [Math.floor(Date.now() / 1000), wallet.id]
         );
+        console.log('✅ [logTransaction] Wallet last_used timestamp updated');
       }
     } catch (error) {
       console.error('❌ Error logging transaction:', error);
