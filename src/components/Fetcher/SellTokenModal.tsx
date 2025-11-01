@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -140,7 +141,8 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
 
   const sellAmount = calculateSellAmount();
 
-  return (
+  // Render modal in portal to avoid parent container overflow clipping
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -149,7 +151,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998]"
             onClick={onClose}
           />
           
@@ -158,7 +160,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 max-h-[90vh] overflow-auto"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-700">
@@ -365,6 +367,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
