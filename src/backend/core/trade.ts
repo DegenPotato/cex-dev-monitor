@@ -550,7 +550,7 @@ export class TradingEngine {
     try {
       // Get wallet ID
       const wallet = await queryOne(
-        'SELECT id FROM trading_wallets WHERE wallet_address = ?',
+        'SELECT id FROM trading_wallets WHERE public_key = ? AND is_deleted = 0',
         [data.walletAddress]
       ) as any;
 
@@ -574,11 +574,11 @@ export class TradingEngine {
         Date.now()
       ]);
 
-      // Update wallet last used
+      // Update wallet last used and balance
       if (wallet?.id) {
         await execute(
-          'UPDATE trading_wallets SET last_used_at = ?, last_tx_signature = ? WHERE id = ?',
-          [Date.now(), data.signature, wallet.id]
+          'UPDATE trading_wallets SET updated_at = ? WHERE id = ?',
+          [Date.now(), wallet.id]
         );
       }
     } catch (error) {
