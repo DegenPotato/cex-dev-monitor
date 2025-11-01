@@ -349,7 +349,11 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
           await tokenSourceTracker.registerToken({
             tokenMint: finalTokenMint,
             firstSourceType: 'trade',
-            firstSourceDetails: { action: 'buy', amount },
+            firstSourceDetails: { 
+              action: 'buy', 
+              amount,
+              walletAddress: finalWalletAddress.substring(0, 8) + '...' // Truncated for privacy
+            },
             discoveredByUserId: userId
           });
         }
@@ -434,7 +438,7 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
           SELECT first_source_type, telegram_chat_id, telegram_chat_name 
           FROM token_registry 
           WHERE token_mint = ?
-        `, [tokenMint]) as any;
+        `, [finalTokenMint]) as any;
         
         if (tokenInfo) {
           // Create a trade ID
@@ -442,10 +446,22 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
           
           await tokenSourceTracker.linkTradeToSource({
             tradeId,
-            tokenMint,
+            tokenMint: finalTokenMint,
             sourceType: tokenInfo.first_source_type || 'unknown',
             sourceChatId: tokenInfo.telegram_chat_id,
             sourceChatName: tokenInfo.telegram_chat_name
+          });
+        } else {
+          // Token not in registry (edge case), register it as a trade-discovered token
+          await tokenSourceTracker.registerToken({
+            tokenMint: finalTokenMint,
+            firstSourceType: 'trade',
+            firstSourceDetails: { 
+              action: 'sell', 
+              amount: amount || percentage,
+              walletAddress: finalWalletAddress.substring(0, 8) + '...' // Truncated for privacy
+            },
+            discoveredByUserId: userId
           });
         }
       } catch (trackError) {
