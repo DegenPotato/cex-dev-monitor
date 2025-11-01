@@ -407,7 +407,7 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
       if (!response.ok) return;
       
       const data = await response.json();
-      set({ portfolioStats: data });
+      set({ portfolioStats: data.stats || data });
     } catch (error) {
       console.error('Failed to fetch portfolio stats:', error);
     }
