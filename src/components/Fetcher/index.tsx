@@ -4,10 +4,11 @@ import { WalletsPanel } from './WalletsPanel';
 import { TradingPanel } from './TradingPanel';
 import { PortfolioPanel } from './PortfolioPanel';
 import { HistoryPanel } from './HistoryPanel';
-import { Wallet, TrendingUp, History, PieChart, Zap } from 'lucide-react';
+import { SettingsPanel } from './SettingsPanel';
+import { Wallet, TrendingUp, History, PieChart, Zap, Settings } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-type TabType = 'portfolio' | 'wallets' | 'trade' | 'history';
+type TabType = 'portfolio' | 'wallets' | 'trade' | 'history' | 'settings';
 
 export const Fetcher: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('portfolio');
@@ -16,7 +17,8 @@ export const Fetcher: React.FC = () => {
     { id: 'portfolio' as TabType, label: 'Portfolio', icon: PieChart },
     { id: 'wallets' as TabType, label: 'Wallets', icon: Wallet },
     { id: 'trade' as TabType, label: 'Trade', icon: TrendingUp },
-    { id: 'history' as TabType, label: 'History', icon: History }
+    { id: 'history' as TabType, label: 'History', icon: History },
+    { id: 'settings' as TabType, label: 'Settings', icon: Settings }
   ];
 
   return (
@@ -101,6 +103,7 @@ export const Fetcher: React.FC = () => {
           {activeTab === 'wallets' && <WalletsPanel />}
           {activeTab === 'trade' && <TradingPanel />}
           {activeTab === 'history' && <HistoryPanel />}
+          {activeTab === 'settings' && <SettingsPanel />}
         </motion.div>
       </div>
     </div>

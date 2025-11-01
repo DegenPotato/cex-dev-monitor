@@ -10,7 +10,8 @@ import {
   VersionedTransaction,
   ComputeBudgetProgram,
   LAMPORTS_PER_SOL,
-  SystemProgram
+  SystemProgram,
+  Commitment
 } from '@solana/web3.js';
 // @ts-ignore - node-fetch types not needed for runtime
 import fetch from 'node-fetch';
@@ -29,6 +30,7 @@ export interface TradeParams {
   amount: number;  // In SOL or token units
   slippageBps?: number;  // Default 100 (1%)
   priorityLevel?: 'low' | 'medium' | 'high' | 'turbo';
+  commitmentLevel?: 'processing' | 'confirmed' | 'finalized';  // Default 'confirmed'
   jitoTip?: number;  // In SOL
   skipTax?: boolean;  // Override tax for special cases
 }
@@ -182,7 +184,8 @@ export class TradingEngine {
       });
 
       // Wait for confirmation
-      await this.connection.confirmTransaction(signature, 'confirmed');
+      const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
+      await this.connection.confirmTransaction(signature, commitment);
 
       // Send tax if applicable
       if (taxAmount > 0 && this.taxRecipientAddress) {
@@ -329,7 +332,8 @@ export class TradingEngine {
       });
 
       // Wait for confirmation
-      await this.connection.confirmTransaction(signature, 'confirmed');
+      const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
+      await this.connection.confirmTransaction(signature, commitment);
 
       return {
         success: true,
@@ -441,7 +445,8 @@ export class TradingEngine {
         priceImpact: 0
       });
 
-      await this.connection.confirmTransaction(signature, 'confirmed');
+      const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
+      await this.connection.confirmTransaction(signature, commitment);
 
       return {
         success: true,

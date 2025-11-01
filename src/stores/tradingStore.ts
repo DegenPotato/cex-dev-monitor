@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { config } from '../config';
 import io, { Socket } from 'socket.io-client';
+import { useTradingSettingsStore } from './tradingSettingsStore';
 
 const API_BASE_URL = config.apiUrl;
 
@@ -362,12 +363,15 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   executeTrade: async (params: TradeParams) => {
     set({ loading: true, error: null });
     try {
+      // Get commitment level from settings
+      const commitmentLevel = useTradingSettingsStore.getState().commitmentLevel;
+      
       const endpoint = params.type === 'buy' ? 'buy' : 'sell';
       const response = await fetch(`${API_BASE_URL}/api/trading/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(params)
+        body: JSON.stringify({ ...params, commitmentLevel })
       });
       
       const result = await response.json();
