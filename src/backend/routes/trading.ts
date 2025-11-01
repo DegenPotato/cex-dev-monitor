@@ -289,7 +289,8 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       walletId,
       walletAddress,
       tokenAddress,
-      tokenMint, 
+      tokenMint,
+      tokenSymbol, // Passed from frontend to avoid Jupiter lookup
       amount, 
       slippage,
       slippageBps,
@@ -298,6 +299,8 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       jitoTip,
       skipTax
     } = req.body;
+    
+    console.log('[Buy Token] Request:', { walletId, tokenMint, tokenSymbol, amount, slippageBps });
     
     // Support both old and new field names
     const finalTokenMint = tokenMint || tokenAddress;
@@ -329,6 +332,7 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       userId,
       walletAddress: finalWalletAddress,
       tokenMint: finalTokenMint,
+      tokenSymbol, // Pass from frontend to avoid Jupiter lookup
       amount,
       slippageBps: finalSlippage,
       priorityLevel: finalPriorityLevel,
