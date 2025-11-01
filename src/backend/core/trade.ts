@@ -652,7 +652,37 @@ export class TradingEngine {
         );
       }
     } catch (error) {
-      console.error('Error logging transaction:', error);
+      console.error('❌ Error logging transaction:', error);
+      console.error('❌ Transaction data:', JSON.stringify(data, null, 2));
+      
+      // Fallback: Try basic insert without new columns
+      try {
+        console.log('🔄 Attempting fallback transaction logging...');
+        const wallet = await queryOne(
+          'SELECT id FROM trading_wallets WHERE public_key = ? AND is_deleted = 0',
+          [data.walletAddress]
+        ) as any;
+        
+        await execute(`
+          INSERT INTO trading_transactions (
+            user_id, wallet_id, signature, tx_type, status, token_mint,
+            token_symbol, amount_in, amount_out, created_at
+          ) VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)
+        `, [
+          data.userId,
+          wallet?.id,
+          data.signature,
+          data.type,
+          data.tokenMint,
+          data.tokenSymbol || 'UNKNOWN',
+          data.amountIn,
+          data.amountOut || 0,
+          Math.floor(Date.now() / 1000)
+        ]);
+        console.log('✅ Fallback transaction logging succeeded');
+      } catch (fallbackError) {
+        console.error('❌ Fallback transaction logging also failed:', fallbackError);
+      }
     }
   }
 }
