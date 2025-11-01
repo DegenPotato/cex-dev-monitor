@@ -138,6 +138,16 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
         slippageBps: slippage * 100
       };
 
+      console.log('[SellTokenModal] Sending sell request:', {
+        mode: tokenInputMode,
+        selectedToken: selectedToken ? {
+          mint: selectedToken.mint,
+          symbol: selectedToken.symbol,
+          uiAmount: selectedToken.uiAmount
+        } : null,
+        requestBody
+      });
+
       const response = await fetch(`${config.apiUrl}/api/trading/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
