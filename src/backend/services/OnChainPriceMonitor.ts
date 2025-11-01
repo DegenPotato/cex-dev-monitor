@@ -44,20 +44,26 @@ export class OnChainPriceMonitor extends EventEmitter {
 
   constructor(rpcUrl: string = process.env.HELIUS_API_KEY 
     ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
-    : 'wss://api.mainnet-beta.solana.com') {
+    : 'https://api.mainnet-beta.solana.com') {
     super();
     
-    // Use WebSocket endpoint
-    const wsUrl = rpcUrl.startsWith('https') 
-      ? rpcUrl.replace('https', 'wss')
+    // HTTP URL for main connection, WebSocket URL for subscriptions
+    const httpUrl = rpcUrl.startsWith('wss') 
+      ? rpcUrl.replace('wss', 'https').replace('ws', 'http')
       : rpcUrl;
     
-    this.connection = new Connection(wsUrl, {
+    const wsUrl = httpUrl.startsWith('https') 
+      ? httpUrl.replace('https', 'wss')
+      : httpUrl.replace('http', 'ws');
+    
+    this.connection = new Connection(httpUrl, {
       commitment: 'confirmed',
       wsEndpoint: wsUrl
     });
 
-    console.log('🔗 On-chain monitor connected to:', wsUrl);
+    console.log('🔗 On-chain monitor connected');
+    console.log('   HTTP:', httpUrl);
+    console.log('   WebSocket:', wsUrl);
   }
 
   /**
