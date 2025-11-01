@@ -1,15 +1,14 @@
 /**
- * Price Test Routes
- * Real-time price monitoring and alert testing
+ * Test Lab Routes - On-chain WebSocket campaigns
  */
 
 import { Router, Request, Response } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
-import { getTokenPriceMonitor } from '../services/TokenPriceMonitor.js';
+import { getOnChainPriceMonitor } from '../services/OnChainPriceMonitor.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const authService = new SecureAuthService();
-const priceMonitor = getTokenPriceMonitor();
+const monitor = getOnChainPriceMonitor();
 
 // Store io instance
 let io: SocketIOServer | null = null;
@@ -21,244 +20,182 @@ export function initializePriceTestRoutes(ioInstance: SocketIOServer) {
 
 const router = Router();
 
-// Store active price targets per user per token
-interface PriceTarget {
-  id: string;
-  tokenMint: string;
-  targetPrice: number;
-  targetPercent: number;
-  direction: 'above' | 'below';
-  hit: boolean;
-  createdAt: number;
-}
-
-// Map: userId -> tokenMint -> targets[]
-const userTargets = new Map<number, Map<string, PriceTarget[]>>();
+// Map user campaigns
+const userCampaigns = new Map<number, Set<string>>();
 
 /**
- * Start price monitoring for a token
+ * Start a new monitoring campaign
  */
-router.post('/api/price-test/subscribe', authService.requireSecureAuth(), async (req: Request, res: Response) => {
-  try {
-    const { tokenMint } = req.body;
-    
-    if (!tokenMint) {
-      return res.status(400).json({ error: 'tokenMint required' });
-    }
-
-    console.log(`📊 Starting price monitoring for ${tokenMint}`);
-    
-    // Start monitoring
-    const stats = await priceMonitor.startMonitoring(tokenMint);
-    
-    res.json({ 
-      success: true, 
-      tokenMint,
-      stats,
-      message: `Started monitoring ${tokenMint}` 
-    });
-  } catch (error: any) {
-    console.error('❌ Error starting price monitoring:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * Stop price monitoring for a token
- */
-router.post('/api/price-test/unsubscribe', authService.requireSecureAuth(), async (req: Request, res: Response) => {
-  try {
-    const { tokenMint } = req.body;
-    
-    if (!tokenMint) {
-      return res.status(400).json({ error: 'tokenMint required' });
-    }
-
-    console.log(`📊 Stopping price monitoring for ${tokenMint}`);
-    
-    priceMonitor.stopMonitoring(tokenMint);
-    
-    res.json({ 
-      success: true, 
-      tokenMint,
-      message: `Stopped monitoring ${tokenMint}` 
-    });
-  } catch (error: any) {
-    console.error('❌ Error stopping price monitoring:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * Get current price stats
- */
-router.get('/api/price-test/stats/:tokenMint', authService.requireSecureAuth(), async (req: Request, res: Response) => {
-  try {
-    const { tokenMint } = req.params;
-    
-    const stats = priceMonitor.getStats(tokenMint);
-    
-    if (!stats) {
-      return res.status(404).json({ error: 'Token not found or not being monitored' });
-    }
-    
-    res.json({ success: true, stats });
-  } catch (error: any) {
-    console.error('❌ Error getting price stats:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * Reset stats for a token
- */
-router.post('/api/price-test/reset', authService.requireSecureAuth(), async (req: Request, res: Response) => {
-  try {
-    const { tokenMint } = req.body;
-    
-    if (!tokenMint) {
-      return res.status(400).json({ error: 'tokenMint required' });
-    }
-
-    priceMonitor.resetStats(tokenMint);
-    
-    const stats = priceMonitor.getStats(tokenMint);
-    
-    res.json({ 
-      success: true, 
-      tokenMint,
-      stats,
-      message: `Reset stats for ${tokenMint}` 
-    });
-  } catch (error: any) {
-    console.error('❌ Error resetting stats:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * Set price targets for a token
- */
-router.post('/api/price-test/targets', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.post('/api/test-lab/campaign/start', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { tokenMint, targets } = req.body;
+    const { tokenMint, poolAddress } = req.body;
     
-    if (!tokenMint || !Array.isArray(targets)) {
-      return res.status(400).json({ error: 'tokenMint and targets array required' });
+    if (!tokenMint || !poolAddress) {
+      return res.status(400).json({ error: 'tokenMint and poolAddress required' });
     }
 
-    // Create target objects
-    const priceTargets: PriceTarget[] = targets.map((t: any) => ({
-      id: `${Date.now()}_${Math.random()}`,
-      tokenMint,
-      targetPrice: t.targetPrice,
-      targetPercent: t.targetPercent,
-      direction: t.direction,
-      hit: false,
-      createdAt: Date.now()
-    }));
-
-    // Initialize user targets if not exists
-    if (!userTargets.has(userId)) {
-      userTargets.set(userId, new Map());
+    const campaign = await monitor.startCampaign(tokenMint, poolAddress);
+    
+    // Track user campaigns
+    if (!userCampaigns.has(userId)) {
+      userCampaigns.set(userId, new Set());
     }
-    
-    // Store targets for this token
-    userTargets.get(userId)!.set(tokenMint, priceTargets);
-    
-    console.log(`🎯 Set ${priceTargets.length} targets for ${tokenMint} (user ${userId})`);
+    userCampaigns.get(userId)!.add(campaign.id);
     
     res.json({ 
       success: true, 
-      targets: priceTargets 
+      campaign
     });
   } catch (error: any) {
-    console.error('❌ Error setting targets:', error);
+    console.error('❌ Error starting campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * Get price targets for a token
+ * Stop a campaign
  */
-router.get('/api/price-test/targets/:tokenMint', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.post('/api/test-lab/campaign/stop', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
-    const { tokenMint } = req.params;
+    const { campaignId } = req.body;
     
-    const userTokens = userTargets.get(userId);
-    const targets = userTokens?.get(tokenMint) || [];
+    if (!campaignId) {
+      return res.status(400).json({ error: 'campaignId required' });
+    }
+
+    await monitor.stopCampaign(campaignId);
     
-    res.json({ success: true, targets });
+    res.json({ 
+      success: true, 
+      message: 'Campaign stopped' 
+    });
   } catch (error: any) {
-    console.error('❌ Error getting targets:', error);
+    console.error('❌ Error stopping campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * Clear targets for a token
+ * Get campaign details
  */
-router.delete('/api/price-test/targets/:tokenMint', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.get('/api/test-lab/campaign/:id', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
-    const { tokenMint } = req.params;
+    const { id } = req.params;
     
-    const userTokens = userTargets.get(userId);
-    if (userTokens) {
-      userTokens.delete(tokenMint);
+    const campaign = monitor.getCampaign(id);
+    
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
     }
     
-    res.json({ success: true, message: 'Targets cleared' });
+    res.json({ success: true, campaign });
   } catch (error: any) {
-    console.error('❌ Error clearing targets:', error);
+    console.error('❌ Error getting campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * Get all monitored tokens
+ * Reset campaign baseline
  */
-router.get('/api/price-test/monitored', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+router.post('/api/test-lab/campaign/reset', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const tokens = priceMonitor.getMonitoredTokens();
+    const { campaignId } = req.body;
     
-    res.json({ success: true, tokens });
+    if (!campaignId) {
+      return res.status(400).json({ error: 'campaignId required' });
+    }
+
+    monitor.resetCampaign(campaignId);
+    const campaign = monitor.getCampaign(campaignId);
+    
+    res.json({ 
+      success: true, 
+      campaign
+    });
   } catch (error: any) {
-    console.error('❌ Error getting monitored tokens:', error);
+    console.error('❌ Error resetting campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Check targets against price updates
-priceMonitor.on('price_update', (update) => {
-  // Check all users' targets for this token
-  for (const [userId, userTokenTargets] of userTargets.entries()) {
-    const targets = userTokenTargets.get(update.tokenMint);
-    if (!targets) continue;
+/**
+ * Add alert to campaign
+ */
+router.post('/api/test-lab/alerts', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { campaignId, targetPercent, direction } = req.body;
     
-    for (const target of targets) {
-      if (target.hit) continue;
-      
-      // Check if target is hit (using SOL price)
-      const hit = target.direction === 'above' 
-        ? update.price >= target.targetPrice
-        : update.price <= target.targetPrice;
-      
-      if (hit) {
-        target.hit = true;
-        console.log(`🎯 Target HIT for user ${userId}: ${update.tokenMint} ${target.direction} ${target.targetPrice.toFixed(9)} SOL`);
-        
-        // Emit WebSocket event for notification
-        if (io) {
-          io.to(`user_${userId}`).emit('price_target_hit', {
-            target,
-            currentPrice: update.price,
-            currentPriceUSD: update.priceUSD,
-            timestamp: Date.now()
-          });
-        }
+    if (!campaignId || targetPercent === undefined || !direction) {
+      return res.status(400).json({ error: 'campaignId, targetPercent and direction required' });
+    }
+
+    const alert = monitor.addAlert(campaignId, targetPercent, direction);
+    
+    if (!alert) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    
+    res.json({ 
+      success: true, 
+      alert
+    });
+  } catch (error: any) {
+    console.error('❌ Error adding alert:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get alerts for campaign
+ */
+router.get('/api/test-lab/alerts/:campaignId', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    
+    const alerts = monitor.getAlerts(campaignId);
+    
+    res.json({ success: true, alerts });
+  } catch (error: any) {
+    console.error('❌ Error getting alerts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get all campaigns
+ */
+router.get('/api/test-lab/campaigns', authService.requireSecureAuth(), async (req: any, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const userCampaignIds = userCampaigns.get(userId) || new Set();
+    
+    const campaigns = monitor.getActiveCampaigns()
+      .filter(c => userCampaignIds.has(c.id));
+    
+    res.json({ success: true, campaigns });
+  } catch (error: any) {
+    console.error('❌ Error getting campaigns:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Forward events to Socket.IO
+monitor.on('price_update', (data) => {
+  if (io) {
+    io.emit('campaign_price_update', data);
+  }
+});
+
+monitor.on('alert_triggered', (data) => {
+  if (io) {
+    // Find user who owns this campaign
+    for (const [userId, campaigns] of userCampaigns.entries()) {
+      if (campaigns.has(data.campaignId)) {
+        io.to(`user_${userId}`).emit('alert_triggered', data);
+        break;
       }
     }
   }

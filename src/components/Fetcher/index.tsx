@@ -5,7 +5,7 @@ import { TradingPanel } from './TradingPanel';
 import { PortfolioPanel } from './PortfolioPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { SettingsPanel } from './SettingsPanel';
-import { TestTab } from './TestTab';
+import { TestLabTab } from './TestLabTab';
 import { Wallet, TrendingUp, History, PieChart, Zap, Settings, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -105,7 +105,7 @@ export const Fetcher: React.FC = () => {
           {activeTab === 'wallets' && <WalletsPanel />}
           {activeTab === 'trade' && <TradingPanel />}
           {activeTab === 'history' && <HistoryPanel />}
-          {activeTab === 'test' && <TestTab />}
+          {activeTab === 'test' && <TestLabTab />}
           {activeTab === 'settings' && <SettingsPanel />}
         </motion.div>
       </div>
