@@ -140,7 +140,11 @@ export const PortfolioPanel: React.FC = () => {
             {showValues ? data.totalSOL.toFixed(4) : '****'} SOL
           </div>
           <div className="text-sm text-gray-500 mt-1">
-            ≈ {formatValue(data.totalSOL * (portfolioStats?.solPrice || 150))} @ ${portfolioStats?.solPrice?.toFixed(2) || '150'}/SOL
+            {portfolioStats?.solPrice ? (
+              <>≈ {formatValue(data.totalSOL * portfolioStats.solPrice)} @ ${portfolioStats.solPrice.toFixed(2)}/SOL</>
+            ) : (
+              <span className="text-gray-600">Loading SOL price...</span>
+            )}
           </div>
         </motion.div>
 
