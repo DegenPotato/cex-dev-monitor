@@ -466,7 +466,7 @@ router.get('/api/trading/history', authService.requireSecureAuth(), async (req: 
         t.price_per_token as pricePerToken,
         t.total_fee_sol as totalCost,
         t.created_at as timestamp,
-        w.wallet_address as walletAddress,
+        w.public_key as walletAddress,
         w.wallet_name as walletName
       FROM trading_transactions t
       JOIN trading_wallets w ON t.wallet_id = w.id
@@ -503,8 +503,12 @@ router.get('/api/trading/history', authService.requireSecureAuth(), async (req: 
     
     res.json({ success: true, trades: formatted });
   } catch (error: any) {
-    console.error('Error fetching trade history:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error fetching trade history:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ 
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
