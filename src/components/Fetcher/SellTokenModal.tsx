@@ -4,6 +4,7 @@ import { X, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
+import { useTradingSettingsStore } from '../../stores/tradingSettingsStore';
 
 interface Token {
   mint: string;
@@ -31,6 +32,9 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   walletTokens,
   onSellComplete 
 }) => {
+  // Get settings from store
+  const { defaultSlippage } = useTradingSettingsStore();
+  
   const [tokens, setTokens] = useState<Token[]>([]);
   const [tokenInputMode, setTokenInputMode] = useState<'from_wallet' | 'manual'>('from_wallet');
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
@@ -38,11 +42,16 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   const [manualTokenSymbol, setManualTokenSymbol] = useState('');
   const [manualTokenAmount, setManualTokenAmount] = useState('');
   const [percentage, setPercentage] = useState(100);
-  const [slippage, setSlippage] = useState(5); // 5% default
+  const [slippage, setSlippage] = useState(defaultSlippage); // From settings
   const [loading, setLoading] = useState(false);
   const [selling, setSelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+
+  // Sync slippage with settings when they change
+  useEffect(() => {
+    setSlippage(defaultSlippage);
+  }, [defaultSlippage]);
 
   // Use pre-loaded tokens if available, otherwise fetch
   useEffect(() => {

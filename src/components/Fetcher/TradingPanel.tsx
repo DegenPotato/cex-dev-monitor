@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Zap, AlertCircle, DollarSign, Percent, Activity, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
+import { useTradingSettingsStore } from '../../stores/tradingSettingsStore';
 import { toast } from 'react-hot-toast';
 
 export const TradingPanel: React.FC = () => {
   const { wallets, executeTrade, loading, fetchWallets } = useTradingStore();
+  const { defaultSlippage } = useTradingSettingsStore();
+  
   const [selectedWallet, setSelectedWallet] = useState('');
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
   const [tokenInputMode, setTokenInputMode] = useState<'manual' | 'from_wallet'>('manual');
   const [tokenAddress, setTokenAddress] = useState('');
   const [selectedTokenFromWallet, setSelectedTokenFromWallet] = useState('');
   const [amount, setAmount] = useState('');
-  const [slippage, setSlippage] = useState('1');
+  const [slippage, setSlippage] = useState(defaultSlippage.toString()); // From settings
   const [skipTax, setSkipTax] = useState(false);
   const [priorityFee, setPriorityFee] = useState('0.0001');
   const [estimatedOutput, setEstimatedOutput] = useState<number | null>(null);
@@ -22,6 +25,11 @@ export const TradingPanel: React.FC = () => {
   useEffect(() => {
     fetchWallets();
   }, []);
+
+  // Sync slippage with settings when they change
+  useEffect(() => {
+    setSlippage(defaultSlippage.toString());
+  }, [defaultSlippage]);
 
   // Get available tokens from selected wallet (only those with liquidity and value)
   const availableTokens = React.useMemo(() => {
