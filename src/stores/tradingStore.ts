@@ -392,16 +392,24 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
   // Fetch trade history
   fetchTradeHistory: async () => {
     try {
+      console.log('[TradingStore] Fetching trade history...');
       const response = await fetch(`${API_BASE_URL}/api/trading/history`, {
         credentials: 'include'
       });
       
-      if (!response.ok) return;
+      if (!response.ok) {
+        console.error('[TradingStore] Failed to fetch trade history:', response.status);
+        return;
+      }
       
       const data = await response.json();
-      set({ tradeHistory: data.trades || [] });
+      console.log('[TradingStore] Trade history response:', data.trades?.length || 0, 'trades');
+      
+      if (data.success && data.trades) {
+        set({ tradeHistory: data.trades });
+      }
     } catch (error) {
-      console.error('Failed to fetch trade history:', error);
+      console.error('[TradingStore] Error fetching trade history:', error);
     }
   },
 

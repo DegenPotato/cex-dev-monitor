@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { History, ExternalLink, TrendingUp, TrendingDown, Check, X, Clock, Copy, Check as CheckIcon } from 'lucide-react';
+import { History, ExternalLink, TrendingUp, TrendingDown, Check, X, Clock, Copy, Check as CheckIcon, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
 import { toast } from 'react-hot-toast';
@@ -67,7 +67,8 @@ export const HistoryPanel: React.FC = () => {
   };
 
   const formatFullTimestamp = (date: Date) => {
-    return new Date(date).toLocaleString('en-US', {
+    // Date is already a Date object from backend, don't wrap it again
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -84,10 +85,24 @@ export const HistoryPanel: React.FC = () => {
         <h2 className="text-2xl font-bold text-cyan-400 flex items-center gap-2">
           <History className="w-6 h-6" />
           Trade History
+          <span className="text-sm text-gray-500 font-normal">({filteredTrades.length})</span>
         </h2>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Clock className="w-4 h-4" />
-          <span>Auto-refresh: 30s</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              fetchTradeHistory();
+              toast.success('Trade history refreshed');
+            }}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-900 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-sm text-gray-400 hover:text-cyan-400 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Clock className="w-4 h-4" />
+            <span>Auto: 30s</span>
+          </div>
         </div>
       </div>
 
