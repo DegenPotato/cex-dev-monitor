@@ -39,13 +39,13 @@ export class WalletManager {
     const publicKey = keypair.publicKey.toString();
     const privateKey = bs58.encode(keypair.secretKey);
 
-    // Encrypt private key
+    // Encrypt private key - store in combined format "iv:tag:encrypted"
     const { encrypted, iv, tag } = this.encryption.encrypt(privateKey);
-    const encryptedKey = `${encrypted}:${tag}`; // Store with tag for authentication
+    const encryptedKey = `${iv}:${tag}:${encrypted}`;
 
     // Check if this is the first wallet
     const existingWallets = await queryAll(
-      'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ?',
+      'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ? AND is_deleted = 0',
       [userId]
     );
     const isFirst = (existingWallets as any[])[0].count === 0;
@@ -53,16 +53,16 @@ export class WalletManager {
     // Store in database
     const result = await execute(`
       INSERT INTO trading_wallets (
-        user_id, wallet_address, encrypted_private_key, encryption_iv,
-        wallet_name, is_default, is_active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        user_id, public_key, private_key,
+        wallet_name, is_default, is_deleted, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
     `, [
       userId,
       publicKey,
       encryptedKey,
-      iv,
       walletName || `Wallet ${(existingWallets as any[])[0].count + 1}`,
       isFirst ? 1 : 0,
+      Date.now(),
       Date.now()
     ]);
 
@@ -108,7 +108,7 @@ export class WalletManager {
 
       // Check if wallet already exists for this user
       const existing = await queryOne(
-        'SELECT id FROM trading_wallets WHERE user_id = ? AND wallet_address = ?',
+        'SELECT id FROM trading_wallets WHERE user_id = ? AND public_key = ? AND is_deleted = 0',
         [userId, publicKey]
       );
 
@@ -116,14 +116,14 @@ export class WalletManager {
         throw new Error('Wallet already imported for this user');
       }
 
-      // Encrypt private key
+      // Encrypt private key - store in combined format "iv:tag:encrypted"
       const privateKey = bs58.encode(keypair.secretKey);
       const { encrypted, iv, tag } = this.encryption.encrypt(privateKey);
-      const encryptedKey = `${encrypted}:${tag}`;
+      const encryptedKey = `${iv}:${tag}:${encrypted}`;
 
       // Get wallet count for naming
       const walletCount = await queryOne(
-        'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ? AND is_active = 1',
+        'SELECT COUNT(*) as count FROM trading_wallets WHERE user_id = ? AND is_deleted = 0',
         [userId]
       );
 
@@ -135,15 +135,15 @@ export class WalletManager {
       // Store in database
       const result = await execute(`
         INSERT INTO trading_wallets (
-          user_id, wallet_address, encrypted_private_key, encryption_iv,
-          wallet_name, is_default, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, 0, 1, ?)
+          user_id, public_key, private_key,
+          wallet_name, is_default, is_deleted, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 0, 0, ?, ?)
       `, [
         userId,
         publicKey,
         encryptedKey,
-        iv,
         walletName || `Imported Wallet ${(walletCount as any)?.count + 1}`,
+        Date.now(),
         Date.now()
       ]);
 
@@ -174,7 +174,7 @@ export class WalletManager {
   async exportWallet(userId: number, walletAddress: string): Promise<string> {
     // Verify ownership
     const wallet = await queryOne(
-      'SELECT encrypted_private_key, encryption_iv FROM trading_wallets WHERE user_id = ? AND wallet_address = ?',
+      'SELECT private_key FROM trading_wallets WHERE user_id = ? AND public_key = ? AND is_deleted = 0',
       [userId, walletAddress]
     );
 
@@ -182,9 +182,9 @@ export class WalletManager {
       throw new Error('Wallet not found or access denied');
     }
 
-    // Decrypt private key
-    const [encrypted, tag] = (wallet as any).encrypted_private_key.split(':');
-    const privateKey = this.encryption.decrypt(encrypted, (wallet as any).encryption_iv, tag);
+    // Decrypt private key - private_key is stored in format "iv:tag:encrypted"
+    const [iv, tag, encrypted] = (wallet as any).private_key.split(':');
+    const privateKey = this.encryption.decrypt(encrypted, iv, tag);
 
     // Return base58 encoded for easy import elsewhere
     return privateKey;
@@ -201,7 +201,7 @@ export class WalletManager {
 
     // Get from database
     const wallet = await queryOne(
-      'SELECT encrypted_private_key, encryption_iv FROM trading_wallets WHERE user_id = ? AND wallet_address = ? AND is_active = 1',
+      'SELECT private_key FROM trading_wallets WHERE user_id = ? AND public_key = ? AND is_deleted = 0',
       [userId, walletAddress]
     );
 
@@ -209,9 +209,9 @@ export class WalletManager {
       throw new Error('Wallet not found or inactive');
     }
 
-    // Decrypt
-    const [encrypted, tag] = (wallet as any).encrypted_private_key.split(':');
-    const privateKey = this.encryption.decrypt(encrypted, (wallet as any).encryption_iv, tag);
+    // Decrypt - private_key is stored in format "iv:tag:encrypted"
+    const [iv, tag, encrypted] = (wallet as any).private_key.split(':');
+    const privateKey = this.encryption.decrypt(encrypted, iv, tag);
     
     // Create keypair
     const secretKey = bs58.decode(privateKey);
