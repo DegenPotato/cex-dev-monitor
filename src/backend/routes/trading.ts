@@ -670,6 +670,7 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
         stats: {
           totalValueUSD: 0,
           totalSOL: 0,
+          solPrice: solPriceOracle.getPrice(),  // Include SOL price even with no wallets
           totalTokens: 0,
           walletCount: 0,
           profitLoss: 0,
@@ -772,6 +773,7 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
     const stats = {
       totalValueUSD,
       totalSOL,
+      solPrice,  // Add SOL price to response
       totalTokens: holdings.length,
       walletCount: wallets.length,
       profitLoss,
