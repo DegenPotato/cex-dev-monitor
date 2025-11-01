@@ -58,8 +58,9 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
-    // Get initial price from API
-    const initialPrice = await this.fetchPriceFromAPI(tokenMint);
+    // Get initial price from OHLCV candle
+    const initialCandle = await this.fetchLatestCandle(poolAddress);
+    const initialPrice = initialCandle.close; // Use close price as current
     
     const campaign: Campaign = {
       id: campaignId,
@@ -101,13 +102,14 @@ export class OnChainPriceMonitor extends EventEmitter {
       }
 
       try {
-        // Fetch latest price from API
-        const newPrice = await this.fetchPriceFromAPI(campaign.tokenMint);
+        // Fetch latest OHLCV candle
+        const candle = await this.fetchLatestCandle(campaign.poolAddress);
+        const newPrice = candle.close; // Use close as current price
         
-        // Update campaign stats
+        // Update campaign stats with candle data
         campaign.currentPrice = newPrice;
-        campaign.high = Math.max(campaign.high, newPrice);
-        campaign.low = Math.min(campaign.low, newPrice);
+        campaign.high = Math.max(campaign.high, candle.high); // Track session high
+        campaign.low = Math.min(campaign.low, candle.low);    // Track session low
         campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
         campaign.lastUpdate = Date.now();
         
@@ -117,6 +119,11 @@ export class OnChainPriceMonitor extends EventEmitter {
         // Keep last 100 data points
         if (campaign.priceHistory.length > 100) {
           campaign.priceHistory.shift();
+        }
+        
+        // Log significant price changes
+        if (Math.abs(campaign.changePercent) > 1) {
+          console.log(`📊 ${campaign.tokenMint.slice(0, 8)}... Price: ${newPrice.toFixed(9)} SOL (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | High: ${campaign.high.toFixed(9)} | Low: ${campaign.low.toFixed(9)}`);
         }
         
         // Broadcast update
@@ -133,50 +140,53 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch price from GeckoTerminal API
-   * Much more reliable than decoding on-chain data
+   * Fetch OHLCV data from GeckoTerminal API
+   * Returns the latest 5-minute candle with open, high, low, close
    */
-  private async fetchPriceFromAPI(tokenMint: string): Promise<number> {
+  private async fetchLatestCandle(poolAddress: string): Promise<{
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    timestamp: number;
+  }> {
     try {
-      const response = await fetch(
-        `https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price/${tokenMint}`
-      );
+      const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddress}/ohlcv/minute`;
+      
+      const params = new URLSearchParams({
+        aggregate: '5',  // 5-minute candles
+        limit: '1',      // Just get the latest candle
+        currency: 'token', // Price in SOL (base token)
+        token: 'base'      // Base token is SOL
+      });
+      
+      const response = await fetch(`${url}?${params}`, {
+        headers: { 'Accept': 'application/json' }
+      });
       
       if (!response.ok) {
         throw new Error(`GeckoTerminal API error: ${response.status}`);
       }
       
       const data = await response.json();
-      const priceUSD = parseFloat(data.data.attributes.token_prices[tokenMint.toLowerCase()]);
+      const ohlcvArray = data?.data?.attributes?.ohlcv_list;
       
-      if (!priceUSD) {
-        throw new Error('No price data from GeckoTerminal');
+      if (!ohlcvArray || !Array.isArray(ohlcvArray) || ohlcvArray.length === 0) {
+        throw new Error('No OHLCV data available');
       }
       
-      // Get SOL price to convert USD to SOL
-      const solPriceUSD = await this.getSolPrice();
-      const priceInSOL = priceUSD / solPriceUSD;
-      
-      return priceInSOL;
+      // Parse OHLCV data: [timestamp, open, high, low, close, volume]
+      const latestCandle = ohlcvArray[0];
+      return {
+        timestamp: latestCandle[0],
+        open: parseFloat(latestCandle[1]),
+        high: parseFloat(latestCandle[2]),
+        low: parseFloat(latestCandle[3]),
+        close: parseFloat(latestCandle[4])
+      };
     } catch (error) {
-      console.error(`Error fetching price from API for ${tokenMint}:`, error);
+      console.error(`Error fetching OHLCV data for pool ${poolAddress}:`, error);
       throw error;
-    }
-  }
-
-  /**
-   * Get current SOL price in USD
-   */
-  private async getSolPrice(): Promise<number> {
-    try {
-      const response = await fetch(
-        'https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price/So11111111111111111111111111111111111111112'
-      );
-      const data = await response.json();
-      return parseFloat(data.data.attributes.token_prices['so11111111111111111111111111111111111111112']);
-    } catch (error) {
-      console.error('Error fetching SOL price:', error);
-      return 186; // Fallback
     }
   }
 
