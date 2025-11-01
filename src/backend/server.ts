@@ -3242,15 +3242,6 @@ app.get('/', (_req, res) => {
   });
 });
 
-// Initialize Trading WebSocket service
-import('./services/TradingWebSocketService.js').then(({ getTradingWebSocketService }) => {
-  const tradingWS = getTradingWebSocketService();
-  tradingWS.initialize(io);
-  console.log('📈 Trading WebSocket service initialized');
-}).catch(err => {
-  console.error('Failed to initialize Trading WebSocket:', err);
-});
-
 // Initialize Real-time OHLCV service
 realtimeOHLCVService.initialize(io);
 console.log('🚀 Real-time OHLCV service initialized');

@@ -118,12 +118,9 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
 
   // WebSocket connection management
   connectWebSocket: () => {
-    // Use window.location.origin to automatically handle http/https -> ws/wss protocol
-    // This matches the working pattern in RealtimeChartToggle.tsx
-    const socket = io(window.location.origin + '/trading', {
+    const socket = io(`${API_BASE_URL}/trading`, {
       withCredentials: true,
-      transports: ['websocket', 'polling'],
-      path: '/socket.io'
+      transports: ['websocket', 'polling']
     });
     
     // Get user ID from auth context (you'll need to pass this)
