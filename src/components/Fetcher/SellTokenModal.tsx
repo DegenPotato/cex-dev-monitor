@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { config } from '../../config';
 
 interface Token {
   mint: string;
@@ -57,7 +58,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
     try {
       console.log('[SellTokenModal] Fetching tokens for wallet:', walletId);
       
-      const response = await fetch(`/api/trading/wallets/${walletId}/tokens`, {
+      const response = await fetch(`${config.apiUrl}/api/trading/wallets/${walletId}/tokens`, {
         credentials: 'include'
       });
       
@@ -104,7 +105,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
     setResult(null);
     
     try {
-      const response = await fetch('/api/trading/sell', {
+      const response = await fetch(`${config.apiUrl}/api/trading/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
