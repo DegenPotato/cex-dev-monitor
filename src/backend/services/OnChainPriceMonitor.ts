@@ -118,45 +118,124 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Detect pool type based on program ID or data patterns
+   * Detect pool type based on discriminator and data patterns
    */
-  private detectPoolType(data: Buffer): 'raydium' | 'pump' | 'unknown' {
-    // Pump.fun pools are typically smaller (around 200-300 bytes)
-    // Raydium pools are larger (600+ bytes)
-    if (data.length < 400) {
-      return 'pump';
-    } else if (data.length > 500) {
-      return 'raydium';
+  private detectPoolType(data: Buffer, poolAddress: string): 'pump_amm' | 'pump_bonding' | 'raydium_amm' | 'unknown' {
+    // Check discriminator (first 8 bytes)
+    const discriminator = data.slice(0, 8).toString('hex');
+    
+    console.log(`Pool detection for ${poolAddress}:`);
+    console.log(`  Size: ${data.length} bytes`);
+    console.log(`  Discriminator: ${discriminator}`);
+    
+    // Pump.fun AMM discriminator (graduated tokens)
+    if (discriminator === 'f19a6d0411b16dbc') {
+      console.log('  -> Pump.fun AMM (graduated token)');
+      return 'pump_amm';
     }
+    
+    // Original pump.fun bonding curve (before graduation)
+    if (discriminator === '17c9c35595341678') {
+      console.log('  -> Pump.fun Bonding Curve');
+      return 'pump_bonding';
+    }
+    
+    // Check for other known discriminators or size patterns
+    // Could add more here as we discover them
+    
+    // Raydium AMM V4 - larger pools 600+ bytes  
+    if (data.length >= 600) {
+      return 'raydium_amm';
+    }
+    
     return 'unknown';
   }
 
   /**
    * Decode Pump.fun bonding curve data
-   * Pump uses a simple bonding curve with virtual reserves
+   * Pump.fun pools store: virtualSolReserves, virtualTokenReserves, realSolReserves, realTokenReserves
    */
-  private decodePumpPool(data: Buffer): { virtualSolReserves: bigint; virtualTokenReserves: bigint; } | null {
+  private decodePumpPool(data: Buffer): { virtualSolReserves: bigint; virtualTokenReserves: bigint; realSolReserves: bigint; realTokenReserves: bigint; } | null {
     try {
-      // Pump.fun bonding curve layout
-      // Based on pump.fun contract analysis - reserves are stored as u64
-      const VIRTUAL_SOL_RESERVES_OFFSET = 0x08;   // 8 bytes in
-      const VIRTUAL_TOKEN_RESERVES_OFFSET = 0x10; // 16 bytes in
+      // Pump.fun bonding curve actual layout from contract analysis:
+      // Discriminator: 8 bytes (0x00-0x07)
+      // virtualSolReserves: 8 bytes (0x08-0x0F) 
+      // virtualTokenReserves: 8 bytes (0x10-0x17)
+      // realSolReserves: 8 bytes (0x18-0x1F)  
+      // realTokenReserves: 8 bytes (0x20-0x27)
       
-      // Log first 64 bytes for debugging
-      console.log('Pump pool data (first 64 bytes):', data.slice(0, 64).toString('hex'));
+      // For debugging - show the hex in chunks
+      console.log('Pump pool layout:');
+      console.log('  Discriminator:', data.slice(0x00, 0x08).toString('hex'));
+      console.log('  Virtual SOL:', data.slice(0x08, 0x10).toString('hex'));
+      console.log('  Virtual Token:', data.slice(0x10, 0x18).toString('hex'));
+      console.log('  Real SOL:', data.slice(0x18, 0x20).toString('hex'));
+      console.log('  Real Token:', data.slice(0x20, 0x28).toString('hex'));
       
-      // Read as little-endian 64-bit integers
-      const virtualSolReserves = data.readBigUInt64LE(VIRTUAL_SOL_RESERVES_OFFSET);
-      const virtualTokenReserves = data.readBigUInt64LE(VIRTUAL_TOKEN_RESERVES_OFFSET);
+      // Read the reserves
+      const virtualSolReserves = data.readBigUInt64LE(0x08);
+      const virtualTokenReserves = data.readBigUInt64LE(0x10);
+      const realSolReserves = data.readBigUInt64LE(0x18);
+      const realTokenReserves = data.readBigUInt64LE(0x20);
       
-      console.log(`Pump reserves - SOL: ${virtualSolReserves}, Token: ${virtualTokenReserves}`);
+      console.log(`Virtual reserves - SOL: ${virtualSolReserves}, Token: ${virtualTokenReserves}`);
+      console.log(`Real reserves - SOL: ${realSolReserves}, Token: ${realTokenReserves}`);
       
       return {
         virtualSolReserves,
-        virtualTokenReserves
+        virtualTokenReserves,
+        realSolReserves,
+        realTokenReserves
       };
     } catch (error) {
       console.error('Failed to decode Pump pool:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Decode Pump.fun AMM pool (graduated tokens)
+   * This is pump.fun's own AMM implementation, not Raydium
+   */
+  private decodePumpAMM(data: Buffer): { solReserves: bigint; tokenReserves: bigint; } | null {
+    try {
+      // Pump.fun AMM layout (graduated tokens)
+      // The structure seems to store reserves directly in the account
+      // Let's scan for the likely reserve positions
+      
+      console.log('Pump AMM data dump (looking for reserves):');
+      
+      // Try various offsets to find the reserves
+      // Based on the previous logs showing SOL: 5229996482534310142 
+      // That's around 5.23 SOL which seems reasonable
+      
+      for (let offset = 0x08; offset < 0x80; offset += 8) {
+        try {
+          const value = data.readBigUInt64LE(offset);
+          if (value > 1000000000n && value < 100000000000000000n) { // Between 1 SOL and 100M SOL
+            console.log(`  0x${offset.toString(16)}: ${value} (${Number(value) / 1e9} SOL)`);
+          }
+        } catch {}
+      }
+      
+      // Based on pump.fun AMM structure analysis:
+      // The reserves appear to be at consistent offsets
+      const SOL_RESERVES_OFFSET = 0x10;   // 16 decimal
+      const TOKEN_RESERVES_OFFSET = 0x18; // 24 decimal
+      
+      const solReserves = data.readBigUInt64LE(SOL_RESERVES_OFFSET);
+      const tokenReserves = data.readBigUInt64LE(TOKEN_RESERVES_OFFSET);
+      
+      console.log(`Pump AMM decoded:`);
+      console.log(`  SOL Reserves: ${solReserves} (${Number(solReserves) / 1e9} SOL)`);
+      console.log(`  Token Reserves: ${tokenReserves} (${Number(tokenReserves) / 1e9} tokens)`);
+      
+      return {
+        solReserves,
+        tokenReserves
+      };
+    } catch (error) {
+      console.error('Failed to decode Pump AMM:', error);
       return null;
     }
   }
@@ -201,25 +280,45 @@ export class OnChainPriceMonitor extends EventEmitter {
       }
 
       // Detect pool type
-      const poolType = this.detectPoolType(data);
+      const poolType = this.detectPoolType(data, poolAddress);
       console.log(`Pool type detected: ${poolType} (${data.length} bytes)`);
 
-      if (poolType === 'pump') {
+      if (poolType === 'pump_bonding') {
         // Handle Pump.fun pools
         const pumpPool = this.decodePumpPool(data);
         if (!pumpPool) {
           throw new Error('Failed to decode Pump pool');
         }
 
-        // Calculate price from virtual reserves
-        // Price = SOL reserves / Token reserves
-        const solReserves = Number(pumpPool.virtualSolReserves) / 1e9; // Convert lamports to SOL
-        const tokenReserves = Number(pumpPool.virtualTokenReserves) / 1e6; // Assume 6 decimals for pump tokens
+        // Use REAL reserves for actual price (virtual reserves are for bonding curve math)
+        // Pump.fun uses 9 decimals for both SOL and tokens
+        const realSol = Number(pumpPool.realSolReserves) / 1e9; // Convert lamports to SOL
+        const realTokens = Number(pumpPool.realTokenReserves) / 1e9; // Pump tokens use 9 decimals!
         
-        const price = solReserves / tokenReserves;
+        // Price = SOL per token
+        const price = realSol / realTokens;
+        
+        console.log(`Price calculation: ${realSol} SOL / ${realTokens} tokens = ${price} SOL per token`);
         return price;
 
-      } else if (poolType === 'raydium') {
+      } else if (poolType === 'pump_amm') {
+        // Handle Pump.fun AMM pools (graduated tokens)
+        const pumpAMM = this.decodePumpAMM(data);
+        if (!pumpAMM) {
+          throw new Error('Failed to decode Pump AMM');
+        }
+
+        // Use the reserves directly
+        const solReserves = Number(pumpAMM.solReserves) / 1e9; // Convert lamports to SOL
+        const tokenReserves = Number(pumpAMM.tokenReserves) / 1e9; // Pump tokens use 9 decimals!
+        
+        // Price = SOL per token
+        const price = solReserves / tokenReserves;
+        
+        console.log(`Price calculation: ${solReserves} SOL / ${tokenReserves} tokens = ${price} SOL per token`);
+        return price;
+
+      } else if (poolType === 'raydium_amm') {
         // Handle Raydium pools
         const poolInfo = this.decodeRaydiumPool(data);
         if (!poolInfo) {
