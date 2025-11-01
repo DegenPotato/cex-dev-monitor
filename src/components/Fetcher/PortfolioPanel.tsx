@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Wallet, DollarSign, PieChart, Eye, EyeOff, Coins, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
+import { SellTokenModal } from './SellTokenModal';
 
 export const PortfolioPanel: React.FC = () => {
   const { 
@@ -16,6 +17,8 @@ export const PortfolioPanel: React.FC = () => {
   const [selectedWallet, setSelectedWallet] = useState<string>('all');
   const [showValues, setShowValues] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [sellWalletId, setSellWalletId] = useState<number | null>(null);
 
   useEffect(() => {
     // Initial data fetch
@@ -303,8 +306,14 @@ export const PortfolioPanel: React.FC = () => {
                     )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button className="text-cyan-400 hover:text-cyan-300 text-sm">
-                          Trade
+                        <button 
+                          onClick={() => {
+                            setSellWalletId(token.walletId);
+                            setSellModalOpen(true);
+                          }}
+                          className="text-red-400 hover:text-red-300 text-sm font-medium"
+                        >
+                          Sell
                         </button>
                         <span className="text-gray-600">|</span>
                         <a 
@@ -358,6 +367,23 @@ export const PortfolioPanel: React.FC = () => {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* Sell Token Modal */}
+      {sellWalletId && (
+        <SellTokenModal
+          isOpen={sellModalOpen}
+          onClose={() => {
+            setSellModalOpen(false);
+            setSellWalletId(null);
+          }}
+          walletId={sellWalletId}
+          onSellComplete={(result) => {
+            console.log('Sell completed:', result);
+            // Refresh portfolio data
+            handleManualRefresh();
+          }}
+        />
       )}
     </div>
   );
