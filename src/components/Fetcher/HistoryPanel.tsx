@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { History, ExternalLink, TrendingUp, TrendingDown, Check, X, Clock } from 'lucide-react';
+import { History, ExternalLink, TrendingUp, TrendingDown, Check, X, Clock, Copy, Check as CheckIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTradingStore } from '../../stores/tradingStore';
+import { toast } from 'react-hot-toast';
 
 export const HistoryPanel: React.FC = () => {
   const { tradeHistory, fetchTradeHistory, loading } = useTradingStore();
@@ -56,6 +57,15 @@ export const HistoryPanel: React.FC = () => {
     }
   };
 
+  const [copiedCA, setCopiedCA] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCA(text);
+    toast.success(`${label} copied!`);
+    setTimeout(() => setCopiedCA(null), 2000);
+  };
+
   const formatTime = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - new Date(date).getTime();
@@ -71,6 +81,17 @@ export const HistoryPanel: React.FC = () => {
     if (days < 7) return `${days}d ago`;
     
     return new Date(date).toLocaleDateString();
+  };
+
+  const formatFullTimestamp = (date: Date) => {
+    return new Date(date).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   };
 
   return (
@@ -189,56 +210,108 @@ export const HistoryPanel: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-500">Amount</span>
+                      <span className="text-gray-500">{trade.type === 'buy' ? 'Spent' : 'Sold'}</span>
                       <div className="text-white font-medium">
                         {trade.amount.toFixed(4)} {trade.type === 'buy' ? 'SOL' : trade.tokenSymbol || 'tokens'}
                       </div>
                     </div>
                     
-                    {trade.taxAmount && (
+                    {trade.type === 'sell' && trade.amountOut && (
                       <div>
-                        <span className="text-gray-500">Tax</span>
-                        <div className="text-yellow-400 font-medium">
-                          {trade.taxAmount.toFixed(4)} SOL
+                        <span className="text-gray-500">Received</span>
+                        <div className="text-green-400 font-medium">
+                          {trade.amountOut.toFixed(6)} SOL
                         </div>
                       </div>
                     )}
                     
-                    {trade.netAmount && (
+                    {trade.taxAmount && (
                       <div>
-                        <span className="text-gray-500">Net Amount</span>
-                        <div className="text-cyan-400 font-medium">
-                          {trade.netAmount.toFixed(4)}
+                        <span className="text-gray-500">Tax</span>
+                        <div className="text-yellow-400 font-medium">
+                          {trade.taxAmount.toFixed(6)} SOL
+                        </div>
+                      </div>
+                    )}
+                    
+                    {trade.fee && (
+                      <div>
+                        <span className="text-gray-500">Network Fee</span>
+                        <div className="text-orange-400 font-medium">
+                          {trade.fee.toFixed(6)} SOL
                         </div>
                       </div>
                     )}
 
                     <div>
-                      <span className="text-gray-500">Token</span>
-                      <div className="text-white font-mono text-xs">
-                        {trade.tokenAddress.slice(0, 4)}...{trade.tokenAddress.slice(-4)}
+                      <span className="text-gray-500">Token CA</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-white font-mono text-xs">
+                          {trade.tokenAddress.slice(0, 4)}...{trade.tokenAddress.slice(-4)}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(trade.tokenAddress, 'Contract Address')}
+                          className="p-1 hover:bg-gray-700 rounded transition-colors"
+                          title="Copy full address"
+                        >
+                          {copiedCA === trade.tokenAddress ? (
+                            <CheckIcon className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-gray-400" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500">Time</span>
+                      <div className="text-white text-xs" title={formatFullTimestamp(trade.timestamp)}>
+                        {formatTime(trade.timestamp)}
                       </div>
                     </div>
                   </div>
 
-                  {trade.signature && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="text-xs text-gray-500">Transaction:</span>
-                      <code className="text-xs text-cyan-400 font-mono">
-                        {trade.signature.slice(0, 8)}...{trade.signature.slice(-8)}
-                      </code>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    {trade.signature && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">TX:</span>
+                        <code className="text-xs text-cyan-400 font-mono">
+                          {trade.signature.slice(0, 8)}...{trade.signature.slice(-8)}
+                        </code>
+                        <a
+                          href={`https://solscan.io/tx/${trade.signature}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-cyan-400 hover:text-cyan-300 transition-colors"
+                          title="View on Solscan"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">View:</span>
                       <a
-                        href={`https://solscan.io/tx/${trade.signature}`}
+                        href={`https://gmgn.ai/sol/token/${trade.tokenAddress}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-cyan-400 hover:text-cyan-300 transition-colors"
+                        className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded text-xs text-purple-400 transition-colors"
                       >
-                        <ExternalLink className="w-3 h-3" />
+                        GMGN
+                      </a>
+                      <a
+                        href={`https://dexscreener.com/solana/${trade.tokenAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-xs text-blue-400 transition-colors"
+                      >
+                        Dexscreener
                       </a>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </motion.div>

@@ -56,8 +56,10 @@ interface TradeHistory {
   tokenAddress: string;
   tokenSymbol?: string;
   amount: number;
+  amountOut?: number;  // SOL received for sells, tokens received for buys
   taxAmount?: number;
   netAmount?: number;
+  fee?: number;  // Network/priority fees
   signature?: string;
   status: 'pending' | 'success' | 'failed';
   timestamp: Date;
