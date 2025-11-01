@@ -362,7 +362,11 @@ export const HistoryPanel: React.FC = () => {
             <div>
               <span className="text-gray-500">Total Volume</span>
               <div className="text-xl font-bold text-cyan-400">
-                {filteredTrades.reduce((sum, t) => sum + t.amount, 0).toFixed(2)} SOL
+                {filteredTrades.reduce((sum, t) => {
+                  // For buys, use amount (SOL spent). For sells, use amountOut (SOL received)
+                  const solAmount = t.type === 'buy' ? t.amount : (t.amountOut || 0);
+                  return sum + solAmount;
+                }, 0).toFixed(2)} SOL
               </div>
             </div>
             <div>
