@@ -285,6 +285,14 @@ export class TradingEngine {
       const outputSol = Number(quoteData.outAmount) / LAMPORTS_PER_SOL;
       console.log(`💱 Will receive: ${outputSol} SOL`);
 
+      // Calculate tax on the SOL received
+      const { netAmount, taxAmount } = this.calculateTax(outputSol, params.skipTax);
+      
+      if (taxAmount > 0) {
+        console.log(`💰 Tax will be collected: ${taxAmount} SOL (${this.tradingTaxBps / 100}%)`);
+        console.log(`   Net SOL after tax: ${netAmount} SOL`);
+      }
+
       // Get swap transaction
       const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
         method: 'POST',
@@ -331,8 +339,8 @@ export class TradingEngine {
           tokenSymbol: tokenInfo.symbol || 'UNKNOWN',
           amountIn: amountToSell,
           amountOut: outputSol,
-          netAmount: outputSol,
-          taxAmount: 0,
+          netAmount, // Net SOL after tax
+          taxAmount, // Tax calculated on SOL received
           slippageBps: slippageBps,
           priorityFee: this.getPriorityFee(params.priorityLevel),
           jitoTip: params.jitoTip || 0,
@@ -347,6 +355,24 @@ export class TradingEngine {
       const commitment = (params.commitmentLevel || 'confirmed') as Commitment;
       await this.connection.confirmTransaction(signature, commitment);
 
+      // Send tax if applicable
+      if (taxAmount > 0 && this.taxRecipientAddress) {
+        try {
+          const taxTransaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: keypair.publicKey,
+              toPubkey: new PublicKey(this.taxRecipientAddress),
+              lamports: Math.floor(taxAmount * LAMPORTS_PER_SOL)
+            })
+          );
+          
+          const taxSignature = await this.connection.sendTransaction(taxTransaction, [keypair]);
+          console.log(`💰 Tax transferred: ${taxAmount} SOL (tx: ${taxSignature})`);
+        } catch (taxError) {
+          console.error('Failed to transfer tax (trade still successful):', taxError);
+        }
+      }
+
       return {
         success: true,
         signature,
@@ -355,7 +381,9 @@ export class TradingEngine {
         tokenSymbol: tokenInfo.symbol || 'UNKNOWN',
         tokenMint: params.tokenMint,
         priceImpact: quoteData.priceImpactPct,
-        fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL
+        fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL,
+        taxAmount,
+        netAmount
       };
     } catch (error: any) {
       console.error('Sell failed:', error);
