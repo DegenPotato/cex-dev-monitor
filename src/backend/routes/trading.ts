@@ -282,8 +282,7 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       slippageBps,
       priorityFee,
       priorityLevel,
-      jitoTip,
-      skipTax
+      jitoTip
     } = req.body;
     
     // Support both old and new field names
