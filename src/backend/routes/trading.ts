@@ -273,25 +273,39 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 
+      walletId,
       walletAddress,
+      tokenAddress,
       tokenMint, 
       amount, 
+      slippage,
       slippageBps,
+      priorityFee,
       priorityLevel,
-      jitoTip 
+      jitoTip,
+      skipTax
     } = req.body;
     
-    if (!tokenMint || !amount) {
-      return res.status(400).json({ error: 'Token address and amount required' });
+    // Support both old and new field names
+    const finalTokenMint = tokenMint || tokenAddress;
+    const finalWalletAddress = walletAddress || walletId;
+    const finalSlippage = slippageBps || (slippage ? slippage * 100 : undefined); // Convert % to bps if needed
+    const finalPriorityLevel = priorityLevel || (priorityFee ? 'high' : 'medium');
+    
+    if (!finalTokenMint || !amount) {
+      return res.status(400).json({ 
+        error: 'Token address and amount required',
+        received: { tokenMint: finalTokenMint, tokenAddress, amount }
+      });
     }
     
     const result = await getTradingEngineInstance().buyToken({
       userId,
-      walletAddress,
-      tokenMint,
+      walletAddress: finalWalletAddress,
+      tokenMint: finalTokenMint,
       amount,
-      slippageBps,
-      priorityLevel,
+      slippageBps: finalSlippage,
+      priorityLevel: finalPriorityLevel,
       jitoTip
     });
     
@@ -346,26 +360,39 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { 
+      walletId,
       walletAddress,
+      tokenAddress,
       tokenMint, 
       amount,
       percentage,
+      slippage,
       slippageBps,
+      priorityFee,
       priorityLevel,
       jitoTip 
     } = req.body;
     
-    if (!tokenMint || (!amount && !percentage)) {
-      return res.status(400).json({ error: 'Token address and amount/percentage required' });
+    // Support both old and new field names
+    const finalTokenMint = tokenMint || tokenAddress;
+    const finalWalletAddress = walletAddress || walletId;
+    const finalSlippage = slippageBps || (slippage ? slippage * 100 : undefined);
+    const finalPriorityLevel = priorityLevel || (priorityFee ? 'high' : 'medium');
+    
+    if (!finalTokenMint || (!amount && !percentage)) {
+      return res.status(400).json({ 
+        error: 'Token address and amount/percentage required',
+        received: { tokenMint: finalTokenMint, tokenAddress, amount, percentage }
+      });
     }
     
     const result = await getTradingEngineInstance().sellToken({
       userId,
-      walletAddress,
-      tokenMint,
+      walletAddress: finalWalletAddress,
+      tokenMint: finalTokenMint,
       amount,
-      slippageBps,
-      priorityLevel,
+      slippageBps: finalSlippage,
+      priorityLevel: finalPriorityLevel,
       jitoTip,
       percentage
     } as any);
