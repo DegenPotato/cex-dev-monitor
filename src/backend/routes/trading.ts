@@ -394,7 +394,8 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       walletId,
       walletAddress,
       tokenAddress,
-      tokenMint, 
+      tokenMint,
+      tokenSymbol, // Passed from frontend to avoid Jupiter lookup
       amount,
       percentage,
       slippage,
@@ -405,7 +406,7 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       skipTax 
     } = req.body;
     
-    console.log('[Sell Token] Request:', { walletId, tokenMint, amount, percentage, slippageBps });
+    console.log('[Sell Token] Request:', { walletId, tokenMint, tokenSymbol, amount, percentage, slippageBps });
     
     // Support both old and new field names
     const finalTokenMint = tokenMint || tokenAddress;
@@ -437,6 +438,7 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       userId,
       walletAddress: finalWalletAddress,
       tokenMint: finalTokenMint,
+      tokenSymbol, // Pass from frontend to avoid Jupiter lookup
       amount,
       slippageBps: finalSlippage,
       priorityLevel: finalPriorityLevel,

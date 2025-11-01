@@ -16,6 +16,7 @@ import {
 import fetch from 'node-fetch';
 import { getWalletManager } from './wallet.js';
 import { execute, queryOne } from '../database/helpers.js';
+import { TokenPriceOracle } from '../services/TokenPriceOracle.js';
 
 const JUPITER_API_URL = 'https://lite-api.jup.ag/swap/v1';
 const JITO_API_URL = process.env.JITO_API_URL || 'https://mainnet.block-engine.jito.wtf/api/v1';
@@ -24,6 +25,7 @@ export interface TradeParams {
   userId: number;
   walletAddress?: string;  // Use specific wallet or default
   tokenMint: string;
+  tokenSymbol?: string;  // Pass from frontend to avoid lookup
   amount: number;  // In SOL or token units
   slippageBps?: number;  // Default 100 (1%)
   priorityLevel?: 'low' | 'medium' | 'high' | 'turbo';
@@ -244,7 +246,7 @@ export class TradingEngine {
       const outputMint = 'So11111111111111111111111111111111111111112'; // SOL (native mint)
 
       // Need to get token decimals and symbol
-      const tokenInfo = await this.getTokenInfo(params.tokenMint);
+      const tokenInfo = await this.getTokenInfo(params.tokenMint, params.tokenSymbol);
       const amountRaw = Math.floor(amountToSell * Math.pow(10, tokenInfo.decimals));
 
       console.log(`🎯 Selling ${amountToSell} ${tokenInfo.symbol || 'tokens'} (${amountRaw} raw) for SOL`);
@@ -525,44 +527,37 @@ export class TradingEngine {
   }
 
   /**
-   * Get token info
+   * Get token info using TokenPriceOracle (GeckoTerminal/Helius)
    */
-  private async getTokenInfo(mint: string): Promise<{ decimals: number; symbol?: string }> {
+  private async getTokenInfo(mint: string, symbolHint?: string): Promise<{ decimals: number; symbol?: string }> {
     try {
-      // Fallback: Get decimals directly from blockchain (more reliable)
+      // Get decimals from blockchain (always reliable)
       const mintPubkey = new PublicKey(mint);
       const mintInfo = await this.connection.getParsedAccountInfo(mintPubkey);
       const data = (mintInfo.value?.data as any);
-      
       const decimals = data?.parsed?.info?.decimals || 9;
       
-      // Try to get symbol from Jupiter token list (non-blocking)
-      let symbol = 'TOKEN';
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000); // 2s timeout
-        
-        const response = await fetch('https://token.jup.ag/all', {
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-        
-        if (response.ok) {
-          const tokens = await response.json();
-          const token = tokens.find((t: any) => t.address === mint);
-          if (token) {
-            symbol = token.symbol;
-          }
-        }
-      } catch (fetchError) {
-        // Silently fail - we already have decimals from blockchain
-        console.log(`⚠️ Could not fetch token symbol from Jupiter (${mint.slice(0, 8)}...), using default`);
+      // If symbol hint provided from frontend, use it
+      if (symbolHint) {
+        return { decimals, symbol: symbolHint };
       }
       
-      return { decimals, symbol };
+      // Otherwise, try TokenPriceOracle (GeckoTerminal)
+      try {
+        const oracle = TokenPriceOracle.getInstance();
+        const tokenData = await oracle.getTokenPrice(mint);
+        
+        if (tokenData?.symbol) {
+          return { decimals, symbol: tokenData.symbol };
+        }
+      } catch (error) {
+        console.warn(`⚠️ Could not fetch token metadata from oracle (${mint.slice(0, 8)}...), using default`);
+      }
+      
+      return { decimals, symbol: 'TOKEN' };
     } catch (error) {
       console.error('Error getting token info:', error);
-      return { decimals: 9 }; // Default to 9
+      return { decimals: 9, symbol: 'TOKEN' };
     }
   }
 

@@ -112,6 +112,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
         body: JSON.stringify({
           walletId,
           tokenMint: selectedToken.mint,
+          tokenSymbol: selectedToken.symbol, // Pass symbol to avoid backend lookup
           percentage,
           slippageBps: slippage * 100 // Convert to basis points
         })
