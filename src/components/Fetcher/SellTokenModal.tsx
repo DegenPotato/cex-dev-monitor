@@ -160,8 +160,14 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 -translate-x-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[9999] my-8"
+            style={{ 
+              top: '2rem',
+              maxHeight: 'calc(100vh - 4rem)'
+            }}
           >
+            {/* Scrollable Content Wrapper */}
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-700">
               <div className="flex items-center gap-3">
@@ -363,6 +369,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
                   )}
                 </>
               )}
+            </div>
             </div>
           </motion.div>
         </>

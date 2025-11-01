@@ -67,6 +67,11 @@ export const PortfolioPanel: React.FC = () => {
     return `${prefix}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const formatPrice = (value: number, prefix = '$') => {
+    if (!showValues) return '****';
+    return `${prefix}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+  };
+
   const formatPercent = (value: number) => {
     const formatted = value.toFixed(2);
     return value >= 0 ? `+${formatted}%` : `${formatted}%`;
@@ -275,7 +280,7 @@ export const PortfolioPanel: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-gray-300">
-                        {formatValue(token.priceUSD || 0)}
+                        {formatPrice(token.priceUSD || 0)}
                       </div>
                     </td>
                     <td className="px-6 py-4">

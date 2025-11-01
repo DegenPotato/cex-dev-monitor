@@ -385,6 +385,16 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
 });
 
 /**
+ * Sell token - OPTIONS handler for CORS preflight
+ */
+router.options('/api/trading/sell', (_req: Request, res: Response) => {
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.status(200).send();
+});
+
+/**
  * Sell token
  */
 router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Request, res: Response) => {
@@ -404,6 +414,8 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       jitoTip,
       skipTax 
     } = req.body;
+    
+    console.log('[Sell Token] Request:', { walletId, tokenMint, amount, percentage, slippageBps });
     
     // Support both old and new field names
     const finalTokenMint = tokenMint || tokenAddress;
