@@ -251,13 +251,30 @@ export class OnChainPriceMonitor extends EventEmitter {
       console.log(`  0x48: ${data.readBigUInt64LE(OFFSET_3)}`);
       console.log(`  0x50: ${data.readBigUInt64LE(OFFSET_4)}`);
       
-      // For now, use the values we're seeing in the logs to understand the structure
-      const solReserves = data.readBigUInt64LE(0x10);
-      const tokenReserves = data.readBigUInt64LE(0x18);
+      // Analysis shows 0x060 has a much smaller value - likely the actual reserves!
+      // 0x060: 264572541156331 = 264572.541156331 as base units
+      // 0x0f0: 4297853 = very small, might be fees or something else
       
-      console.log(`\nUsing offsets 0x10 and 0x18:`);
-      console.log(`  SOL: ${solReserves} (${Number(solReserves) / 1e9} SOL)`);
-      console.log(`  Tokens: ${tokenReserves} (${Number(tokenReserves) / 1e9} with 9 dec)`);
+      // Try different interpretations
+      const val_0x60 = data.readBigUInt64LE(0x60);
+      const val_0x0f0 = data.readBigUInt64LE(0xf0);
+      
+      console.log(`\nAnalyzing potential reserve locations:`);
+      console.log(`  0x60 as SOL (÷1e9): ${Number(val_0x60) / 1e9}`);
+      console.log(`  0x60 as SOL (÷1e6): ${Number(val_0x60) / 1e6}`);
+      console.log(`  0x60 raw: ${Number(val_0x60)}`);
+      console.log(`  0xf0: ${Number(val_0x0f0)} (÷1e9: ${Number(val_0x0f0) / 1e9})`);
+      
+      // The actual reserves are likely at 0x60 with different decimal interpretation
+      // Based on real price of ~0.00008 SOL, we need small SOL reserves
+      const solReserves = val_0x60;  // Try this as raw lamports
+      const tokenReserves = data.readBigUInt64LE(0x68);  // Next 8 bytes
+      
+      console.log(`\nTrying 0x60 (SOL) and 0x68 (tokens):`);
+      console.log(`  SOL: ${solReserves} lamports = ${Number(solReserves) / 1e9} SOL`);
+      console.log(`  Tokens: ${tokenReserves} raw = ${Number(tokenReserves) / 1e6} (6 dec) or ${Number(tokenReserves) / 1e9} (9 dec)`);
+      console.log(`  Price if 9 dec: ${(Number(solReserves) / 1e9) / (Number(tokenReserves) / 1e9)} SOL/token`);
+      console.log(`  Price if 6 dec tokens: ${(Number(solReserves) / 1e9) / (Number(tokenReserves) / 1e6)} SOL/token`);
       
       return {
         solReserves,
