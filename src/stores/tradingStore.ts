@@ -118,12 +118,14 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
 
   // WebSocket connection management
   connectWebSocket: () => {
-    // Connect to the /trading namespace
-    // Socket.IO expects: io(baseURL, { path: '/socket.io' }) + namespace
-    const socket = io(`${API_BASE_URL}/trading`, {
+    // For namespaces, Socket.IO needs the base URL and namespace as part of the connection
+    const baseUrl = API_BASE_URL.replace(/\/$/, ''); // Remove trailing slash if any
+    
+    // Connect directly to the /trading namespace
+    const socket = io(`${baseUrl}/trading`, {
+      path: '/socket.io/',  // Note: trailing slash is important
       withCredentials: true,
       transports: ['websocket', 'polling'],
-      path: '/socket.io',  // Explicitly set the Socket.IO path
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000
@@ -226,8 +228,22 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
       const data = await response.json();
       const wallets = data.wallets || [];
       
-      // Fetch token balances for each wallet
+      // Fetch token balances and SOL balance for each wallet
       for (const wallet of wallets) {
+        // Fetch SOL balance from chain
+        try {
+          const balanceResponse = await fetch(`${API_BASE_URL}/api/trading/wallets/${wallet.id}/balance`, {
+            credentials: 'include'
+          });
+          if (balanceResponse.ok) {
+            const { balance } = await balanceResponse.json();
+            wallet.balance = balance;
+          }
+        } catch (e) {
+          console.error(`Failed to fetch balance for wallet ${wallet.id}:`, e);
+        }
+        
+        // Fetch token balances
         await get().fetchWalletTokens(wallet.id);
       }
       
