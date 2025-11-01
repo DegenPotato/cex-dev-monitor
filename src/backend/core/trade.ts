@@ -558,8 +558,8 @@ export class TradingEngine {
         INSERT INTO trading_transactions (
           user_id, wallet_id, signature, tx_type, status, token_mint,
           amount_in, amount_out, slippage_bps, priority_fee_lamports,
-          jito_tip_lamports, created_at
-        ) VALUES (?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, ?)
+          created_at
+        ) VALUES (?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?)
       `, [
         data.userId,
         wallet?.id,
@@ -570,7 +570,6 @@ export class TradingEngine {
         data.amountOut,
         data.slippageBps,
         data.priorityFee,
-        data.jitoTip ? data.jitoTip * LAMPORTS_PER_SOL : 0,
         Date.now()
       ]);
 

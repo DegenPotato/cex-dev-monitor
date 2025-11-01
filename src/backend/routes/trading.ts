@@ -282,7 +282,8 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       slippageBps,
       priorityFee,
       priorityLevel,
-      jitoTip
+      jitoTip,
+      skipTax
     } = req.body;
     
     // Support both old and new field names
@@ -318,7 +319,8 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
       amount,
       slippageBps: finalSlippage,
       priorityLevel: finalPriorityLevel,
-      jitoTip
+      jitoTip,
+      skipTax
     });
     
     if (result.success) {
@@ -382,7 +384,8 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       slippageBps,
       priorityFee,
       priorityLevel,
-      jitoTip 
+      jitoTip,
+      skipTax 
     } = req.body;
     
     // Support both old and new field names
@@ -419,7 +422,8 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
       slippageBps: finalSlippage,
       priorityLevel: finalPriorityLevel,
       jitoTip,
-      percentage
+      percentage,
+      skipTax
     } as any);
     
     if (result.success) {
