@@ -73,6 +73,19 @@ const wss = new WebSocketServer({
   path: '/ws'
 });
 
+// CORS configuration - MUST be defined BEFORE Socket.IO initialization
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://alpha.sniff.agency',
+      'https://cex-dev-monitor.vercel.app',
+      'https://sniff.agency'
+    ];
+
+console.log('🔒 [CORS] Allowed origins:', allowedOrigins);
+
 // Initialize Socket.IO for Trading WebSocket
 const io = new SocketIOServer(httpServer, {
   cors: {
@@ -152,19 +165,7 @@ if (process.env.ENABLE_TELEGRAM_STREAM === 'true') {
   });
 }
 
-// CORS configuration - allow specific origins for cookie-based auth
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'https://alpha.sniff.agency',
-      'https://cex-dev-monitor.vercel.app',
-      'https://sniff.agency'
-    ];
-
-console.log('🔒 [CORS] Allowed origins:', allowedOrigins);
-
+// Express CORS middleware (allowedOrigins already defined above)
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or Postman)
