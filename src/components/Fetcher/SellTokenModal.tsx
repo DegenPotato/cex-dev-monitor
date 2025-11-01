@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
+import { toast } from 'react-hot-toast';
 
 interface Token {
   mint: string;
@@ -125,6 +126,27 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
       }
       
       setResult(data.result);
+      
+      // Show success notification with transaction details
+      const tokenSym = data.result.tokenSymbol || selectedToken?.symbol || 'tokens';
+      toast.success(
+        <div className="flex flex-col gap-1">
+          <div className="font-semibold">🎯 Sell Successful!</div>
+          <div className="text-sm">Sold {data.result.amountIn?.toFixed(4)} {tokenSym}</div>
+          <div className="text-sm">Received {data.result.amountOut?.toFixed(6)} SOL</div>
+          {data.result.signature && (
+            <a
+              href={`https://solscan.io/tx/${data.result.signature}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-cyan-400 hover:underline mt-1"
+            >
+              View on Solscan →
+            </a>
+          )}
+        </div>,
+        { duration: 8000 }
+      );
       
       // Refresh tokens after successful sell
       setTimeout(() => {
