@@ -55,11 +55,17 @@ interface TradeHistory {
   type: 'buy' | 'sell';
   tokenAddress: string;
   tokenSymbol?: string;
+  tokenName?: string;
   amount: number;
   amountOut?: number;  // SOL received for sells, tokens received for buys
   taxAmount?: number;
   netAmount?: number;
   fee?: number;  // Network/priority fees
+  totalFee?: number;  // All fees combined
+  tokenPriceUsd?: number;
+  solPriceUsd?: number;
+  totalValueUsd?: number;
+  priceImpact?: number;
   signature?: string;
   status: 'pending' | 'success' | 'failed';
   timestamp: Date;

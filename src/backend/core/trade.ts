@@ -563,7 +563,7 @@ export class TradingEngine {
 
   // ... (rest of the code remains the same)
   /**
-   * Log transaction to database
+   * Log transaction to database with full details
    */
   private async logTransaction(data: any): Promise<void> {
     try {
@@ -573,30 +573,82 @@ export class TradingEngine {
         [data.walletAddress]
       ) as any;
 
+      // Get token metadata from oracle
+      let tokenName = data.tokenSymbol;
+      let tokenPriceUsd = 0;
+      let solPriceUsd = 186.42; // Default, will be replaced by oracle
+
+      try {
+        const oracle = TokenPriceOracle.getInstance();
+        const tokenData = await oracle.getTokenPrice(data.tokenMint);
+        if (tokenData) {
+          tokenName = tokenData.name;
+          tokenPriceUsd = tokenData.priceUsd;
+        }
+        
+        // Get SOL price
+        const solData = await oracle.getTokenPrice('So11111111111111111111111111111111111111112');
+        if (solData) {
+          solPriceUsd = solData.priceUsd;
+        }
+      } catch (e) {
+        console.warn('Could not fetch token prices for trade logging');
+      }
+
+      // Calculate total fees and USD values
+      const priorityFeeSol = (data.priorityFee || 0) / LAMPORTS_PER_SOL;
+      const jitoTipSol = data.jitoTip || 0;
+      const taxAmountSol = data.taxAmount || 0;
+      const totalFeeSol = priorityFeeSol + jitoTipSol + taxAmountSol;
+      
+      // Calculate USD value based on trade type
+      let totalValueUsd = 0;
+      if (data.type === 'buy') {
+        totalValueUsd = data.amountIn * solPriceUsd;
+      } else if (data.type === 'sell') {
+        totalValueUsd = (data.amountOut || 0) * solPriceUsd;
+      }
+
       await execute(`
         INSERT INTO trading_transactions (
-          user_id, wallet_id, signature, tx_type, status, token_mint,
-          amount_in, amount_out, slippage_bps, priority_fee_lamports,
+          user_id, wallet_id, signature, tx_type, status, 
+          token_mint, token_symbol, token_name,
+          amount_in, amount_out, price_per_token,
+          slippage_bps, priority_fee_sol, jito_tip_sol,
+          tax_amount_sol, net_amount_sol, total_fee_sol,
+          token_price_usd, sol_price_usd, total_value_usd,
+          price_impact_pct,
           created_at
-        ) VALUES (?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         data.userId,
         wallet?.id,
         data.signature,
         data.type,
         data.tokenMint,
+        data.tokenSymbol || 'UNKNOWN',
+        tokenName,
         data.amountIn,
-        data.amountOut,
-        data.slippageBps,
-        data.priorityFee,
-        Date.now()
+        data.amountOut || 0,
+        tokenPriceUsd,
+        data.slippageBps || 100,
+        priorityFeeSol,
+        jitoTipSol,
+        taxAmountSol,
+        data.netAmount || data.amountIn,
+        totalFeeSol,
+        tokenPriceUsd,
+        solPriceUsd,
+        totalValueUsd,
+        data.priceImpact || 0,
+        Math.floor(Date.now() / 1000)
       ]);
 
-      // Update wallet last used and balance
+      // Update wallet last used
       if (wallet?.id) {
         await execute(
           'UPDATE trading_wallets SET updated_at = ? WHERE id = ?',
-          [Date.now(), wallet.id]
+          [Math.floor(Date.now() / 1000), wallet.id]
         );
       }
     } catch (error) {

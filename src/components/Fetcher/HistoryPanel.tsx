@@ -197,7 +197,13 @@ export const HistoryPanel: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-white">
-                          {trade.type === 'buy' ? 'Bought' : 'Sold'} {trade.tokenSymbol || 'Token'}
+                          {trade.type === 'buy' ? 'Bought' : 'Sold'}{' '}
+                          <a
+                            href={`/token/${trade.tokenAddress}`}
+                            className="text-cyan-400 hover:text-cyan-300 underline"
+                          >
+                            {trade.tokenSymbol || trade.tokenName || 'Unknown'}
+                          </a>
                         </span>
                         <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 ${getStatusColor(trade.status)}`}>
                           {getStatusIcon(trade.status)}
@@ -205,43 +211,58 @@ export const HistoryPanel: React.FC = () => {
                         </span>
                       </div>
                       <div className="text-sm text-gray-400 mt-1">
-                        {formatTime(trade.timestamp)} • Wallet: {trade.walletName}
+                        {formatFullTimestamp(trade.timestamp)} • Wallet: {trade.walletName}
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">{trade.type === 'buy' ? 'Spent' : 'Sold'}</span>
                       <div className="text-white font-medium">
-                        {trade.amount.toFixed(4)} {trade.type === 'buy' ? 'SOL' : trade.tokenSymbol || 'tokens'}
+                        {trade.amount.toFixed(4)} {trade.type === 'buy' ? 'SOL' : (trade.tokenSymbol || 'tokens')}
                       </div>
+                      {(trade.totalValueUsd || 0) > 0 && (
+                        <div className="text-xs text-gray-500">
+                          ${(trade.totalValueUsd || 0).toFixed(2)}
+                        </div>
+                      )}
                     </div>
                     
-                    {trade.type === 'sell' && trade.amountOut && (
+                    {(trade.amountOut || 0) > 0 && (
                       <div>
                         <span className="text-gray-500">Received</span>
                         <div className="text-green-400 font-medium">
-                          {trade.amountOut.toFixed(6)} SOL
+                          {trade.type === 'sell' ? `${(trade.amountOut || 0).toFixed(6)} SOL` : `${(trade.amountOut || 0).toFixed(4)} tokens`}
+                        </div>
+                        {trade.type === 'sell' && (trade.solPriceUsd || 0) > 0 && (
+                          <div className="text-xs text-gray-500">
+                            ${((trade.amountOut || 0) * (trade.solPriceUsd || 0)).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {(trade.pricePerToken || 0) > 0 && (
+                      <div>
+                        <span className="text-gray-500">Price</span>
+                        <div className="text-cyan-400 font-medium">
+                          ${(trade.pricePerToken || 0).toFixed(8)}
                         </div>
                       </div>
                     )}
                     
-                    {trade.taxAmount && (
+                    {((trade.totalFee || 0) > 0 || (trade.taxAmount || 0) > 0) && (
                       <div>
-                        <span className="text-gray-500">Tax</span>
+                        <span className="text-gray-500">Fees</span>
                         <div className="text-yellow-400 font-medium">
-                          {trade.taxAmount.toFixed(6)} SOL
+                          {(trade.totalFee || 0).toFixed(6)} SOL
                         </div>
-                      </div>
-                    )}
-                    
-                    {trade.fee && (
-                      <div>
-                        <span className="text-gray-500">Network Fee</span>
-                        <div className="text-orange-400 font-medium">
-                          {trade.fee.toFixed(6)} SOL
-                        </div>
+                        {(trade.solPriceUsd || 0) > 0 && (
+                          <div className="text-xs text-gray-500">
+                            ${((trade.totalFee || 0) * (trade.solPriceUsd || 0)).toFixed(2)}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -266,9 +287,12 @@ export const HistoryPanel: React.FC = () => {
                     </div>
 
                     <div>
-                      <span className="text-gray-500">Time</span>
-                      <div className="text-white text-xs" title={formatFullTimestamp(trade.timestamp)}>
-                        {formatTime(trade.timestamp)}
+                      <span className="text-gray-500">Impact</span>
+                      <div className={`font-medium ${
+                        (trade.priceImpact || 0) > 5 ? 'text-red-400' : 
+                        (trade.priceImpact || 0) > 2 ? 'text-yellow-400' : 'text-green-400'
+                      }`}>
+                        {(trade.priceImpact || 0).toFixed(2)}%
                       </div>
                     </div>
                   </div>
