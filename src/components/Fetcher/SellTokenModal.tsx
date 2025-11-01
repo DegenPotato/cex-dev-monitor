@@ -32,7 +32,11 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   onSellComplete 
 }) => {
   const [tokens, setTokens] = useState<Token[]>([]);
+  const [tokenInputMode, setTokenInputMode] = useState<'from_wallet' | 'manual'>('from_wallet');
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  const [manualTokenCA, setManualTokenCA] = useState('');
+  const [manualTokenSymbol, setManualTokenSymbol] = useState('');
+  const [manualTokenAmount, setManualTokenAmount] = useState('');
   const [percentage, setPercentage] = useState(100);
   const [slippage, setSlippage] = useState(5); // 5% default
   const [loading, setLoading] = useState(false);
@@ -99,24 +103,46 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   };
 
   const handleSell = async () => {
-    if (!selectedToken) return;
+    // Validation based on mode
+    if (tokenInputMode === 'from_wallet' && !selectedToken) {
+      setError('Please select a token');
+      return;
+    }
+    if (tokenInputMode === 'manual') {
+      if (!manualTokenCA) {
+        setError('Please enter token address');
+        return;
+      }
+      if (!manualTokenAmount || parseFloat(manualTokenAmount) <= 0) {
+        setError('Please enter valid amount');
+        return;
+      }
+    }
     
     setSelling(true);
     setError(null);
     setResult(null);
     
     try {
+      const requestBody = tokenInputMode === 'from_wallet' ? {
+        walletId,
+        tokenMint: selectedToken!.mint,
+        tokenSymbol: selectedToken!.symbol,
+        percentage,
+        slippageBps: slippage * 100
+      } : {
+        walletId,
+        tokenMint: manualTokenCA,
+        tokenSymbol: manualTokenSymbol || undefined,
+        amount: parseFloat(manualTokenAmount),
+        slippageBps: slippage * 100
+      };
+
       const response = await fetch(`${config.apiUrl}/api/trading/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          walletId,
-          tokenMint: selectedToken.mint,
-          tokenSymbol: selectedToken.symbol, // Pass symbol to avoid backend lookup
-          percentage,
-          slippageBps: slippage * 100 // Convert to basis points
-        })
+        body: JSON.stringify(requestBody)
       });
       
       const data = await response.json();
@@ -215,15 +241,58 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
               )}
 
               {/* No Tokens */}
-              {!loading && tokens.length === 0 && (
+              {!loading && tokens.length === 0 && tokenInputMode === 'from_wallet' && (
                 <div className="text-center py-12 text-gray-400">
                   <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>No tokens found in this wallet</p>
+                  <p className="text-sm mt-2">Try using Manual CA mode instead</p>
                 </div>
               )}
 
-              {/* Token Selection */}
-              {!loading && tokens.length > 0 && (
+              {/* Token Input Mode Toggle */}
+              {!loading && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Sell Mode
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setTokenInputMode('from_wallet');
+                        setManualTokenCA('');
+                        setManualTokenSymbol('');
+                        setManualTokenAmount('');
+                      }}
+                      disabled={tokens.length === 0}
+                      className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                        tokenInputMode === 'from_wallet'
+                          ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                          : tokens.length === 0
+                          ? 'bg-gray-800 border border-transparent text-gray-600 cursor-not-allowed'
+                          : 'bg-gray-700/50 hover:bg-gray-700 border border-transparent text-gray-400'
+                      }`}
+                    >
+                      From Wallet ({tokens.length})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTokenInputMode('manual');
+                        setSelectedToken(null);
+                      }}
+                      className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                        tokenInputMode === 'manual'
+                          ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                          : 'bg-gray-700/50 hover:bg-gray-700 border border-transparent text-gray-400'
+                      }`}
+                    >
+                      Manual CA
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Token Selection - From Wallet */}
+              {!loading && tokenInputMode === 'from_wallet' && tokens.length > 0 && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -392,6 +461,124 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
                       </button>
                     </>
                   )}
+                </>
+              )}
+
+              {/* Manual Token Input */}
+              {!loading && tokenInputMode === 'manual' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Token Contract Address
+                    </label>
+                    <input
+                      type="text"
+                      value={manualTokenCA}
+                      onChange={(e) => setManualTokenCA(e.target.value)}
+                      placeholder="Enter token address (e.g., pump...pump)"
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                               focus:outline-none focus:border-cyan-500 transition-colors
+                               font-mono text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Token Symbol (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={manualTokenSymbol}
+                      onChange={(e) => setManualTokenSymbol(e.target.value)}
+                      placeholder="e.g., PEPE"
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                               focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Amount to Sell
+                    </label>
+                    <input
+                      type="number"
+                      value={manualTokenAmount}
+                      onChange={(e) => setManualTokenAmount(e.target.value)}
+                      placeholder="Enter amount of tokens"
+                      step="0.01"
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                               focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      💡 Enter the number of tokens you want to sell
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Slippage Tolerance (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={slippage}
+                      onChange={(e) => setSlippage(Math.max(0.1, Math.min(50, parseFloat(e.target.value) || 0)))}
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                               focus:outline-none focus:border-cyan-500 transition-colors"
+                      step="0.5"
+                      min="0.1"
+                      max="50"
+                    />
+                  </div>
+
+                  {/* Error Display */}
+                  {error && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-red-200">{error}</div>
+                    </div>
+                  )}
+
+                  {/* Success Result */}
+                  {result && (
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-2">
+                      <div className="text-green-400 font-medium">✅ Sell Successful!</div>
+                      <div className="text-sm text-gray-300 space-y-1">
+                        <div>Sold: {result.amountIn?.toFixed(4)} {result.tokenSymbol || manualTokenSymbol || 'tokens'}</div>
+                        <div>Received: {result.amountOut?.toFixed(6)} SOL</div>
+                        {result.signature && (
+                          <div className="font-mono text-xs break-all">
+                            <a
+                              href={`https://solscan.io/tx/${result.signature}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-cyan-400 hover:underline"
+                            >
+                              View on Solscan →
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sell Button */}
+                  <button
+                    onClick={handleSell}
+                    disabled={selling || !manualTokenCA || !manualTokenAmount}
+                    className="w-full py-3 bg-red-500 hover:bg-red-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {selling ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Selling...
+                      </>
+                    ) : (
+                      <>
+                        <TrendingDown className="w-5 h-5" />
+                        Sell {manualTokenSymbol || 'Token'}
+                      </>
+                    )}
+                  </button>
                 </>
               )}
             </div>

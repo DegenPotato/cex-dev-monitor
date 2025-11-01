@@ -8,7 +8,9 @@ export const TradingPanel: React.FC = () => {
   const { wallets, executeTrade, loading, fetchWallets } = useTradingStore();
   const [selectedWallet, setSelectedWallet] = useState('');
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
+  const [tokenInputMode, setTokenInputMode] = useState<'manual' | 'from_wallet'>('manual');
   const [tokenAddress, setTokenAddress] = useState('');
+  const [selectedTokenFromWallet, setSelectedTokenFromWallet] = useState('');
   const [amount, setAmount] = useState('');
   const [slippage, setSlippage] = useState('1');
   const [skipTax, setSkipTax] = useState(false);
@@ -20,6 +22,27 @@ export const TradingPanel: React.FC = () => {
   useEffect(() => {
     fetchWallets();
   }, []);
+
+  // Get available tokens from selected wallet (only those with liquidity and value)
+  const availableTokens = React.useMemo(() => {
+    if (!selectedWallet) return [];
+    const wallet = wallets.find(w => w.id === selectedWallet);
+    if (!wallet?.tokens) return [];
+    
+    return wallet.tokens.filter(token => 
+      // Has value (indicates liquidity and not honeypot)
+      (token.valueUSD && token.valueUSD > 0) &&
+      // Has balance
+      token.uiAmount > 0
+    );
+  }, [selectedWallet, wallets]);
+
+  // Update token address when selecting from wallet
+  useEffect(() => {
+    if (tokenInputMode === 'from_wallet' && selectedTokenFromWallet) {
+      setTokenAddress(selectedTokenFromWallet);
+    }
+  }, [tokenInputMode, selectedTokenFromWallet]);
 
   useEffect(() => {
     // Calculate estimated output with tax
@@ -143,17 +166,81 @@ export const TradingPanel: React.FC = () => {
           </select>
         </div>
 
-        {/* Token Address Input */}
+        {/* Token Input Mode Toggle */}
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-2">Token Address</label>
-          <input
-            type="text"
-            value={tokenAddress}
-            onChange={(e) => setTokenAddress(e.target.value)}
-            placeholder={tradeType === 'buy' ? 'Token to buy (e.g., pump...pump)' : 'Token to sell'}
-            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
-                     focus:outline-none focus:border-cyan-500 transition-colors"
-          />
+          <label className="block text-sm text-gray-400 mb-2">Token Selection</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setTokenInputMode('manual');
+                setSelectedTokenFromWallet('');
+                if (tokenInputMode === 'from_wallet') setTokenAddress('');
+              }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                tokenInputMode === 'manual'
+                  ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                  : 'bg-gray-700/50 hover:bg-gray-700 border border-transparent text-gray-400'
+              }`}
+            >
+              Manual CA
+            </button>
+            <button
+              onClick={() => {
+                setTokenInputMode('from_wallet');
+                setTokenAddress('');
+              }}
+              disabled={!selectedWallet || availableTokens.length === 0}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                tokenInputMode === 'from_wallet'
+                  ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                  : availableTokens.length === 0
+                  ? 'bg-gray-800 border border-transparent text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-700/50 hover:bg-gray-700 border border-transparent text-gray-400'
+              }`}
+            >
+              From Wallet ({availableTokens.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Token Address Input or Dropdown */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-400 mb-2">
+            {tokenInputMode === 'manual' ? 'Token Address' : 'Select Token'}
+          </label>
+          
+          {tokenInputMode === 'manual' ? (
+            <input
+              type="text"
+              value={tokenAddress}
+              onChange={(e) => setTokenAddress(e.target.value)}
+              placeholder={tradeType === 'buy' ? 'Token to buy (e.g., pump...pump)' : 'Token to sell'}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                       focus:outline-none focus:border-cyan-500 transition-colors"
+            />
+          ) : (
+            <select
+              value={selectedTokenFromWallet}
+              onChange={(e) => setSelectedTokenFromWallet(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg
+                       focus:outline-none focus:border-cyan-500 transition-colors"
+            >
+              <option value="">Select a token from your wallet...</option>
+              {availableTokens.map(token => (
+                <option key={token.mint} value={token.mint}>
+                  {token.symbol || token.name || token.mint.slice(0, 8)}
+                  {' '}
+                  ({token.uiAmount.toFixed(4)} • ${(token.valueUSD || 0).toFixed(2)})
+                </option>
+              ))}
+            </select>
+          )}
+          
+          {tokenInputMode === 'from_wallet' && availableTokens.length === 0 && selectedWallet && (
+            <p className="text-xs text-yellow-400 mt-2">
+              ⚠️ No tokens with liquidity found in this wallet
+            </p>
+          )}
         </div>
 
         {/* Amount Input */}
