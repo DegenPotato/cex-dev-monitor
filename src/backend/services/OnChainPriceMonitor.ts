@@ -81,8 +81,8 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
-    // Get initial price from pool
-    const initialPrice = await this.fetchPoolPrice(poolAddress);
+    // Get initial price from API
+    const initialPrice = await this.fetchPriceFromAPI(tokenMint);
     
     const campaign: Campaign = {
       id: campaignId,
@@ -100,21 +100,59 @@ export class OnChainPriceMonitor extends EventEmitter {
       priceHistory: [{ price: initialPrice, timestamp: Date.now() }]
     };
 
-    // Subscribe to pool account changes
-    const subscriptionId = this.connection.onAccountChange(
-      new PublicKey(poolAddress),
-      (accountInfo) => this.handlePoolUpdate(campaignId, accountInfo),
-      'confirmed'
-    );
-
-    campaign.subscriptionId = subscriptionId;
     this.campaigns.set(campaignId, campaign);
 
     console.log(`🚀 Started campaign ${campaignId} for ${tokenMint}`);
     console.log(`   Initial price: ${initialPrice.toFixed(9)} SOL`);
     
+    // Start polling for this campaign (15 second intervals)
+    this.startPricePolling(campaignId);
+    
     this.emit('campaign_started', campaign);
     return campaign;
+  }
+
+  /**
+   * Start polling for price updates every 15 seconds
+   */
+  private startPricePolling(campaignId: string) {
+    const interval = setInterval(async () => {
+      const campaign = this.campaigns.get(campaignId);
+      if (!campaign || !campaign.isActive) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        // Fetch latest price from API
+        const newPrice = await this.fetchPriceFromAPI(campaign.tokenMint);
+        
+        // Update campaign stats
+        campaign.currentPrice = newPrice;
+        campaign.high = Math.max(campaign.high, newPrice);
+        campaign.low = Math.min(campaign.low, newPrice);
+        campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
+        campaign.lastUpdate = Date.now();
+        
+        // Add to history
+        campaign.priceHistory.push({ price: newPrice, timestamp: Date.now() });
+        
+        // Keep last 100 data points
+        if (campaign.priceHistory.length > 100) {
+          campaign.priceHistory.shift();
+        }
+        
+        // Broadcast update
+        this.emit('price_update', campaign);
+        
+        // Check alerts
+        this.checkAlerts(campaignId, newPrice);
+      } catch (error) {
+        console.error(`Error polling price for ${campaignId}:`, error);
+      }
+    }, 15000); // 15 seconds
+
+    console.log(`📊 Started price polling for ${campaignId} (15s intervals)`);
   }
 
   /**
@@ -251,34 +289,74 @@ export class OnChainPriceMonitor extends EventEmitter {
       console.log(`  0x48: ${data.readBigUInt64LE(OFFSET_3)}`);
       console.log(`  0x50: ${data.readBigUInt64LE(OFFSET_4)}`);
       
-      // Analysis shows 0x060 has a much smaller value - likely the actual reserves!
-      // 0x060: 264572541156331 = 264572.541156331 as base units
-      // 0x0f0: 4297853 = very small, might be fees or something else
+      // We're getting prices 100-300x too high (0.015 vs 0.00008)
+      // This means we need to find smaller SOL values or larger token values
       
-      // Try different interpretations
-      const val_0x60 = data.readBigUInt64LE(0x60);
-      const val_0x0f0 = data.readBigUInt64LE(0xf0);
+      // Let's try EVERY possible pair of 8-byte values and calculate the price
+      console.log(`\n=== TESTING ALL OFFSET COMBINATIONS ===`);
+      console.log(`Target price: ~0.00008 SOL per token`);
+      console.log(`Token decimals: 6 (pump.fun standard)\n`);
       
-      console.log(`\nAnalyzing potential reserve locations:`);
-      console.log(`  0x60 as SOL (÷1e9): ${Number(val_0x60) / 1e9}`);
-      console.log(`  0x60 as SOL (÷1e6): ${Number(val_0x60) / 1e6}`);
-      console.log(`  0x60 raw: ${Number(val_0x60)}`);
-      console.log(`  0xf0: ${Number(val_0x0f0)} (÷1e9: ${Number(val_0x0f0) / 1e9})`);
+      const candidates: Array<{offset1: number, offset2: number, price: number, sol: number, tokens: number}> = [];
       
-      // The actual reserves are likely at 0x60 with different decimal interpretation
-      // Based on real price of ~0.00008 SOL, we need small SOL reserves
-      const solReserves = val_0x60;  // Try this as raw lamports
-      const tokenReserves = data.readBigUInt64LE(0x68);  // Next 8 bytes
+      // Try every offset as potential SOL reserves
+      for (let solOffset = 0x08; solOffset < 0x100; solOffset += 8) {
+        // Try every offset as potential token reserves
+        for (let tokenOffset = 0x08; tokenOffset < 0x100; tokenOffset += 8) {
+          if (solOffset === tokenOffset) continue;
+          
+          try {
+            const solVal = data.readBigUInt64LE(solOffset);
+            const tokenVal = data.readBigUInt64LE(tokenOffset);
+            
+            // Skip if either value is 0 or unreasonably large
+            if (solVal === 0n || tokenVal === 0n) continue;
+            if (solVal > 1000000000000000000n || tokenVal > 1000000000000000000n) continue;
+            
+            // Calculate price: SOL (in lamports) / tokens (with 6 decimals)
+            const solInLamports = Number(solVal);
+            const tokensBase = Number(tokenVal);
+            
+            // SOL = lamports / 1e9, Tokens = base / 1e6
+            const price = (solInLamports / 1e9) / (tokensBase / 1e6);
+            
+            // Look for prices in the range 0.00001 to 0.001 (reasonable for low-cap tokens)
+            if (price > 0.00001 && price < 0.001) {
+              candidates.push({
+                offset1: solOffset,
+                offset2: tokenOffset,
+                price,
+                sol: solInLamports / 1e9,
+                tokens: tokensBase / 1e6
+              });
+            }
+          } catch {}
+        }
+      }
       
-      console.log(`\nTrying 0x60 (SOL) and 0x68 (tokens):`);
-      console.log(`  SOL: ${solReserves} lamports = ${Number(solReserves) / 1e9} SOL`);
-      console.log(`  Tokens: ${tokenReserves} raw = ${Number(tokenReserves) / 1e6} (6 dec) or ${Number(tokenReserves) / 1e9} (9 dec)`);
-      console.log(`  Price if 9 dec: ${(Number(solReserves) / 1e9) / (Number(tokenReserves) / 1e9)} SOL/token`);
-      console.log(`  Price if 6 dec tokens: ${(Number(solReserves) / 1e9) / (Number(tokenReserves) / 1e6)} SOL/token`);
+      // Sort by how close to target price (0.00008)
+      candidates.sort((a, b) => Math.abs(a.price - 0.00008) - Math.abs(b.price - 0.00008));
       
+      console.log(`Found ${candidates.length} candidate combinations:`);
+      candidates.slice(0, 10).forEach((c, i) => {
+        console.log(`${i + 1}. Offsets 0x${c.offset1.toString(16)} & 0x${c.offset2.toString(16)}: ${c.sol.toFixed(4)} SOL / ${c.tokens.toFixed(0)} tokens = ${c.price.toFixed(8)} SOL/token`);
+      });
+      
+      // Use the best match
+      const best = candidates[0];
+      if (best) {
+        console.log(`\n✅ USING: 0x${best.offset1.toString(16)} (SOL) and 0x${best.offset2.toString(16)} (tokens)`);
+        return {
+          solReserves: data.readBigUInt64LE(best.offset1),
+          tokenReserves: data.readBigUInt64LE(best.offset2)
+        };
+      }
+      
+      // Fallback
+      console.log(`\n❌ NO GOOD MATCH FOUND, using defaults`);
       return {
-        solReserves,
-        tokenReserves
+        solReserves: data.readBigUInt64LE(0x60),
+        tokenReserves: data.readBigUInt64LE(0x68)
       };
     } catch (error) {
       console.error('Failed to decode Pump AMM:', error);
@@ -309,7 +387,55 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch pool price from on-chain data
+   * Fetch price from GeckoTerminal API
+   * Much more reliable than decoding on-chain data
+   */
+  private async fetchPriceFromAPI(tokenMint: string): Promise<number> {
+    try {
+      const response = await fetch(
+        `https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price/${tokenMint}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`GeckoTerminal API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const priceUSD = parseFloat(data.data.attributes.token_prices[tokenMint.toLowerCase()]);
+      
+      if (!priceUSD) {
+        throw new Error('No price data from GeckoTerminal');
+      }
+      
+      // Get SOL price to convert USD to SOL
+      const solPriceUSD = await this.getSolPrice();
+      const priceInSOL = priceUSD / solPriceUSD;
+      
+      return priceInSOL;
+    } catch (error) {
+      console.error(`Error fetching price from API for ${tokenMint}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current SOL price in USD
+   */
+  private async getSolPrice(): Promise<number> {
+    try {
+      const response = await fetch(
+        'https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price/So11111111111111111111111111111111111111112'
+      );
+      const data = await response.json();
+      return parseFloat(data.data.attributes.token_prices['so11111111111111111111111111111111111111112']);
+    } catch (error) {
+      console.error('Error fetching SOL price:', error);
+      return 186; // Fallback
+    }
+  }
+
+  /**
+   * Fetch pool price from on-chain data (DEPRECATED - using API instead)
    * Works for both initial fetch and WebSocket updates
    */
   private async fetchPoolPrice(poolAddress: string, accountData?: Buffer): Promise<number> {
