@@ -12,6 +12,7 @@ import { queryAll, queryOne, execute } from '../database/helpers.js';
 // Using compatibility service until migration completes
 import { walletStorageServiceCompat as walletStorageService } from '../services/WalletStorageServiceCompat.js';
 import { tokenSourceTracker } from '../services/TokenSourceTracker.js';
+import { portfolioService } from '../services/PortfolioService.js';
 
 const authService = new SecureAuthService();
 
@@ -42,7 +43,20 @@ router.get('/api/trading/wallets', authService.requireSecureAuth(), async (req: 
     const userId = (req as AuthenticatedRequest).user!.id;
     const wallets = await walletStorageService.getUserWallets(userId);
     
-    res.json({ success: true, wallets });
+    // Enrich each wallet with real-time token holdings
+    const enrichedWallets = await Promise.all(
+      wallets.map(async (wallet: any) => {
+        const portfolio = await portfolioService.getWalletPortfolio(wallet.id, userId);
+        return {
+          ...wallet,
+          balance: portfolio?.solBalance || wallet.balance || 0,
+          tokens: portfolio?.tokens || [],
+          totalValueUSD: portfolio?.totalValueUSD || 0
+        };
+      })
+    );
+    
+    res.json({ success: true, wallets: enrichedWallets });
   } catch (error: any) {
     console.error('Error fetching wallets:', error);
     res.status(500).json({ error: error.message });
@@ -670,43 +684,14 @@ router.get('/api/trading/wallets/:walletId/tokens', authService.requireSecureAut
     const walletId = parseInt(req.params.walletId);
     const userId = (req as AuthenticatedRequest).user!.id;
     
-    // Verify wallet ownership (compatible with both schemas)
-    let wallet;
-    try {
-      // Try new schema first
-      wallet = await queryOne(
-        'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ? AND is_deleted = 0',
-        [walletId, userId]
-      );
-    } catch (e) {
-      // Fall back to old schema (no is_deleted column)
-      wallet = await queryOne(
-        'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ?',
-        [walletId, userId]
-      );
-    }
+    // Get full wallet portfolio with real-time token balances
+    const portfolio = await portfolioService.getWalletPortfolio(walletId, userId);
     
-    if (!wallet) {
+    if (!portfolio) {
       return res.status(404).json({ error: 'Wallet not found' });
     }
     
-    // Get token holdings - for now return empty array if no holdings table
-    const tokens = await queryAll(`
-      SELECT 
-        token_mint,
-        token_symbol,
-        token_name,
-        token_amount,
-        token_decimals,
-        price_usd,
-        total_value_usd,
-        updated_at
-      FROM wallet_token_holdings
-      WHERE wallet_id = ?
-      ORDER BY total_value_usd DESC
-    `, [walletId]).catch(() => []);
-    
-    res.json({ success: true, tokens });
+    res.json({ success: true, tokens: portfolio.tokens });
   } catch (error: any) {
     console.error('Error fetching wallet tokens:', error);
     res.status(500).json({ error: error.message });
@@ -720,152 +705,8 @@ router.get('/api/trading/portfolio/stats', authService.requireSecureAuth(), asyn
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     
-    // Get all user wallets (compatible with both schemas)
-    let wallets;
-    try {
-      // Try new schema first
-      wallets = await queryAll(
-        'SELECT * FROM trading_wallets WHERE user_id = ? AND is_deleted = 0',
-        [userId]
-      );
-    } catch (e) {
-      // Fall back to old schema
-      wallets = await queryAll(
-        'SELECT id, user_id, wallet_address as public_key, 0 as sol_balance FROM trading_wallets WHERE user_id = ?',
-        [userId]
-      );
-    }
-    
-    if (!wallets || wallets.length === 0) {
-      return res.json({
-        success: true,
-        stats: {
-          totalValueUSD: 0,
-          totalSOL: 0,
-          solPrice: solPriceOracle.getPrice(),  // Include SOL price even with no wallets
-          totalTokens: 0,
-          walletCount: 0,
-          profitLoss: 0,
-          profitLossPercent: 0,
-          topTokens: [],
-          recentActivity: []
-        }
-      });
-    }
-    
-    // Calculate total SOL balance
-    const totalSOL = wallets.reduce((sum: number, w: any) => sum + (w.sol_balance || 0), 0);
-    
-    // Get token holdings if table exists
-    let holdings: any[] = [];
-    try {
-      const walletIds = wallets.map((w: any) => w.id);
-      const placeholders = walletIds.map(() => '?').join(',');
-      
-      holdings = await queryAll(`
-        SELECT 
-          token_mint,
-          token_symbol,
-          token_name,
-          SUM(token_amount) as total_amount,
-          AVG(price_usd) as avg_price,
-          SUM(total_value_usd) as total_value
-        FROM wallet_token_holdings
-        WHERE wallet_id IN (${placeholders})
-        GROUP BY token_mint, token_symbol, token_name
-        ORDER BY total_value DESC
-        LIMIT 10
-      `, walletIds);
-    } catch (e) {
-      // Table might not exist yet
-      holdings = [];
-    }
-    
-    // Calculate total portfolio value using real SOL price
-    const totalTokenValue = holdings.reduce((sum: number, h: any) => sum + (h.total_value || 0), 0);
-    const solPrice = solPriceOracle.getPrice();
-    const totalValueUSD = (totalSOL * solPrice) + totalTokenValue;
-    
-    // Get recent trading activity
-    let recentActivity: any[] = [];
-    try {
-      recentActivity = await queryAll(`
-        SELECT 
-          t.tx_type,
-          t.token_symbol,
-          t.amount_in,
-          t.amount_out,
-          t.created_at,
-          t.status,
-          w.wallet_name
-        FROM trading_transactions t
-        JOIN trading_wallets w ON t.wallet_id = w.id
-        WHERE t.user_id = ?
-        ORDER BY t.created_at DESC
-        LIMIT 10
-      `, [userId]);
-    } catch (e) {
-      recentActivity = [];
-    }
-    
-    // Calculate P&L from recent trades (simplified)
-    let profitLoss = 0;
-    let profitLossPercent = 0;
-    
-    try {
-      const trades = await queryAll(`
-        SELECT 
-          tx_type,
-          amount_in,
-          amount_out,
-          price_per_token
-        FROM trading_transactions
-        WHERE user_id = ? AND status = 'completed'
-        ORDER BY created_at DESC
-        LIMIT 100
-      `, [userId]);
-      
-      // Simple P&L calculation based on buy/sell prices
-      const buyTotal = trades
-        .filter((t: any) => t.tx_type === 'buy')
-        .reduce((sum: number, t: any) => sum + (t.amount_in || 0), 0);
-      
-      const sellTotal = trades
-        .filter((t: any) => t.tx_type === 'sell')
-        .reduce((sum: number, t: any) => sum + (t.amount_out || 0), 0);
-      
-      if (buyTotal > 0) {
-        profitLoss = sellTotal - buyTotal;
-        profitLossPercent = (profitLoss / buyTotal) * 100;
-      }
-    } catch (e) {
-      // No trades yet
-    }
-    
-    const stats = {
-      totalValueUSD,
-      totalSOL,
-      solPrice,  // Add SOL price to response
-      totalTokens: holdings.length,
-      walletCount: wallets.length,
-      profitLoss,
-      profitLossPercent,
-      topTokens: holdings.map((h: any) => ({
-        symbol: h.token_symbol,
-        name: h.token_name,
-        amount: h.total_amount,
-        value: h.total_value,
-        price: h.avg_price
-      })),
-      recentActivity: recentActivity.map((a: any) => ({
-        type: a.tx_type,
-        token: a.token_symbol,
-        amount: a.tx_type === 'buy' ? a.amount_out : a.amount_in,
-        timestamp: a.created_at,
-        status: a.status,
-        wallet: a.wallet_name
-      }))
-    };
+    // Get comprehensive portfolio stats using real-time data
+    const stats = await portfolioService.getUserPortfolioStats(userId);
     
     res.json({ success: true, stats });
   } catch (error: any) {
