@@ -109,8 +109,8 @@ const tradingWebSocketService = getTradingWebSocketService();
 tradingWebSocketService.initialize(io);
 console.log('✅ Trading WebSocket service initialized on /trading namespace');
 
-// Initialize Price Test routes with Socket.IO
-initializePriceTestRoutes(io);
+// Initialize Price Test routes with native WebSocket
+initializePriceTestRoutes(wss);
 
 // Start price oracles for trading features
 solPriceOracle.start().then(async () => {

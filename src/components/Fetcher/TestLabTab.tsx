@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
-import io, { Socket } from 'socket.io-client';
+
+const apiUrl = (path: string) => `${config.apiUrl}${path}`;
 
 interface Campaign {
   id: string;
@@ -30,7 +31,6 @@ interface Alert {
 }
 
 export const TestLabTab: React.FC = () => {
-  const [, setSocket] = useState<Socket | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -39,53 +39,70 @@ export const TestLabTab: React.FC = () => {
   const [newAlertPercent, setNewAlertPercent] = useState('');
   const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
   const [loading, setLoading] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Connect to WebSocket
+  // Set up WebSocket for real-time updates (like other tabs)
   useEffect(() => {
-    const newSocket = io(config.apiUrl, {
-      withCredentials: true,
-      transports: ['websocket', 'polling']
-    });
-
-    newSocket.on('connect', () => {
-      console.log('✅ Connected to Test Lab WebSocket');
-    });
-
-    // Real-time price updates
-    newSocket.on('campaign_price_update', (data: any) => {
-      setCampaigns(prev => prev.map(c => 
-        c.id === data.campaignId 
-          ? { ...c, currentPrice: data.price, changePercent: data.changePercent, lastUpdate: data.timestamp }
-          : c
-      ));
-    });
-
-    // Alert notifications
-    newSocket.on('alert_triggered', (data: any) => {
-      toast.success(
-        <div className="flex flex-col gap-1">
-          <div className="font-semibold">🎯 Alert Triggered!</div>
-          <div className="text-sm">
-            Campaign reached {data.alert.direction} {data.alert.targetPercent}%
-          </div>
-          <div className="text-sm text-gray-400">
-            Price: {data.currentPrice.toFixed(9)} SOL
-          </div>
-        </div>,
-        { duration: 10000 }
-      );
-
-      // Mark alert as hit
-      setAlerts(prev => prev.map(a => 
-        a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
-      ));
-    });
-
-    setSocket(newSocket);
     fetchCampaigns();
 
+    // Native WebSocket connection at /ws
+    const wsUrl = apiUrl('/ws').replace('http', 'ws');
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('✅ Test Lab connected to real-time updates');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+
+        // Handle price updates
+        if (message.type === 'test_lab_price_update') {
+          const data = message.data;
+          setCampaigns(prev => prev.map(c =>
+            c.id === data.id ? { ...c, ...data } : c
+          ));
+        }
+
+        // Handle alert triggers
+        if (message.type === 'test_lab_alert') {
+          const data = message.data;
+          toast.success(
+            <div className="flex flex-col gap-1">
+              <div className="font-semibold">🎯 Alert Triggered!</div>
+              <div className="text-sm">
+                Campaign reached {data.alert.direction} {data.alert.targetPercent}%
+              </div>
+              <div className="text-sm text-gray-400">
+                Price: {data.currentPrice.toFixed(9)} SOL
+              </div>
+            </div>,
+            { duration: 10000 }
+          );
+
+          setAlerts(prev => prev.map(a =>
+            a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
+          ));
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
     return () => {
-      newSocket.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
     };
   }, []);
 

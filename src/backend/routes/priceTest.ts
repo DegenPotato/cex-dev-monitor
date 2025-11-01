@@ -3,19 +3,19 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { Server as SocketIOServer } from 'socket.io';
+import { WebSocketServer } from 'ws';
 import { getOnChainPriceMonitor } from '../services/OnChainPriceMonitor.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const authService = new SecureAuthService();
 const monitor = getOnChainPriceMonitor();
 
-// Store io instance
-let io: SocketIOServer | null = null;
+// Store WebSocket server instance
+let wss: WebSocketServer | null = null;
 
-export function initializePriceTestRoutes(ioInstance: SocketIOServer) {
-  io = ioInstance;
-  console.log('✅ Price Test routes initialized with Socket.IO');
+export function initializePriceTestRoutes(wssInstance: WebSocketServer) {
+  wss = wssInstance;
+  console.log('✅ Price Test routes initialized with native WebSocket');
 }
 
 const router = Router();
@@ -182,23 +182,31 @@ router.get('/api/test-lab/campaigns', authService.requireSecureAuth(), async (re
 });
 
 
-// Forward events to Socket.IO
-monitor.on('price_update', (data) => {
-  if (io) {
-    io.emit('campaign_price_update', data);
-  }
+// Broadcast to all connected WebSocket clients
+function broadcast(message: any) {
+  if (!wss) return;
+  
+  const messageStr = JSON.stringify(message);
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      client.send(messageStr);
+    }
+  });
+}
+
+// Forward events to native WebSocket
+monitor.on('price_update', (campaign) => {
+  broadcast({
+    type: 'test_lab_price_update',
+    data: campaign
+  });
 });
 
 monitor.on('alert_triggered', (data) => {
-  if (io) {
-    // Find user who owns this campaign
-    for (const [userId, campaigns] of userCampaigns.entries()) {
-      if (campaigns.has(data.campaignId)) {
-        io.to(`user_${userId}`).emit('alert_triggered', data);
-        break;
-      }
-    }
-  }
+  broadcast({
+    type: 'test_lab_alert',
+    data
+  });
 });
 
 export default router;
