@@ -199,36 +199,66 @@ export class OnChainPriceMonitor extends EventEmitter {
    */
   private decodePumpAMM(data: Buffer): { solReserves: bigint; tokenReserves: bigint; } | null {
     try {
-      // Pump.fun AMM layout (graduated tokens)
-      // The structure seems to store reserves directly in the account
-      // Let's scan for the likely reserve positions
+      // Pump.fun AMM layout analysis
+      console.log('=== PUMP AMM DATA STRUCTURE ANALYSIS ===');
       
-      console.log('Pump AMM data dump (looking for reserves):');
+      // Show hex dump in 8-byte chunks to identify patterns
+      console.log('Hex dump (8-byte chunks):');
+      for (let i = 0; i < Math.min(256, data.length); i += 8) {
+        const chunk = data.slice(i, i + 8);
+        const value = chunk.length === 8 ? chunk.readBigUInt64LE(0) : 0n;
+        const hex = chunk.toString('hex').padEnd(16, ' ');
+        console.log(`  0x${i.toString(16).padStart(3, '0')}: ${hex} = ${value} (${Number(value) / 1e9} SOL or tokens)`);
+      }
       
-      // Try various offsets to find the reserves
-      // Based on the previous logs showing SOL: 5229996482534310142 
-      // That's around 5.23 SOL which seems reasonable
+      // Let's look for patterns in the data
+      // The values we see in logs: SOL: 5229996482534310142, Token: 208629109737501281
+      // 5229996482534310142 / 1e9 = 5229.996 SOL (seems too high)
+      // 208629109737501281 / 1e9 = 208.629 tokens (seems reasonable)
       
-      for (let offset = 0x08; offset < 0x80; offset += 8) {
+      // BUT the real price is 0.00008168 SOL per token
+      // So if we have 208 tokens worth 0.00008168 SOL each = 0.017 SOL total
+      // This suggests the reserves might be swapped or at different offsets
+      
+      // Let's scan for values that could be reserves
+      console.log('\nPotential reserves found:');
+      for (let offset = 0; offset < Math.min(200, data.length - 8); offset += 8) {
         try {
           const value = data.readBigUInt64LE(offset);
-          if (value > 1000000000n && value < 100000000000000000n) { // Between 1 SOL and 100M SOL
-            console.log(`  0x${offset.toString(16)}: ${value} (${Number(value) / 1e9} SOL)`);
+          // Look for values that could be token amounts (in lamports or base units)
+          if (value > 100000n && value < 1000000000000000000n) {
+            const asSol = Number(value) / 1e9;
+            const asTokens = Number(value) / 1e6;
+            const asRaw = Number(value);
+            console.log(`  0x${offset.toString(16).padStart(3, '0')}: ${value}`);
+            console.log(`         As SOL: ${asSol.toFixed(9)}`);
+            console.log(`         As tokens (6 dec): ${asTokens.toFixed(6)}`);
+            console.log(`         As tokens (9 dec): ${(Number(value) / 1e9).toFixed(9)}`);
           }
         } catch {}
       }
       
-      // Based on pump.fun AMM structure analysis:
-      // The reserves appear to be at consistent offsets
-      const SOL_RESERVES_OFFSET = 0x10;   // 16 decimal
-      const TOKEN_RESERVES_OFFSET = 0x18; // 24 decimal
+      // Based on the hex pattern f19a6d0411b16dbc...
+      // The actual reserves might be at different offsets
+      // Let's try the offsets where we found the values in the logs
+      const OFFSET_1 = 0x10;  // Try offset 16
+      const OFFSET_2 = 0x18;  // Try offset 24
+      const OFFSET_3 = 0x48;  // Try offset 72
+      const OFFSET_4 = 0x50;  // Try offset 80
       
-      const solReserves = data.readBigUInt64LE(SOL_RESERVES_OFFSET);
-      const tokenReserves = data.readBigUInt64LE(TOKEN_RESERVES_OFFSET);
+      console.log('\nTrying specific offsets:');
+      console.log(`  0x10: ${data.readBigUInt64LE(OFFSET_1)}`);
+      console.log(`  0x18: ${data.readBigUInt64LE(OFFSET_2)}`);
+      console.log(`  0x48: ${data.readBigUInt64LE(OFFSET_3)}`);
+      console.log(`  0x50: ${data.readBigUInt64LE(OFFSET_4)}`);
       
-      console.log(`Pump AMM decoded:`);
-      console.log(`  SOL Reserves: ${solReserves} (${Number(solReserves) / 1e9} SOL)`);
-      console.log(`  Token Reserves: ${tokenReserves} (${Number(tokenReserves) / 1e9} tokens)`);
+      // For now, use the values we're seeing in the logs to understand the structure
+      const solReserves = data.readBigUInt64LE(0x10);
+      const tokenReserves = data.readBigUInt64LE(0x18);
+      
+      console.log(`\nUsing offsets 0x10 and 0x18:`);
+      console.log(`  SOL: ${solReserves} (${Number(solReserves) / 1e9} SOL)`);
+      console.log(`  Tokens: ${tokenReserves} (${Number(tokenReserves) / 1e9} with 9 dec)`);
       
       return {
         solReserves,
