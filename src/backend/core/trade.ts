@@ -102,7 +102,7 @@ export class TradingEngine {
       }
 
       // Get Jupiter quote
-      const inputMint = 'So11111111111111111111111111111111111112'; // SOL
+      const inputMint = 'So11111111111111111111111111111111111111112'; // SOL (native mint)
       const outputMint = params.tokenMint;
       const amountLamports = Math.floor(netAmount * LAMPORTS_PER_SOL);
 
@@ -238,7 +238,7 @@ export class TradingEngine {
 
       // Get Jupiter quote
       const inputMint = params.tokenMint;
-      const outputMint = 'So11111111111111111111111111111111111112'; // SOL
+      const outputMint = 'So11111111111111111111111111111111111111112'; // SOL (native mint)
 
       // Need to get token decimals
       const tokenInfo = await this.getTokenInfo(params.tokenMint);
