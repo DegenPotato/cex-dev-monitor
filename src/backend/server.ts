@@ -193,6 +193,10 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Endpoint monitoring middleware (tracks all API calls)
+import { endpointMonitorMiddleware } from './middleware/endpointMonitor.js';
+app.use(endpointMonitorMiddleware);
+
 // Serve static files from public directory (for HDRI, audio, etc.)
 const publicAssetsPath = path.join(__dirname, '../../public/assets');
 
@@ -277,6 +281,10 @@ app.use('/api/token-registry', tokenRegistryRoutes);
 // Register price oracle routes
 import priceOracleRoutes from './routes/priceOracle.js';
 app.use('/api/price-oracle', priceOracleRoutes);
+
+// Register monitoring routes
+import monitoringRoutes from './routes/monitoring.js';
+app.use('/', monitoringRoutes);
 
 // Register campaign routes
 import campaignRoutes from './routes/campaigns.js';

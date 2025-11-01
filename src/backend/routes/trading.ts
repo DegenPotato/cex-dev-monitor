@@ -4,7 +4,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { solPriceOracle } from '../services/SolPriceOracle.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 // import { getWalletManager } from '../core/wallet.js'; // Using walletStorageService instead
 import { getTradingEngine } from '../core/trade.js';

@@ -69,38 +69,54 @@ class PortfolioService {
         programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
       });
 
-      const holdings: TokenHolding[] = [];
+      // Extract all token data first
+      const tokenData: Array<{
+        mint: string;
+        amount: number;
+        decimals: number;
+        uiAmount: number;
+      }> = [];
 
       for (const { account } of tokenAccounts.value) {
         const parsedData = account.data as ParsedAccountData;
         const info = parsedData.parsed.info;
         
-        const mint = info.mint;
-        const amount = parseFloat(info.tokenAmount.amount);
-        const decimals = info.tokenAmount.decimals;
         const uiAmount = parseFloat(info.tokenAmount.uiAmountString);
-
+        
         // Skip if amount is zero
         if (uiAmount === 0) continue;
 
-        // Get token metadata and price
-        const tokenPrice = await tokenPriceOracle.getTokenPrice(mint);
-        const priceUSD = tokenPrice?.priceUsd || 0;
-        const valueUSD = uiAmount * priceUSD;
+        tokenData.push({
+          mint: info.mint,
+          amount: parseFloat(info.tokenAmount.amount),
+          decimals: info.tokenAmount.decimals,
+          uiAmount
+        });
+      }
 
-        holdings.push({
-          mint,
-          symbol: tokenPrice?.symbol || mint.substring(0, 8),
+      // Batch fetch all token prices at once (efficient!)
+      const mintAddresses = tokenData.map(t => t.mint);
+      const prices = await tokenPriceOracle.getTokenPrices(mintAddresses);
+
+      // Combine token data with prices
+      const holdings: TokenHolding[] = tokenData.map(token => {
+        const tokenPrice = prices.get(token.mint);
+        const priceUSD = tokenPrice?.priceUsd || 0;
+        const valueUSD = token.uiAmount * priceUSD;
+
+        return {
+          mint: token.mint,
+          symbol: tokenPrice?.symbol || token.mint.substring(0, 8),
           name: tokenPrice?.name || 'Unknown Token',
           logoUri: tokenPrice?.imageUrl,
-          amount,
-          uiAmount,
-          decimals,
+          amount: token.amount,
+          uiAmount: token.uiAmount,
+          decimals: token.decimals,
           priceUSD,
           valueUSD,
           change24h: tokenPrice?.priceChange24h
-        });
-      }
+        };
+      });
 
       // Sort by value descending
       holdings.sort((a, b) => b.valueUSD - a.valueUSD);
