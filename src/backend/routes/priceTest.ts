@@ -212,7 +212,7 @@ router.delete('/api/price-test/targets', authService.requireSecureAuth(), async 
 /**
  * Get tracked symbols
  */
-router.get('/api/price-test/symbols', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+router.get('/api/price-test/symbols', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
   try {
     const symbols = pythService.getTrackedSymbols();
     

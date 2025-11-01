@@ -27,7 +27,7 @@ interface PriceTarget {
 }
 
 export const TestTab: React.FC = () => {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [, setSocket] = useState<Socket | null>(null);
   const [symbol, setSymbol] = useState('SOL');
   const [tokenMint, setTokenMint] = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);

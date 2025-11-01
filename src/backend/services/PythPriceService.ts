@@ -115,7 +115,7 @@ export class PythPriceService extends EventEmitter {
   /**
    * Subscribe to price feed for a token
    */
-  subscribe(symbol: string, tokenMint?: string) {
+  subscribe(symbol: string, _tokenMint?: string) {
     console.log(`📊 Subscribing to ${symbol} price feed...`);
     
     this.subscribedSymbols.add(symbol);
@@ -139,7 +139,7 @@ export class PythPriceService extends EventEmitter {
       // For Solana tokens, we'll use the mint address to get Pyth price ID
       const subscribeMessage = {
         type: 'subscribe',
-        ids: [this.getPythPriceId(symbol, tokenMint)]
+        ids: [this.getPythPriceId(symbol, _tokenMint)]
       };
       
       this.ws.send(JSON.stringify(subscribeMessage));
@@ -180,7 +180,7 @@ export class PythPriceService extends EventEmitter {
   /**
    * Get Pyth price ID for a symbol
    */
-  private getPythPriceId(symbol: string, tokenMint?: string): string {
+  private getPythPriceId(symbol: string, _tokenMint?: string): string {
     // Common Pyth price feed IDs
     const priceIds: Record<string, string> = {
       'SOL': 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d', // SOL/USD
@@ -241,7 +241,7 @@ export class PythPriceService extends EventEmitter {
   /**
    * Find symbol by price ID
    */
-  private findSymbolByPriceId(priceId: string): string | null {
+  private findSymbolByPriceId(_priceId: string): string | null {
     // Reverse lookup from price ID to symbol
     // For now, return first subscribed symbol
     return Array.from(this.subscribedSymbols)[0] || null;
