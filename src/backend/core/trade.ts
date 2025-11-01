@@ -17,7 +17,7 @@ import fetch from 'node-fetch';
 import { getWalletManager } from './wallet.js';
 import { execute, queryOne } from '../database/helpers.js';
 
-const JUPITER_API_URL = 'https://quote-api.jup.ag/v6';
+const JUPITER_API_URL = 'https://lite-api.jup.ag/swap/v1';
 const JITO_API_URL = process.env.JITO_API_URL || 'https://mainnet.block-engine.jito.wtf/api/v1';
 
 export interface TradeParams {
