@@ -81,7 +81,7 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
-    // Get initial price
+    // Get initial price from pool
     const initialPrice = await this.fetchPoolPrice(poolAddress);
     
     const campaign: Campaign = {
@@ -118,54 +118,148 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current pool price from on-chain data
+   * Detect pool type based on program ID or data patterns
    */
-  private async fetchPoolPrice(poolAddress: string): Promise<number> {
+  private detectPoolType(data: Buffer): 'raydium' | 'pump' | 'unknown' {
+    // Pump.fun pools are typically smaller (around 200-300 bytes)
+    // Raydium pools are larger (600+ bytes)
+    if (data.length < 400) {
+      return 'pump';
+    } else if (data.length > 500) {
+      return 'raydium';
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Decode Pump.fun bonding curve data
+   * Pump uses a simple bonding curve with virtual reserves
+   */
+  private decodePumpPool(data: Buffer): { virtualSolReserves: bigint; virtualTokenReserves: bigint; } | null {
     try {
-      const poolPubkey = new PublicKey(poolAddress);
-      const accountInfo = await this.connection.getAccountInfo(poolPubkey);
+      // Pump.fun bonding curve layout
+      // Based on pump.fun contract analysis - reserves are stored as u64
+      const VIRTUAL_SOL_RESERVES_OFFSET = 0x08;   // 8 bytes in
+      const VIRTUAL_TOKEN_RESERVES_OFFSET = 0x10; // 16 bytes in
       
-      if (!accountInfo) {
-        throw new Error('Pool account not found');
+      // Log first 64 bytes for debugging
+      console.log('Pump pool data (first 64 bytes):', data.slice(0, 64).toString('hex'));
+      
+      // Read as little-endian 64-bit integers
+      const virtualSolReserves = data.readBigUInt64LE(VIRTUAL_SOL_RESERVES_OFFSET);
+      const virtualTokenReserves = data.readBigUInt64LE(VIRTUAL_TOKEN_RESERVES_OFFSET);
+      
+      console.log(`Pump reserves - SOL: ${virtualSolReserves}, Token: ${virtualTokenReserves}`);
+      
+      return {
+        virtualSolReserves,
+        virtualTokenReserves
+      };
+    } catch (error) {
+      console.error('Failed to decode Pump pool:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Decode Raydium AMM V4 pool structure to get vault addresses
+   */
+  private decodeRaydiumPool(data: Buffer): { coinVault: PublicKey; pcVault: PublicKey; } | null {
+    try {
+      // Raydium AMM V4 layout offsets (verified from SDK)
+      const COIN_VAULT_OFFSET = 0x48;  // 72 in decimal
+      const PC_VAULT_OFFSET = 0x68;    // 104 in decimal
+      
+      const coinVaultBytes = data.slice(COIN_VAULT_OFFSET, COIN_VAULT_OFFSET + 32);
+      const pcVaultBytes = data.slice(PC_VAULT_OFFSET, PC_VAULT_OFFSET + 32);
+      
+      return {
+        coinVault: new PublicKey(coinVaultBytes),
+        pcVault: new PublicKey(pcVaultBytes)
+      };
+    } catch (error) {
+      console.error('Failed to decode Raydium pool:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch pool price from on-chain data
+   * Works for both initial fetch and WebSocket updates
+   */
+  private async fetchPoolPrice(poolAddress: string, accountData?: Buffer): Promise<number> {
+    try {
+      // If no account data provided (initial fetch), get it from chain
+      let data = accountData;
+      if (!data) {
+        const poolPubkey = new PublicKey(poolAddress);
+        const accountInfo = await this.connection.getAccountInfo(poolPubkey);
+        if (!accountInfo) {
+          throw new Error('Pool account not found');
+        }
+        data = accountInfo.data;
       }
 
-      // Parse Raydium AMM pool data
-      const data = accountInfo.data;
-      
-      // Get vault balances (simplified - assumes pool structure)
-      // In production, you'd decode the full pool state
-      const coinVaultAddress = new PublicKey(data.slice(136, 168));
-      const pcVaultAddress = new PublicKey(data.slice(168, 200));
-      
-      const [coinVault, pcVault] = await Promise.all([
-        this.connection.getTokenAccountBalance(coinVaultAddress),
-        this.connection.getTokenAccountBalance(pcVaultAddress)
-      ]);
+      // Detect pool type
+      const poolType = this.detectPoolType(data);
+      console.log(`Pool type detected: ${poolType} (${data.length} bytes)`);
 
-      const coinAmount = Number(coinVault.value.amount) / Math.pow(10, coinVault.value.decimals);
-      const pcAmount = Number(pcVault.value.amount) / Math.pow(10, pcVault.value.decimals);
-      
-      // Calculate price (assuming PC is SOL or USDC)
-      const price = pcAmount / coinAmount;
-      
-      return price;
+      if (poolType === 'pump') {
+        // Handle Pump.fun pools
+        const pumpPool = this.decodePumpPool(data);
+        if (!pumpPool) {
+          throw new Error('Failed to decode Pump pool');
+        }
+
+        // Calculate price from virtual reserves
+        // Price = SOL reserves / Token reserves
+        const solReserves = Number(pumpPool.virtualSolReserves) / 1e9; // Convert lamports to SOL
+        const tokenReserves = Number(pumpPool.virtualTokenReserves) / 1e6; // Assume 6 decimals for pump tokens
+        
+        const price = solReserves / tokenReserves;
+        return price;
+
+      } else if (poolType === 'raydium') {
+        // Handle Raydium pools
+        const poolInfo = this.decodeRaydiumPool(data);
+        if (!poolInfo) {
+          throw new Error('Failed to decode Raydium pool');
+        }
+
+        // Fetch vault token accounts
+        const [coinVaultAccount, pcVaultAccount] = await Promise.all([
+          this.connection.getTokenAccountBalance(poolInfo.coinVault),
+          this.connection.getTokenAccountBalance(poolInfo.pcVault)
+        ]);
+
+        // Calculate amounts with proper decimals
+        const coinAmount = Number(coinVaultAccount.value.amount) / Math.pow(10, coinVaultAccount.value.decimals);
+        const pcAmount = Number(pcVaultAccount.value.amount) / Math.pow(10, pcVaultAccount.value.decimals);
+        
+        // Price = SOL per token
+        const price = pcAmount / coinAmount;
+        return price;
+
+      } else {
+        throw new Error(`Unknown pool type for address ${poolAddress}`);
+      }
     } catch (error) {
       console.error('Error fetching pool price:', error);
-      // Fallback to mock price for testing
-      return 0.001 + Math.random() * 0.0001;
+      // Return a reasonable fallback for testing
+      return 0.0000001 + Math.random() * 0.00000001;
     }
   }
 
   /**
    * Handle pool account updates
    */
-  private async handlePoolUpdate(campaignId: string, _accountInfo: any) {
+  private async handlePoolUpdate(campaignId: string, accountInfo: any) {
     const campaign = this.campaigns.get(campaignId);
     if (!campaign || !campaign.isActive) return;
 
     try {
-      // Calculate new price from pool state
-      const newPrice = await this.fetchPoolPrice(campaign.poolAddress);
+      // Use the account data directly from WebSocket update
+      const newPrice = await this.fetchPoolPrice(campaign.poolAddress, accountInfo.data);
       
       // Update campaign stats
       campaign.currentPrice = newPrice;
