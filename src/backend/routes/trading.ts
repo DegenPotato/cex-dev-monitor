@@ -300,11 +300,11 @@ router.post('/api/trading/buy', authService.requireSecureAuth(), async (req: Req
     // Resolve walletAddress from walletId if needed
     let finalWalletAddress = walletAddress;
     if (!finalWalletAddress && walletId) {
-      const wallet = await queryOne('SELECT public_key, wallet_address FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
+      const wallet = await queryOne('SELECT public_key FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
       if (!wallet) {
         return res.status(400).json({ error: 'Wallet not found' });
       }
-      finalWalletAddress = wallet.public_key || wallet.wallet_address;
+      finalWalletAddress = wallet.public_key;
     }
     
     if (!finalWalletAddress) {
@@ -400,11 +400,11 @@ router.post('/api/trading/sell', authService.requireSecureAuth(), async (req: Re
     // Resolve walletAddress from walletId if needed
     let finalWalletAddress = walletAddress;
     if (!finalWalletAddress && walletId) {
-      const wallet = await queryOne('SELECT public_key, wallet_address FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
+      const wallet = await queryOne('SELECT public_key FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
       if (!wallet) {
         return res.status(400).json({ error: 'Wallet not found' });
       }
-      finalWalletAddress = wallet.public_key || wallet.wallet_address;
+      finalWalletAddress = wallet.public_key;
     }
     
     if (!finalWalletAddress) {
