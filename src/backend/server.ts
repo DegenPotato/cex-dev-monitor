@@ -62,6 +62,7 @@ import forwardingRulesRoutes from './routes/telegram-forwarding.js';
 // import tokenMetadataRoutes from './routes/token-metadata.js'; // TODO: Create this file
 // import configRoutes from './routes/config.js'; // TODO: Create this file
 import ohlcvRoutes from './routes/ohlcv.js';
+import priceTestRoutes, { initializePriceTestRoutes } from './routes/priceTest.js';
 import SecureAuthService from '../lib/auth/SecureAuthService.js';
 import AuthMaintenanceService from './services/AuthMaintenanceService.js';
 import { telegramClientService } from './services/TelegramClientService.js';
@@ -107,6 +108,9 @@ const io = new SocketIOServer(httpServer, {
 const tradingWebSocketService = getTradingWebSocketService();
 tradingWebSocketService.initialize(io);
 console.log('✅ Trading WebSocket service initialized on /trading namespace');
+
+// Initialize Price Test routes with Socket.IO
+initializePriceTestRoutes(io);
 
 // Start price oracles for trading features
 solPriceOracle.start().then(async () => {
@@ -281,6 +285,9 @@ app.use('/api/token-registry', tokenRegistryRoutes);
 // Register price oracle routes
 import priceOracleRoutes from './routes/priceOracle.js';
 app.use('/api/price-oracle', priceOracleRoutes);
+
+// Register price test routes
+app.use('/', priceTestRoutes);
 
 // Register monitoring routes
 import monitoringRoutes from './routes/monitoring.js';
