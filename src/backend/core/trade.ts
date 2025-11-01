@@ -246,12 +246,17 @@ export class TradingEngine {
 
       console.log(`🎯 Selling ${amountToSell} tokens for SOL`);
 
+      // Use higher slippage for sells (500 = 5%) to avoid failures
+      const slippageBps = params.slippageBps || 500;
+      
       const quoteResponse = await fetch(
         `${JUPITER_API_URL}/quote?` +
         `inputMint=${inputMint}&` +
         `outputMint=${outputMint}&` +
         `amount=${amountRaw}&` +
-        `slippageBps=${params.slippageBps || 100}`
+        `slippageBps=${slippageBps}&` +
+        `onlyDirectRoutes=false&` +
+        `asLegacyTransaction=false`
       );
 
       if (!quoteResponse.ok) {
@@ -519,30 +524,44 @@ export class TradingEngine {
    */
   private async getTokenInfo(mint: string): Promise<{ decimals: number; symbol?: string }> {
     try {
-      // Try to get from Jupiter token list
-      const response = await fetch('https://token.jup.ag/all');
-      const tokens = await response.json();
-      const token = tokens.find((t: any) => t.address === mint);
+      // Fallback: Get decimals directly from blockchain (more reliable)
+      const mintPubkey = new PublicKey(mint);
+      const mintInfo = await this.connection.getParsedAccountInfo(mintPubkey);
+      const data = (mintInfo.value?.data as any);
       
-      if (token) {
-        return {
-          decimals: token.decimals,
-          symbol: token.symbol
-        };
+      const decimals = data?.parsed?.info?.decimals || 9;
+      
+      // Try to get symbol from Jupiter token list (non-blocking)
+      let symbol = 'TOKEN';
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000); // 2s timeout
+        
+        const response = await fetch('https://token.jup.ag/all', {
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+          const tokens = await response.json();
+          const token = tokens.find((t: any) => t.address === mint);
+          if (token) {
+            symbol = token.symbol;
+          }
+        }
+      } catch (fetchError) {
+        // Silently fail - we already have decimals from blockchain
+        console.log(`⚠️ Could not fetch token symbol from Jupiter (${mint.slice(0, 8)}...), using default`);
       }
-
-      // Fallback - most SPL tokens use 9 decimals
-      // Can be enhanced to query chain in the future
-      return {
-        decimals: 9,
-        symbol: 'TOKEN'
-      };
+      
+      return { decimals, symbol };
     } catch (error) {
       console.error('Error getting token info:', error);
       return { decimals: 9 }; // Default to 9
     }
   }
 
+  // ... (rest of the code remains the same)
   /**
    * Log transaction to database
    */
