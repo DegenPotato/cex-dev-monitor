@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { Target, TrendingUp, TrendingDown, Activity, Bell, Plus, X, RefreshCw, Play, Square } from 'lucide-react';
+import { Target, TrendingUp, TrendingDown, Activity, Bell, Plus, X, RefreshCw, Play, Square, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
 import io, { Socket } from 'socket.io-client';
 
-interface PriceStats {
-  symbol: string;
+interface TokenStats {
+  tokenMint: string;
   startPrice: number;
+  startPriceUSD: number;
   currentPrice: number;
+  currentPriceUSD: number;
   high: number;
   low: number;
+  highUSD: number;
+  lowUSD: number;
   changePercent: number;
   startTime: number;
   lastUpdate: number;
+  updateCount: number;
 }
 
 interface PriceTarget {
   id: string;
-  symbol: string;
+  tokenMint: string;
   targetPrice: number;
   targetPercent: number;
   direction: 'above' | 'below';
@@ -28,10 +33,9 @@ interface PriceTarget {
 
 export const TestTab: React.FC = () => {
   const [, setSocket] = useState<Socket | null>(null);
-  const [symbol, setSymbol] = useState('SOL');
   const [tokenMint, setTokenMint] = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [stats, setStats] = useState<PriceStats | null>(null);
+  const [stats, setStats] = useState<TokenStats | null>(null);
   const [targets, setTargets] = useState<PriceTarget[]>([]);
   const [newTargetPercent, setNewTargetPercent] = useState('');
   const [newTargetDirection, setNewTargetDirection] = useState<'above' | 'below'>('above');
@@ -48,11 +52,6 @@ export const TestTab: React.FC = () => {
       console.log('✅ Connected to WebSocket for price test');
     });
 
-    newSocket.on('price_update', (update: any) => {
-      console.log('📊 Price update:', update);
-      // Update stats will come from polling for now
-    });
-
     newSocket.on('price_target_hit', (data: any) => {
       console.log('🎯 Target hit!', data);
       
@@ -60,8 +59,13 @@ export const TestTab: React.FC = () => {
       toast.success(
         <div className="flex flex-col gap-1">
           <div className="font-semibold">🎯 Target Hit!</div>
-          <div className="text-sm">{data.target.symbol} reached {data.target.direction} {data.target.targetPrice.toFixed(8)}</div>
-          <div className="text-sm text-gray-400">Current: ${data.currentPrice.toFixed(8)}</div>
+          <div className="text-sm">Price reached {data.target.direction} target</div>
+          <div className="text-sm">
+            {data.target.targetPercent >= 0 ? '+' : ''}{data.target.targetPercent.toFixed(2)}%
+          </div>
+          <div className="text-sm text-gray-400">
+            Current: {data.currentPrice.toFixed(9)} SOL (${data.currentPriceUSD.toFixed(6)})
+          </div>
         </div>,
         { duration: 10000 }
       );
@@ -81,11 +85,11 @@ export const TestTab: React.FC = () => {
 
   // Poll for stats updates when monitoring
   useEffect(() => {
-    if (!isMonitoring || !symbol) return;
+    if (!isMonitoring || !tokenMint) return;
 
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${config.apiUrl}/api/price-test/stats/${symbol}`, {
+        const response = await fetch(`${config.apiUrl}/api/price-test/stats/${tokenMint}`, {
           credentials: 'include'
         });
         
@@ -101,11 +105,11 @@ export const TestTab: React.FC = () => {
     }, 1000); // Update every second
 
     return () => clearInterval(interval);
-  }, [isMonitoring, symbol]);
+  }, [isMonitoring, tokenMint]);
 
   const startMonitoring = async () => {
-    if (!symbol) {
-      toast.error('Please enter a symbol');
+    if (!tokenMint || tokenMint.length < 32) {
+      toast.error('Please enter a valid Solana token address');
       return;
     }
 
@@ -115,7 +119,7 @@ export const TestTab: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ symbol, tokenMint: tokenMint || undefined })
+        body: JSON.stringify({ tokenMint })
       });
 
       const data = await response.json();
@@ -123,7 +127,10 @@ export const TestTab: React.FC = () => {
       if (data.success) {
         setIsMonitoring(true);
         setStats(data.stats);
-        toast.success(`Started monitoring ${symbol}`);
+        toast.success(`Started monitoring token`);
+        
+        // Fetch existing targets
+        await fetchTargets();
       } else {
         throw new Error(data.error || 'Failed to start monitoring');
       }
@@ -141,7 +148,7 @@ export const TestTab: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ symbol })
+        body: JSON.stringify({ tokenMint })
       });
 
       const data = await response.json();
@@ -150,7 +157,7 @@ export const TestTab: React.FC = () => {
         setIsMonitoring(false);
         setStats(null);
         setTargets([]);
-        toast.success(`Stopped monitoring ${symbol}`);
+        toast.success(`Stopped monitoring token`);
       } else {
         throw new Error(data.error || 'Failed to stop monitoring');
       }
@@ -167,7 +174,7 @@ export const TestTab: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ symbol })
+        body: JSON.stringify({ tokenMint })
       });
 
       const data = await response.json();
@@ -175,12 +182,27 @@ export const TestTab: React.FC = () => {
       if (data.success) {
         setStats(data.stats);
         setTargets([]);
-        toast.success('Stats reset');
+        toast.success('Stats reset - new baseline set');
       } else {
         throw new Error(data.error || 'Failed to reset stats');
       }
     } catch (error: any) {
       toast.error(error.message);
+    }
+  };
+
+  const fetchTargets = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/price-test/targets/${tokenMint}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTargets(data.targets || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch targets:', error);
     }
   };
 
@@ -212,7 +234,7 @@ export const TestTab: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
-          symbol, 
+          tokenMint, 
           targets: [...targets.filter(t => !t.hit), newTarget]
         })
       });
@@ -239,7 +261,7 @@ export const TestTab: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ symbol, targets: updatedTargets })
+        body: JSON.stringify({ tokenMint, targets: updatedTargets })
       });
 
       const data = await response.json();
@@ -272,7 +294,7 @@ export const TestTab: React.FC = () => {
           Price Alert Test Lab
         </h2>
         <div className="text-sm text-gray-400">
-          Real-time price monitoring with Pyth Network
+          Track any Solana token with real-time alerts
         </div>
       </div>
 
@@ -283,27 +305,16 @@ export const TestTab: React.FC = () => {
         className="bg-gray-800 border border-gray-700 rounded-xl p-6"
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Symbol</label>
-              <input
-                type="text"
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                disabled={isMonitoring}
-                placeholder="SOL, BTC, ETH..."
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Token Mint (Optional)</label>
+              <label className="block text-sm text-gray-400 mb-2">Token Address (Solana CA)</label>
               <input
                 type="text"
                 value={tokenMint}
                 onChange={(e) => setTokenMint(e.target.value)}
                 disabled={isMonitoring}
-                placeholder="Token address..."
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white disabled:opacity-50"
+                placeholder="Token mint address..."
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white disabled:opacity-50 font-mono text-sm"
               />
             </div>
             <div className="flex items-end gap-2">
@@ -342,44 +353,75 @@ export const TestTab: React.FC = () => {
 
       {/* Price Stats */}
       {stats && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-2 md:grid-cols-5 gap-4"
-        >
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-sm text-gray-400 mb-1">Start Price</div>
-            <div className="text-xl font-bold text-white">${stats.startPrice.toFixed(8)}</div>
-            <div className="text-xs text-gray-500 mt-1">{formatTime(stats.startTime)} ago</div>
-          </div>
-          
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-sm text-gray-400 mb-1">Current Price</div>
-            <div className="text-xl font-bold text-cyan-400">${stats.currentPrice.toFixed(8)}</div>
-            <div className="text-xs text-gray-500 mt-1">Live</div>
-          </div>
-          
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-sm text-gray-400 mb-1">High</div>
-            <div className="text-xl font-bold text-green-400">${stats.high.toFixed(8)}</div>
-            <div className="text-xs text-gray-500 mt-1">+{(((stats.high - stats.startPrice) / stats.startPrice) * 100).toFixed(2)}%</div>
-          </div>
-          
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-sm text-gray-400 mb-1">Low</div>
-            <div className="text-xl font-bold text-red-400">${stats.low.toFixed(8)}</div>
-            <div className="text-xs text-gray-500 mt-1">{(((stats.low - stats.startPrice) / stats.startPrice) * 100).toFixed(2)}%</div>
-          </div>
-          
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <div className="text-sm text-gray-400 mb-1">Change</div>
-            <div className={`text-xl font-bold flex items-center gap-1 ${stats.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {stats.changePercent >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-              {stats.changePercent.toFixed(2)}%
+        <>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          >
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="text-sm text-gray-400 mb-1">Start Price</div>
+              <div className="text-lg font-bold text-white">{stats.startPrice.toFixed(9)} SOL</div>
+              <div className="text-xs text-gray-500 mt-1">${stats.startPriceUSD.toFixed(6)}</div>
+              <div className="text-xs text-gray-500">{formatTime(stats.startTime)} ago</div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">${(stats.currentPrice - stats.startPrice).toFixed(8)}</div>
-          </div>
-        </motion.div>
+            
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="text-sm text-gray-400 mb-1">Current Price</div>
+              <div className="text-lg font-bold text-cyan-400">{stats.currentPrice.toFixed(9)} SOL</div>
+              <div className="text-xs text-gray-500 mt-1">${stats.currentPriceUSD.toFixed(6)}</div>
+              <div className="text-xs text-gray-500">Updates: {stats.updateCount}</div>
+            </div>
+            
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="text-sm text-gray-400 mb-1">High</div>
+              <div className="text-lg font-bold text-green-400">{stats.high.toFixed(9)} SOL</div>
+              <div className="text-xs text-gray-500 mt-1">${stats.highUSD.toFixed(6)}</div>
+              <div className="text-xs text-gray-500">+{(((stats.high - stats.startPrice) / stats.startPrice) * 100).toFixed(2)}%</div>
+            </div>
+            
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="text-sm text-gray-400 mb-1">Low</div>
+              <div className="text-lg font-bold text-red-400">{stats.low.toFixed(9)} SOL</div>
+              <div className="text-xs text-gray-500 mt-1">${stats.lowUSD.toFixed(6)}</div>
+              <div className="text-xs text-gray-500">{(((stats.low - stats.startPrice) / stats.startPrice) * 100).toFixed(2)}%</div>
+            </div>
+          </motion.div>
+
+          {/* Change Indicator */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`bg-gray-800 border rounded-xl p-6 ${
+              stats.changePercent >= 0 ? 'border-green-600' : 'border-red-600'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {stats.changePercent >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-green-400" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-red-400" />
+                )}
+                <div>
+                  <div className="text-sm text-gray-400">Total Change</div>
+                  <div className={`text-3xl font-bold ${stats.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {stats.changePercent >= 0 ? '+' : ''}{stats.changePercent.toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-400">Difference</div>
+                <div className="text-lg font-bold text-white">
+                  {(stats.currentPrice - stats.startPrice).toFixed(9)} SOL
+                </div>
+                <div className="text-sm text-gray-500">
+                  ${(stats.currentPriceUSD - stats.startPriceUSD).toFixed(6)}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </>
       )}
 
       {/* Target Management */}
@@ -392,7 +434,7 @@ export const TestTab: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
               <Target className="w-5 h-5 text-yellow-400" />
-              Price Targets
+              Price Targets (Alerts)
             </h3>
             <Bell className="w-5 h-5 text-gray-400" />
           </div>
@@ -420,7 +462,7 @@ export const TestTab: React.FC = () => {
               className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              Add Target
+              Add Alert
             </button>
           </div>
 
@@ -452,7 +494,7 @@ export const TestTab: React.FC = () => {
                         {target.direction === 'above' ? '+' : ''}{target.targetPercent.toFixed(2)}%
                       </div>
                       <div className="text-sm text-gray-400">
-                        ${target.targetPrice.toFixed(8)}
+                        {target.targetPrice.toFixed(9)} SOL
                       </div>
                     </div>
                   </div>
@@ -475,7 +517,7 @@ export const TestTab: React.FC = () => {
             
             {targets.length === 0 && (
               <div className="text-center py-8 text-gray-500">
-                No targets set. Add targets to receive alerts when price reaches them.
+                No alerts set. Add percentage-based targets to receive notifications.
               </div>
             )}
           </div>
@@ -485,9 +527,10 @@ export const TestTab: React.FC = () => {
       {/* Info */}
       {!isMonitoring && (
         <div className="bg-blue-900/20 border border-blue-600 rounded-xl p-4 text-sm text-blue-300">
-          <strong>How it works:</strong> Enter a symbol (SOL, BTC, ETH, etc.) and start monitoring. 
-          Set percentage-based price targets to receive real-time notifications when prices hit your levels. 
-          Perfect for testing stop-loss and take-profit strategies without risking actual trades.
+          <strong>How it works:</strong> Paste any Solana token address (contract address) and start monitoring. 
+          The system uses Jupiter to get real-time price quotes every second. Set percentage-based targets 
+          (e.g., +5% for take-profit, -2% for stop-loss) and get instant notifications when price hits your levels. 
+          Perfect for testing strategies without risking real trades. <strong>Supports multiple tokens simultaneously!</strong>
         </div>
       )}
     </div>

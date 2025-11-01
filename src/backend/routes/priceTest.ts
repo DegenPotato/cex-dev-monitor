@@ -5,14 +5,11 @@
 
 import { Router, Request, Response } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
-import { getPythPriceService } from '../services/PythPriceService.js';
+import { getTokenPriceMonitor } from '../services/TokenPriceMonitor.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const authService = new SecureAuthService();
-const pythService = getPythPriceService();
-
-// Initialize Pyth service
-pythService.connect();
+const priceMonitor = getTokenPriceMonitor();
 
 // Store io instance
 let io: SocketIOServer | null = null;
@@ -24,10 +21,10 @@ export function initializePriceTestRoutes(ioInstance: SocketIOServer) {
 
 const router = Router();
 
-// Store active price targets per user
+// Store active price targets per user per token
 interface PriceTarget {
   id: string;
-  symbol: string;
+  tokenMint: string;
   targetPrice: number;
   targetPercent: number;
   direction: 'above' | 'below';
@@ -35,61 +32,59 @@ interface PriceTarget {
   createdAt: number;
 }
 
-const userTargets = new Map<number, PriceTarget[]>();
+// Map: userId -> tokenMint -> targets[]
+const userTargets = new Map<number, Map<string, PriceTarget[]>>();
 
 /**
- * Start price monitoring for a symbol
+ * Start price monitoring for a token
  */
 router.post('/api/price-test/subscribe', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { symbol, tokenMint } = req.body;
+    const { tokenMint } = req.body;
     
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol required' });
+    if (!tokenMint) {
+      return res.status(400).json({ error: 'tokenMint required' });
     }
 
-    console.log(`📊 Starting price monitoring for ${symbol}`);
+    console.log(`📊 Starting price monitoring for ${tokenMint}`);
     
-    // Subscribe to price feed
-    pythService.subscribe(symbol, tokenMint);
-    
-    // Get current stats
-    const stats = pythService.getStats(symbol);
+    // Start monitoring
+    const stats = await priceMonitor.startMonitoring(tokenMint);
     
     res.json({ 
       success: true, 
-      symbol,
+      tokenMint,
       stats,
-      message: `Started monitoring ${symbol}` 
+      message: `Started monitoring ${tokenMint}` 
     });
   } catch (error: any) {
-    console.error('❌ Error subscribing to price feed:', error);
+    console.error('❌ Error starting price monitoring:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * Stop price monitoring for a symbol
+ * Stop price monitoring for a token
  */
 router.post('/api/price-test/unsubscribe', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { symbol } = req.body;
+    const { tokenMint } = req.body;
     
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol required' });
+    if (!tokenMint) {
+      return res.status(400).json({ error: 'tokenMint required' });
     }
 
-    console.log(`📊 Stopping price monitoring for ${symbol}`);
+    console.log(`📊 Stopping price monitoring for ${tokenMint}`);
     
-    pythService.unsubscribe(symbol);
+    priceMonitor.stopMonitoring(tokenMint);
     
     res.json({ 
       success: true, 
-      symbol,
-      message: `Stopped monitoring ${symbol}` 
+      tokenMint,
+      message: `Stopped monitoring ${tokenMint}` 
     });
   } catch (error: any) {
-    console.error('❌ Error unsubscribing from price feed:', error);
+    console.error('❌ Error stopping price monitoring:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -97,14 +92,14 @@ router.post('/api/price-test/unsubscribe', authService.requireSecureAuth(), asyn
 /**
  * Get current price stats
  */
-router.get('/api/price-test/stats/:symbol', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+router.get('/api/price-test/stats/:tokenMint', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { symbol } = req.params;
+    const { tokenMint } = req.params;
     
-    const stats = pythService.getStats(symbol);
+    const stats = priceMonitor.getStats(tokenMint);
     
     if (!stats) {
-      return res.status(404).json({ error: 'Symbol not found or not subscribed' });
+      return res.status(404).json({ error: 'Token not found or not being monitored' });
     }
     
     res.json({ success: true, stats });
@@ -115,25 +110,25 @@ router.get('/api/price-test/stats/:symbol', authService.requireSecureAuth(), asy
 });
 
 /**
- * Reset stats for a symbol
+ * Reset stats for a token
  */
 router.post('/api/price-test/reset', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { symbol } = req.body;
+    const { tokenMint } = req.body;
     
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol required' });
+    if (!tokenMint) {
+      return res.status(400).json({ error: 'tokenMint required' });
     }
 
-    pythService.resetStats(symbol);
+    priceMonitor.resetStats(tokenMint);
     
-    const stats = pythService.getStats(symbol);
+    const stats = priceMonitor.getStats(tokenMint);
     
     res.json({ 
       success: true, 
-      symbol,
+      tokenMint,
       stats,
-      message: `Reset stats for ${symbol}` 
+      message: `Reset stats for ${tokenMint}` 
     });
   } catch (error: any) {
     console.error('❌ Error resetting stats:', error);
@@ -142,21 +137,21 @@ router.post('/api/price-test/reset', authService.requireSecureAuth(), async (req
 });
 
 /**
- * Set price targets
+ * Set price targets for a token
  */
 router.post('/api/price-test/targets', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { symbol, targets } = req.body;
+    const { tokenMint, targets } = req.body;
     
-    if (!symbol || !Array.isArray(targets)) {
-      return res.status(400).json({ error: 'Symbol and targets array required' });
+    if (!tokenMint || !Array.isArray(targets)) {
+      return res.status(400).json({ error: 'tokenMint and targets array required' });
     }
 
     // Create target objects
     const priceTargets: PriceTarget[] = targets.map((t: any) => ({
       id: `${Date.now()}_${Math.random()}`,
-      symbol,
+      tokenMint,
       targetPrice: t.targetPrice,
       targetPercent: t.targetPercent,
       direction: t.direction,
@@ -164,10 +159,15 @@ router.post('/api/price-test/targets', authService.requireSecureAuth(), async (r
       createdAt: Date.now()
     }));
 
-    // Store targets for user
-    userTargets.set(userId, priceTargets);
+    // Initialize user targets if not exists
+    if (!userTargets.has(userId)) {
+      userTargets.set(userId, new Map());
+    }
     
-    console.log(`🎯 Set ${priceTargets.length} targets for ${symbol} (user ${userId})`);
+    // Store targets for this token
+    userTargets.get(userId)!.set(tokenMint, priceTargets);
+    
+    console.log(`🎯 Set ${priceTargets.length} targets for ${tokenMint} (user ${userId})`);
     
     res.json({ 
       success: true, 
@@ -180,12 +180,15 @@ router.post('/api/price-test/targets', authService.requireSecureAuth(), async (r
 });
 
 /**
- * Get price targets
+ * Get price targets for a token
  */
-router.get('/api/price-test/targets', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.get('/api/price-test/targets/:tokenMint', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
-    const targets = userTargets.get(userId) || [];
+    const { tokenMint } = req.params;
+    
+    const userTokens = userTargets.get(userId);
+    const targets = userTokens?.get(tokenMint) || [];
     
     res.json({ success: true, targets });
   } catch (error: any) {
@@ -195,12 +198,17 @@ router.get('/api/price-test/targets', authService.requireSecureAuth(), async (re
 });
 
 /**
- * Clear all targets
+ * Clear targets for a token
  */
-router.delete('/api/price-test/targets', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.delete('/api/price-test/targets/:tokenMint', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
     const userId = req.user!.id;
-    userTargets.delete(userId);
+    const { tokenMint } = req.params;
+    
+    const userTokens = userTargets.get(userId);
+    if (userTokens) {
+      userTokens.delete(tokenMint);
+    }
     
     res.json({ success: true, message: 'Targets cleared' });
   } catch (error: any) {
@@ -210,40 +218,44 @@ router.delete('/api/price-test/targets', authService.requireSecureAuth(), async 
 });
 
 /**
- * Get tracked symbols
+ * Get all monitored tokens
  */
-router.get('/api/price-test/symbols', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+router.get('/api/price-test/monitored', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
   try {
-    const symbols = pythService.getTrackedSymbols();
+    const tokens = priceMonitor.getMonitoredTokens();
     
-    res.json({ success: true, symbols });
+    res.json({ success: true, tokens });
   } catch (error: any) {
-    console.error('❌ Error getting tracked symbols:', error);
+    console.error('❌ Error getting monitored tokens:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Check targets against price updates
-pythService.on('price', (update) => {
-  // Check all users' targets
-  for (const [userId, targets] of userTargets.entries()) {
+priceMonitor.on('price_update', (update) => {
+  // Check all users' targets for this token
+  for (const [userId, userTokenTargets] of userTargets.entries()) {
+    const targets = userTokenTargets.get(update.tokenMint);
+    if (!targets) continue;
+    
     for (const target of targets) {
-      if (target.symbol !== update.symbol || target.hit) continue;
+      if (target.hit) continue;
       
-      // Check if target is hit
+      // Check if target is hit (using SOL price)
       const hit = target.direction === 'above' 
         ? update.price >= target.targetPrice
         : update.price <= target.targetPrice;
       
       if (hit) {
         target.hit = true;
-        console.log(`🎯 Target HIT for user ${userId}: ${target.symbol} ${target.direction} ${target.targetPrice}`);
+        console.log(`🎯 Target HIT for user ${userId}: ${update.tokenMint} ${target.direction} ${target.targetPrice.toFixed(9)} SOL`);
         
         // Emit WebSocket event for notification
         if (io) {
           io.to(`user_${userId}`).emit('price_target_hit', {
             target,
             currentPrice: update.price,
+            currentPriceUSD: update.priceUSD,
             timestamp: Date.now()
           });
         }
