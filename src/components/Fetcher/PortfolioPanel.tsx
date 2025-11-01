@@ -378,6 +378,20 @@ export const PortfolioPanel: React.FC = () => {
             setSellWalletId(null);
           }}
           walletId={sellWalletId}
+          walletTokens={(() => {
+            // Find the wallet and pass its tokens
+            const wallet = wallets.find(w => w.id === String(sellWalletId));
+            // Convert TokenBalance to Token format with required fields
+            return (wallet?.tokens || []).map(t => ({
+              ...t,
+              symbol: t.symbol || 'UNKNOWN',
+              name: t.name || 'Unknown Token',
+              uiAmount: t.uiAmount || 0,
+              decimals: t.decimals || 9,
+              priceUSD: t.priceUSD || 0,
+              valueUSD: t.valueUSD || 0
+            }));
+          })()}
           onSellComplete={(result) => {
             console.log('Sell completed:', result);
             // Refresh portfolio data

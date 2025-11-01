@@ -17,6 +17,7 @@ interface SellTokenModalProps {
   isOpen: boolean;
   onClose: () => void;
   walletId: number;
+  walletTokens?: Token[]; // Optional: pass tokens directly from portfolio
   onSellComplete?: (result: any) => void;
 }
 
@@ -24,6 +25,7 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   isOpen, 
   onClose, 
   walletId,
+  walletTokens,
   onSellComplete 
 }) => {
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -35,33 +37,49 @@ export const SellTokenModal: React.FC<SellTokenModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
 
-  // Fetch wallet tokens
+  // Use pre-loaded tokens if available, otherwise fetch
   useEffect(() => {
     if (isOpen && walletId) {
-      fetchTokens();
+      if (walletTokens && walletTokens.length > 0) {
+        console.log('[SellTokenModal] Using pre-loaded tokens:', walletTokens.length);
+        setTokens(walletTokens);
+        setSelectedToken(walletTokens[0]);
+      } else {
+        fetchTokens();
+      }
     }
-  }, [isOpen, walletId]);
+  }, [isOpen, walletId, walletTokens]);
 
   const fetchTokens = async () => {
     setLoading(true);
     setError(null);
     try {
+      console.log('[SellTokenModal] Fetching tokens for wallet:', walletId);
+      
       const response = await fetch(`/api/trading/wallets/${walletId}/tokens`, {
         credentials: 'include'
       });
       
+      console.log('[SellTokenModal] Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch tokens');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[SellTokenModal] API error:', errorData);
+        throw new Error(errorData.error || 'Failed to fetch tokens');
       }
       
       const data = await response.json();
-      setTokens(data.tokens || []);
+      console.log('[SellTokenModal] Received tokens:', data.tokens?.length || 0, 'tokens');
+      
+      const tokensList = data.tokens || [];
+      setTokens(tokensList);
       
       // Auto-select first token if available
-      if (data.tokens && data.tokens.length > 0) {
-        setSelectedToken(data.tokens[0]);
+      if (tokensList.length > 0) {
+        setSelectedToken(tokensList[0]);
       }
     } catch (err: any) {
+      console.error('[SellTokenModal] Error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
