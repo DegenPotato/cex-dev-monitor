@@ -28,13 +28,57 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       
-      // Get connection status from TelegramClientService
-      const { telegramClientService } = await import('../services/TelegramClientService.js');
-      const accounts = telegramClientService.getConnectedAccounts(userId);
+      // Get telegram user accounts from database
+      const accounts = await queryAll(
+        'SELECT id, phone_number, username, first_name, last_name, is_verified, last_connected_at FROM telegram_user_accounts WHERE user_id = ?',
+        [userId]
+      );
       
-      res.json(accounts);
+      res.json({ accounts });
     } catch (error: any) {
       console.error('Failed to get accounts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Get chats for a specific Telegram account
+   */
+  router.get('/chats', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { accountId } = req.query;
+      
+      if (!accountId) {
+        return res.status(400).json({ error: 'accountId query parameter required' });
+      }
+      
+      // Verify account belongs to user
+      const account = await queryOne(
+        'SELECT id FROM telegram_user_accounts WHERE id = ? AND user_id = ?',
+        [accountId, userId]
+      );
+      
+      if (!account) {
+        return res.status(403).json({ error: 'Account not found or access denied' });
+      }
+      
+      // Get all chats from telegram_cached_entities for this user
+      const chats = await queryAll(
+        `SELECT DISTINCT 
+          entity_id as id, 
+          title, 
+          username,
+          entity_type as type
+        FROM telegram_cached_entities 
+        WHERE user_id = ? AND entity_type IN ('channel', 'chat', 'group')
+        ORDER BY title`,
+        [userId]
+      );
+      
+      res.json({ chats });
+    } catch (error: any) {
+      console.error('Failed to get chats:', error);
       res.status(500).json({ error: error.message });
     }
   });
