@@ -24,6 +24,13 @@ export interface Campaign {
   priceHistory: Array<{ price: number; timestamp: number; }>;
 }
 
+export type AlertAction = 
+  | { type: 'notification' }
+  | { type: 'buy'; amount: number; slippage: number }
+  | { type: 'sell'; amount: number; slippage: number }
+  | { type: 'telegram'; chatId: string; message?: string }
+  | { type: 'discord'; webhookUrl: string; message?: string };
+
 export interface PriceAlert {
   id: string;
   campaignId: string;
@@ -32,6 +39,7 @@ export interface PriceAlert {
   direction: 'above' | 'below';
   hit: boolean;
   hitAt?: number;
+  actions: AlertAction[]; // Multiple actions can be triggered
 }
 
 /**
@@ -221,9 +229,14 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Add an alert to a campaign
+   * Add an alert to a campaign with configurable actions
    */
-  addAlert(campaignId: string, targetPercent: number, direction: 'above' | 'below'): PriceAlert | null {
+  addAlert(
+    campaignId: string, 
+    targetPercent: number, 
+    direction: 'above' | 'below',
+    actions: AlertAction[] = [{ type: 'notification' }]
+  ): PriceAlert | null {
     const campaign = this.campaigns.get(campaignId);
     if (!campaign) return null;
 
@@ -237,14 +250,16 @@ export class OnChainPriceMonitor extends EventEmitter {
       targetPrice,
       targetPercent,
       direction,
-      hit: false
+      hit: false,
+      actions
     };
 
     const campaignAlerts = this.alerts.get(campaignId) || [];
     campaignAlerts.push(alert);
     this.alerts.set(campaignId, campaignAlerts);
 
-    console.log(`⚠️ Alert added: ${direction} ${targetPercent}% (${targetPrice.toFixed(9)} SOL)`);
+    const actionTypes = actions.map(a => a.type).join(', ');
+    console.log(`⚠️ Alert added: ${direction} ${targetPercent}% (${targetPrice.toFixed(9)} SOL) with actions: ${actionTypes}`);
     return alert;
   }
 

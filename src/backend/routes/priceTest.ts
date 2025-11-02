@@ -24,6 +24,56 @@ const router = Router();
 const userCampaigns = new Map<number, Set<string>>();
 
 /**
+ * Fetch available pools for a token
+ */
+router.get('/api/test-lab/pools/:tokenMint', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint } = req.params;
+    
+    // Fetch pools from GeckoTerminal
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`GeckoTerminal API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const pools = data.data || [];
+    
+    // Parse and format pool data
+    const formattedPools = pools.map((pool: any) => {
+      const attributes = pool.attributes;
+      const relationships = pool.relationships;
+      
+      return {
+        address: attributes.address,
+        name: attributes.name,
+        dex: relationships?.dex?.data?.id || 'unknown',
+        baseToken: attributes.base_token_price_usd,
+        priceUsd: attributes.base_token_price_usd,
+        liquidityUsd: attributes.reserve_in_usd,
+        volume24h: attributes.volume_usd?.h24 || 0,
+        priceChange24h: attributes.price_change_percentage?.h24 || 0,
+        transactions24h: attributes.transactions?.h24?.buys + attributes.transactions?.h24?.sells || 0,
+        // Burn/lock detection
+        poolCreatedAt: attributes.pool_created_at,
+        // Note: Burn/lock status requires additional on-chain checks
+        // This would need Solana RPC calls to check LP token supply
+      };
+    }).slice(0, 10); // Limit to top 10 pools
+    
+    res.json({ 
+      success: true, 
+      pools: formattedPools 
+    });
+  } catch (error: any) {
+    console.error('❌ Error fetching pools:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Start a new monitoring campaign
  */
 router.post('/api/test-lab/campaign/start', authService.requireSecureAuth(), async (req: any, res: Response) => {
@@ -121,17 +171,20 @@ router.post('/api/test-lab/campaign/reset', authService.requireSecureAuth(), asy
 });
 
 /**
- * Add alert to campaign
+ * Add alert to campaign with optional actions
  */
 router.post('/api/test-lab/alerts', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { campaignId, targetPercent, direction } = req.body;
+    const { campaignId, targetPercent, direction, actions } = req.body;
     
     if (!campaignId || targetPercent === undefined || !direction) {
       return res.status(400).json({ error: 'campaignId, targetPercent and direction required' });
     }
 
-    const alert = monitor.addAlert(campaignId, targetPercent, direction);
+    // Default to notification if no actions provided
+    const alertActions = actions || [{ type: 'notification' }];
+    
+    const alert = monitor.addAlert(campaignId, targetPercent, direction, alertActions);
     
     if (!alert) {
       return res.status(404).json({ error: 'Campaign not found' });

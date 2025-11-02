@@ -3,6 +3,8 @@ import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap } from 'l
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
+import { PoolSelectionModal } from './PoolSelectionModal';
+import { AlertActionConfig, AlertAction } from './AlertActionConfig';
 
 const apiUrl = (path: string) => `${config.apiUrl}${path}`;
 
@@ -53,9 +55,11 @@ export const TestLabTab: React.FC = () => {
   const [poolAddress, setPoolAddress] = useState('');
   const [newAlertPercent, setNewAlertPercent] = useState('');
   const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
+  const [newAlertActions, setNewAlertActions] = useState<AlertAction[]>([{ type: 'notification' }]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'campaigns' | 'history'>('campaigns');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showPoolModal, setShowPoolModal] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Set up WebSocket for real-time updates (like other tabs)
@@ -351,7 +355,7 @@ export const TestLabTab: React.FC = () => {
     }
   };
 
-  // Add alert
+  // Add alert with actions
   const addAlert = async () => {
     if (!selectedCampaign || !newAlertPercent) {
       toast.error('Please enter a percentage');
@@ -364,6 +368,12 @@ export const TestLabTab: React.FC = () => {
       return;
     }
 
+    // Validate actions
+    if (newAlertActions.length === 0) {
+      toast.error('Please add at least one action');
+      return;
+    }
+
     try {
       const response = await fetch(`${config.apiUrl}/api/test-lab/alerts`, {
         method: 'POST',
@@ -372,7 +382,8 @@ export const TestLabTab: React.FC = () => {
         body: JSON.stringify({ 
           campaignId: selectedCampaign.id,
           targetPercent: percent,
-          direction: newAlertDirection
+          direction: newAlertDirection,
+          actions: newAlertActions
         })
       });
 
@@ -381,7 +392,8 @@ export const TestLabTab: React.FC = () => {
       if (data.success) {
         setAlerts(prev => [...prev, data.alert]);
         setNewAlertPercent('');
-        toast.success('Alert added');
+        setNewAlertActions([{ type: 'notification' }]); // Reset to default
+        toast.success(`Alert added with ${newAlertActions.length} action(s)`);
       }
     } catch (error: any) {
       toast.error(error.message);
@@ -450,24 +462,42 @@ export const TestLabTab: React.FC = () => {
         <h3 className="text-lg font-bold text-white mb-4">Start New Campaign</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Token Mint</label>
+            <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
             <input
               type="text"
               value={tokenMint}
               onChange={(e) => setTokenMint(e.target.value)}
-              placeholder="Token address..."
+              placeholder="Paste token CA..."
               className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Pool Address</label>
-            <input
-              type="text"
-              value={poolAddress}
-              onChange={(e) => setPoolAddress(e.target.value)}
-              placeholder="Raydium/Orca pool..."
-              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
-            />
+            <label className="block text-sm text-gray-400 mb-2">Pool Selection</label>
+            {poolAddress ? (
+              <div className="flex gap-2">
+                <div className="flex-1 px-4 py-2 bg-green-900/20 border border-green-600/30 rounded-lg text-green-400 font-mono text-sm flex items-center justify-between">
+                  <span className="truncate">{poolAddress}</span>
+                  <X 
+                    className="w-4 h-4 cursor-pointer hover:text-red-400" 
+                    onClick={() => setPoolAddress('')}
+                  />
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  if (!tokenMint) {
+                    toast.error('Please enter token address first');
+                    return;
+                  }
+                  setShowPoolModal(true);
+                }}
+                disabled={!tokenMint}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 hover:border-cyan-500 rounded-lg text-gray-400 hover:text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {tokenMint ? 'Select Pool from Available Pools' : 'Enter token address first'}
+              </button>
+            )}
           </div>
           <div className="flex items-end">
             <button
@@ -620,30 +650,38 @@ export const TestLabTab: React.FC = () => {
             </div>
 
             {/* Add Alert */}
-            <div className="flex gap-2 mb-4">
-              <select
-                value={newAlertDirection}
-                onChange={(e) => setNewAlertDirection(e.target.value as 'above' | 'below')}
-                className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
-              >
-                <option value="above">Above (+)</option>
-                <option value="below">Below (-)</option>
-              </select>
-              <input
-                type="number"
-                value={newAlertPercent}
-                onChange={(e) => setNewAlertPercent(e.target.value)}
-                placeholder="% from baseline..."
-                step="0.1"
-                className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+            <div className="space-y-4 mb-6">
+              <div className="flex gap-2">
+                <select
+                  value={newAlertDirection}
+                  onChange={(e) => setNewAlertDirection(e.target.value as 'above' | 'below')}
+                  className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="above">Above (+)</option>
+                  <option value="below">Below (-)</option>
+                </select>
+                <input
+                  type="number"
+                  value={newAlertPercent}
+                  onChange={(e) => setNewAlertPercent(e.target.value)}
+                  placeholder="% from baseline..."
+                  step="0.1"
+                  className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                />
+                <button
+                  onClick={addAlert}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Alert
+                </button>
+              </div>
+
+              {/* Alert Actions Config */}
+              <AlertActionConfig
+                actions={newAlertActions}
+                onChange={setNewAlertActions}
               />
-              <button
-                onClick={addAlert}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg flex items-center gap-2 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Alert
-              </button>
             </div>
 
             {/* Alert List */}
@@ -769,6 +807,17 @@ export const TestLabTab: React.FC = () => {
           )}
         </motion.div>
       )}
+
+      {/* Pool Selection Modal */}
+      <PoolSelectionModal
+        isOpen={showPoolModal}
+        onClose={() => setShowPoolModal(false)}
+        tokenMint={tokenMint}
+        onSelectPool={(poolAddr) => {
+          setPoolAddress(poolAddr);
+          toast.success('Pool selected!');
+        }}
+      />
     </div>
   );
 };
