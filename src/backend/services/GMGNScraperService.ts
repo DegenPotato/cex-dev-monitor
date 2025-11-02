@@ -18,6 +18,7 @@ interface ChartMonitor {
   indicators: string[]; // ['RSI', 'EMA9', 'EMA20', 'MACD']
   lastUpdate: number;
   values: { [indicator: string]: number | null };
+  frame?: any; // TradingView iframe if chart is embedded
 }
 
 interface IndicatorValue {
@@ -200,20 +201,22 @@ class GMGNScraperService extends EventEmitter {
       console.log('✅ Indicators appear to be already available on chart');
     } else {
       console.log('⚠️ No indicators found, attempting to add via UI...');
-      // Try to add indicators via UI (this part depends on GMGN's actual UI)
+      // Try to add indicators via UI - use the iframe if available
+      const targetFrame = tvFrame || page;
       for (const indicator of indicators) {
-        await this.addIndicatorToChart(page, indicator);
+        await this.addIndicatorToChart(targetFrame, indicator);
       }
     }
 
-    // Create monitor
+    // Create monitor - store both page and frame
     const monitor: ChartMonitor = {
       tokenMint,
       page,
       interval,
       indicators,
       lastUpdate: 0,
-      values: {}
+      values: {},
+      frame: tvFrame // Store the frame for later use
     };
 
     this.monitors.set(tokenMint, monitor);
@@ -238,7 +241,7 @@ class GMGNScraperService extends EventEmitter {
   /**
    * Add an indicator to the chart via TradingView UI
    */
-  private async addIndicatorToChart(page: Page, indicator: string) {
+  private async addIndicatorToChart(pageOrFrame: any, indicator: string) {
     try {
       console.log(`🔧 Adding indicator: ${indicator}`);
       
@@ -247,8 +250,8 @@ class GMGNScraperService extends EventEmitter {
         ? indicator.split('_') 
         : [indicator, null];
       
-      // Debug: What's actually on the page?
-      const debugInfo = await page.evaluate(() => {
+      // Debug: What's actually on the page/frame?
+      const debugInfo = await pageOrFrame.evaluate(() => {
         return {
           svgCount: document.querySelectorAll('svg').length,
           buttonCount: document.querySelectorAll('button').length,
@@ -265,7 +268,7 @@ class GMGNScraperService extends EventEmitter {
       console.log('🔍 Page debug:', JSON.stringify(debugInfo, null, 2));
       
       // Click the indicators button - try text first (visible in bot's browser)
-      const clicked = await page.evaluate(() => {
+      const clicked = await pageOrFrame.evaluate(() => {
         // Method 1: Look for "Indicators" text (visible in puppeteer)
         const allElements = Array.from(document.querySelectorAll('*'));
         const indicatorElement = allElements.find(el => {
@@ -327,12 +330,12 @@ class GMGNScraperService extends EventEmitter {
       
       // Take debug screenshot to see if menu opened
       if (this.debugMode) {
-        await page.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
+        await pageOrFrame.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
         console.log('📸 Menu screenshot captured');
       }
       
       // Debug: Log what's actually in the DOM
-      const availableElements = await page.evaluate(() => {
+      const availableElements = await pageOrFrame.evaluate(() => {
         const inputs = Array.from(document.querySelectorAll('input'));
         const menus = Array.from(document.querySelectorAll('[role="menu"], [class*="menu"]'));
         return {
@@ -375,7 +378,7 @@ class GMGNScraperService extends EventEmitter {
       let searchInput = null;
       for (const selector of searchSelectors) {
         try {
-          searchInput = await page.waitForSelector(selector, { timeout: 2000, visible: true });
+          searchInput = await pageOrFrame.waitForSelector(selector, { timeout: 2000, visible: true });
           if (searchInput) {
             console.log(`✅ Found search input with selector: ${selector}`);
             break;
@@ -401,7 +404,7 @@ class GMGNScraperService extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Click first result in TradingView's search results
-      const resultClicked = await page.evaluate((indName: string) => {
+      const resultClicked = await pageOrFrame.evaluate((indName: string) => {
         // TradingView shows results in a list
         const resultSelectors = [
           '[data-role="list-item"]',
@@ -444,13 +447,13 @@ class GMGNScraperService extends EventEmitter {
       
       // If period specified, configure indicator settings
       if (period) {
-        await this.configureIndicatorPeriod(page, indicatorType, period);
+        await this.configureIndicatorPeriod(pageOrFrame, indicatorType, period);
       }
       
       console.log(`✅ Indicator added: ${indicator}`);
       
       // 3. Click on indicator result
-      const indicatorOption = await page.$(`[data-name="${indicator}"], .indicator-item:has-text("${indicator}")`);
+      const indicatorOption = await pageOrFrame.$(`[data-name="${indicator}"], .indicator-item:has-text("${indicator}")`);
       if (indicatorOption) {
         await indicatorOption.click();
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -463,12 +466,12 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Configure indicator period/length in settings dialog
+   * Configure indicator period (for RSI, EMA, etc.)
    */
-  private async configureIndicatorPeriod(page: Page, indicatorType: string, period: string) {
+  private async configureIndicatorPeriod(pageOrFrame: any, indicatorType: string, period: string) {
     try {
       // Look for settings/gear icon
-      await page.evaluate(() => {
+      await pageOrFrame.evaluate(() => {
         const settingsBtn = Array.from(document.querySelectorAll('[data-name="legend-settings-action"], .icon-TUJGrV9w'))
           .find(el => el.getAttribute('aria-label')?.includes('Settings'));
         if (settingsBtn) {
@@ -480,10 +483,10 @@ class GMGNScraperService extends EventEmitter {
       
       // Find "Length" input for RSI or "Period" for EMA
       const inputSelector = 'input[type="number"], input[inputmode="numeric"]';
-      await page.waitForSelector(inputSelector, { timeout: 3000 });
+      await pageOrFrame.waitForSelector(inputSelector, { timeout: 3000 });
       
       // Clear and set new period
-      await page.evaluate((sel: string, val: string) => {
+      await pageOrFrame.evaluate((sel: string, val: string) => {
         const inputs = Array.from(document.querySelectorAll(sel)) as HTMLInputElement[];
         const lengthInput = inputs.find(input => 
           input.closest('tr')?.textContent?.includes('Length') ||
@@ -500,7 +503,7 @@ class GMGNScraperService extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Click OK/Apply button
-      await page.evaluate(() => {
+      await pageOrFrame.evaluate(() => {
         const okBtn = Array.from(document.querySelectorAll('button'))
           .find(el => el.textContent?.includes('OK') || el.textContent?.includes('Apply'));
         if (okBtn) {
