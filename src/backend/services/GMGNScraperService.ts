@@ -158,15 +158,35 @@ class GMGNScraperService extends EventEmitter {
       timeout: 30000 
     });
 
-    // Wait for chart to load
-    await page.waitForSelector('.chart-container, .trading-view, #tv_chart_container', { 
+    // Wait for chart iframe to load (TradingView embeds in iframe)
+    await page.waitForSelector('iframe', { 
       timeout: 15000 
     }).catch(() => {
-      console.log('Chart container not found, continuing anyway...');
+      console.log('⚠️ No iframe found, chart might not be embedded');
     });
 
-    // Wait a bit for chart to fully render
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // Wait for the iframe to be ready and chart to render
+    await new Promise(resolve => setTimeout(resolve, 8000));
+    
+    console.log('📊 Checking for TradingView iframe...');
+    
+    // Check if chart is in an iframe
+    const frames = page.frames();
+    console.log(`🔍 Found ${frames.length} frames on page`);
+    
+    // Find the TradingView iframe
+    const tvFrame = frames.find((f: any) => 
+      f.url().includes('tradingview') || 
+      f.url().includes('tv_chart') ||
+      f.name().includes('tradingview')
+    );
+    
+    if (tvFrame) {
+      console.log(`✅ Found TradingView iframe: ${tvFrame.url()}`);
+      // We'll need to interact with this frame, not the main page
+    } else {
+      console.log('⚠️ No TradingView iframe found, chart might be directly embedded');
+    }
     
     console.log('📊 Chart loaded, checking if indicators are already available...');
     
