@@ -102,6 +102,12 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram'>('manual');
+  const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
+  const [telegramChatId, setTelegramChatId] = useState<string>('');
+  const [telegramUsername, setTelegramUsername] = useState<string>('');
+  const [telegramAccounts, setTelegramAccounts] = useState<any[]>([]);
+  const [telegramChats, setTelegramChats] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Copy address to clipboard
@@ -111,6 +117,47 @@ export const TestLabTab: React.FC = () => {
     toast.success('Address copied!');
     setTimeout(() => setCopiedAddress(null), 2000);
   };
+
+  // Fetch telegram accounts for source selection
+  useEffect(() => {
+    const fetchTelegramAccounts = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/telegram/accounts`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTelegramAccounts(data.accounts || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch telegram accounts:', error);
+      }
+    };
+    fetchTelegramAccounts();
+  }, []);
+
+  // Fetch chats when account is selected
+  useEffect(() => {
+    if (!telegramAccountId) {
+      setTelegramChats([]);
+      return;
+    }
+
+    const fetchChats = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/telegram/chats?accountId=${telegramAccountId}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTelegramChats(data.chats || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch chats:', error);
+      }
+    };
+    fetchChats();
+  }, [telegramAccountId]);
 
   // Set up WebSocket for real-time updates (like other tabs)
   useEffect(() => {
@@ -624,6 +671,38 @@ export const TestLabTab: React.FC = () => {
         className="bg-gray-800 border border-gray-700 rounded-xl p-6"
       >
         <h3 className="text-lg font-bold text-white mb-4">Start New Campaign</h3>
+        
+        {/* Source Type Selector */}
+        <div className="mb-4">
+          <label className="block text-sm text-gray-400 mb-2">Campaign Source</label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setCampaignSource('manual')}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'manual'
+                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">Manual</div>
+              <div className="text-xs mt-1">Paste token address manually</div>
+            </button>
+            <button
+              onClick={() => setCampaignSource('telegram')}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'telegram'
+                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">Telegram Listener</div>
+              <div className="text-xs mt-1">Auto-monitor user's token calls</div>
+            </button>
+          </div>
+        </div>
+
+        {/* Manual Source Fields */}
+        {campaignSource === 'manual' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
@@ -674,6 +753,76 @@ export const TestLabTab: React.FC = () => {
             </button>
           </div>
         </div>
+        )}
+
+        {/* Telegram Source Fields */}
+        {campaignSource === 'telegram' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Telegram Account</label>
+              <select
+                value={telegramAccountId || ''}
+                onChange={(e) => setTelegramAccountId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm"
+              >
+                <option value="">Select account...</option>
+                {telegramAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.phone_number || `Account ${account.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Chat</label>
+              <select
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                disabled={!telegramAccountId}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">Select chat...</option>
+                {telegramChats.map((chat) => (
+                  <option key={chat.id} value={chat.id}>
+                    {chat.title || chat.username || `Chat ${chat.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Target Username</label>
+              <input
+                type="text"
+                value={telegramUsername}
+                onChange={(e) => setTelegramUsername(e.target.value)}
+                placeholder="@username or user ID"
+                disabled={!telegramChatId}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+            <p className="text-sm text-cyan-300">
+              <strong>Auto-Monitor Mode:</strong> When enabled, Test Lab will automatically create campaigns for any tokens posted by the selected user in the selected chat.
+            </p>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={() => {/* TODO: Implement start monitoring */}}
+              disabled={!telegramAccountId || !telegramChatId || !telegramUsername}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              Start Monitoring
+            </button>
+          </div>
+        </div>
+        )}
       </motion.div>
 
       {/* Active Campaigns */}
