@@ -245,11 +245,6 @@ class GMGNScraperService extends EventEmitter {
     try {
       console.log(`🔧 Adding indicator: ${indicator}`);
       
-      // Parse indicator (e.g., "RSI_14", "EMA_9")
-      const [indicatorType, period] = indicator.includes('_') 
-        ? indicator.split('_') 
-        : [indicator, null];
-      
       // Debug: What's actually on the page/frame?
       const debugInfo = await pageOrFrame.evaluate(() => {
         return {
@@ -328,7 +323,7 @@ class GMGNScraperService extends EventEmitter {
       // Wait for menu to open and search for input field
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Take debug screenshot to see if menu opened (frames don't have screenshot, use stored page)
+      // Take debug screenshot to see if menu opened (frames don't have screenshot, use page)
       if (this.debugMode && this.monitors.size > 0) {
         const firstMonitor = Array.from(this.monitors.values())[0];
         if (firstMonitor?.page) {
@@ -397,6 +392,11 @@ class GMGNScraperService extends EventEmitter {
         throw new Error('Could not find search input in indicators menu');
       }
       
+      // Parse indicator (e.g., "RSI_14", "EMA_9")
+      const [indicatorType, period] = indicator.includes('_') 
+        ? indicator.split('_') 
+        : [indicator, null];
+      
       const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 
                            indicatorType === 'EMA' ? 'Moving Average Exponential' :
                            indicatorType === 'SMA' ? 'Moving Average' :
@@ -455,12 +455,7 @@ class GMGNScraperService extends EventEmitter {
       
       console.log(`✅ Indicator added: ${indicator}`);
       
-      // 3. Click on indicator result
-      const indicatorOption = await pageOrFrame.$(`[data-name="${indicator}"], .indicator-item:has-text("${indicator}")`);
-      if (indicatorOption) {
-        await indicatorOption.click();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      // Note: Removed invalid CSS selector :has-text() that was causing DOM exceptions
 
       console.log(`  ➕ Added ${indicator} indicator`);
     } catch (error) {

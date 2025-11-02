@@ -614,16 +614,19 @@ router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), as
     // Start the service if not already running
     await gmgnScraperService.start();
     
-    // Add monitor for this token
-    await gmgnScraperService.addMonitor(tokenMint, '5m', ['RSI', 'EMA_9', 'EMA_20']);
+    // Add monitor for this token with EMAs: 21, 50, 100, 200 and RSI 14, RSI 2
+    await gmgnScraperService.addMonitor(tokenMint, '5m', ['RSI_14', 'RSI_2', 'EMA_21', 'EMA_50', 'EMA_100', 'EMA_200']);
     
     // Listen for updates and broadcast to WebSocket
     gmgnScraperService.on('monitor_update', (data: any) => {
       console.log(`📊 GMGN Update for ${data.tokenMint.slice(0, 8)}...`);
       console.log(`   Price: $${data.values.PRICE?.toFixed(8) || 'N/A'}`);
-      console.log(`   RSI: ${data.values.RSI?.toFixed(2) || 'N/A'}`);
-      console.log(`   EMA(9): ${data.values.EMA_9?.toFixed(8) || 'N/A'}`);
-      console.log(`   EMA(20): ${data.values.EMA_20?.toFixed(8) || 'N/A'}`);
+      console.log(`   RSI(14): ${data.values.RSI_14?.toFixed(2) || 'N/A'}`);
+      console.log(`   RSI(2): ${data.values.RSI_2?.toFixed(2) || 'N/A'}`);
+      console.log(`   EMA(21): ${data.values.EMA_21?.toFixed(8) || 'N/A'}`);
+      console.log(`   EMA(50): ${data.values.EMA_50?.toFixed(8) || 'N/A'}`);
+      console.log(`   EMA(100): ${data.values.EMA_100?.toFixed(8) || 'N/A'}`);
+      console.log(`   EMA(200): ${data.values.EMA_200?.toFixed(8) || 'N/A'}`);
       
       // Broadcast to WebSocket
       broadcast({
