@@ -162,13 +162,13 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current price from Jupiter (using price API)
+   * Fetch current price from Jupiter (using price API v3)
    */
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
     
-    // Use Jupiter Price API v2 for accurate pricing
-    const url = `https://api.jup.ag/price/v2?ids=${tokenMint}&vsToken=${SOL_MINT}`;
+    // Use Jupiter Price API v3
+    const url = `https://api.jup.ag/price/v3?ids=${tokenMint}&vsToken=${SOL_MINT}`;
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -177,7 +177,7 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     const data = await response.json();
     
-    // Jupiter Price API returns: { data: { [tokenMint]: { id, price, ... } } }
+    // Jupiter Price API v3 returns: { data: { [tokenMint]: { id, price, ... } } }
     const priceData = data.data?.[tokenMint];
     if (!priceData || !priceData.price) {
       throw new Error(`No price data available for ${tokenMint}`);
