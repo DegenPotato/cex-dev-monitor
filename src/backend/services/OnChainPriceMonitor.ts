@@ -162,36 +162,65 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current price from Jupiter (using Quote API for real-time accuracy)
+   * Fetch current price from Jupiter
+   * Try Price API v3 first (fast, clean), fallback to Quote API (always works)
    */
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
-    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL in lamports
     
-    // Use Jupiter Quote API (swap simulation) - works for ALL tokens with liquidity
-    const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status}`);
+    try {
+      // Try Price API v3 first (only works for listed tokens)
+      const priceUrl = `https://api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
+      const priceResponse = await fetch(priceUrl);
+      
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json();
+        const tokenData = priceData[tokenMint];
+        const solData = priceData[SOL_MINT];
+        
+        if (tokenData?.usdPrice && solData?.usdPrice) {
+          const priceInSOL = parseFloat(tokenData.usdPrice) / parseFloat(solData.usdPrice);
+          console.log(`💰 Jupiter Price API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL`);
+          return priceInSOL;
+        }
+      }
+    } catch (error) {
+      console.log(`⚠️ Price API failed, falling back to Quote API`);
     }
     
-    const data = await response.json();
+    // Fallback: Use Quote API (works for all tokens with liquidity)
+    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
+    const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
     
-    if (!data.outAmount) {
+    const quoteResponse = await fetch(quoteUrl);
+    if (!quoteResponse.ok) {
+      throw new Error(`Jupiter Quote API error: ${quoteResponse.status}`);
+    }
+    
+    const quoteData = await quoteResponse.json();
+    if (!quoteData.outAmount) {
       throw new Error(`No quote available for ${tokenMint}`);
     }
     
-    // Get decimals from the route plan (most accurate)
-    const outputMint = data.routePlan?.[data.routePlan.length - 1]?.swapInfo?.outputMint;
-    const decimals = outputMint?.decimals ?? 6; // Default to 6 if not found
+    // Fetch token metadata to get correct decimals
+    const metadataUrl = `https://tokens.jup.ag/token/${tokenMint}`;
+    let decimals = 6; // Default
     
-    // Calculate: 1 SOL buys X tokens, so price per token = 1 / X
-    const outAmount = parseInt(data.outAmount);
+    try {
+      const metaResponse = await fetch(metadataUrl);
+      if (metaResponse.ok) {
+        const metadata = await metaResponse.json();
+        decimals = metadata.decimals || 6;
+      }
+    } catch {
+      console.warn(`⚠️ Could not fetch decimals for ${tokenMint}, using default 6`);
+    }
+    
+    const outAmount = parseInt(quoteData.outAmount);
     const tokensReceived = outAmount / Math.pow(10, decimals);
     const priceInSOL = 1 / tokensReceived;
     
-    console.log(`💰 Jupiter quote for ${tokenMint.slice(0, 8)}...: 1 SOL → ${tokensReceived.toFixed(2)} tokens (${decimals} decimals) = ${priceInSOL.toFixed(12)} SOL per token`);
+    console.log(`💰 Jupiter Quote API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL (${decimals} decimals)`);
     
     return priceInSOL;
   }
