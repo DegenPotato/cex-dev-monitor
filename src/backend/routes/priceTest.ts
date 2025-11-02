@@ -590,6 +590,76 @@ router.post('/api/test-lab/telegram-monitor/stop', authService.requireSecureAuth
 });
 
 /**
+ * Start GMGN scraper test
+ */
+router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint } = req.body;
+    
+    if (!tokenMint) {
+      return res.status(400).json({ error: 'tokenMint required' });
+    }
+
+    console.log(`🧪 Starting GMGN scraper test for ${tokenMint}`);
+    
+    // Import scraper service
+    const { gmgnScraperService } = await import('../services/GMGNScraperService.js');
+    
+    // Start the service if not already running
+    await gmgnScraperService.start();
+    
+    // Add monitor for this token
+    await gmgnScraperService.addMonitor(tokenMint, '5m', ['RSI', 'EMA_9', 'EMA_20']);
+    
+    // Listen for updates and broadcast to WebSocket
+    gmgnScraperService.on('monitor_update', (data: any) => {
+      console.log(`📊 GMGN Update for ${data.tokenMint.slice(0, 8)}...`);
+      console.log(`   Price: $${data.values.PRICE?.toFixed(8) || 'N/A'}`);
+      console.log(`   RSI: ${data.values.RSI?.toFixed(2) || 'N/A'}`);
+      console.log(`   EMA(9): ${data.values.EMA_9?.toFixed(8) || 'N/A'}`);
+      console.log(`   EMA(20): ${data.values.EMA_20?.toFixed(8) || 'N/A'}`);
+      
+      // Broadcast to WebSocket
+      broadcast({
+        type: 'gmgn_indicator_update',
+        data
+      });
+    });
+    
+    res.json({ 
+      success: true,
+      message: `GMGN scraper test started for ${tokenMint}. Check console for extracted values.` 
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting GMGN test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Stop GMGN scraper test
+ */
+router.post('/api/test-lab/gmgn-test/stop', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint } = req.body;
+    
+    // Import scraper service
+    const { gmgnScraperService } = await import('../services/GMGNScraperService.js');
+    
+    if (tokenMint) {
+      await gmgnScraperService.removeMonitor(tokenMint);
+    } else {
+      await gmgnScraperService.stop();
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Error stopping GMGN test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Get active monitors
  */
 router.get('/api/test-lab/telegram-monitor/active', authService.requireSecureAuth(), async (req: Request, res: Response) => {

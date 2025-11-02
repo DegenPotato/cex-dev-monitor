@@ -102,12 +102,18 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
-  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram'>('manual');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramUsername, setTelegramUsername] = useState<string>('');
   const [telegramAccounts, setTelegramAccounts] = useState<any[]>([]);
   const [telegramChats, setTelegramChats] = useState<any[]>([]);
+  const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
+    PRICE: null,
+    RSI: null,
+    EMA_9: null,
+    EMA_20: null
+  });
   const wsRef = useRef<WebSocket | null>(null);
 
   // Copy address to clipboard
@@ -341,6 +347,16 @@ export const TestLabTab: React.FC = () => {
               a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
             ));
           }
+        }
+
+        // Handle GMGN indicator updates
+        if (message.type === 'gmgn_indicator_update') {
+          const data = message.data;
+          console.log(`📈 GMGN Indicators for ${data.tokenMint.slice(0, 8)}...`);
+          console.log(`   Values:`, data.values);
+          
+          // Update indicator values
+          setGmgnIndicators(data.values);
         }
       } catch (error) {
         console.error('❌ Error parsing WebSocket message:', error);
@@ -737,6 +753,17 @@ export const TestLabTab: React.FC = () => {
               <div className="font-medium">Telegram Listener</div>
               <div className="text-xs mt-1">Auto-monitor user's token calls</div>
             </button>
+            <button
+              onClick={() => setCampaignSource('gmgn-test')}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'gmgn-test'
+                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">GMGN Scraper</div>
+              <div className="text-xs mt-1">Test indicator extraction</div>
+            </button>
           </div>
         </div>
 
@@ -859,6 +886,98 @@ export const TestLabTab: React.FC = () => {
               <Play className="w-4 h-4" />
               {loading ? 'Starting...' : 'Start Monitoring'}
             </button>
+          </div>
+        </div>
+        )}
+
+        {/* GMGN Scraper Test Fields */}
+        {campaignSource === 'gmgn-test' && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
+            <input
+              type="text"
+              value={tokenMint}
+              onChange={(e) => setTokenMint(e.target.value)}
+              placeholder="Enter token CA to test GMGN scraping..."
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
+            />
+          </div>
+
+          <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+            <p className="text-sm text-yellow-300">
+              <strong>🧪 Test Mode:</strong> This will launch a browser window, navigate to GMGN chart, and attempt to extract price & indicator values (RSI, EMA) in real-time. Watch the console for extracted values.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={async () => {
+                if (!tokenMint) {
+                  toast.error('Please enter a token address');
+                  return;
+                }
+                
+                setLoading(true);
+                try {
+                  const response = await fetch(`${config.apiUrl}/api/test-lab/gmgn-test/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ tokenMint })
+                  });
+
+                  const data = await response.json();
+                  
+                  if (data.success) {
+                    toast.success('GMGN scraper test started! Check console for values.');
+                  } else {
+                    toast.error(data.error || 'Failed to start test');
+                  }
+                } catch (error) {
+                  console.error('Failed to start GMGN test:', error);
+                  toast.error('Failed to start test');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading || !tokenMint}
+              className="px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              {loading ? 'Starting Test...' : 'Start GMGN Test'}
+            </button>
+          </div>
+
+          {/* Live indicator values display */}
+          <div className="mt-4 p-4 bg-gray-900 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-400 mb-2">Live Indicator Values</h4>
+            <div className="grid grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">Price:</span>
+                <span className="ml-2 font-mono text-cyan-400">
+                  {gmgnIndicators.PRICE ? `$${gmgnIndicators.PRICE.toFixed(8)}` : '--'}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">RSI:</span>
+                <span className="ml-2 font-mono text-yellow-400">
+                  {gmgnIndicators.RSI ? gmgnIndicators.RSI.toFixed(2) : '--'}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">EMA(9):</span>
+                <span className="ml-2 font-mono text-green-400">
+                  {gmgnIndicators.EMA_9 ? `$${gmgnIndicators.EMA_9.toFixed(8)}` : '--'}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">EMA(20):</span>
+                <span className="ml-2 font-mono text-purple-400">
+                  {gmgnIndicators.EMA_20 ? `$${gmgnIndicators.EMA_20.toFixed(8)}` : '--'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         )}
