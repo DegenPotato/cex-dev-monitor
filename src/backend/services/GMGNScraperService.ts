@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 
 // Dynamic import to prevent frontend bundling
 let puppeteer: any;
+let StealthPlugin: any;
 type Browser = any;
 type Page = any;
 
@@ -54,10 +55,19 @@ class GMGNScraperService extends EventEmitter {
 
     console.log('🚀 Starting GMGN Scraper Service...');
     
-    // Dynamically import puppeteer only when needed
+    // Dynamically import puppeteer-extra with stealth plugin
     if (!puppeteer) {
-      puppeteer = await import('puppeteer');
-      puppeteer = puppeteer.default || puppeteer;
+      const puppeteerExtra = await import('puppeteer-extra');
+      StealthPlugin = await import('puppeteer-extra-plugin-stealth');
+      
+      // Use default exports
+      puppeteer = puppeteerExtra.default || puppeteerExtra;
+      const stealthPlugin = StealthPlugin.default || StealthPlugin;
+      
+      // Add stealth plugin to evade bot detection
+      puppeteer.use(stealthPlugin());
+      
+      console.log('✅ Stealth plugin loaded - bypassing Cloudflare...');
     }
     
     // Create screenshots directory if it doesn't exist
@@ -74,7 +84,9 @@ class GMGNScraperService extends EventEmitter {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--window-size=1920,1080'
+        '--disable-blink-features=AutomationControlled', // Hide automation
+        '--window-size=1920,1080',
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
       ]
     });
 

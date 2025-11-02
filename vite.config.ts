@@ -20,11 +20,11 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['puppeteer']
+    exclude: ['puppeteer', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth']
   },
   build: {
     rollupOptions: {
-      external: ['puppeteer']
+      external: ['puppeteer', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth']
     }
   },
   server: {
