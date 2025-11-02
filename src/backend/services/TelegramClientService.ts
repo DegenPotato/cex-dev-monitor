@@ -6,6 +6,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
+import { getDb, saveDatabase } from '../database/connection.js';
 import { telegramRateLimiter } from './TelegramRateLimiter.js';
 import { tokenSourceTracker } from './TokenSourceTracker.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
@@ -852,6 +853,12 @@ export class TelegramClientService extends EventEmitter {
           if (contracts.length > 0) {
             console.log(`   ✅ Validated ${contracts.length} token mints: ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
             detectionTriggered = true;
+            
+            // Check if this should trigger Test Lab auto-monitoring
+            const msgSenderId = message.senderId?.toString();
+            const msgSender = (message as any).sender;
+            const msgUsername = msgSender?.username || msgSender?.firstName || msgSenderId;
+            await this.checkTestLabMonitors(event, contracts, msgSenderId, msgUsername);
           } else {
             console.log(`   ⏭️  No valid token mints found (all were wallets/invalid)`);
           }
@@ -3052,6 +3059,107 @@ export class TelegramClientService extends EventEmitter {
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     return decrypted.toString();
+  }
+
+  /**
+   * Check if message should trigger Test Lab auto-monitoring
+   */
+  private async checkTestLabMonitors(event: any, contracts: any[], senderId?: string, senderUsername?: string) {
+    if (!contracts || contracts.length === 0 || !senderId) return;
+
+    const message = event.message;
+    const chatId = message.chat?.id?.toString() || message.peerId?.channelId?.toString();
+    if (!chatId) return;
+
+    try {
+      const db = await getDb();
+      const stmt = db.prepare(`
+        SELECT * FROM test_lab_telegram_monitors
+        WHERE chat_id = ? AND is_active = 1
+      `);
+      
+      const monitors = (stmt as any).all([chatId]);
+      
+      for (const monitor of monitors) {
+        // Check if this message is from the monitored user
+        const targetMatches = 
+          monitor.target_username === senderId ||
+          monitor.target_username === senderUsername ||
+          monitor.target_username === `@${senderUsername}`;
+        
+        if (targetMatches) {
+          console.log(`🎯 [Test Lab] Monitored user ${senderUsername} posted tokens in chat ${chatId}`);
+          
+          // Auto-create Test Lab campaign for each detected token
+          for (const contract of contracts) {
+            await this.createTestLabCampaign(monitor, contract.address, message.id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking Test Lab monitors:', error);
+    }
+  }
+
+  /**
+   * Auto-create Test Lab campaign for monitored token
+   */
+  private async createTestLabCampaign(monitor: any, tokenMint: string, messageId: number) {
+    try {
+      console.log(`🚀 [Test Lab] Auto-creating campaign for token ${tokenMint}`);
+      
+      // Fetch pools from GeckoTerminal API
+      const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.log(`⚠️ [Test Lab] Failed to fetch pools: ${response.status}`);
+        return;
+      }
+      
+      const data = await response.json();
+      const pools = data.data || [];
+      
+      if (pools.length === 0) {
+        console.log(`⚠️ [Test Lab] No pools found for ${tokenMint}`);
+        return;
+      }
+      
+      // Get the pool with highest liquidity
+      const bestPool = pools.sort((a: any, b: any) => {
+        const liquidityA = parseFloat(a.attributes.reserve_in_usd || '0');
+        const liquidityB = parseFloat(b.attributes.reserve_in_usd || '0');
+        return liquidityB - liquidityA;
+      })[0];
+      
+      const poolAddress = bestPool.attributes.address;
+      const liquidityUsd = parseFloat(bestPool.attributes.reserve_in_usd || '0');
+      
+      console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
+      
+      // Import dynamically to avoid circular dependencies
+      const { getOnChainPriceMonitor } = await import('./OnChainPriceMonitor.js');
+      const priceMonitor = getOnChainPriceMonitor();
+      
+      // Start campaign with token and pool
+      const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
+      
+      if (campaign) {
+        // Log the auto-created campaign
+        const db = await getDb();
+        const stmt = db.prepare(`
+          INSERT INTO test_lab_auto_campaigns (monitor_id, campaign_id, token_mint, message_id, detected_at)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        
+        stmt.run([monitor.id, campaign.id, tokenMint, messageId, Date.now()]);
+        saveDatabase();
+        
+        console.log(`✅ [Test Lab] Campaign ${campaign.id} created for ${tokenMint}`);
+      }
+    } catch (error) {
+      console.error(`❌ [Test Lab] Failed to create campaign for ${tokenMint}:`, error);
+    }
   }
 }
 

@@ -525,4 +525,91 @@ monitor.on('alert_triggered', async (data) => {
   });
 });
 
+/**
+ * Start telegram monitoring for Test Lab
+ */
+router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { telegramAccountId, chatId, username } = req.body;
+    
+    if (!telegramAccountId || !chatId || !username) {
+      return res.status(400).json({ error: 'telegramAccountId, chatId, and username required' });
+    }
+
+    const db = await getDb();
+    const stmt = db.prepare(`
+      INSERT INTO test_lab_telegram_monitors (user_id, telegram_account_id, chat_id, target_username)
+      VALUES (?, ?, ?, ?)
+    `);
+    
+    stmt.run([userId, telegramAccountId, chatId, username]);
+    saveDatabase();
+    
+    console.log(`✅ Started Test Lab monitoring: @${username} in chat ${chatId}`);
+    
+    res.json({ 
+      success: true,
+      message: `Now monitoring @${username} in selected chat` 
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting telegram monitor:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Stop telegram monitoring
+ */
+router.post('/api/test-lab/telegram-monitor/stop', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { monitorId } = req.body;
+    
+    if (!monitorId) {
+      return res.status(400).json({ error: 'monitorId required' });
+    }
+
+    const db = await getDb();
+    const stmt = db.prepare(`
+      UPDATE test_lab_telegram_monitors 
+      SET is_active = 0, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `);
+    
+    stmt.run([Date.now(), monitorId, userId]);
+    saveDatabase();
+    
+    console.log(`🛑 Stopped Test Lab monitor ID ${monitorId}`);
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Error stopping telegram monitor:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get active monitors
+ */
+router.get('/api/test-lab/telegram-monitor/active', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    
+    const db = await getDb();
+    const stmt = db.prepare(`
+      SELECT * FROM test_lab_telegram_monitors 
+      WHERE user_id = ? AND is_active = 1
+      ORDER BY created_at DESC
+    `);
+    
+    const monitors = (stmt as any).all([userId]);
+    
+    res.json({ success: true, monitors });
+  } catch (error: any) {
+    console.error('❌ Error getting monitors:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

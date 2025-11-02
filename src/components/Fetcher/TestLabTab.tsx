@@ -540,6 +540,45 @@ export const TestLabTab: React.FC = () => {
     }
   };
 
+  // Start telegram monitoring
+  const startTelegramMonitoring = async () => {
+    if (!telegramAccountId || !telegramChatId || !telegramUsername) {
+      toast.error('Please select account, chat, and username');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-monitor/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          telegramAccountId,
+          chatId: telegramChatId,
+          username: telegramUsername
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(`Now monitoring ${telegramUsername}!`);
+        // Reset form
+        setTelegramAccountId(null);
+        setTelegramChatId('');
+        setTelegramUsername('');
+      } else {
+        toast.error(data.error || 'Failed to start monitoring');
+      }
+    } catch (error) {
+      console.error('Failed to start monitoring:', error);
+      toast.error('Failed to start monitoring');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Delete alert
   const deleteAlert = async (alertId: string) => {
     try {
@@ -813,12 +852,12 @@ export const TestLabTab: React.FC = () => {
 
           <div className="flex justify-end">
             <button
-              onClick={() => {/* TODO: Implement start monitoring */}}
-              disabled={!telegramAccountId || !telegramChatId || !telegramUsername}
+              onClick={startTelegramMonitoring}
+              disabled={loading || !telegramAccountId || !telegramChatId || !telegramUsername}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               <Play className="w-4 h-4" />
-              Start Monitoring
+              {loading ? 'Starting...' : 'Start Monitoring'}
             </button>
           </div>
         </div>
