@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { WebSocketServer } from 'ws';
 import { getOnChainPriceMonitor } from '../services/OnChainPriceMonitor.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
+import { getDb, saveDatabase } from '../database/connection.js';
 
 const authService = new SecureAuthService();
 const monitor = getOnChainPriceMonitor();
@@ -312,10 +313,74 @@ monitor.on('price_update', (campaign) => {
   });
 });
 
-monitor.on('alert_triggered', (data) => {
+monitor.on('alert_triggered', async (data) => {
   const timestamp = new Date().toISOString();
-  console.log(`🚨 [${timestamp}] Broadcasting alert for ${data.campaignId} to ${wss?.clients.size || 0} WebSocket clients`);
+  console.log(`🚨 [${timestamp}] Alert triggered for ${data.campaignId}`);
   
+  // Log to database for trigger history
+  try {
+    const db = await getDb();
+    const stmt = db.prepare(`
+      INSERT INTO alert_trigger_history (
+        campaign_id, alert_id, token_mint, token_symbol, token_name,
+        trigger_price_sol, trigger_price_usd, change_percent,
+        alert_type, alert_target, actions_executed, triggered_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const actionsJson = JSON.stringify(data.alert.actions || []);
+    const alertType = `${data.alert.direction} ${data.alert.priceType === 'percentage' ? data.alert.targetPercent + '%' : data.alert.targetPrice}`;
+    
+    stmt.run([
+      data.campaignId,
+      data.alert.id,
+      data.tokenMint,
+      data.alert.tokenSymbol || null,
+      data.alert.tokenName || null,
+      data.currentPrice,
+      data.currentPriceUSD || null,
+      data.changePercent || 0,
+      alertType,
+      data.alert.targetPrice,
+      actionsJson,
+      Date.now()
+    ]);
+    
+    saveDatabase();
+  } catch (error) {
+    console.error('❌ Failed to log alert trigger:', error);
+  }
+  
+  // Execute actions
+  if (data.alert.actions && data.alert.actions.length > 0) {
+    console.log(`⚡ Executing ${data.alert.actions.length} action(s)...`);
+    
+    for (const action of data.alert.actions) {
+      try {
+        if (action.type === 'buy') {
+          console.log(`💰 BUY: ${action.amount} SOL (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          // TODO: Execute buy trade via trading service
+          // await executeBuyTrade(action.walletId, data.tokenMint, action.amount, action.slippage, action.priorityFee, action.skipTax);
+        } else if (action.type === 'sell') {
+          console.log(`💸 SELL: ${action.amount}% (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          // TODO: Execute sell trade via trading service
+          // await executeSellTrade(action.walletId, data.tokenMint, action.amount, action.slippage, action.priorityFee, action.skipTax);
+        } else if (action.type === 'telegram') {
+          console.log(`📤 TELEGRAM: Chat ${action.chatId}`);
+          // TODO: Send telegram notification
+        } else if (action.type === 'discord') {
+          console.log(`🔔 DISCORD: ${action.webhookUrl}`);
+          // TODO: Send discord webhook
+        } else {
+          console.log(`🔔 NOTIFICATION`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to execute action ${action.type}:`, error);
+      }
+    }
+  }
+  
+  // Broadcast to WebSocket clients
   broadcast({
     type: 'test_lab_alert',
     data
