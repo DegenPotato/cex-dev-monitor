@@ -162,14 +162,14 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current price from Jupiter (using price API v3)
+   * Fetch current price from Jupiter (using Quote API for real-time accuracy)
    */
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL in lamports
     
-    // Jupiter Price API v3 only returns USD prices
-    // We need to fetch both token and SOL prices, then calculate the ratio
-    const url = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
+    // Use Jupiter Quote API (swap simulation) - works for ALL tokens with liquidity
+    const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -178,24 +178,20 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     const data = await response.json();
     
-    // Jupiter Price API v3 returns: { [tokenMint]: { usdPrice, blockId, decimals, priceChange24h } }
-    const tokenData = data[tokenMint];
-    const solData = data[SOL_MINT];
-    
-    if (!tokenData || !tokenData.usdPrice) {
-      throw new Error(`No price data available for ${tokenMint}`);
+    if (!data.outAmount) {
+      throw new Error(`No quote available for ${tokenMint}`);
     }
     
-    if (!solData || !solData.usdPrice) {
-      throw new Error(`No SOL price data available`);
-    }
+    // Get decimals from the route plan (most accurate)
+    const outputMint = data.routePlan?.[data.routePlan.length - 1]?.swapInfo?.outputMint;
+    const decimals = outputMint?.decimals ?? 6; // Default to 6 if not found
     
-    // Calculate price in SOL: tokenUSD / solUSD
-    const tokenUsdPrice = parseFloat(tokenData.usdPrice);
-    const solUsdPrice = parseFloat(solData.usdPrice);
-    const priceInSOL = tokenUsdPrice / solUsdPrice;
+    // Calculate: 1 SOL buys X tokens, so price per token = 1 / X
+    const outAmount = parseInt(data.outAmount);
+    const tokensReceived = outAmount / Math.pow(10, decimals);
+    const priceInSOL = 1 / tokensReceived;
     
-    console.log(`💰 Jupiter price for ${tokenMint.slice(0, 8)}...: $${tokenUsdPrice.toFixed(8)} USD / $${solUsdPrice.toFixed(2)} SOL = ${priceInSOL.toFixed(12)} SOL`);
+    console.log(`💰 Jupiter quote for ${tokenMint.slice(0, 8)}...: 1 SOL → ${tokensReceived.toFixed(2)} tokens (${decimals} decimals) = ${priceInSOL.toFixed(12)} SOL per token`);
     
     return priceInSOL;
   }
