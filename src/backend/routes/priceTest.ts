@@ -664,18 +664,20 @@ router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), as
 router.get('/api/test-lab/gmgn-test/screenshot/:tokenMint', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const { tokenMint } = req.params;
+    const { all } = req.query; // ?all=true to get all screenshots
     const fs = await import('fs');
     const path = await import('path');
     
-    const screenshotDir = './screenshots';
+    // Match the actual directory where GMGN scraper saves screenshots
+    const screenshotDir = '/var/www/cex-monitor/public/screenshots';
     
-    // Find latest screenshot for this token
+    // Find screenshots for this token
     if (!fs.existsSync(screenshotDir)) {
       return res.status(404).json({ error: 'No screenshots available' });
     }
     
     const files = fs.readdirSync(screenshotDir)
-      .filter(f => f.startsWith(tokenMint) && f.endsWith('.png'))
+      .filter(f => f.includes(tokenMint) && f.endsWith('.png'))
       .sort()
       .reverse();
     
@@ -683,6 +685,17 @@ router.get('/api/test-lab/gmgn-test/screenshot/:tokenMint', authService.requireS
       return res.status(404).json({ error: 'No screenshot found for this token' });
     }
     
+    // If ?all=true, return URLs for all screenshots
+    if (all === 'true') {
+      const urls = files.map(f => `https://api.sniff.agency/screenshots/${f}`);
+      return res.json({ 
+        screenshots: urls,
+        count: urls.length,
+        latest: urls[0]
+      });
+    }
+    
+    // Otherwise return the latest screenshot file
     const latestScreenshot = path.join(screenshotDir, files[0]);
     res.sendFile(path.resolve(latestScreenshot));
   } catch (error: any) {
