@@ -167,8 +167,9 @@ export class OnChainPriceMonitor extends EventEmitter {
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
     
-    // Use Jupiter Price API v3
-    const url = `https://api.jup.ag/price/v3?ids=${tokenMint}&vsToken=${SOL_MINT}`;
+    // Jupiter Price API v3 only returns USD prices
+    // We need to fetch both token and SOL prices, then calculate the ratio
+    const url = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -177,15 +178,24 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     const data = await response.json();
     
-    // Jupiter Price API v3 returns: { data: { [tokenMint]: { id, price, ... } } }
-    const priceData = data.data?.[tokenMint];
-    if (!priceData || !priceData.price) {
+    // Jupiter Price API v3 returns: { [tokenMint]: { usdPrice, blockId, decimals, priceChange24h } }
+    const tokenData = data[tokenMint];
+    const solData = data[SOL_MINT];
+    
+    if (!tokenData || !tokenData.usdPrice) {
       throw new Error(`No price data available for ${tokenMint}`);
     }
     
-    const priceInSOL = parseFloat(priceData.price);
+    if (!solData || !solData.usdPrice) {
+      throw new Error(`No SOL price data available`);
+    }
     
-    console.log(`💰 Jupiter price for ${tokenMint.slice(0, 8)}...: ${priceInSOL.toFixed(12)} SOL`);
+    // Calculate price in SOL: tokenUSD / solUSD
+    const tokenUsdPrice = parseFloat(tokenData.usdPrice);
+    const solUsdPrice = parseFloat(solData.usdPrice);
+    const priceInSOL = tokenUsdPrice / solUsdPrice;
+    
+    console.log(`💰 Jupiter price for ${tokenMint.slice(0, 8)}...: $${tokenUsdPrice.toFixed(8)} USD / $${solUsdPrice.toFixed(2)} SOL = ${priceInSOL.toFixed(12)} SOL`);
     
     return priceInSOL;
   }
