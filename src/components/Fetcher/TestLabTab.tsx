@@ -60,6 +60,28 @@ interface HistoryEntry {
   type: 'update' | 'alert';
 }
 
+interface TriggerHistoryEntry {
+  id: string;
+  timestamp: number;
+  campaignId: string;
+  tokenMint: string;
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenLogo?: string;
+  alertId: string;
+  alertType: string; // 'percentage' | 'exact_sol' | 'exact_usd'
+  direction: 'above' | 'below';
+  targetValue: number;
+  triggeredAt: number; // price when triggered
+  triggeredAtUSD?: number;
+  actions: Array<{
+    type: string;
+    status: 'success' | 'failed' | 'pending';
+    details?: string;
+    error?: string;
+  }>;
+}
+
 export const TestLabTab: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -71,8 +93,9 @@ export const TestLabTab: React.FC = () => {
   const [newAlertPriceType, setNewAlertPriceType] = useState<'percentage' | 'exact_sol' | 'exact_usd'>('percentage');
   const [newAlertActions, setNewAlertActions] = useState<AlertAction[]>([{ type: 'notification' }]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'history'>('campaigns');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'history' | 'triggers'>('campaigns');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [triggerHistory, setTriggerHistory] = useState<TriggerHistoryEntry[]>([]);
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -233,6 +256,33 @@ export const TestLabTab: React.FC = () => {
             low: data.currentPrice,
             type: 'alert' as const
           }, ...prev].slice(0, 100));
+
+          // Add to trigger history with detailed action tracking
+          const campaign = campaigns.find(c => c.id === data.campaignId);
+          setTriggerHistory(prev => [{
+            id: `${data.alert.id}_${data.timestamp}`,
+            timestamp: data.timestamp,
+            campaignId: data.campaignId,
+            tokenMint: data.tokenMint,
+            tokenName: campaign?.tokenName,
+            tokenSymbol: campaign?.tokenSymbol,
+            tokenLogo: campaign?.tokenLogo,
+            alertId: data.alert.id,
+            alertType: data.alert.priceType || 'percentage',
+            direction: data.alert.direction,
+            targetValue: data.alert.targetPercent,
+            triggeredAt: data.currentPrice,
+            triggeredAtUSD: data.currentPriceUSD,
+            actions: (data.alert.actions || []).map((action: any) => ({
+              type: action.type,
+              status: 'success' as const, // Will be updated by backend execution results
+              details: action.type === 'buy' ? `${action.amount} SOL` :
+                       action.type === 'sell' ? `${action.amount}%` :
+                       action.type === 'telegram' ? `Chat: ${action.chatId}` :
+                       action.type === 'discord' ? 'Webhook' :
+                       'Browser notification'
+            }))
+          }, ...prev].slice(0, 100)); // Keep last 100 triggers
 
           // Only update alerts if they belong to the currently selected campaign
           if (selectedCampaign && data.campaignId === selectedCampaign.id) {
@@ -504,6 +554,22 @@ export const TestLabTab: React.FC = () => {
           {history.length > 0 && (
             <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded-full text-xs">
               {history.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('triggers')}
+          className={`px-4 py-2 font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'triggers'
+              ? 'text-cyan-400 border-b-2 border-cyan-400'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          Alert Triggers
+          {triggerHistory.length > 0 && (
+            <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full text-xs">
+              {triggerHistory.length}
             </span>
           )}
         </button>
@@ -1026,6 +1092,136 @@ export const TestLabTab: React.FC = () => {
                             <div className="text-gray-600">${entry.lowUSD.toFixed(6)} USD</div>
                           )}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Triggers Tab */}
+      {activeTab === 'triggers' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gray-800 border border-gray-700 rounded-xl p-6"
+        >
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-yellow-400" />
+            Alert Trigger History
+          </h3>
+          {triggerHistory.length === 0 ? (
+            <div className="text-center text-gray-400 py-8">
+              No alerts triggered yet. Set up alerts in your campaigns to see triggered events here.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[600px] overflow-y-auto">
+              {triggerHistory.map((trigger) => (
+                <div
+                  key={trigger.id}
+                  className="bg-gray-900 border border-yellow-500/30 rounded-lg p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    {trigger.tokenLogo && (
+                      <img src={trigger.tokenLogo} alt={trigger.tokenSymbol || 'Token'} className="w-10 h-10 rounded-full flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      {/* Header with token and timestamp */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">
+                            {trigger.tokenSymbol || trigger.tokenMint.slice(0, 8)}
+                          </span>
+                          <button
+                            onClick={() => copyAddress(trigger.tokenMint)}
+                            className="p-0.5 hover:bg-gray-700 rounded transition-colors"
+                          >
+                            {copiedAddress === trigger.tokenMint ? (
+                              <Check className="w-3 h-3 text-green-400" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-gray-400" />
+                            )}
+                          </button>
+                          <a
+                            href={`https://gmgn.ai/sol/token/${trigger.tokenMint}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-0.5 hover:bg-green-600/20 rounded transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3 text-green-400" />
+                          </a>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {new Date(trigger.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {/* Alert Details */}
+                      <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          {trigger.direction === 'above' ? (
+                            <TrendingUp className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <TrendingDown className="w-4 h-4 text-red-400" />
+                          )}
+                          <span className="text-sm font-medium text-gray-300">
+                            {trigger.alertType === 'percentage' ? (
+                              `${trigger.direction === 'above' ? '+' : ''}${trigger.targetValue.toFixed(2)}% Alert`
+                            ) : trigger.alertType === 'exact_sol' ? (
+                              `${trigger.direction === 'above' ? 'Above' : 'Below'} ${trigger.targetValue.toFixed(9)} SOL`
+                            ) : (
+                              `${trigger.direction === 'above' ? 'Above' : 'Below'} $${trigger.targetValue.toFixed(8)} USD`
+                            )}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          <div>Triggered at: <span className="text-cyan-400 font-mono">{trigger.triggeredAt.toFixed(9)} SOL</span></div>
+                          {trigger.triggeredAtUSD && (
+                            <div>USD Price: <span className="text-green-400 font-mono">${trigger.triggeredAtUSD.toFixed(8)}</span></div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions Executed */}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-gray-300">Actions Executed:</div>
+                        {trigger.actions.map((action, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex items-center justify-between p-2 rounded-lg ${
+                              action.status === 'success' ? 'bg-green-500/10 border border-green-500/30' :
+                              action.status === 'failed' ? 'bg-red-500/10 border border-red-500/30' :
+                              'bg-yellow-500/10 border border-yellow-500/30'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${
+                                action.status === 'success' ? 'bg-green-400' :
+                                action.status === 'failed' ? 'bg-red-400' :
+                                'bg-yellow-400'
+                              }`} />
+                              <span className="text-sm text-white capitalize">{action.type.replace('_', ' ')}</span>
+                              {action.details && (
+                                <span className="text-xs text-gray-400">- {action.details}</span>
+                              )}
+                            </div>
+                            <span className={`text-xs font-medium ${
+                              action.status === 'success' ? 'text-green-400' :
+                              action.status === 'failed' ? 'text-red-400' :
+                              'text-yellow-400'
+                            }`}>
+                              {action.status.toUpperCase()}
+                            </span>
+                          </div>
+                        ))}
+                        {trigger.actions.some(a => a.error) && (
+                          <div className="text-xs text-red-400 mt-2">
+                            {trigger.actions.find(a => a.error)?.error}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

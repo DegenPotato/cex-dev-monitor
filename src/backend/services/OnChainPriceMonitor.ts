@@ -87,11 +87,13 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
-    // Fetch token metadata first
-    const metadata = await this.fetchTokenMetadata(tokenMint);
+    // Fetch metadata and initial price in parallel (both use lite-api)
+    const [metadata, initialPrice] = await Promise.all([
+      this.fetchTokenMetadata(tokenMint),
+      this.fetchInitialPrice(tokenMint)
+    ]);
     
-    // Get initial price from Jupiter (real-time)
-    const { priceInSOL, priceInUSD } = await this.fetchJupiterPrice(tokenMint);
+    const { priceInSOL, priceInUSD } = initialPrice;
     
     const campaign: Campaign = {
       id: campaignId,
@@ -258,99 +260,32 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current price from Jupiter
-   * Try Price API v3 first (fast, clean), fallback to Quote API (always works)
-   * Returns both SOL and USD prices
+   * Fetch initial price (simple, just Price API v3)
    */
-  private async fetchJupiterPrice(tokenMint: string): Promise<{ priceInSOL: number; priceInUSD?: number }> {
+  private async fetchInitialPrice(tokenMint: string): Promise<{ priceInSOL: number; priceInUSD?: number }> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
+    const response = await fetch(priceUrl);
     
-    try {
-      // Try Price API v3 first (only works for listed tokens)
-      const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
-      const priceResponse = await fetch(priceUrl);
-      
-      if (priceResponse.ok) {
-        const priceData = await priceResponse.json();
-        const tokenData = priceData[tokenMint];
-        const solData = priceData[SOL_MINT];
-        
-        if (tokenData?.usdPrice && solData?.usdPrice) {
-          const tokenUsdPrice = parseFloat(tokenData.usdPrice);
-          const solUsdPrice = parseFloat(solData.usdPrice);
-          const priceInSOL = tokenUsdPrice / solUsdPrice;
-          console.log(`💰 Jupiter Price API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL ($${tokenUsdPrice.toFixed(8)})`);
-          return { priceInSOL, priceInUSD: tokenUsdPrice };
-        }
-      }
-    } catch (error) {
-      console.log(`⚠️ Price API failed, falling back to Quote API`);
+    if (!response.ok) {
+      throw new Error(`Price API error: ${response.status}`);
     }
     
-    // Fallback: Use Quote API (works for all tokens with liquidity)
-    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
-    const quoteUrl = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
+    const priceData = await response.json();
+    const tokenData = priceData[tokenMint];
+    const solData = priceData[SOL_MINT];
     
-    const quoteResponse = await fetch(quoteUrl);
-    if (!quoteResponse.ok) {
-      throw new Error(`Jupiter Quote API error: ${quoteResponse.status}`);
+    if (!tokenData?.usdPrice || !solData?.usdPrice) {
+      throw new Error(`No price data available for ${tokenMint}`);
     }
     
-    const quoteData = await quoteResponse.json();
-    if (!quoteData.outAmount) {
-      throw new Error(`No quote available for ${tokenMint}`);
-    }
+    const tokenUsdPrice = parseFloat(tokenData.usdPrice);
+    const solUsdPrice = parseFloat(solData.usdPrice);
+    const priceInSOL = tokenUsdPrice / solUsdPrice;
     
-    // Get decimals from lite-api tokens endpoint
-    let decimals = 6; // Default fallback
-    
-    try {
-      const tokensUrl = `https://lite-api.jup.ag/tokens/v2/search?query=${tokenMint}`;
-      const tokenApiResponse = await fetch(tokensUrl);
-      
-      if (tokenApiResponse.ok) {
-        const data = await tokenApiResponse.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const tokenData = data.find(t => t.id === tokenMint) || data[0];
-          if (tokenData?.decimals !== undefined) {
-            decimals = tokenData.decimals;
-            console.log(`✅ Got decimals from lite-api: ${decimals}`);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️ Error fetching decimals for ${tokenMint}, using default 6`);
-    }
-    
-    const outAmount = parseInt(quoteData.outAmount);
-    const tokensReceived = outAmount / Math.pow(10, decimals);
-    const priceInSOL = 1 / tokensReceived;
-    
-    // Get SOL USD price to calculate token USD price
-    let priceInUSD: number | undefined;
-    try {
-      const solPriceUrl = `https://lite-api.jup.ag/price/v3?ids=${SOL_MINT}`;
-      const solPriceResponse = await fetch(solPriceUrl);
-      if (solPriceResponse.ok) {
-        const solPriceData = await solPriceResponse.json();
-        const solUsdPrice = parseFloat(solPriceData[SOL_MINT]?.usdPrice || '0');
-        if (solUsdPrice > 0) {
-          priceInUSD = priceInSOL * solUsdPrice;
-          console.log(`✅ Calculated USD price: $${priceInUSD.toFixed(8)} (SOL at $${solUsdPrice.toFixed(2)})`);
-        } else {
-          console.warn(`⚠️ SOL USD price is 0 or invalid`);
-        }
-      } else {
-        console.warn(`⚠️ Failed to fetch SOL price: ${solPriceResponse.status}`);
-      }
-    } catch (error) {
-      console.error(`⚠️ Error calculating USD price:`, error);
-    }
-    
-    console.log(`💰 Jupiter Quote API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL${priceInUSD ? ` ($${priceInUSD.toFixed(8)})` : ''} (${decimals} decimals)`);
-    
-    return { priceInSOL, priceInUSD };
+    return { priceInSOL, priceInUSD: tokenUsdPrice };
   }
+
 
   /**
    * Check and trigger alerts
