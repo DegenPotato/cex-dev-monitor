@@ -166,11 +166,24 @@ class GMGNScraperService extends EventEmitter {
     });
 
     // Wait a bit for chart to fully render
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Try to add indicators via UI (this part depends on GMGN's actual UI)
-    for (const indicator of indicators) {
-      await this.addIndicatorToChart(page, indicator);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    console.log('📊 Chart loaded, checking if indicators are already available...');
+    
+    // Check if GMGN already shows indicators without needing to add them
+    const hasIndicators = await page.evaluate(() => {
+      const legendElements = document.querySelectorAll('[class*="legend"], [class*="source"]');
+      return legendElements.length > 0;
+    });
+    
+    if (hasIndicators) {
+      console.log('✅ Indicators appear to be already available on chart');
+    } else {
+      console.log('⚠️ No indicators found, attempting to add via UI...');
+      // Try to add indicators via UI (this part depends on GMGN's actual UI)
+      for (const indicator of indicators) {
+        await this.addIndicatorToChart(page, indicator);
+      }
     }
 
     // Create monitor
@@ -214,17 +227,49 @@ class GMGNScraperService extends EventEmitter {
         ? indicator.split('_') 
         : [indicator, null];
       
-      // Click the indicators menu button (Chakra UI menu button with chart icon)
-      await page.evaluate(() => {
-        // Look for the specific menu button with aria-haspopup="menu"
-        const indicatorsBtn = document.querySelector('[class*="chakra-menu__menu-button"][aria-haspopup="menu"]') as HTMLElement;
-        if (indicatorsBtn) {
-          indicatorsBtn.click();
-          console.log('✅ Clicked indicators menu button');
-        } else {
-          console.log('❌ Could not find indicators menu button');
+      // Click the indicators button by finding the specific fx icon SVG
+      const clicked = await page.evaluate(() => {
+        // Find the SVG with the specific fx icon path
+        const fxIcon = Array.from(document.querySelectorAll('svg')).find(svg => {
+          // Look for the characteristic path that defines the fx icon
+          const path = svg.querySelector('path');
+          if (!path) return false;
+          
+          const d = path.getAttribute('d') || '';
+          // This is the unique path for the fx/indicators icon
+          return d.includes('M7.5 5.5C7.5 4.11929') || 
+                 d.includes('M14.2071 14.5001') ||
+                 (svg.classList.contains('cursor-pointer') && svg.getAttribute('width') === '20');
+        });
+        
+        if (fxIcon) {
+          // Click the parent button/clickable element
+          let clickable = fxIcon.parentElement;
+          while (clickable && clickable.tagName !== 'BUTTON' && !clickable.onclick && clickable !== document.body) {
+            clickable = clickable.parentElement;
+          }
+          
+          if (clickable && clickable !== document.body) {
+            console.log('🎯 Found fx icon, clicking:', clickable.tagName);
+            (clickable as HTMLElement).click();
+            return true;
+          }
+          
+          // Fallback: click the SVG itself
+          console.log('🎯 Clicking fx icon directly');
+          (fxIcon as any).click();
+          return true;
         }
+        
+        console.log('❌ Could not find fx icon SVG');
+        return false;
       });
+      
+      if (!clicked) {
+        throw new Error('Could not find indicators fx icon');
+      }
+      
+      console.log('✅ Clicked indicators button');
       
       // Wait for menu to open and search for input field
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -258,17 +303,22 @@ class GMGNScraperService extends EventEmitter {
       
       console.log('🔍 DOM Debug:', JSON.stringify(availableElements, null, 2));
       
-      // Find the search input in the opened menu
-      // Try multiple selectors for the search field
+      // Find the search input in TradingView's indicator modal
+      // TradingView opens a modal dialog, not a dropdown menu
       const searchSelectors = [
-        'input[type="text"]',
-        'input[type="search"]',
+        // TradingView-specific patterns
+        '[data-name="indicator-search-input"]',
+        '[data-role="search"] input',
         'input[placeholder*="Search"]',
         'input[placeholder*="search"]',
-        '[role="menu"] input',
-        '[class*="menu-list"] input',
-        'input:not([type="hidden"])',
-        'input'
+        // Modal/dialog patterns
+        '[role="dialog"] input[type="text"]',
+        '[class*="dialog"] input',
+        '[class*="modal"] input',
+        // Generic fallbacks
+        'input[type="text"]:visible',
+        'input[type="search"]',
+        'input:not([type="hidden"])'
       ];
       
       let searchInput = null;
@@ -297,15 +347,47 @@ class GMGNScraperService extends EventEmitter {
       
       await searchInput.type(indicatorName);
       console.log(`⌨️ Typed: ${indicatorName}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Click first result
-      await page.evaluate(() => {
-        const firstResult = document.querySelector('[data-role="list-item"], .item-2IihgTnv');
-        if (firstResult) {
-          (firstResult as HTMLElement).click();
+      // Click first result in TradingView's search results
+      const resultClicked = await page.evaluate((indName: string) => {
+        // TradingView shows results in a list
+        const resultSelectors = [
+          '[data-role="list-item"]',
+          '[class*="item-"]',
+          '[class*="listItem"]',
+          'div[role="option"]',
+          '[class*="search-"] [class*="item"]'
+        ];
+        
+        for (const sel of resultSelectors) {
+          const results = document.querySelectorAll(sel);
+          for (const result of results) {
+            // Check if this result matches our indicator
+            const text = result.textContent?.toLowerCase() || '';
+            if (text.includes(indName.toLowerCase())) {
+              console.log('🎯 Found matching result:', text.substring(0, 50));
+              (result as HTMLElement).click();
+              return true;
+            }
+          }
         }
-      });
+        
+        // Fallback: just click first visible result
+        const firstResult = Array.from(document.querySelectorAll('[data-role="list-item"], [class*="item-"]'))
+          .find(el => (el as HTMLElement).offsetParent !== null);
+        if (firstResult) {
+          console.log('⚠️ Clicking first available result');
+          (firstResult as HTMLElement).click();
+          return true;
+        }
+        
+        return false;
+      }, indicatorName);
+      
+      if (!resultClicked) {
+        console.warn('⚠️ Could not find search result to click');
+      }
       
       await new Promise(resolve => setTimeout(resolve, 1500));
       
