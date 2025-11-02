@@ -227,6 +227,23 @@ class GMGNScraperService extends EventEmitter {
         ? indicator.split('_') 
         : [indicator, null];
       
+      // Debug: What's actually on the page?
+      const debugInfo = await page.evaluate(() => {
+        return {
+          svgCount: document.querySelectorAll('svg').length,
+          buttonCount: document.querySelectorAll('button').length,
+          elementsWithIndicatorsText: Array.from(document.querySelectorAll('*'))
+            .filter(el => el.textContent?.toLowerCase().includes('indicator'))
+            .map(el => ({
+              tag: el.tagName,
+              text: el.textContent?.substring(0, 50),
+              visible: (el as HTMLElement).offsetParent !== null
+            })).slice(0, 5)
+        };
+      });
+      
+      console.log('🔍 Page debug:', JSON.stringify(debugInfo, null, 2));
+      
       // Click the indicators button - try text first (visible in bot's browser)
       const clicked = await page.evaluate(() => {
         // Method 1: Look for "Indicators" text (visible in puppeteer)
@@ -247,9 +264,8 @@ class GMGNScraperService extends EventEmitter {
           }
           
           if (clickable && clickable !== document.body) {
-            console.log('🎯 Found "Indicators" text, clicking parent:', clickable.tagName);
-            clickable.click();
-            return true;
+            (clickable as HTMLElement).click();
+            return { method: 'text', tag: clickable.tagName };
           }
         }
         
@@ -271,21 +287,20 @@ class GMGNScraperService extends EventEmitter {
           }
           
           if (clickable && clickable !== document.body) {
-            console.log('🎯 Found fx icon, clicking:', clickable.tagName);
             (clickable as HTMLElement).click();
-            return true;
+            return { method: 'svg', tag: clickable.tagName };
           }
         }
         
-        console.log('❌ Could not find indicators button (neither text nor icon)');
-        return false;
+        return null;
       });
       
       if (!clicked) {
-        throw new Error('Could not find indicators fx icon');
+        console.error('❌ Could not find indicators button. Page has:', debugInfo);
+        throw new Error('Could not find indicators button');
       }
       
-      console.log('✅ Clicked indicators button');
+      console.log(`✅ Clicked indicators button via ${clicked.method}: ${clicked.tag}`);
       
       // Wait for menu to open and search for input field
       await new Promise(resolve => setTimeout(resolve, 1500));
