@@ -202,18 +202,46 @@ export class OnChainPriceMonitor extends EventEmitter {
       throw new Error(`No quote available for ${tokenMint}`);
     }
     
-    // Fetch token metadata to get correct decimals
-    const metadataUrl = `https://tokens.jup.ag/token/${tokenMint}`;
-    let decimals = 6; // Default
+    // Get decimals: Try Jupiter Token API first, fallback to Solana RPC
+    let decimals = 6; // Default fallback
     
     try {
-      const metaResponse = await fetch(metadataUrl);
-      if (metaResponse.ok) {
-        const metadata = await metaResponse.json();
-        decimals = metadata.decimals || 6;
+      // Try Jupiter Token API v2 first (fast, includes metadata)
+      const tokenApiUrl = `https://api.jup.ag/tokens/v2/search?mint=${tokenMint}`;
+      const tokenApiResponse = await fetch(tokenApiUrl);
+      
+      if (tokenApiResponse.ok) {
+        const tokenData = await tokenApiResponse.json();
+        if (tokenData?.decimals !== undefined) {
+          decimals = tokenData.decimals;
+          console.log(`✅ Got decimals from Jupiter Token API: ${decimals}`);
+        }
+      } else {
+        // Fallback to Solana RPC (works for all tokens)
+        const rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const rpcResponse = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getAccountInfo',
+            params: [tokenMint, { encoding: 'jsonParsed' }]
+          })
+        });
+        
+        const rpcData = await rpcResponse.json();
+        const tokenDecimals = rpcData?.result?.value?.data?.parsed?.info?.decimals;
+        
+        if (tokenDecimals !== undefined) {
+          decimals = tokenDecimals;
+          console.log(`✅ Got decimals from Solana RPC: ${decimals}`);
+        } else {
+          console.warn(`⚠️ Could not fetch decimals, using default 6`);
+        }
       }
-    } catch {
-      console.warn(`⚠️ Could not fetch decimals for ${tokenMint}, using default 6`);
+    } catch (error) {
+      console.warn(`⚠️ Error fetching decimals for ${tokenMint}, using default 6:`, error);
     }
     
     const outAmount = parseInt(quoteData.outAmount);
