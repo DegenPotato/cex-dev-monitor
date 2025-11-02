@@ -393,7 +393,7 @@ app.use('/hdri', express.static(hdriPath, {
 // Serve screenshots from GMGN scraper
 const screenshotsPath = path.join(__dirname, '../../public/screenshots');
 app.use('/screenshots', express.static(screenshotsPath, {
-  setHeaders: (res, filepath) => {
+  setHeaders: (_res, filepath) => {
     console.log(`📸 [Screenshots] Serving file: ${filepath}`);
   }
 }));
