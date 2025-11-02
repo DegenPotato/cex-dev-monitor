@@ -163,7 +163,7 @@ class GMGNScraperService extends EventEmitter {
     await page.setViewport({ width: 1920, height: 1080 });
 
     // Navigate to GMGN chart
-    const url = `https://www.gmgn.cc/sol/token/${tokenMint}`;
+    const url = `https://gmgn.ai/sol/token/${tokenMint}`;
     console.log(`🌐 Navigating to: ${url}`);
     
     try {
