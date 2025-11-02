@@ -12,9 +12,12 @@ interface Campaign {
   poolAddress: string;
   startPrice: number;
   currentPrice: number;
+  currentPriceUSD?: number;
   high: number;
   low: number;
   changePercent: number;
+  highestGainPercent: number;  // Highest % gain from start
+  lowestDropPercent: number;   // Lowest % drop from start
   startTime: number;
   lastUpdate: number;
   isActive: boolean;
@@ -78,10 +81,47 @@ export const TestLabTab: React.FC = () => {
         if (message.type === 'test_lab_price_update') {
           const data = message.data;
           console.log(`📊 [${timestamp}] Price update for ${data.id}: ${data.currentPrice} SOL (${data.changePercent.toFixed(2)}%)`);
+          console.log(`   Full data received:`, data);
           
-          setCampaigns(prev => prev.map(c =>
-            c.id === data.id ? { ...c, ...data } : c
-          ));
+          // Force state update with completely new object
+          setCampaigns(prev => {
+            const updated = prev.map(c => {
+              if (c.id === data.id) {
+                return {
+                  ...c,
+                  currentPrice: data.currentPrice,
+                  currentPriceUSD: data.currentPriceUSD,
+                  high: data.high,
+                  low: data.low,
+                  changePercent: data.changePercent,
+                  highestGainPercent: data.highestGainPercent || data.changePercent,
+                  lowestDropPercent: data.lowestDropPercent || Math.min(0, data.changePercent),
+                  lastUpdate: data.lastUpdate
+                };
+              }
+              return c;
+            });
+            console.log(`   Updated campaigns:`, updated);
+            return updated;
+          });
+
+          // Update selected campaign if it matches
+          setSelectedCampaign(prev => {
+            if (prev && prev.id === data.id) {
+              return {
+                ...prev,
+                currentPrice: data.currentPrice,
+                currentPriceUSD: data.currentPriceUSD,
+                high: data.high,
+                low: data.low,
+                changePercent: data.changePercent,
+                highestGainPercent: data.highestGainPercent || data.changePercent,
+                lowestDropPercent: data.lowestDropPercent || Math.min(0, data.changePercent),
+                lastUpdate: data.lastUpdate
+              };
+            }
+            return prev;
+          });
 
           // Add to history
           setHistory(prev => [{
@@ -89,6 +129,7 @@ export const TestLabTab: React.FC = () => {
             campaignId: data.id,
             tokenMint: data.tokenMint,
             priceSOL: data.currentPrice,
+            priceUSD: data.currentPriceUSD,
             changePercent: data.changePercent,
             high: data.high,
             low: data.low,
@@ -451,30 +492,64 @@ export const TestLabTab: React.FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+            className="grid grid-cols-2 md:grid-cols-3 gap-4"
           >
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">Start Price</div>
-              <div className="text-lg font-bold text-white">{selectedCampaign.startPrice.toFixed(9)} SOL</div>
-              <div className="text-xs text-gray-500">{formatTime(selectedCampaign.startTime)}</div>
-            </div>
-            
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">Current</div>
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 col-span-2 md:col-span-1">
+              <div className="text-sm text-gray-400 mb-1">Current Price</div>
               <div className="text-lg font-bold text-cyan-400">{selectedCampaign.currentPrice.toFixed(9)} SOL</div>
-              <div className="text-xs text-gray-500">{formatTime(selectedCampaign.lastUpdate)}</div>
+              {selectedCampaign.currentPriceUSD && (
+                <div className="text-sm text-gray-400">${selectedCampaign.currentPriceUSD.toFixed(8)} USD</div>
+              )}
+              <div className={`text-lg font-bold mt-1 ${
+                selectedCampaign.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {selectedCampaign.changePercent >= 0 ? '+' : ''}{selectedCampaign.changePercent.toFixed(2)}%
+              </div>
             </div>
             
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">High</div>
-              <div className="text-lg font-bold text-green-400">{selectedCampaign.high.toFixed(9)} SOL</div>
-              <div className="text-xs text-gray-500">Session high</div>
+              <div className="text-sm text-gray-400 mb-1">Highest Gain</div>
+              <div className="text-lg font-bold text-green-400">
+                +{selectedCampaign.highestGainPercent.toFixed(2)}%
+              </div>
+              <div className="text-xs text-gray-500">Peak from start</div>
+              <div className="text-sm text-white mt-1">{selectedCampaign.high.toFixed(9)} SOL</div>
             </div>
             
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">Low</div>
-              <div className="text-lg font-bold text-red-400">{selectedCampaign.low.toFixed(9)} SOL</div>
-              <div className="text-xs text-gray-500">Session low</div>
+              <div className="text-sm text-gray-400 mb-1">Lowest Drop</div>
+              <div className="text-lg font-bold text-red-400">
+                {selectedCampaign.lowestDropPercent.toFixed(2)}%
+              </div>
+              <div className="text-xs text-gray-500">Dip from start</div>
+              <div className="text-sm text-white mt-1">{selectedCampaign.low.toFixed(9)} SOL</div>
+            </div>
+          </motion.div>
+
+          {/* Additional Info */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gray-800 border border-gray-700 rounded-xl p-4"
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <div className="text-gray-400">Start Price</div>
+                <div className="text-white font-mono">{selectedCampaign.startPrice.toFixed(9)} SOL</div>
+                <div className="text-gray-500 text-xs">{formatTime(selectedCampaign.startTime)}</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Session High</div>
+                <div className="text-green-400 font-mono">{selectedCampaign.high.toFixed(9)} SOL</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Session Low</div>
+                <div className="text-red-400 font-mono">{selectedCampaign.low.toFixed(9)} SOL</div>
+              </div>
+              <div>
+                <div className="text-gray-400">Last Update</div>
+                <div className="text-white">{formatTime(selectedCampaign.lastUpdate)}</div>
+              </div>
             </div>
           </motion.div>
 

@@ -11,9 +11,12 @@ export interface Campaign {
   poolAddress: string;
   startPrice: number;
   currentPrice: number;
+  currentPriceUSD?: number;
   high: number;
   low: number;
   changePercent: number;
+  highestGainPercent: number;  // Highest % gain from start
+  lowestDropPercent: number;   // Lowest % drop from start
   startTime: number;
   lastUpdate: number;
   subscriptionId: number | null;
@@ -71,6 +74,8 @@ export class OnChainPriceMonitor extends EventEmitter {
       high: initialPrice,
       low: initialPrice,
       changePercent: 0,
+      highestGainPercent: 0,
+      lowestDropPercent: 0,
       startTime: Date.now(),
       lastUpdate: Date.now(),
       subscriptionId: null,
@@ -109,9 +114,15 @@ export class OnChainPriceMonitor extends EventEmitter {
         
         // Update campaign stats with candle data
         campaign.currentPrice = newPrice;
+        campaign.currentPriceUSD = usdPrice;
         campaign.high = Math.max(campaign.high, candle.solPrice.high); // Track session high
         campaign.low = Math.min(campaign.low, candle.solPrice.low);    // Track session low
         campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
+        
+        // Track highest gain and lowest drop from start price
+        campaign.highestGainPercent = Math.max(campaign.highestGainPercent, campaign.changePercent);
+        campaign.lowestDropPercent = Math.min(campaign.lowestDropPercent, campaign.changePercent);
+        
         campaign.lastUpdate = Date.now();
         
         // Add to history
