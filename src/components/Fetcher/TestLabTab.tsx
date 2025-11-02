@@ -993,12 +993,12 @@ export const TestLabTab: React.FC = () => {
                         {alert.actions && alert.actions.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
                             {alert.actions.map((action, idx) => (
-                              <span key={idx} className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs">
-                                {action.type === 'buy' ? `Buy ${action.amount} SOL` :
-                                 action.type === 'sell' ? `Sell ${action.amount}%` :
-                                 action.type === 'telegram' ? 'Telegram' :
-                                 action.type === 'discord' ? 'Discord' :
-                                 'Notification'}
+                              <span key={idx} className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs font-mono">
+                                {action.type === 'buy' ? `Buy ${action.amount} SOL (${action.slippage}% slip)` :
+                                 action.type === 'sell' ? `Sell ${action.amount}% (${action.slippage}% slip)` :
+                                 action.type === 'telegram' ? '📤 Telegram' :
+                                 action.type === 'discord' ? '🔔 Discord' :
+                                 '🔔 Notification'}
                               </span>
                             ))}
                           </div>

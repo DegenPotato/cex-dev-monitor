@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Bell, TrendingUp, MessageSquare, Send, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
+import { useTradingSettingsStore } from '../../stores/tradingSettingsStore';
 
 export type AlertAction = 
   | { type: 'notification' }
-  | { type: 'buy'; amount: number; slippage: number; walletAddress?: string }
-  | { type: 'sell'; amount: number; slippage: number; walletAddress?: string }
+  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; walletId?: number }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; walletId?: number }
   | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
@@ -19,6 +20,7 @@ interface TradingWallet {
   id: number;
   wallet_name: string;
   public_key: string;
+  sol_balance?: number;
 }
 
 interface TelegramAccount {
@@ -28,6 +30,7 @@ interface TelegramAccount {
 }
 
 export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, onChange }) => {
+  const { defaultSlippage } = useTradingSettingsStore();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [tradingWallets, setTradingWallets] = useState<TradingWallet[]>([]);
   const [telegramAccounts, setTelegramAccounts] = useState<TelegramAccount[]>([]);
@@ -76,10 +79,10 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
         newAction = { type: 'notification' };
         break;
       case 'buy':
-        newAction = { type: 'buy', amount: 0.1, slippage: 5 };
+        newAction = { type: 'buy', amount: 0.1, slippage: defaultSlippage, priorityFee: 0.0001 };
         break;
       case 'sell':
-        newAction = { type: 'sell', amount: 50, slippage: 5 };
+        newAction = { type: 'sell', amount: 50, slippage: defaultSlippage, priorityFee: 0.0001 };
         break;
       case 'telegram':
         newAction = { type: 'telegram', chatId: '' };
@@ -166,38 +169,61 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 text-green-400" />
-                        <span className="text-sm text-white">Auto Buy</span>
+                        <span className="text-sm text-white font-medium">Auto Buy</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Amount (SOL)</label>
                         <input
                           type="number"
                           value={action.amount}
                           onChange={(e) => updateAction(index, { amount: parseFloat(e.target.value) })}
-                          placeholder="Amount SOL"
+                          placeholder="0.1"
                           step="0.01"
-                          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-                        />
-                        <input
-                          type="number"
-                          value={action.slippage}
-                          onChange={(e) => updateAction(index, { slippage: parseFloat(e.target.value) })}
-                          placeholder="Slippage %"
-                          step="0.1"
-                          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         />
                       </div>
-                      <select
-                        value={action.walletAddress || ''}
-                        onChange={(e) => updateAction(index, { walletAddress: e.target.value })}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-                      >
-                        <option value="">Select Trading Wallet</option>
-                        {tradingWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.public_key}>
-                            {wallet.wallet_name} ({wallet.public_key?.slice(0, 8) || 'N/A'}...)
-                          </option>
-                        ))}
-                      </select>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Slippage (%)</label>
+                          <input
+                            type="number"
+                            value={action.slippage}
+                            onChange={(e) => updateAction(index, { slippage: parseFloat(e.target.value) })}
+                            placeholder="1.0"
+                            step="0.1"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Priority Fee (SOL)</label>
+                          <input
+                            type="number"
+                            value={action.priorityFee}
+                            onChange={(e) => updateAction(index, { priorityFee: parseFloat(e.target.value) })}
+                            placeholder="0.0001"
+                            step="0.0001"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Trading Wallet</label>
+                        <select
+                          value={action.walletId || ''}
+                          onChange={(e) => updateAction(index, { walletId: e.target.value ? parseInt(e.target.value) : undefined })}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                        >
+                          <option value="">Select wallet...</option>
+                          {tradingWallets.map((wallet) => (
+                            <option key={wallet.id} value={wallet.id}>
+                              {wallet.wallet_name} - {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   )}
 
@@ -205,38 +231,63 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 rotate-180 text-red-400" />
-                        <span className="text-sm text-white">Auto Sell</span>
+                        <span className="text-sm text-white font-medium">Auto Sell</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Amount (%)</label>
                         <input
                           type="number"
                           value={action.amount}
                           onChange={(e) => updateAction(index, { amount: parseFloat(e.target.value) })}
-                          placeholder="Amount %"
+                          placeholder="100"
                           step="1"
-                          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-                        />
-                        <input
-                          type="number"
-                          value={action.slippage}
-                          onChange={(e) => updateAction(index, { slippage: parseFloat(e.target.value) })}
-                          placeholder="Slippage %"
-                          step="0.1"
-                          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          min="1"
+                          max="100"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         />
                       </div>
-                      <select
-                        value={action.walletAddress || ''}
-                        onChange={(e) => updateAction(index, { walletAddress: e.target.value })}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
-                      >
-                        <option value="">Select Trading Wallet</option>
-                        {tradingWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.public_key}>
-                            {wallet.wallet_name} ({wallet.public_key?.slice(0, 8) || 'N/A'}...)
-                          </option>
-                        ))}
-                      </select>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Slippage (%)</label>
+                          <input
+                            type="number"
+                            value={action.slippage}
+                            onChange={(e) => updateAction(index, { slippage: parseFloat(e.target.value) })}
+                            placeholder="1.0"
+                            step="0.1"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Priority Fee (SOL)</label>
+                          <input
+                            type="number"
+                            value={action.priorityFee}
+                            onChange={(e) => updateAction(index, { priorityFee: parseFloat(e.target.value) })}
+                            placeholder="0.0001"
+                            step="0.0001"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Trading Wallet</label>
+                        <select
+                          value={action.walletId || ''}
+                          onChange={(e) => updateAction(index, { walletId: e.target.value ? parseInt(e.target.value) : undefined })}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                        >
+                          <option value="">Select wallet...</option>
+                          {tradingWallets.map((wallet) => (
+                            <option key={wallet.id} value={wallet.id}>
+                              {wallet.wallet_name} - {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   )}
 
