@@ -1,4 +1,6 @@
 {
+  "buildCommand": "PUPPETEER_SKIP_DOWNLOAD=true npm run build",
+  "installCommand": "PUPPETEER_SKIP_DOWNLOAD=true npm install",
   "rewrites": [
     {
       "source": "/(.*)",

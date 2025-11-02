@@ -19,6 +19,14 @@ export default defineConfig({
       process: 'process/browser',
     }
   },
+  optimizeDeps: {
+    exclude: ['puppeteer']
+  },
+  build: {
+    rollupOptions: {
+      external: ['puppeteer']
+    }
+  },
   server: {
     port: 3000,
     proxy: {
