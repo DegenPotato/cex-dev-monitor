@@ -436,6 +436,24 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
+   * Update alert actions
+   */
+  updateAlertActions(alertId: string, actions: AlertAction[]): boolean {
+    // Find which campaign this alert belongs to
+    for (const [campaignId, alerts] of this.alerts.entries()) {
+      const alert = alerts.find(a => a.id === alertId);
+      if (alert) {
+        alert.actions = actions;
+        this.alerts.set(campaignId, alerts);
+        const actionTypes = actions.map(a => a.type).join(', ');
+        console.log(`✏️ Alert ${alertId} actions updated: ${actionTypes}`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Delete an alert
    */
   deleteAlert(alertId: string): boolean {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap, Copy, ExternalLink, Check } from 'lucide-react';
+import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap, Copy, ExternalLink, Check, Edit } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
@@ -41,6 +41,7 @@ interface Alert {
   priceType: 'percentage' | 'exact_sol' | 'exact_usd';
   hit: boolean;
   hitAt?: number;
+  actions: AlertAction[]; // Each alert has its own specific actions
 }
 
 interface HistoryEntry {
@@ -92,6 +93,8 @@ export const TestLabTab: React.FC = () => {
   const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
   const [newAlertPriceType, setNewAlertPriceType] = useState<'percentage' | 'exact_sol' | 'exact_usd'>('percentage');
   const [newAlertActions, setNewAlertActions] = useState<AlertAction[]>([{ type: 'notification' }]);
+  const [editingAlertId, setEditingAlertId] = useState<string | null>(null);
+  const [editAlertActions, setEditAlertActions] = useState<AlertAction[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'campaigns' | 'history' | 'triggers'>('campaigns');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -502,6 +505,42 @@ export const TestLabTab: React.FC = () => {
       if (data.success) {
         setAlerts(prev => prev.filter(a => a.id !== alertId));
         toast.success('Alert deleted');
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  // Start editing alert actions
+  const startEditingAlert = (alert: Alert) => {
+    setEditingAlertId(alert.id);
+    setEditAlertActions([...alert.actions]);
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingAlertId(null);
+    setEditAlertActions([]);
+  };
+
+  // Save edited alert actions
+  const saveEditedActions = async (alertId: string) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/test-lab/alerts/${alertId}/actions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ actions: editAlertActions })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAlerts(prev => prev.map(a => 
+          a.id === alertId ? { ...a, actions: editAlertActions } : a
+        ));
+        toast.success('Alert actions updated');
+        cancelEditing();
       }
     } catch (error: any) {
       toast.error(error.message);
@@ -950,6 +989,20 @@ export const TestLabTab: React.FC = () => {
                             Target: {alert.targetPrice.toFixed(9)} SOL
                           </div>
                         )}
+                        {/* Show actions for this alert */}
+                        {alert.actions && alert.actions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {alert.actions.map((action, idx) => (
+                              <span key={idx} className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded text-xs">
+                                {action.type === 'buy' ? `Buy ${action.amount} SOL` :
+                                 action.type === 'sell' ? `Sell ${action.amount}%` :
+                                 action.type === 'telegram' ? 'Telegram' :
+                                 action.type === 'discord' ? 'Discord' :
+                                 'Notification'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {alert.hit && alert.hitAt && (
                           <div className="text-xs text-green-400 mt-1">
                             Hit at {new Date(alert.hitAt).toLocaleString('en-US', { 
@@ -969,6 +1022,15 @@ export const TestLabTab: React.FC = () => {
                           HIT ✓
                         </span>
                       )}
+                      {!alert.hit && (
+                        <button
+                          onClick={() => startEditingAlert(alert)}
+                          className="p-1 hover:bg-cyan-900/30 rounded transition-colors group"
+                          title="Edit actions"
+                        >
+                          <Edit className="w-4 h-4 text-gray-400 group-hover:text-cyan-400" />
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteAlert(alert.id)}
                         className="p-1 hover:bg-red-900/30 rounded transition-colors group"
@@ -977,6 +1039,32 @@ export const TestLabTab: React.FC = () => {
                         <X className="w-4 h-4 text-gray-400 group-hover:text-red-400" />
                       </button>
                     </div>
+                    {/* Edit Mode */}
+                    {editingAlertId === alert.id && (
+                      <div className="mt-3 p-3 bg-gray-800 border border-cyan-500/30 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium text-white">Edit Actions</h4>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveEditedActions(alert.id)}
+                              className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                        <AlertActionConfig
+                          actions={editAlertActions}
+                          onChange={setEditAlertActions}
+                        />
+                      </div>
+                    )}
                   </motion.div>
                 ))}
               </AnimatePresence>

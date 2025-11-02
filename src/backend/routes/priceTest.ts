@@ -226,6 +226,31 @@ router.get('/api/test-lab/alerts/:campaignId', authService.requireSecureAuth(), 
 });
 
 /**
+ * Update alert actions
+ */
+router.put('/api/test-lab/alerts/:alertId/actions', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { alertId } = req.params;
+    const { actions } = req.body;
+    
+    if (!actions || !Array.isArray(actions)) {
+      return res.status(400).json({ error: 'actions array required' });
+    }
+    
+    const success = monitor.updateAlertActions(alertId, actions);
+    
+    if (!success) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Error updating alert actions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Delete an alert
  */
 router.delete('/api/test-lab/alerts/:alertId', authService.requireSecureAuth(), async (req: Request, res: Response) => {
