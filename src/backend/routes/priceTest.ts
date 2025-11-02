@@ -602,8 +602,9 @@ router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), as
 
     console.log(`🧪 Starting GMGN scraper test for ${tokenMint}`);
     
-    // Import scraper service
-    const { gmgnScraperService } = await import('../services/GMGNScraperService.js');
+    // Import scraper service dynamically
+    const { getGMGNScraperService } = await import('../services/GMGNScraperService.js');
+    const gmgnScraperService = getGMGNScraperService();
     
     // Start the service if not already running
     await gmgnScraperService.start();
@@ -643,8 +644,9 @@ router.post('/api/test-lab/gmgn-test/stop', authService.requireSecureAuth(), asy
   try {
     const { tokenMint } = req.body;
     
-    // Import scraper service
-    const { gmgnScraperService } = await import('../services/GMGNScraperService.js');
+    // Import scraper service dynamically
+    const { getGMGNScraperService } = await import('../services/GMGNScraperService.js');
+    const gmgnScraperService = getGMGNScraperService();
     
     if (tokenMint) {
       await gmgnScraperService.removeMonitor(tokenMint);

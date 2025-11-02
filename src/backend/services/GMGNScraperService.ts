@@ -3,8 +3,12 @@
  * Uses Puppeteer to monitor GMGN charts and extract indicator values in real-time
  */
 
-import puppeteer, { Browser, Page } from 'puppeteer';
 import { EventEmitter } from 'events';
+
+// Dynamic import to prevent frontend bundling
+let puppeteer: any;
+type Browser = any;
+type Page = any;
 
 interface ChartMonitor {
   tokenMint: string;
@@ -23,7 +27,7 @@ interface IndicatorValue {
   value: number;
 }
 
-export class GMGNScraperService extends EventEmitter {
+class GMGNScraperService extends EventEmitter {
   private browser: Browser | null = null;
   private monitors: Map<string, ChartMonitor> = new Map();
   private updateInterval: NodeJS.Timeout | null = null;
@@ -40,6 +44,12 @@ export class GMGNScraperService extends EventEmitter {
     if (this.isRunning) return;
 
     console.log('🚀 Starting GMGN Scraper Service...');
+    
+    // Dynamically import puppeteer only when needed
+    if (!puppeteer) {
+      puppeteer = await import('puppeteer');
+      puppeteer = puppeteer.default || puppeteer;
+    }
     
     // Launch headless browser
     this.browser = await puppeteer.launch({
@@ -380,5 +390,15 @@ export class GMGNScraperService extends EventEmitter {
   }
 }
 
-// Export singleton instance
-export const gmgnScraperService = new GMGNScraperService();
+// Export class only, not singleton (to prevent auto-loading)
+export { GMGNScraperService };
+
+// Create singleton on demand
+let serviceInstance: GMGNScraperService | null = null;
+
+export const getGMGNScraperService = () => {
+  if (!serviceInstance) {
+    serviceInstance = new GMGNScraperService();
+  }
+  return serviceInstance;
+};
