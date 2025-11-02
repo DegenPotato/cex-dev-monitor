@@ -140,20 +140,62 @@ export const TestLabTab: React.FC = () => {
         // Handle alert triggers
         if (message.type === 'test_lab_alert') {
           const data = message.data;
-          console.log(`🚨 [${timestamp}] Alert triggered for ${data.campaignId}`);
+          console.log(`🚨 [${timestamp}] Alert triggered:`, data);
           
           toast.success(
-            <div className="flex flex-col gap-1">
-              <div className="font-semibold">🎯 Alert Triggered!</div>
+            <div className="flex flex-col gap-2">
+              <div className="font-bold text-base">🎯 Alert Triggered!</div>
               <div className="text-sm">
-                Campaign reached {data.alert.direction} {data.alert.targetPercent}%
+                <span className="font-medium">{data.tokenMint?.slice(0, 8)}...</span> reached{' '}
+                <span className={data.alert.direction === 'above' ? 'text-green-400' : 'text-red-400'}>
+                  {data.alert.direction} {data.alert.targetPercent >= 0 ? '+' : ''}{data.alert.targetPercent}%
+                </span>
               </div>
-              <div className="text-sm text-gray-400">
-                Price: {data.currentPrice.toFixed(9)} SOL
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <div className="text-gray-400">Target</div>
+                  <div className="font-mono">{data.alert.targetPrice.toFixed(9)} SOL</div>
+                </div>
+                <div>
+                  <div className="text-gray-400">Hit at</div>
+                  <div className="font-mono">{data.currentPrice.toFixed(9)} SOL</div>
+                </div>
+                {data.currentPriceUSD && (
+                  <div>
+                    <div className="text-gray-400">USD Value</div>
+                    <div className="font-mono">${data.currentPriceUSD.toFixed(8)}</div>
+                  </div>
+                )}
+                {data.changePercent !== undefined && (
+                  <div>
+                    <div className="text-gray-400">Total Change</div>
+                    <div className={`font-mono ${data.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+                    </div>
+                  </div>
+                )}
               </div>
+              {data.hitTime && (
+                <div className="text-xs text-gray-500 border-t border-gray-600 pt-1">
+                  {data.hitTime}
+                </div>
+              )}
             </div>,
-            { duration: 10000 }
+            { duration: 15000 }
           );
+
+          // Add to history
+          setHistory(prev => [{
+            timestamp,
+            campaignId: data.campaignId,
+            tokenMint: data.tokenMint || 'Unknown',
+            priceSOL: data.currentPrice,
+            priceUSD: data.currentPriceUSD,
+            changePercent: data.changePercent || 0,
+            high: data.currentPrice,
+            low: data.currentPrice,
+            type: 'alert' as const
+          }, ...prev].slice(0, 100));
 
           setAlerts(prev => prev.map(a =>
             a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
@@ -615,7 +657,7 @@ export const TestLabTab: React.FC = () => {
                         : 'bg-gray-900 border-gray-700'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
                       {alert.hit ? (
                         <Bell className="w-5 h-5 text-green-400" />
                       ) : alert.direction === 'above' ? (
@@ -623,17 +665,28 @@ export const TestLabTab: React.FC = () => {
                       ) : (
                         <TrendingDown className="w-5 h-5 text-red-400" />
                       )}
-                      <div>
+                      <div className="flex-1">
                         <div className="font-medium text-white">
                           {alert.direction === 'above' ? '+' : ''}{alert.targetPercent.toFixed(2)}%
                         </div>
                         <div className="text-sm text-gray-400">
                           Target: {alert.targetPrice.toFixed(9)} SOL
                         </div>
+                        {alert.hit && alert.hitAt && (
+                          <div className="text-xs text-green-400 mt-1">
+                            Hit at {new Date(alert.hitAt).toLocaleString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              hour: '2-digit', 
+                              minute: '2-digit', 
+                              second: '2-digit' 
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {alert.hit && (
-                      <span className="px-2 py-1 bg-green-600 text-white text-xs rounded">
+                      <span className="px-2 py-1 bg-green-600 text-white text-xs rounded whitespace-nowrap">
                         HIT ✓
                       </span>
                     )}

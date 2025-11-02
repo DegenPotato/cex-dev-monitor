@@ -109,9 +109,6 @@ export class OnChainPriceMonitor extends EventEmitter {
         // Fetch real-time price from Jupiter (actual swap price)
         const jupiterPrice = await this.fetchJupiterPrice(campaign.tokenMint);
         
-        // Fetch 1m candle from GeckoTerminal for high/low tracking
-        const geckoCandle = await this.fetchGeckoCandle(campaign.poolAddress);
-        
         // Use Jupiter price as current (most accurate real-time)
         const newPrice = jupiterPrice;
         const SOL_USD_PRICE = 180; // Approximate for USD display
@@ -120,8 +117,8 @@ export class OnChainPriceMonitor extends EventEmitter {
         // Update campaign stats
         campaign.currentPrice = newPrice;
         campaign.currentPriceUSD = usdPrice;
-        campaign.high = Math.max(campaign.high, geckoCandle.high); // Track session high from 1m candle
-        campaign.low = Math.min(campaign.low, geckoCandle.low);    // Track session low from 1m candle
+        campaign.high = Math.max(campaign.high, newPrice); // Track session high locally
+        campaign.low = Math.min(campaign.low, newPrice);   // Track session low locally
         campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
         
         // Track highest gain and lowest drop from start price
@@ -151,9 +148,9 @@ export class OnChainPriceMonitor extends EventEmitter {
       } catch (error) {
         console.error(`Error polling price for ${campaignId}:`, error);
       }
-    }, 15000); // 15 seconds
+    }, 3000); // 3 seconds (safe for Jupiter API)
 
-    console.log(`📊 Started price polling for ${campaignId} (15s intervals)`);
+    console.log(`📊 Started price polling for ${campaignId} (3s intervals)`);
   }
 
   /**
@@ -181,34 +178,6 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch 1-minute candle from GeckoTerminal for high/low tracking
-   */
-  private async fetchGeckoCandle(poolAddress: string): Promise<{
-    high: number;
-    low: number;
-  }> {
-    const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddress}/ohlcv/minute?aggregate=1&limit=1`;
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`GeckoTerminal API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const candle = data.data.attributes.ohlcv_list[0];
-    
-    if (!candle) {
-      throw new Error('No 1m candle data available');
-    }
-    
-    // Candle format: [timestamp, open, high, low, close, volume]
-    return {
-      high: parseFloat(candle[2]),
-      low: parseFloat(candle[3])
-    };
-  }
-
-  /**
    * Check and trigger alerts
    */
   private checkAlerts(campaignId: string, currentPrice: number) {
@@ -226,12 +195,25 @@ export class OnChainPriceMonitor extends EventEmitter {
         alert.hit = true;
         alert.hitAt = Date.now();
 
-        console.log(`🎯 Alert triggered for campaign ${campaignId}: ${alert.direction} ${alert.targetPrice.toFixed(9)}`);
+        const campaign = this.campaigns.get(campaignId);
+        const hitTime = new Date(alert.hitAt).toLocaleString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit' 
+        });
+
+        console.log(`🎯 [${hitTime}] Alert triggered for campaign ${campaignId}: ${alert.direction} ${alert.targetPercent}% (target: ${alert.targetPrice.toFixed(9)} SOL, hit at: ${currentPrice.toFixed(9)} SOL)`);
         
         this.emit('alert_triggered', {
           campaignId,
           alert,
           currentPrice,
+          currentPriceUSD: campaign?.currentPriceUSD,
+          changePercent: campaign?.changePercent,
+          tokenMint: campaign?.tokenMint,
+          hitTime,
           timestamp: Date.now()
         });
       }
