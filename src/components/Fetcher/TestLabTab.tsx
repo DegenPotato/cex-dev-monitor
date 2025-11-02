@@ -114,6 +114,8 @@ export const TestLabTab: React.FC = () => {
     EMA_9: null,
     EMA_20: null
   });
+  const [gmgnScreenshot, setGmgnScreenshot] = useState<string | null>(null);
+  const [gmgnDebugMode, setGmgnDebugMode] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Copy address to clipboard
@@ -357,6 +359,15 @@ export const TestLabTab: React.FC = () => {
           
           // Update indicator values
           setGmgnIndicators(data.values);
+        }
+
+        // Handle GMGN screenshot updates
+        if (message.type === 'gmgn_screenshot') {
+          const data = message.data;
+          console.log(`📸 Screenshot available for ${data.tokenMint.slice(0, 8)}...`);
+          
+          // Update screenshot URL
+          setGmgnScreenshot(data.url);
         }
       } catch (error) {
         console.error('❌ Error parsing WebSocket message:', error);
@@ -910,6 +921,19 @@ export const TestLabTab: React.FC = () => {
             </p>
           </div>
 
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="gmgn-debug-mode"
+              checked={gmgnDebugMode}
+              onChange={(e) => setGmgnDebugMode(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-2 focus:ring-purple-500"
+            />
+            <label htmlFor="gmgn-debug-mode" className="text-sm text-gray-300">
+              📸 Enable Debug Mode (take screenshots)
+            </label>
+          </div>
+
           <div className="flex justify-end gap-3">
             <button
               onClick={async () => {
@@ -924,7 +948,7 @@ export const TestLabTab: React.FC = () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ tokenMint })
+                    body: JSON.stringify({ tokenMint, debugMode: gmgnDebugMode })
                   });
 
                   const data = await response.json();
@@ -979,6 +1003,25 @@ export const TestLabTab: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Screenshot display */}
+          {gmgnScreenshot && (
+            <div className="mt-4 p-4 bg-gray-900 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-400 mb-2">📸 Browser Screenshot</h4>
+              <p className="text-xs text-gray-500 mb-2">What the scraper sees on GMGN:</p>
+              <div className="border border-gray-700 rounded overflow-hidden">
+                <img 
+                  src={`${config.apiUrl}${gmgnScreenshot}`} 
+                  alt="GMGN Screenshot" 
+                  className="w-full h-auto"
+                  onError={(e) => {
+                    console.error('Failed to load screenshot');
+                    e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" fill="%23666"%3EScreenshot unavailable%3C/text%3E%3C/svg%3E';
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
         )}
       </motion.div>

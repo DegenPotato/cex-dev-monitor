@@ -594,17 +594,22 @@ router.post('/api/test-lab/telegram-monitor/stop', authService.requireSecureAuth
  */
 router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { tokenMint } = req.body;
+    const { tokenMint, debugMode } = req.body;
     
     if (!tokenMint) {
       return res.status(400).json({ error: 'tokenMint required' });
     }
 
-    console.log(`🧪 Starting GMGN scraper test for ${tokenMint}`);
+    console.log(`🧪 Starting GMGN scraper test for ${tokenMint}${debugMode ? ' (DEBUG MODE)' : ''}`);
     
     // Import scraper service dynamically
     const { getGMGNScraperService } = await import('../services/GMGNScraperService.js');
     const gmgnScraperService = getGMGNScraperService();
+    
+    // Enable debug mode if requested
+    if (debugMode) {
+      gmgnScraperService.setDebugMode(true);
+    }
     
     // Start the service if not already running
     await gmgnScraperService.start();
@@ -626,6 +631,19 @@ router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), as
         data
       });
     });
+
+    // Listen for screenshots and broadcast
+    gmgnScraperService.on('screenshot', (data: any) => {
+      console.log(`📸 Screenshot available: ${data.path}`);
+      broadcast({
+        type: 'gmgn_screenshot',
+        data: {
+          tokenMint: data.tokenMint,
+          timestamp: data.timestamp,
+          url: `/api/test-lab/gmgn-test/screenshot/${data.tokenMint}?t=${data.timestamp}`
+        }
+      });
+    });
     
     res.json({ 
       success: true,
@@ -633,6 +651,39 @@ router.post('/api/test-lab/gmgn-test/start', authService.requireSecureAuth(), as
     });
   } catch (error: any) {
     console.error('❌ Error starting GMGN test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get latest screenshot for a token
+ */
+router.get('/api/test-lab/gmgn-test/screenshot/:tokenMint', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint } = req.params;
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    const screenshotDir = './screenshots';
+    
+    // Find latest screenshot for this token
+    if (!fs.existsSync(screenshotDir)) {
+      return res.status(404).json({ error: 'No screenshots available' });
+    }
+    
+    const files = fs.readdirSync(screenshotDir)
+      .filter(f => f.startsWith(tokenMint) && f.endsWith('.png'))
+      .sort()
+      .reverse();
+    
+    if (files.length === 0) {
+      return res.status(404).json({ error: 'No screenshot found for this token' });
+    }
+    
+    const latestScreenshot = path.join(screenshotDir, files[0]);
+    res.sendFile(path.resolve(latestScreenshot));
+  } catch (error: any) {
+    console.error('❌ Error getting screenshot:', error);
     res.status(500).json({ error: error.message });
   }
 });

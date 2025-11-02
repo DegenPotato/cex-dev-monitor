@@ -32,9 +32,18 @@ class GMGNScraperService extends EventEmitter {
   private monitors: Map<string, ChartMonitor> = new Map();
   private updateInterval: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
+  private debugMode: boolean = false;
+  private screenshotDir: string = './screenshots';
 
   constructor() {
     super();
+  }
+
+  /**
+   * Enable debug mode (visible browser + screenshots)
+   */
+  setDebugMode(enabled: boolean) {
+    this.debugMode = enabled;
   }
 
   /**
@@ -51,16 +60,24 @@ class GMGNScraperService extends EventEmitter {
       puppeteer = puppeteer.default || puppeteer;
     }
     
-    // Launch headless browser
+    // Create screenshots directory if it doesn't exist
+    const fs = await import('fs');
+    if (!fs.existsSync(this.screenshotDir)) {
+      fs.mkdirSync(this.screenshotDir, { recursive: true });
+    }
+
+    // Launch browser (headless or visible based on debug mode)
     this.browser = await puppeteer.launch({
-      headless: true, // Run in headless mode
+      headless: !this.debugMode, // Visible browser in debug mode
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--window-size=1920,1080'
-      ]
+      ],
+      // In debug mode, slow down operations to observe
+      ...(this.debugMode && { slowMo: 100 })
     });
 
     this.isRunning = true;
@@ -261,8 +278,22 @@ class GMGNScraperService extends EventEmitter {
 
       console.log(`📈 ${monitor.tokenMint.slice(0, 8)}... Price: $${monitor.values['PRICE']?.toFixed(8) || 'N/A'}, RSI: ${monitor.values['RSI']?.toFixed(2) || 'N/A'}`);
 
+      // Take screenshot in debug mode or if no values extracted
+      if (this.debugMode || monitor.values['PRICE'] === null) {
+        const screenshotPath = `${this.screenshotDir}/${monitor.tokenMint}_${Date.now()}.png`;
+        await monitor.page.screenshot({ path: screenshotPath, fullPage: false });
+        console.log(`📸 Screenshot saved: ${screenshotPath}`);
+        
+        // Emit screenshot event
+        this.emit('screenshot', {
+          tokenMint: monitor.tokenMint,
+          path: screenshotPath,
+          timestamp: Date.now()
+        });
+      }
+
     } catch (error) {
-      console.error(`Error updating monitor ${monitor.tokenMint}:`, error);
+      console.error(`Error updating monitor for ${monitor.tokenMint}:`, error);
     }
   }
 
