@@ -277,7 +277,7 @@ export class GMGNScraperService extends EventEmitter {
       for (const selector of selectors) {
         const element = await page.$(selector);
         if (element) {
-          const text = await element.evaluate(el => el.textContent);
+          const text = await element.evaluate((el: Element) => el.textContent);
           const price = this.parsePrice(text);
           if (price !== null) return price;
         }
@@ -312,7 +312,7 @@ export class GMGNScraperService extends EventEmitter {
   private async extractIndicatorValue(page: Page, indicator: string): Promise<number | null> {
     try {
       // Try to find indicator value in the DOM
-      const value = await page.evaluate((ind) => {
+      const value = await page.evaluate((ind: string) => {
         // Look for indicator values in various places
         // This needs to be customized based on GMGN's actual DOM structure
         
