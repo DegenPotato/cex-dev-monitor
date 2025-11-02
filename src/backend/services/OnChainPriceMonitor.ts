@@ -61,9 +61,8 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
-    // Get initial price from OHLCV candle
-    const initialCandle = await this.fetchLatestCandle(poolAddress);
-    const initialPrice = initialCandle.solPrice.close; // Use SOL close price as current
+    // Get initial price from Jupiter (real-time)
+    const initialPrice = await this.fetchJupiterPrice(tokenMint); // Use SOL close price as current
     
     const campaign: Campaign = {
       id: campaignId,
@@ -107,16 +106,22 @@ export class OnChainPriceMonitor extends EventEmitter {
       }
 
       try {
-        // Fetch latest OHLCV candle (SOL and USD prices)
-        const candle = await this.fetchLatestCandle(campaign.poolAddress);
-        const newPrice = candle.solPrice.close; // Use SOL close as current price
-        const usdPrice = candle.usdPrice.close; // USD price for reference
+        // Fetch real-time price from Jupiter (actual swap price)
+        const jupiterPrice = await this.fetchJupiterPrice(campaign.tokenMint);
         
-        // Update campaign stats with candle data
+        // Fetch 1m candle from GeckoTerminal for high/low tracking
+        const geckoCandle = await this.fetchGeckoCandle(campaign.poolAddress);
+        
+        // Use Jupiter price as current (most accurate real-time)
+        const newPrice = jupiterPrice;
+        const SOL_USD_PRICE = 180; // Approximate for USD display
+        const usdPrice = newPrice * SOL_USD_PRICE;
+        
+        // Update campaign stats
         campaign.currentPrice = newPrice;
         campaign.currentPriceUSD = usdPrice;
-        campaign.high = Math.max(campaign.high, candle.solPrice.high); // Track session high
-        campaign.low = Math.min(campaign.low, candle.solPrice.low);    // Track session low
+        campaign.high = Math.max(campaign.high, geckoCandle.high); // Track session high from 1m candle
+        campaign.low = Math.min(campaign.low, geckoCandle.low);    // Track session low from 1m candle
         campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
         
         // Track highest gain and lowest drop from start price
@@ -152,66 +157,55 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch OHLCV data from GeckoTerminal API
-   * Returns the latest 5-minute candle with prices in both SOL and USD
+   * Fetch current price from Jupiter (real-time swap quote)
    */
-  private async fetchLatestCandle(poolAddress: string): Promise<{
-    solPrice: { open: number; high: number; low: number; close: number; };
-    usdPrice: { open: number; high: number; low: number; close: number; };
-    timestamp: number;
-  }> {
-    try {
-      const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddress}/ohlcv/minute`;
-      
-      // Fetch both SOL and USD prices in parallel
-      const [solResponse, usdResponse] = await Promise.all([
-        // SOL prices (token currency)
-        fetch(`${url}?aggregate=5&limit=1&currency=token&token=base`, {
-          headers: { 'Accept': 'application/json' }
-        }),
-        // USD prices
-        fetch(`${url}?aggregate=5&limit=1&currency=usd`, {
-          headers: { 'Accept': 'application/json' }
-        })
-      ]);
-      
-      if (!solResponse.ok || !usdResponse.ok) {
-        throw new Error(`GeckoTerminal API error: ${solResponse.status} / ${usdResponse.status}`);
-      }
-      
-      const solData = await solResponse.json();
-      const usdData = await usdResponse.json();
-      
-      const solOhlcv = solData?.data?.attributes?.ohlcv_list;
-      const usdOhlcv = usdData?.data?.attributes?.ohlcv_list;
-      
-      if (!solOhlcv?.length || !usdOhlcv?.length) {
-        throw new Error('No OHLCV data available');
-      }
-      
-      // Parse OHLCV data: [timestamp, open, high, low, close, volume]
-      const solCandle = solOhlcv[0];
-      const usdCandle = usdOhlcv[0];
-      
-      return {
-        solPrice: {
-          open: parseFloat(solCandle[1]),
-          high: parseFloat(solCandle[2]),
-          low: parseFloat(solCandle[3]),
-          close: parseFloat(solCandle[4])
-        },
-        usdPrice: {
-          open: parseFloat(usdCandle[1]),
-          high: parseFloat(usdCandle[2]),
-          low: parseFloat(usdCandle[3]),
-          close: parseFloat(usdCandle[4])
-        },
-        timestamp: solCandle[0]
-      };
-    } catch (error) {
-      console.error(`Error fetching OHLCV data for pool ${poolAddress}:`, error);
-      throw error;
+  private async fetchJupiterPrice(tokenMint: string): Promise<number> {
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
+    const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Jupiter API error: ${response.status}`);
     }
+    
+    const data = await response.json();
+    
+    // Calculate price: 1 SOL -> X tokens, so price per token = 1 / X
+    const outAmount = parseInt(data.outAmount);
+    const outDecimals = 9; // Most Solana tokens use 9 decimals
+    const tokensReceived = outAmount / Math.pow(10, outDecimals);
+    const priceInSOL = 1 / tokensReceived;
+    
+    return priceInSOL;
+  }
+
+  /**
+   * Fetch 1-minute candle from GeckoTerminal for high/low tracking
+   */
+  private async fetchGeckoCandle(poolAddress: string): Promise<{
+    high: number;
+    low: number;
+  }> {
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddress}/ohlcv/minute?aggregate=1&limit=1`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`GeckoTerminal API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const candle = data.data.attributes.ohlcv_list[0];
+    
+    if (!candle) {
+      throw new Error('No 1m candle data available');
+    }
+    
+    // Candle format: [timestamp, open, high, low, close, volume]
+    return {
+      high: parseFloat(candle[2]),
+      low: parseFloat(candle[3])
+    };
   }
 
   /**
