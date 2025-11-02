@@ -405,6 +405,25 @@ export const TestLabTab: React.FC = () => {
     }
   };
 
+  // Delete alert
+  const deleteAlert = async (alertId: string) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/test-lab/alerts/${alertId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAlerts(prev => prev.filter(a => a.id !== alertId));
+        toast.success('Alert deleted');
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
   const formatTime = (ms: number) => {
     const seconds = Math.floor((Date.now() - ms) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
@@ -732,11 +751,20 @@ export const TestLabTab: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {alert.hit && (
-                      <span className="px-2 py-1 bg-green-600 text-white text-xs rounded whitespace-nowrap">
-                        HIT ✓
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {alert.hit && (
+                        <span className="px-2 py-1 bg-green-600 text-white text-xs rounded whitespace-nowrap">
+                          HIT ✓
+                        </span>
+                      )}
+                      <button
+                        onClick={() => deleteAlert(alert.id)}
+                        className="p-1 hover:bg-red-900/30 rounded transition-colors group"
+                        title="Delete alert"
+                      >
+                        <X className="w-4 h-4 text-gray-400 group-hover:text-red-400" />
+                      </button>
+                    </div>
                   </motion.div>
                 ))}
               </AnimatePresence>

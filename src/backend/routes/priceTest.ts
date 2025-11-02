@@ -223,6 +223,26 @@ router.get('/api/test-lab/alerts/:campaignId', authService.requireSecureAuth(), 
 });
 
 /**
+ * Delete an alert
+ */
+router.delete('/api/test-lab/alerts/:alertId', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { alertId } = req.params;
+    
+    const success = monitor.deleteAlert(alertId);
+    
+    if (!success) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('❌ Error deleting alert:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Get all campaigns
  */
 router.get('/api/test-lab/campaigns', authService.requireSecureAuth(), async (req: any, res: Response) => {

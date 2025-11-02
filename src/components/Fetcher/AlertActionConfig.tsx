@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, TrendingUp, MessageSquare, Send, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { config } from '../../config';
 
 export type AlertAction = 
   | { type: 'notification' }
-  | { type: 'buy'; amount: number; slippage: number }
-  | { type: 'sell'; amount: number; slippage: number }
-  | { type: 'telegram'; chatId: string; message?: string }
+  | { type: 'buy'; amount: number; slippage: number; walletAddress?: string }
+  | { type: 'sell'; amount: number; slippage: number; walletAddress?: string }
+  | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
 interface AlertActionConfigProps {
@@ -14,8 +15,58 @@ interface AlertActionConfigProps {
   onChange: (actions: AlertAction[]) => void;
 }
 
+interface TradingWallet {
+  id: number;
+  wallet_name: string;
+  wallet_address: string;
+}
+
+interface TelegramAccount {
+  id: number;
+  phone_number: string;
+  account_name?: string;
+}
+
 export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, onChange }) => {
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [tradingWallets, setTradingWallets] = useState<TradingWallet[]>([]);
+  const [telegramAccounts, setTelegramAccounts] = useState<TelegramAccount[]>([]);
+
+  // Fetch trading wallets
+  useEffect(() => {
+    const fetchWallets = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTradingWallets(data.wallets || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch trading wallets:', error);
+      }
+    };
+    fetchWallets();
+  }, []);
+
+  // Fetch telegram accounts
+  useEffect(() => {
+    const fetchTelegramAccounts = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/telegram/accounts`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTelegramAccounts(data.accounts || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch telegram accounts:', error);
+      }
+    };
+    fetchTelegramAccounts();
+  }, []);
 
   const addAction = (type: AlertAction['type']) => {
     let newAction: AlertAction;
@@ -135,6 +186,18 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                           className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         />
                       </div>
+                      <select
+                        value={action.walletAddress || ''}
+                        onChange={(e) => updateAction(index, { walletAddress: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                      >
+                        <option value="">Select Trading Wallet</option>
+                        {tradingWallets.map((wallet) => (
+                          <option key={wallet.id} value={wallet.wallet_address}>
+                            {wallet.wallet_name} ({wallet.wallet_address.slice(0, 8)}...)
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 
@@ -162,6 +225,18 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                           className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         />
                       </div>
+                      <select
+                        value={action.walletAddress || ''}
+                        onChange={(e) => updateAction(index, { walletAddress: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                      >
+                        <option value="">Select Trading Wallet</option>
+                        {tradingWallets.map((wallet) => (
+                          <option key={wallet.id} value={wallet.wallet_address}>
+                            {wallet.wallet_name} ({wallet.wallet_address.slice(0, 8)}...)
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 
@@ -171,6 +246,18 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                         <Send className="w-4 h-4 text-blue-400" />
                         <span className="text-sm text-white">Telegram Forward</span>
                       </div>
+                      <select
+                        value={action.accountId || ''}
+                        onChange={(e) => updateAction(index, { accountId: e.target.value ? parseInt(e.target.value) : undefined })}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                      >
+                        <option value="">Select Telegram Account</option>
+                        {telegramAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.account_name || account.phone_number}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         value={action.chatId}

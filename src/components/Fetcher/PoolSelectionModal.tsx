@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Loader2, TrendingUp, Droplets, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
@@ -80,7 +81,7 @@ export const PoolSelectionModal: React.FC<PoolSelectionModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -206,6 +207,7 @@ export const PoolSelectionModal: React.FC<PoolSelectionModalProps> = ({
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

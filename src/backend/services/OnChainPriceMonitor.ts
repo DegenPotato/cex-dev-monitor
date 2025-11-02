@@ -162,12 +162,13 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
-   * Fetch current price from Jupiter (real-time swap quote)
+   * Fetch current price from Jupiter (using price API)
    */
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
-    const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
-    const url = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=0`;
+    
+    // Use Jupiter Price API v2 for accurate pricing
+    const url = `https://api.jup.ag/price/v2?ids=${tokenMint}&vsToken=${SOL_MINT}`;
     
     const response = await fetch(url);
     if (!response.ok) {
@@ -176,11 +177,15 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     const data = await response.json();
     
-    // Calculate price: 1 SOL -> X tokens, so price per token = 1 / X
-    const outAmount = parseInt(data.outAmount);
-    const outDecimals = 9; // Most Solana tokens use 9 decimals
-    const tokensReceived = outAmount / Math.pow(10, outDecimals);
-    const priceInSOL = 1 / tokensReceived;
+    // Jupiter Price API returns: { data: { [tokenMint]: { id, price, ... } } }
+    const priceData = data.data?.[tokenMint];
+    if (!priceData || !priceData.price) {
+      throw new Error(`No price data available for ${tokenMint}`);
+    }
+    
+    const priceInSOL = parseFloat(priceData.price);
+    
+    console.log(`💰 Jupiter price for ${tokenMint.slice(0, 8)}...: ${priceInSOL.toFixed(12)} SOL`);
     
     return priceInSOL;
   }
@@ -295,6 +300,23 @@ export class OnChainPriceMonitor extends EventEmitter {
    */
   getAlerts(campaignId: string): PriceAlert[] {
     return this.alerts.get(campaignId) || [];
+  }
+
+  /**
+   * Delete an alert
+   */
+  deleteAlert(alertId: string): boolean {
+    // Find which campaign this alert belongs to
+    for (const [campaignId, alerts] of this.alerts.entries()) {
+      const alertIndex = alerts.findIndex(a => a.id === alertId);
+      if (alertIndex !== -1) {
+        alerts.splice(alertIndex, 1);
+        this.alerts.set(campaignId, alerts);
+        console.log(`🗑️ Alert ${alertId} deleted from campaign ${campaignId}`);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
