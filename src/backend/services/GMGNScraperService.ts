@@ -487,11 +487,16 @@ class GMGNScraperService extends EventEmitter {
       // Click result
       const clicked = await this.clickSearchResult(pageOrFrame, indicatorName);
       
-      // Close menu regardless
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // CRITICAL: Always close menu after adding (success or fail)
+      // This ensures next indicator gets a fresh menu state
+      await new Promise(resolve => setTimeout(resolve, 1500));
       await pageOrFrame.evaluate(() => {
+        // Try multiple methods to ensure menu closes
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+        // Also click outside the menu
+        document.body.click();
       });
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       if (clicked) {
         console.log(`✅ Added ${indicatorType}`);
