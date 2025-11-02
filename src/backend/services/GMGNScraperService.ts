@@ -328,10 +328,13 @@ class GMGNScraperService extends EventEmitter {
       // Wait for menu to open and search for input field
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Take debug screenshot to see if menu opened
-      if (this.debugMode) {
-        await pageOrFrame.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
-        console.log('📸 Menu screenshot captured');
+      // Take debug screenshot to see if menu opened (frames don't have screenshot, use stored page)
+      if (this.debugMode && this.monitors.size > 0) {
+        const firstMonitor = Array.from(this.monitors.values())[0];
+        if (firstMonitor?.page) {
+          await firstMonitor.page.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
+          console.log('📸 Menu screenshot captured');
+        }
       }
       
       // Debug: Log what's actually in the DOM
@@ -395,8 +398,8 @@ class GMGNScraperService extends EventEmitter {
       }
       
       const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 
-                           indicatorType === 'EMA' ? 'Exponential Moving Average' :
-                           indicatorType === 'SMA' ? 'Simple Moving Average' :
+                           indicatorType === 'EMA' ? 'Moving Average Exponential' :
+                           indicatorType === 'SMA' ? 'Moving Average' :
                            indicatorType === 'MACD' ? 'MACD' : indicatorType;
       
       await searchInput.type(indicatorName);
