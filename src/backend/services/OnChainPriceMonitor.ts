@@ -10,10 +10,13 @@ export interface Campaign {
   tokenMint: string;
   poolAddress: string;
   startPrice: number;
+  startPriceUSD?: number;
   currentPrice: number;
   currentPriceUSD?: number;
   high: number;
+  highUSD?: number;
   low: number;
+  lowUSD?: number;
   changePercent: number;
   highestGainPercent: number;  // Highest % gain from start
   lowestDropPercent: number;   // Lowest % drop from start
@@ -22,6 +25,10 @@ export interface Campaign {
   subscriptionId: number | null;
   isActive: boolean;
   priceHistory: Array<{ price: number; timestamp: number; }>;
+  // Token metadata
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenLogo?: string;
 }
 
 export type AlertAction = 
@@ -69,17 +76,24 @@ export class OnChainPriceMonitor extends EventEmitter {
 
     const campaignId = `${tokenMint}_${Date.now()}`;
     
+    // Fetch token metadata first
+    const metadata = await this.fetchTokenMetadata(tokenMint);
+    
     // Get initial price from Jupiter (real-time)
-    const initialPrice = await this.fetchJupiterPrice(tokenMint); // Use SOL close price as current
+    const { priceInSOL, priceInUSD } = await this.fetchJupiterPrice(tokenMint);
     
     const campaign: Campaign = {
       id: campaignId,
       tokenMint,
       poolAddress,
-      startPrice: initialPrice,
-      currentPrice: initialPrice,
-      high: initialPrice,
-      low: initialPrice,
+      startPrice: priceInSOL,
+      startPriceUSD: priceInUSD,
+      currentPrice: priceInSOL,
+      currentPriceUSD: priceInUSD,
+      high: priceInSOL,
+      highUSD: priceInUSD,
+      low: priceInSOL,
+      lowUSD: priceInUSD,
       changePercent: 0,
       highestGainPercent: 0,
       lowestDropPercent: 0,
@@ -87,13 +101,17 @@ export class OnChainPriceMonitor extends EventEmitter {
       lastUpdate: Date.now(),
       subscriptionId: null,
       isActive: true,
-      priceHistory: [{ price: initialPrice, timestamp: Date.now() }]
+      priceHistory: [{ price: priceInSOL, timestamp: Date.now() }],
+      // Token metadata
+      tokenName: metadata.name,
+      tokenSymbol: metadata.symbol,
+      tokenLogo: metadata.logo
     };
 
     this.campaigns.set(campaignId, campaign);
 
-    console.log(`🚀 Started campaign ${campaignId} for ${tokenMint}`);
-    console.log(`   Initial price: ${initialPrice.toFixed(9)} SOL`);
+    console.log(`🚀 Started campaign ${campaignId} for ${metadata.symbol || tokenMint}`);
+    console.log(`   Initial price: ${priceInSOL.toFixed(9)} SOL ($${priceInUSD?.toFixed(6)})`);  
     
     // Start polling for this campaign (15 second intervals)
     this.startPricePolling(campaignId);
@@ -115,19 +133,16 @@ export class OnChainPriceMonitor extends EventEmitter {
 
       try {
         // Fetch real-time price from Jupiter (actual swap price)
-        const jupiterPrice = await this.fetchJupiterPrice(campaign.tokenMint);
-        
-        // Use Jupiter price as current (most accurate real-time)
-        const newPrice = jupiterPrice;
-        const SOL_USD_PRICE = 180; // Approximate for USD display
-        const usdPrice = newPrice * SOL_USD_PRICE;
+        const { priceInSOL, priceInUSD } = await this.fetchJupiterPrice(campaign.tokenMint);
         
         // Update campaign stats
-        campaign.currentPrice = newPrice;
-        campaign.currentPriceUSD = usdPrice;
-        campaign.high = Math.max(campaign.high, newPrice); // Track session high locally
-        campaign.low = Math.min(campaign.low, newPrice);   // Track session low locally
-        campaign.changePercent = ((newPrice - campaign.startPrice) / campaign.startPrice) * 100;
+        campaign.currentPrice = priceInSOL;
+        campaign.currentPriceUSD = priceInUSD;
+        campaign.high = Math.max(campaign.high, priceInSOL); // Track session high locally
+        campaign.highUSD = Math.max(campaign.highUSD || 0, priceInUSD || 0);
+        campaign.low = Math.min(campaign.low, priceInSOL);   // Track session low locally
+        campaign.lowUSD = Math.min(campaign.lowUSD || Infinity, priceInUSD || Infinity);
+        campaign.changePercent = ((priceInSOL - campaign.startPrice) / campaign.startPrice) * 100;
         
         // Track highest gain and lowest drop from start price
         campaign.highestGainPercent = Math.max(campaign.highestGainPercent, campaign.changePercent);
@@ -136,7 +151,7 @@ export class OnChainPriceMonitor extends EventEmitter {
         campaign.lastUpdate = Date.now();
         
         // Add to history
-        campaign.priceHistory.push({ price: newPrice, timestamp: Date.now() });
+        campaign.priceHistory.push({ price: priceInSOL, timestamp: Date.now() });
         
         // Keep last 100 data points
         if (campaign.priceHistory.length > 100) {
@@ -145,14 +160,15 @@ export class OnChainPriceMonitor extends EventEmitter {
         
         // ALWAYS log price updates with timestamp
         const timestamp = new Date().toISOString();
-        console.log(`📊 [${timestamp}] ${campaign.tokenMint.slice(0, 8)}... SOL: ${newPrice.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${usdPrice.toFixed(8)} | High: ${campaign.high.toFixed(9)} | Low: ${campaign.low.toFixed(9)}`);
+        const symbol = campaign.tokenSymbol || campaign.tokenMint.slice(0, 8);
+        console.log(`📊 [${timestamp}] ${symbol} SOL: ${priceInSOL.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${(priceInUSD || 0).toFixed(8)} | High: ${campaign.high.toFixed(9)} ($${(campaign.highUSD || 0).toFixed(6)}) | Low: ${campaign.low.toFixed(9)} ($${(campaign.lowUSD || 0).toFixed(6)})`);
         
         // Broadcast update
         console.log(`🔔 [${timestamp}] Emitting price_update for campaign ${campaignId}`);
         this.emit('price_update', campaign);
         
         // Check alerts
-        this.checkAlerts(campaignId, newPrice);
+        this.checkAlerts(campaignId, priceInSOL);
       } catch (error) {
         console.error(`Error polling price for ${campaignId}:`, error);
       }
@@ -162,10 +178,34 @@ export class OnChainPriceMonitor extends EventEmitter {
   }
 
   /**
+   * Fetch token metadata (name, symbol, logo)
+   */
+  private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string }> {
+    try {
+      const tokenApiUrl = `https://api.jup.ag/tokens/v2/search?mint=${tokenMint}`;
+      const response = await fetch(tokenApiUrl);
+      
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          name: data.name || undefined,
+          symbol: data.symbol || undefined,
+          logo: data.logoURI || undefined
+        };
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not fetch token metadata for ${tokenMint}`);
+    }
+    
+    return {};
+  }
+
+  /**
    * Fetch current price from Jupiter
    * Try Price API v3 first (fast, clean), fallback to Quote API (always works)
+   * Returns both SOL and USD prices
    */
-  private async fetchJupiterPrice(tokenMint: string): Promise<number> {
+  private async fetchJupiterPrice(tokenMint: string): Promise<{ priceInSOL: number; priceInUSD?: number }> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
     
     try {
@@ -179,9 +219,11 @@ export class OnChainPriceMonitor extends EventEmitter {
         const solData = priceData[SOL_MINT];
         
         if (tokenData?.usdPrice && solData?.usdPrice) {
-          const priceInSOL = parseFloat(tokenData.usdPrice) / parseFloat(solData.usdPrice);
-          console.log(`💰 Jupiter Price API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL`);
-          return priceInSOL;
+          const tokenUsdPrice = parseFloat(tokenData.usdPrice);
+          const solUsdPrice = parseFloat(solData.usdPrice);
+          const priceInSOL = tokenUsdPrice / solUsdPrice;
+          console.log(`💰 Jupiter Price API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL ($${tokenUsdPrice.toFixed(8)})`);
+          return { priceInSOL, priceInUSD: tokenUsdPrice };
         }
       }
     } catch (error) {
@@ -241,16 +283,32 @@ export class OnChainPriceMonitor extends EventEmitter {
         }
       }
     } catch (error) {
-      console.warn(`⚠️ Error fetching decimals for ${tokenMint}, using default 6:`, error);
+      console.warn(`⚠️ Error fetching decimals for ${tokenMint}, using default 6`);
     }
     
     const outAmount = parseInt(quoteData.outAmount);
     const tokensReceived = outAmount / Math.pow(10, decimals);
     const priceInSOL = 1 / tokensReceived;
     
-    console.log(`💰 Jupiter Quote API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL (${decimals} decimals)`);
+    // Get SOL USD price to calculate token USD price
+    let priceInUSD: number | undefined;
+    try {
+      const solPriceUrl = `https://api.jup.ag/price/v3?ids=${SOL_MINT}`;
+      const solPriceResponse = await fetch(solPriceUrl);
+      if (solPriceResponse.ok) {
+        const solPriceData = await solPriceResponse.json();
+        const solUsdPrice = parseFloat(solPriceData[SOL_MINT]?.usdPrice || '0');
+        if (solUsdPrice > 0) {
+          priceInUSD = priceInSOL * solUsdPrice;
+        }
+      }
+    } catch {
+      // USD price optional
+    }
     
-    return priceInSOL;
+    console.log(`💰 Jupiter Quote API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL${priceInUSD ? ` ($${priceInUSD.toFixed(8)})` : ''} (${decimals} decimals)`);
+    
+    return { priceInSOL, priceInUSD };
   }
 
   /**

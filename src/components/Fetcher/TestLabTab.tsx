@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap } from 'lucide-react';
+import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap, Copy, ExternalLink, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
@@ -13,16 +13,23 @@ interface Campaign {
   tokenMint: string;
   poolAddress: string;
   startPrice: number;
+  startPriceUSD?: number;
   currentPrice: number;
   currentPriceUSD?: number;
   high: number;
+  highUSD?: number;
   low: number;
+  lowUSD?: number;
   changePercent: number;
   highestGainPercent: number;  // Highest % gain from start
   lowestDropPercent: number;   // Lowest % drop from start
   startTime: number;
   lastUpdate: number;
   isActive: boolean;
+  // Token metadata
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenLogo?: string;
 }
 
 interface Alert {
@@ -39,11 +46,16 @@ interface HistoryEntry {
   timestamp: string;
   campaignId: string;
   tokenMint: string;
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenLogo?: string;
   priceSOL: number;
   priceUSD?: number;
   changePercent: number;
   high: number;
+  highUSD?: number;
   low: number;
+  lowUSD?: number;
   type: 'update' | 'alert';
 }
 
@@ -60,7 +72,16 @@ export const TestLabTab: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'campaigns' | 'history'>('campaigns');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showPoolModal, setShowPoolModal] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Copy address to clipboard
+  const copyAddress = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    setCopiedAddress(address);
+    toast.success('Address copied!');
+    setTimeout(() => setCopiedAddress(null), 2000);
+  };
 
   // Set up WebSocket for real-time updates (like other tabs)
   useEffect(() => {
@@ -96,7 +117,9 @@ export const TestLabTab: React.FC = () => {
                   currentPrice: data.currentPrice,
                   currentPriceUSD: data.currentPriceUSD,
                   high: data.high,
+                  highUSD: data.highUSD,
                   low: data.low,
+                  lowUSD: data.lowUSD,
                   changePercent: data.changePercent,
                   highestGainPercent: data.highestGainPercent || data.changePercent,
                   lowestDropPercent: data.lowestDropPercent || Math.min(0, data.changePercent),
@@ -117,7 +140,9 @@ export const TestLabTab: React.FC = () => {
                 currentPrice: data.currentPrice,
                 currentPriceUSD: data.currentPriceUSD,
                 high: data.high,
+                highUSD: data.highUSD,
                 low: data.low,
+                lowUSD: data.lowUSD,
                 changePercent: data.changePercent,
                 highestGainPercent: data.highestGainPercent || data.changePercent,
                 lowestDropPercent: data.lowestDropPercent || Math.min(0, data.changePercent),
@@ -127,16 +152,22 @@ export const TestLabTab: React.FC = () => {
             return prev;
           });
 
-          // Add to history
+          // Add to history (with metadata from campaign)
+          const campaign = campaigns.find(c => c.id === data.id);
           setHistory(prev => [{
             timestamp,
             campaignId: data.id,
             tokenMint: data.tokenMint,
+            tokenName: campaign?.tokenName,
+            tokenSymbol: campaign?.tokenSymbol,
+            tokenLogo: campaign?.tokenLogo,
             priceSOL: data.currentPrice,
             priceUSD: data.currentPriceUSD,
             changePercent: data.changePercent,
             high: data.high,
+            highUSD: data.highUSD,
             low: data.low,
+            lowUSD: data.lowUSD,
             type: 'update' as const
           }, ...prev].slice(0, 100)); // Keep last 100
         }
@@ -555,11 +586,33 @@ export const TestLabTab: React.FC = () => {
                     : 'bg-gray-900 border-gray-700 hover:border-gray-600'
                 }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="text-xs text-gray-400 font-mono truncate">
-                      {campaign.tokenMint.slice(0, 8)}...
+                <div className="flex items-start gap-3">
+                  {campaign.tokenLogo && (
+                    <img src={campaign.tokenLogo} alt={campaign.tokenSymbol || 'Token'} className="w-10 h-10 rounded-full" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-white">
+                        {campaign.tokenSymbol || campaign.tokenMint.slice(0, 8)}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyAddress(campaign.tokenMint);
+                        }}
+                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                        title="Copy address"
+                      >
+                        {copiedAddress === campaign.tokenMint ? (
+                          <Check className="w-3 h-3 text-green-400" />
+                        ) : (
+                          <Copy className="w-3 h-3 text-gray-400" />
+                        )}
+                      </button>
                     </div>
+                    {campaign.tokenName && (
+                      <div className="text-xs text-gray-500 truncate">{campaign.tokenName}</div>
+                    )}
                     <div className={`text-lg font-bold mt-1 ${
                       campaign.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
@@ -588,6 +641,60 @@ export const TestLabTab: React.FC = () => {
       {/* Selected Campaign Details */}
       {selectedCampaign && (
         <>
+          {/* Token Header with Links */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gray-800 border border-gray-700 rounded-xl p-4"
+          >
+            <div className="flex items-center gap-4">
+              {selectedCampaign.tokenLogo && (
+                <img src={selectedCampaign.tokenLogo} alt={selectedCampaign.tokenSymbol || 'Token'} className="w-16 h-16 rounded-full" />
+              )}
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-white">
+                    {selectedCampaign.tokenSymbol || selectedCampaign.tokenMint.slice(0, 8)}
+                  </h3>
+                  <button
+                    onClick={() => copyAddress(selectedCampaign.tokenMint)}
+                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                    title="Copy address"
+                  >
+                    {copiedAddress === selectedCampaign.tokenMint ? (
+                      <Check className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+                {selectedCampaign.tokenName && (
+                  <div className="text-sm text-gray-400">{selectedCampaign.tokenName}</div>
+                )}
+                <div className="flex items-center gap-3 mt-2">
+                  <a
+                    href={`https://solscan.io/token/${selectedCampaign.tokenMint}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-3 py-1 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-600/30 rounded-lg text-purple-400 text-sm transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Solscan
+                  </a>
+                  <a
+                    href={`https://gmgn.ai/sol/token/${selectedCampaign.tokenMint}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 px-3 py-1 bg-green-600/20 hover:bg-green-600/30 border border-green-600/30 rounded-lg text-green-400 text-sm transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    GMGN
+                  </a>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
           {/* Stats */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -614,6 +721,9 @@ export const TestLabTab: React.FC = () => {
               </div>
               <div className="text-xs text-gray-500">Peak from start</div>
               <div className="text-sm text-white mt-1">{selectedCampaign.high.toFixed(9)} SOL</div>
+              {selectedCampaign.highUSD && (
+                <div className="text-xs text-gray-400">${selectedCampaign.highUSD.toFixed(6)} USD</div>
+              )}
             </div>
             
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
@@ -623,6 +733,9 @@ export const TestLabTab: React.FC = () => {
               </div>
               <div className="text-xs text-gray-500">Dip from start</div>
               <div className="text-sm text-white mt-1">{selectedCampaign.low.toFixed(9)} SOL</div>
+              {selectedCampaign.lowUSD && (
+                <div className="text-xs text-gray-400">${selectedCampaign.lowUSD.toFixed(6)} USD</div>
+              )}
             </div>
           </motion.div>
 
@@ -636,15 +749,24 @@ export const TestLabTab: React.FC = () => {
               <div>
                 <div className="text-gray-400">Start Price</div>
                 <div className="text-white font-mono">{selectedCampaign.startPrice.toFixed(9)} SOL</div>
+                {selectedCampaign.startPriceUSD && (
+                  <div className="text-gray-500 text-xs">${selectedCampaign.startPriceUSD.toFixed(6)} USD</div>
+                )}
                 <div className="text-gray-500 text-xs">{formatTime(selectedCampaign.startTime)}</div>
               </div>
               <div>
                 <div className="text-gray-400">Session High</div>
                 <div className="text-green-400 font-mono">{selectedCampaign.high.toFixed(9)} SOL</div>
+                {selectedCampaign.highUSD && (
+                  <div className="text-gray-500 text-xs">${selectedCampaign.highUSD.toFixed(6)} USD</div>
+                )}
               </div>
               <div>
                 <div className="text-gray-400">Session Low</div>
                 <div className="text-red-400 font-mono">{selectedCampaign.low.toFixed(9)} SOL</div>
+                {selectedCampaign.lowUSD && (
+                  <div className="text-gray-500 text-xs">${selectedCampaign.lowUSD.toFixed(6)} USD</div>
+                )}
               </div>
               <div>
                 <div className="text-gray-400">Last Update</div>
@@ -808,31 +930,80 @@ export const TestLabTab: React.FC = () => {
               {history.map((entry, index) => (
                 <div
                   key={`${entry.timestamp}-${index}`}
-                  className="bg-gray-900 border border-gray-700 rounded-lg p-4 flex items-center justify-between"
+                  className="bg-gray-900 border border-gray-700 rounded-lg p-4"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-gray-500 font-mono">{entry.timestamp}</span>
-                      {entry.type === 'alert' && (
-                        <span className="px-2 py-0.5 bg-red-500/20 text-red-400 rounded text-xs">ALERT</span>
+                  <div className="flex items-start gap-3">
+                    {entry.tokenLogo && (
+                      <img src={entry.tokenLogo} alt={entry.tokenSymbol || 'Token'} className="w-8 h-8 rounded-full flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-gray-500 font-mono">{entry.timestamp}</span>
+                        {entry.type === 'alert' && (
+                          <span className="px-2 py-0.5 bg-red-500/20 text-red-400 rounded text-xs">ALERT</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="font-semibold text-white text-sm">
+                          {entry.tokenSymbol || entry.tokenMint.slice(0, 8)}
+                        </div>
+                        <button
+                          onClick={() => copyAddress(entry.tokenMint)}
+                          className="p-0.5 hover:bg-gray-700 rounded transition-colors"
+                          title="Copy address"
+                        >
+                          {copiedAddress === entry.tokenMint ? (
+                            <Check className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-gray-400" />
+                          )}
+                        </button>
+                        <a
+                          href={`https://solscan.io/token/${entry.tokenMint}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-0.5 hover:bg-purple-600/20 rounded transition-colors"
+                          title="View on Solscan"
+                        >
+                          <ExternalLink className="w-3 h-3 text-purple-400" />
+                        </a>
+                        <a
+                          href={`https://gmgn.ai/sol/token/${entry.tokenMint}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-0.5 hover:bg-green-600/20 rounded transition-colors"
+                          title="View on GMGN"
+                        >
+                          <ExternalLink className="w-3 h-3 text-green-400" />
+                        </a>
+                      </div>
+                      {entry.tokenName && (
+                        <div className="text-xs text-gray-500 truncate mb-1">{entry.tokenName}</div>
                       )}
+                      <div className="flex items-center gap-4 text-sm flex-wrap">
+                        <div>
+                          <span className="text-white font-mono">{entry.priceSOL.toFixed(9)} SOL</span>
+                          {entry.priceUSD && (
+                            <div className="text-xs text-gray-400">${entry.priceUSD.toFixed(8)} USD</div>
+                          )}
+                        </div>
+                        <span className={`font-bold ${entry.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {entry.changePercent >= 0 ? '+' : ''}{entry.changePercent.toFixed(2)}%
+                        </span>
+                        <div className="text-xs text-gray-500">
+                          <div>High: {entry.high.toFixed(9)} SOL</div>
+                          {entry.highUSD && (
+                            <div className="text-gray-600">${entry.highUSD.toFixed(6)} USD</div>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          <div>Low: {entry.low.toFixed(9)} SOL</div>
+                          {entry.lowUSD && (
+                            <div className="text-gray-600">${entry.lowUSD.toFixed(6)} USD</div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-400 font-mono mb-1">
-                      {entry.tokenMint.slice(0, 8)}...
-                    </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="text-white font-mono">{entry.priceSOL.toFixed(9)} SOL</span>
-                      {entry.priceUSD && (
-                        <span className="text-gray-400">${entry.priceUSD.toFixed(8)}</span>
-                      )}
-                      <span className={entry.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}>
-                        {entry.changePercent >= 0 ? '+' : ''}{entry.changePercent.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right text-xs text-gray-500">
-                    <div>High: {entry.high.toFixed(9)}</div>
-                    <div>Low: {entry.low.toFixed(9)}</div>
                   </div>
                 </div>
               ))}
