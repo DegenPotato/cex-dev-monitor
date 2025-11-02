@@ -3,11 +3,12 @@ import { Bell, TrendingUp, MessageSquare, Send, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { useTradingSettingsStore } from '../../stores/tradingSettingsStore';
+import { useTradingStore } from '../../stores/tradingStore';
 
 export type AlertAction = 
   | { type: 'notification' }
-  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; walletId?: number }
-  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; walletId?: number }
+  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; walletId?: string }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; walletId?: string }
   | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
@@ -16,12 +17,6 @@ interface AlertActionConfigProps {
   onChange: (actions: AlertAction[]) => void;
 }
 
-interface TradingWallet {
-  id: number;
-  wallet_name: string;
-  public_key: string;
-  sol_balance?: number;
-}
 
 interface TelegramAccount {
   id: number;
@@ -31,27 +26,14 @@ interface TelegramAccount {
 
 export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, onChange }) => {
   const { defaultSlippage } = useTradingSettingsStore();
+  const { wallets: tradingWallets, fetchWallets } = useTradingStore();
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [tradingWallets, setTradingWallets] = useState<TradingWallet[]>([]);
   const [telegramAccounts, setTelegramAccounts] = useState<TelegramAccount[]>([]);
 
-  // Fetch trading wallets
+  // Fetch trading wallets on mount
   useEffect(() => {
-    const fetchWallets = async () => {
-      try {
-        const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setTradingWallets(data.wallets || []);
-        }
-      } catch (error) {
-        console.error('Failed to fetch trading wallets:', error);
-      }
-    };
     fetchWallets();
-  }, []);
+  }, [fetchWallets]);
 
   // Fetch telegram accounts
   useEffect(() => {
@@ -213,13 +195,13 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                         <label className="text-xs text-gray-400 mb-1 block">Trading Wallet</label>
                         <select
                           value={action.walletId || ''}
-                          onChange={(e) => updateAction(index, { walletId: e.target.value ? parseInt(e.target.value) : undefined })}
+                          onChange={(e) => updateAction(index, { walletId: e.target.value || undefined })}
                           className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         >
                           <option value="">Select wallet...</option>
                           {tradingWallets.map((wallet) => (
                             <option key={wallet.id} value={wallet.id}>
-                              {wallet.wallet_name} - {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                              {wallet.name} - {wallet.balance?.toFixed(4) || '0.0000'} SOL
                             </option>
                           ))}
                         </select>
@@ -277,13 +259,13 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                         <label className="text-xs text-gray-400 mb-1 block">Trading Wallet</label>
                         <select
                           value={action.walletId || ''}
-                          onChange={(e) => updateAction(index, { walletId: e.target.value ? parseInt(e.target.value) : undefined })}
+                          onChange={(e) => updateAction(index, { walletId: e.target.value || undefined })}
                           className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
                         >
                           <option value="">Select wallet...</option>
                           {tradingWallets.map((wallet) => (
                             <option key={wallet.id} value={wallet.id}>
-                              {wallet.wallet_name} - {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                              {wallet.name} - {wallet.balance?.toFixed(4) || '0.0000'} SOL
                             </option>
                           ))}
                         </select>
