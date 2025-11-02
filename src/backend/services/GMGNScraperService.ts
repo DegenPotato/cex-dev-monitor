@@ -235,6 +235,29 @@ class GMGNScraperService extends EventEmitter {
         console.log('📸 Menu screenshot captured');
       }
       
+      // Debug: Log what's actually in the DOM
+      const availableElements = await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        const menus = Array.from(document.querySelectorAll('[role="menu"], [class*="menu"]'));
+        return {
+          inputCount: inputs.length,
+          inputs: inputs.map(i => ({
+            type: i.type,
+            placeholder: i.placeholder,
+            class: i.className,
+            visible: i.offsetParent !== null
+          })),
+          menuCount: menus.length,
+          menus: menus.map(m => ({
+            role: m.getAttribute('role'),
+            class: m.className,
+            visible: (m as HTMLElement).offsetParent !== null
+          }))
+        };
+      });
+      
+      console.log('🔍 DOM Debug:', JSON.stringify(availableElements, null, 2));
+      
       // Find the search input in the opened menu
       // Try multiple selectors for the search field
       const searchSelectors = [
@@ -243,23 +266,27 @@ class GMGNScraperService extends EventEmitter {
         'input[placeholder*="Search"]',
         'input[placeholder*="search"]',
         '[role="menu"] input',
-        '[class*="menu-list"] input'
+        '[class*="menu-list"] input',
+        'input:not([type="hidden"])',
+        'input'
       ];
       
       let searchInput = null;
       for (const selector of searchSelectors) {
         try {
-          searchInput = await page.waitForSelector(selector, { timeout: 2000 });
+          searchInput = await page.waitForSelector(selector, { timeout: 2000, visible: true });
           if (searchInput) {
             console.log(`✅ Found search input with selector: ${selector}`);
             break;
           }
         } catch (e) {
+          console.log(`❌ Selector failed: ${selector}`);
           continue;
         }
       }
       
       if (!searchInput) {
+        console.error('💥 Could not find search input. Available inputs:', availableElements.inputs);
         throw new Error('Could not find search input in indicators menu');
       }
       
