@@ -214,27 +214,62 @@ class GMGNScraperService extends EventEmitter {
         ? indicator.split('_') 
         : [indicator, null];
       
-      // Click "Indicators" button on TradingView chart
+      // Click the indicators menu button (Chakra UI menu button with chart icon)
       await page.evaluate(() => {
-        const indicatorsBtn = Array.from(document.querySelectorAll('button, div[role="button"]'))
-          .find(el => el.textContent?.includes('Indicators') || el.getAttribute('aria-label')?.includes('Indicators'));
+        // Look for the specific menu button with aria-haspopup="menu"
+        const indicatorsBtn = document.querySelector('[class*="chakra-menu__menu-button"][aria-haspopup="menu"]') as HTMLElement;
         if (indicatorsBtn) {
-          (indicatorsBtn as HTMLElement).click();
+          indicatorsBtn.click();
+          console.log('✅ Clicked indicators menu button');
+        } else {
+          console.log('❌ Could not find indicators menu button');
         }
       });
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for menu to open and search for input field
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Type in indicator search
-      const searchSelector = 'input[type="text"]';
-      await page.waitForSelector(searchSelector, { timeout: 5000 });
+      // Take debug screenshot to see if menu opened
+      if (this.debugMode) {
+        await page.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
+        console.log('📸 Menu screenshot captured');
+      }
+      
+      // Find the search input in the opened menu
+      // Try multiple selectors for the search field
+      const searchSelectors = [
+        'input[type="text"]',
+        'input[type="search"]',
+        'input[placeholder*="Search"]',
+        'input[placeholder*="search"]',
+        '[role="menu"] input',
+        '[class*="menu-list"] input'
+      ];
+      
+      let searchInput = null;
+      for (const selector of searchSelectors) {
+        try {
+          searchInput = await page.waitForSelector(selector, { timeout: 2000 });
+          if (searchInput) {
+            console.log(`✅ Found search input with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!searchInput) {
+        throw new Error('Could not find search input in indicators menu');
+      }
       
       const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 
                            indicatorType === 'EMA' ? 'Exponential Moving Average' :
                            indicatorType === 'SMA' ? 'Simple Moving Average' :
                            indicatorType === 'MACD' ? 'MACD' : indicatorType;
       
-      await page.type(searchSelector, indicatorName);
+      await searchInput.type(indicatorName);
+      console.log(`⌨️ Typed: ${indicatorName}`);
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Click first result
