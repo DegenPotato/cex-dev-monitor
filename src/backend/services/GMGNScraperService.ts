@@ -490,12 +490,43 @@ class GMGNScraperService extends EventEmitter {
       // CRITICAL: Always close menu after adding (success or fail)
       // This ensures next indicator gets a fresh menu state
       await new Promise(resolve => setTimeout(resolve, 1500));
-      await pageOrFrame.evaluate(() => {
-        // Try multiple methods to ensure menu closes
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
-        // Also click outside the menu
-        document.body.click();
+      
+      // Method 1: Try to click close button if exists
+      const closedViaButton = await pageOrFrame.evaluate(() => {
+        const closeButtons = document.querySelectorAll('[aria-label*="Close"], [title*="Close"], button[class*="close"], .close-button');
+        for (const btn of closeButtons) {
+          if ((btn as HTMLElement).offsetParent !== null) {
+            (btn as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
       });
+      
+      if (!closedViaButton) {
+        // Method 2: Click the indicators button again to toggle menu closed
+        const toggleClosed = await pageOrFrame.evaluate(() => {
+          const indicatorButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+          for (const btn of indicatorButtons) {
+            const text = btn.textContent?.toLowerCase() || '';
+            const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
+            if (text.includes('indicators') || ariaLabel.includes('indicators')) {
+              (btn as HTMLElement).click();
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        if (!toggleClosed) {
+          // Method 3: Fallback to ESC key
+          await pageOrFrame.evaluate(() => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+            document.body.click();
+          });
+        }
+      }
+      
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       if (clicked) {
