@@ -35,7 +35,7 @@ class GMGNScraperService extends EventEmitter {
   private updateInterval: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
   private debugMode: boolean = true;  // Enable debug mode for screenshots
-  private screenshotDir: string = './screenshots';
+  private screenshotDir: string = '/var/www/cex-monitor/public/screenshots';  // Web-accessible directory
   private screenshotCounter: number = 0;
 
   constructor() {
@@ -76,6 +76,9 @@ class GMGNScraperService extends EventEmitter {
     const fs = await import('fs');
     if (!fs.existsSync(this.screenshotDir)) {
       fs.mkdirSync(this.screenshotDir, { recursive: true });
+      console.log(`✅ Created screenshots directory: ${this.screenshotDir}`);
+    } else {
+      console.log(`✅ Screenshots directory exists: ${this.screenshotDir}`);
     }
 
     // Launch browser (always headless on server, no X display available)
@@ -319,9 +322,14 @@ class GMGNScraperService extends EventEmitter {
     try {
       const firstMonitor = Array.from(this.monitors.values())[0];
       if (firstMonitor?.page) {
-        const filename = `${this.screenshotDir}/${name}_${this.screenshotCounter++}_${Date.now()}.png`;
+        const timestamp = Date.now();
+        const filename = `${this.screenshotDir}/${name}_${this.screenshotCounter++}_${timestamp}.png`;
         await firstMonitor.page.screenshot({ path: filename });
+        
+        // Log both local path and web URL
+        const webUrl = `https://api.sniff.agency/screenshots/${name}_${this.screenshotCounter - 1}_${timestamp}.png`;
         console.log(`📸 Screenshot saved: ${filename}`);
+        console.log(`🌐 View at: ${webUrl}`);
       }
     } catch (error) {
       console.log('⚠️ Failed to take screenshot:', error);
@@ -329,67 +337,30 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Add all indicators in one session without closing the search menu
+   * Add all indicators in one session - simpler approach
    */
   private async addAllIndicators(pageOrFrame: any) {
     try {
-      console.log('🔍 Opening indicators menu...');
+      console.log('📊 Adding all indicators with default values...');
       
-      // Click the indicators button to open menu
-      const indicatorsOpened = await this.openIndicatorsMenu(pageOrFrame);
-      if (!indicatorsOpened) {
-        throw new Error('Could not open indicators menu');
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await this.takeDebugScreenshot('indicators_menu_open');
-      
-      // Find the search input ONCE
-      const searchInput = await this.findSearchInput(pageOrFrame);
-      if (!searchInput) {
-        throw new Error('Could not find search input in indicators menu');
-      }
-      
-      console.log('✅ Found search input, adding all indicators...');
-      
-      // List of indicators to add in order
-      const indicatorsToAdd = [
-        { type: 'RSI', name: 'Relative Strength Index' },
-        { type: 'RSI', name: 'Relative Strength Index' },
-        { type: 'EMA', name: 'Moving Average Exponential' },
-        { type: 'EMA', name: 'Moving Average Exponential' },
-        { type: 'EMA', name: 'Moving Average Exponential' },
-        { type: 'EMA', name: 'Moving Average Exponential' },
+      // List of indicators to add
+      const indicators = [
+        'RSI', 'RSI',  // 2x RSI
+        'EMA', 'EMA', 'EMA', 'EMA'  // 4x EMA
       ];
       
-      for (let i = 0; i < indicatorsToAdd.length; i++) {
-        const indicator = indicatorsToAdd[i];
-        console.log(`  Adding ${indicator.type} (${i + 1}/${indicatorsToAdd.length})...`);
+      for (let i = 0; i < indicators.length; i++) {
+        const indicatorType = indicators[i];
+        console.log(`\n🔧 Adding ${indicatorType} (${i + 1}/${indicators.length})...`);
         
-        // Clear search input first
-        await pageOrFrame.evaluate(() => {
-          const input = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
-          if (input) {
-            input.value = '';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        });
+        // For EACH indicator, open menu fresh
+        await this.addSingleIndicator(pageOrFrame, indicatorType);
         
-        // Type the indicator name
-        await searchInput.type(indicator.name);
-        console.log(`    Typed: ${indicator.name}`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Wait between additions
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
-        // Click the first result
-        const resultClicked = await this.clickSearchResult(pageOrFrame, indicator.name);
-        if (resultClicked) {
-          console.log(`    ✅ Added ${indicator.type}`);
-        } else {
-          console.log(`    ⚠️ Could not click result for ${indicator.type}`);
-        }
-        
-        // Wait for indicator to be added before next one
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Take screenshot after each addition
+        await this.takeDebugScreenshot(`after_adding_${indicatorType}_${i}`);
       }
       
       // Close the indicators menu if it's still open
@@ -409,6 +380,55 @@ class GMGNScraperService extends EventEmitter {
     } catch (error) {
       console.error('Error adding indicators:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * Add a single indicator - open menu, add it, close menu
+   */
+  private async addSingleIndicator(pageOrFrame: any, indicatorType: string) {
+    try {
+      // Open indicators menu
+      const menuOpened = await this.openIndicatorsMenu(pageOrFrame);
+      if (!menuOpened) {
+        console.log(`⚠️ Could not open menu for ${indicatorType}`);
+        return;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Find search input
+      const searchInput = await this.findSearchInput(pageOrFrame);
+      if (!searchInput) {
+        console.log(`⚠️ No search input for ${indicatorType}`);
+        // Close menu and return
+        await pageOrFrame.evaluate(() => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+        });
+        return;
+      }
+      
+      // Type indicator name
+      const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 'Moving Average Exponential';
+      await searchInput.type(indicatorName);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Click result
+      const clicked = await this.clickSearchResult(pageOrFrame, indicatorName);
+      if (clicked) {
+        console.log(`✅ Added ${indicatorType}`);
+      } else {
+        console.log(`⚠️ Could not add ${indicatorType}`);
+      }
+      
+      // Close menu regardless
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await pageOrFrame.evaluate(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+      });
+      
+    } catch (error) {
+      console.log(`Error adding ${indicatorType}:`, error);
     }
   }
   
