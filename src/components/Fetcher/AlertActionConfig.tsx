@@ -56,15 +56,18 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
   const addAction = (type: AlertAction['type']) => {
     let newAction: AlertAction;
     
+    // Auto-select first wallet if available for buy/sell actions
+    const defaultWalletId = tradingWallets.length > 0 ? tradingWallets[0].id : undefined;
+    
     switch (type) {
       case 'notification':
         newAction = { type: 'notification' };
         break;
       case 'buy':
-        newAction = { type: 'buy', amount: 0.1, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false };
+        newAction = { type: 'buy', amount: 0.1, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false, walletId: defaultWalletId };
         break;
       case 'sell':
-        newAction = { type: 'sell', amount: 50, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false };
+        newAction = { type: 'sell', amount: 50, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false, walletId: defaultWalletId };
         break;
       case 'telegram':
         newAction = { type: 'telegram', chatId: '' };

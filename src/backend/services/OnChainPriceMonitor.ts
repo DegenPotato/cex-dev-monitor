@@ -33,9 +33,9 @@ export interface Campaign {
 
 export type AlertAction = 
   | { type: 'notification' }
-  | { type: 'buy'; amount: number; slippage: number }
-  | { type: 'sell'; amount: number; slippage: number }
-  | { type: 'telegram'; chatId: string; message?: string }
+  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
+  | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
 export interface PriceAlert {
