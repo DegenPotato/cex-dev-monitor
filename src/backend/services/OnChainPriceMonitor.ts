@@ -172,9 +172,9 @@ export class OnChainPriceMonitor extends EventEmitter {
       } catch (error) {
         console.error(`Error polling price for ${campaignId}:`, error);
       }
-    }, 1000); // 1 seconds (safe for Jupiter API)
+    }, 2000); // 2 seconds (safe for Jupiter API)
 
-    console.log(`📊 Started price polling for ${campaignId} (1s intervals)`);
+    console.log(`📊 Started price polling for ${campaignId} (2s intervals)`);
   }
 
   /**
