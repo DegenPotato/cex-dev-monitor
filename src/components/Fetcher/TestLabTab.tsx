@@ -197,9 +197,12 @@ export const TestLabTab: React.FC = () => {
             type: 'alert' as const
           }, ...prev].slice(0, 100));
 
-          setAlerts(prev => prev.map(a =>
-            a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
-          ));
+          // Only update alerts if they belong to the currently selected campaign
+          if (selectedCampaign && data.campaignId === selectedCampaign.id) {
+            setAlerts(prev => prev.map(a =>
+              a.id === data.alert.id ? { ...a, hit: true, hitAt: data.timestamp } : a
+            ));
+          }
         }
       } catch (error) {
         console.error('❌ Error parsing WebSocket message:', error);
@@ -280,6 +283,7 @@ export const TestLabTab: React.FC = () => {
       if (data.success) {
         setCampaigns(prev => [...prev, data.campaign]);
         setSelectedCampaign(data.campaign);
+        setAlerts([]); // Clear alerts for new campaign (it starts with no alerts)
         setTokenMint('');
         setPoolAddress('');
         toast.success('Campaign started');
