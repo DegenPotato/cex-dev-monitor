@@ -369,6 +369,7 @@ monitor.on('alert_triggered', async (data) => {
       try {
         if (action.type === 'buy') {
           console.log(`💰 BUY: ${action.amount} SOL (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          console.log(`   Token: ${data.tokenMint} (${data.tokenSymbol || 'unknown'})`);
           
           if (!action.walletId) {
             console.warn('⚠️ Buy action missing walletId, skipping...');
@@ -382,6 +383,8 @@ monitor.on('alert_triggered', async (data) => {
             continue;
           }
           
+          console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
+          
           const result = await getTradingEngineInstance().buyToken({
             userId: wallet.user_id,
             walletAddress: wallet.public_key,
@@ -392,14 +395,20 @@ monitor.on('alert_triggered', async (data) => {
             skipTax: action.skipTax || false
           } as any);
           
+          console.log(`   Buy result:`, JSON.stringify(result, null, 2));
+          
           if (result.success) {
             console.log(`✅ Buy executed: ${result.signature}`);
           } else {
-            console.error(`❌ Buy failed: ${result.error}`);
+            console.error(`❌ Buy failed: ${result.error || 'Unknown error'}`);
+            if ((result as any).details) {
+              console.error(`   Details:`, (result as any).details);
+            }
           }
           
         } else if (action.type === 'sell') {
           console.log(`💸 SELL: ${action.amount}% (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          console.log(`   Token: ${data.tokenMint} (${data.tokenSymbol || 'unknown'})`);
           
           if (!action.walletId) {
             console.warn('⚠️ Sell action missing walletId, skipping...');
@@ -413,20 +422,32 @@ monitor.on('alert_triggered', async (data) => {
             continue;
           }
           
-          const result = await getTradingEngineInstance().sellToken({
+          console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
+          
+          const sellParams = {
             userId: wallet.user_id,
             walletAddress: wallet.public_key,
             tokenMint: data.tokenMint,
+            tokenSymbol: data.tokenSymbol || undefined, // Include token symbol to avoid Jupiter lookup
             percentage: action.amount,
             slippageBps: action.slippage * 100,
             priorityLevel: 'high',
             skipTax: action.skipTax || false
-          } as any);
+          };
+          
+          console.log(`   Sell params:`, JSON.stringify(sellParams, null, 2));
+          
+          const result = await getTradingEngineInstance().sellToken(sellParams as any);
+          
+          console.log(`   Sell result:`, JSON.stringify(result, null, 2));
           
           if (result.success) {
             console.log(`✅ Sell executed: ${result.signature}`);
           } else {
-            console.error(`❌ Sell failed: ${result.error}`);
+            console.error(`❌ Sell failed: ${result.error || 'Unknown error'}`);
+            if ((result as any).details) {
+              console.error(`   Details:`, (result as any).details);
+            }
           }
           
         } else if (action.type === 'telegram') {

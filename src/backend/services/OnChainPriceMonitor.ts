@@ -341,6 +341,8 @@ export class OnChainPriceMonitor extends EventEmitter {
           currentPriceUSD: campaign.currentPriceUSD,
           changePercent: campaign.changePercent,
           tokenMint: campaign.tokenMint,
+          tokenSymbol: campaign.tokenSymbol,
+          tokenName: campaign.tokenName,
           hitTime,
           timestamp: Date.now()
         });

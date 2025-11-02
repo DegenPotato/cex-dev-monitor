@@ -871,7 +871,7 @@ export const TestLabTab: React.FC = () => {
             <div className="relative w-full" style={{ height: '500px' }}>
               <iframe
                 key={`${selectedCampaign.tokenMint}-${chartInterval}`}
-                src={`https://gmgn.ai/kline/sol/${selectedCampaign.tokenMint}?interval=${chartInterval}&theme=dark`}
+                src={`https://www.gmgn.cc/kline/sol/${selectedCampaign.tokenMint}?interval=${chartInterval}&theme=dark`}
                 className="w-full h-full rounded-lg"
                 style={{ border: 'none' }}
                 title="GMGN Price Chart"
