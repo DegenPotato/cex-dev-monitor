@@ -268,8 +268,13 @@ export const TestLabTab: React.FC = () => {
 
   // Start new campaign
   const startCampaign = async () => {
-    if (!tokenMint || !poolAddress) {
-      toast.error('Please enter token mint and pool address');
+    if (!tokenMint) {
+      toast.error('Please enter token contract address');
+      return;
+    }
+    
+    if (!poolAddress) {
+      toast.error('Please select a pool to monitor');
       return;
     }
 
@@ -502,11 +507,11 @@ export const TestLabTab: React.FC = () => {
           <div className="flex items-end">
             <button
               onClick={startCampaign}
-              disabled={loading}
-              className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+              disabled={loading || !tokenMint || !poolAddress}
+              className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
             >
               <Play className="w-4 h-4" />
-              Start Campaign
+              {!tokenMint ? 'Enter Token Address' : !poolAddress ? 'Select Pool First' : loading ? 'Starting...' : 'Start Campaign'}
             </button>
           </div>
         </div>
