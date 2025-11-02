@@ -774,13 +774,28 @@ class GMGNScraperService extends EventEmitter {
     try {
       console.log(`🔧 Configuring ${indicatorType} #${index + 1} to period ${period}`);
       
-      // Step 1: Click the indicator text to reveal buttons
-      const indicatorClicked = await pageOrFrame.evaluate((indType: string, idx: number) => {
-        // Find all legends with this indicator type
-        const legends = Array.from(document.querySelectorAll('[class*="legend"], [class*="source"], [class*="title"]'));
+      // Step 1: Click the indicator NAME text to reveal button menu
+      const indicatorInfo = await pageOrFrame.evaluate((indType: string, idx: number) => {
+        // Look for indicator titles/names in the legend area (left side of chart)
+        // More specific selectors for the actual indicator name/title elements
+        const possibleSelectors = [
+          '[class*="legendMainSourceWrapper"]',
+          '[class*="sourcesWrapper"]', 
+          '[class*="legendSource"]',
+          '[class*="titleWrapper"]',
+          '[data-name*="legend"]'
+        ];
+        
+        let allLegends: Element[] = [];
+        for (const selector of possibleSelectors) {
+          allLegends.push(...Array.from(document.querySelectorAll(selector)));
+        }
+        
+        console.log(`🔍 Found ${allLegends.length} legend elements to check`);
+        
         let matchCount = 0;
         
-        for (const legend of legends) {
+        for (const legend of allLegends) {
           const text = legend.textContent?.toLowerCase() || '';
           
           // Check if this legend contains our indicator type
@@ -789,55 +804,67 @@ class GMGNScraperService extends EventEmitter {
             
             if (matchCount === idx) {
               // This is the indicator we want to configure
-              console.log(`Found ${indType} #${idx + 1}: ${text.substring(0, 50)}`);
+              console.log(`✅ Found ${indType} #${idx + 1}: "${text.substring(0, 80)}"`);
+              console.log(`   Element: ${legend.tagName}, Classes: ${legend.className}`);
               
-              // Click the indicator text to reveal buttons
+              // Click the indicator name to reveal button menu
               (legend as HTMLElement).click();
-              return true;
+              
+              return {
+                success: true,
+                text: text.substring(0, 80),
+                className: legend.className
+              };
             }
             matchCount++;
           }
         }
-        return false;
+        
+        console.log(`❌ Could not find ${indType} #${idx + 1} (found ${matchCount} total)`);
+        return { success: false };
       }, indicatorType, index);
       
-      if (!indicatorClicked) {
+      if (!indicatorInfo.success) {
         console.log(`⚠️ Could not find ${indicatorType} #${index + 1} in legend`);
         return false;
       }
       
+      console.log(`✅ Clicked indicator: ${indicatorInfo.text}`);
+      
       // Step 2: Wait for buttons to appear
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Step 3: Click the settings button (3rd button or with aria-label="Settings")
+      // Step 3: Look for the settings button in the revealed button menu
       const settingsOpened = await pageOrFrame.evaluate(() => {
-        // Look for the settings button that should now be visible
-        const settingsButtons = Array.from(document.querySelectorAll('[aria-label="Settings"], [data-name="legend-settings-action"], button[class*="button-l31H9iuA"]'));
+        // Look for buttons container that should have appeared
+        const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"], [class*="buttonsWrapper"]'));
+        console.log(`🔍 Found ${buttonContainers.length} button containers`);
         
-        for (const btn of settingsButtons) {
-          // Check if it's visible and is the settings button
-          if ((btn as HTMLElement).offsetParent !== null && 
-              (btn.getAttribute('aria-label') === 'Settings' || 
-               btn.getAttribute('data-name') === 'legend-settings-action')) {
+        // Look for all buttons, especially the settings button
+        const allButtons = Array.from(document.querySelectorAll('button[class*="button-l31H9iuA"]'));
+        console.log(`🔍 Found ${allButtons.length} total buttons`);
+        
+        const visibleButtons = allButtons.filter(btn => (btn as HTMLElement).offsetParent !== null);
+        console.log(`🔍 Found ${visibleButtons.length} visible buttons`);
+        
+        // Log what buttons we can see
+        visibleButtons.slice(0, 10).forEach((btn, i) => {
+          console.log(`   Button ${i+1}: aria-label="${btn.getAttribute('aria-label')}", data-name="${btn.getAttribute('data-name')}"`);
+        });
+        
+        // Look specifically for Settings button
+        for (const btn of visibleButtons) {
+          const ariaLabel = btn.getAttribute('aria-label');
+          const dataName = btn.getAttribute('data-name');
+          
+          if (ariaLabel === 'Settings' || dataName === 'legend-settings-action') {
+            console.log(`✅ Found Settings button! Clicking...`);
             (btn as HTMLElement).click();
             return 'settings_clicked';
           }
         }
         
-        // Fallback: Try right-clicking if settings button not found
-        const legends = Array.from(document.querySelectorAll('[class*="legend"]:hover, [class*="source"]:hover'));
-        if (legends.length > 0) {
-          const rightClickEvent = new MouseEvent('contextmenu', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            button: 2,
-            buttons: 2
-          });
-          legends[0].dispatchEvent(rightClickEvent);
-          return 'rightclick_attempted';
-        }
-        
+        console.log(`❌ Settings button not found among visible buttons`);
         return false;
       });
       
