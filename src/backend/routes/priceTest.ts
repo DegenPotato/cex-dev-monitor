@@ -46,6 +46,12 @@ router.get('/api/test-lab/pools/:tokenMint', authService.requireSecureAuth(), as
       const attributes = pool.attributes;
       const relationships = pool.relationships;
       
+      // Helper to safely parse numbers
+      const parseNum = (val: any, defaultVal: number = 0): number => {
+        const num = parseFloat(val);
+        return isNaN(num) ? defaultVal : num;
+      };
+      
       return {
         address: attributes.address,
         name: attributes.name,
@@ -53,9 +59,9 @@ router.get('/api/test-lab/pools/:tokenMint', authService.requireSecureAuth(), as
         baseToken: attributes.base_token_price_usd,
         priceUsd: attributes.base_token_price_usd,
         liquidityUsd: attributes.reserve_in_usd,
-        volume24h: attributes.volume_usd?.h24 || 0,
-        priceChange24h: attributes.price_change_percentage?.h24 || 0,
-        transactions24h: attributes.transactions?.h24?.buys + attributes.transactions?.h24?.sells || 0,
+        volume24h: parseNum(attributes.volume_usd?.h24, 0),
+        priceChange24h: parseNum(attributes.price_change_percentage?.h24, 0),
+        transactions24h: parseNum(attributes.transactions?.h24?.buys, 0) + parseNum(attributes.transactions?.h24?.sells, 0),
         // Burn/lock detection
         poolCreatedAt: attributes.pool_created_at,
         // Note: Burn/lock status requires additional on-chain checks

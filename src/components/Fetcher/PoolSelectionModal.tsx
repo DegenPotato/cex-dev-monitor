@@ -72,9 +72,10 @@ export const PoolSelectionModal: React.FC<PoolSelectionModalProps> = ({
   };
 
   const formatVolume = (value: number) => {
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
-    if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`;
-    return `$${value.toFixed(2)}`;
+    const num = typeof value === 'number' ? value : 0;
+    if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
+    if (num >= 1000) return `$${(num / 1000).toFixed(2)}K`;
+    return `$${num.toFixed(2)}`;
   };
 
   if (!isOpen) return null;
@@ -167,7 +168,7 @@ export const PoolSelectionModal: React.FC<PoolSelectionModalProps> = ({
                           <div>
                             <div className="text-gray-400 mb-1">24h Change</div>
                             <div className={`font-medium ${pool.priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {pool.priceChange24h >= 0 ? '+' : ''}{pool.priceChange24h.toFixed(2)}%
+                              {pool.priceChange24h >= 0 ? '+' : ''}{(typeof pool.priceChange24h === 'number' ? pool.priceChange24h : 0).toFixed(2)}%
                             </div>
                           </div>
                           
