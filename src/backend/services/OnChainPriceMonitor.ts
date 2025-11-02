@@ -159,7 +159,7 @@ export class OnChainPriceMonitor extends EventEmitter {
   private async fetchJupiterPrice(tokenMint: string): Promise<number> {
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
     const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
-    const url = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
+    const url = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=0`;
     
     const response = await fetch(url);
     if (!response.ok) {
