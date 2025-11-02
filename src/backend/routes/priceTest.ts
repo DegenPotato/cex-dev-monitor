@@ -7,6 +7,16 @@ import { WebSocketServer } from 'ws';
 import { getOnChainPriceMonitor } from '../services/OnChainPriceMonitor.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { getDb, saveDatabase } from '../database/connection.js';
+import { getTradingEngine } from '../core/trade.js';
+import { telegramClientService } from '../services/TelegramClientService.js';
+import { queryOne } from '../database/helpers.js';
+
+// Lazy load trading engine
+let tradingEngine: ReturnType<typeof getTradingEngine> | null = null;
+const getTradingEngineInstance = () => {
+  if (!tradingEngine) tradingEngine = getTradingEngine();
+  return tradingEngine;
+};
 
 const authService = new SecureAuthService();
 const monitor = getOnChainPriceMonitor();
@@ -359,20 +369,127 @@ monitor.on('alert_triggered', async (data) => {
       try {
         if (action.type === 'buy') {
           console.log(`💰 BUY: ${action.amount} SOL (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
-          // TODO: Execute buy trade via trading service
-          // await executeBuyTrade(action.walletId, data.tokenMint, action.amount, action.slippage, action.priorityFee, action.skipTax);
+          
+          if (!action.walletId) {
+            console.warn('⚠️ Buy action missing walletId, skipping...');
+            continue;
+          }
+          
+          // Get wallet address from ID
+          const wallet = await queryOne('SELECT public_key, user_id FROM trading_wallets WHERE id = ?', [action.walletId]) as any;
+          if (!wallet) {
+            console.error(`❌ Wallet ${action.walletId} not found`);
+            continue;
+          }
+          
+          const result = await getTradingEngineInstance().buyToken({
+            userId: wallet.user_id,
+            walletAddress: wallet.public_key,
+            tokenMint: data.tokenMint,
+            amount: action.amount,
+            slippageBps: action.slippage * 100,
+            priorityLevel: 'high',
+            skipTax: action.skipTax || false
+          } as any);
+          
+          if (result.success) {
+            console.log(`✅ Buy executed: ${result.signature}`);
+          } else {
+            console.error(`❌ Buy failed: ${result.error}`);
+          }
+          
         } else if (action.type === 'sell') {
           console.log(`💸 SELL: ${action.amount}% (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
-          // TODO: Execute sell trade via trading service
-          // await executeSellTrade(action.walletId, data.tokenMint, action.amount, action.slippage, action.priorityFee, action.skipTax);
+          
+          if (!action.walletId) {
+            console.warn('⚠️ Sell action missing walletId, skipping...');
+            continue;
+          }
+          
+          // Get wallet address from ID
+          const wallet = await queryOne('SELECT public_key, user_id FROM trading_wallets WHERE id = ?', [action.walletId]) as any;
+          if (!wallet) {
+            console.error(`❌ Wallet ${action.walletId} not found`);
+            continue;
+          }
+          
+          const result = await getTradingEngineInstance().sellToken({
+            userId: wallet.user_id,
+            walletAddress: wallet.public_key,
+            tokenMint: data.tokenMint,
+            percentage: action.amount,
+            slippageBps: action.slippage * 100,
+            priorityLevel: 'high',
+            skipTax: action.skipTax || false
+          } as any);
+          
+          if (result.success) {
+            console.log(`✅ Sell executed: ${result.signature}`);
+          } else {
+            console.error(`❌ Sell failed: ${result.error}`);
+          }
+          
         } else if (action.type === 'telegram') {
-          console.log(`📤 TELEGRAM: Chat ${action.chatId}`);
-          // TODO: Send telegram notification
+          console.log(`📤 TELEGRAM: Chat ${action.chatId}, Account ${action.accountId}`);
+          
+          if (!action.accountId || !action.chatId) {
+            console.warn('⚠️ Telegram action missing accountId or chatId, skipping...');
+            continue;
+          }
+          
+          // Get the client for this account
+          const client = await telegramClientService.getClient(action.accountId);
+          if (!client) {
+            console.error(`❌ Telegram account ${action.accountId} not connected`);
+            continue;
+          }
+          
+          // Format alert message
+          const message = action.message || 
+            `🎯 Alert Triggered!\n\n` +
+            `Token: ${data.tokenMint}\n` +
+            `Price: ${data.currentPrice.toFixed(9)} SOL` +
+            (data.currentPriceUSD ? ` ($${data.currentPriceUSD.toFixed(8)})` : '') +
+            `\nChange: ${data.changePercent.toFixed(2)}%\n` +
+            `Alert: ${data.alert.direction} ${data.alert.priceType === 'percentage' ? data.alert.targetPercent + '%' : data.alert.targetPrice}`;
+          
+          // Send message
+          await client.sendMessage(action.chatId, { message });
+          console.log(`✅ Telegram message sent to chat ${action.chatId}`);
+          
         } else if (action.type === 'discord') {
           console.log(`🔔 DISCORD: ${action.webhookUrl}`);
-          // TODO: Send discord webhook
+          
+          if (!action.webhookUrl) {
+            console.warn('⚠️ Discord action missing webhookUrl, skipping...');
+            continue;
+          }
+          
+          // Format webhook payload
+          const payload = {
+            content: action.message || 
+              `🎯 **Alert Triggered!**\n\n` +
+              `Token: \`${data.tokenMint}\`\n` +
+              `Price: ${data.currentPrice.toFixed(9)} SOL` +
+              (data.currentPriceUSD ? ` ($${data.currentPriceUSD.toFixed(8)})` : '') +
+              `\nChange: ${data.changePercent.toFixed(2)}%\n` +
+              `Alert: ${data.alert.direction} ${data.alert.priceType === 'percentage' ? data.alert.targetPercent + '%' : data.alert.targetPrice}`
+          };
+          
+          const response = await fetch(action.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Discord webhook sent`);
+          } else {
+            console.error(`❌ Discord webhook failed: ${response.status}`);
+          }
+          
         } else {
-          console.log(`🔔 NOTIFICATION`);
+          console.log(`🔔 NOTIFICATION (broadcasted via WebSocket)`);
         }
       } catch (error) {
         console.error(`❌ Failed to execute action ${action.type}:`, error);
