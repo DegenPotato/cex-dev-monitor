@@ -61,8 +61,15 @@ export class OnChainPriceMonitor extends EventEmitter {
 
   constructor() {
     super();
-    // Start batched polling
-    this.startBatchedPolling();
+    // Only start polling in one worker to avoid rate limits in cluster mode
+    // PM2 sets instance_var to differentiate workers (0, 1, 2, etc)
+    const instanceId = process.env.NODE_APP_INSTANCE || '0';
+    if (instanceId === '0') {
+      console.log(`🎯 Starting price polling in primary worker (instance ${instanceId})`);
+      this.startBatchedPolling();
+    } else {
+      console.log(`⏸️ Skipping price polling in worker instance ${instanceId} (only primary polls)`);
+    }
   }
 
   /**
@@ -124,7 +131,7 @@ export class OnChainPriceMonitor extends EventEmitter {
 
   /**
    * Start batched polling for ALL active campaigns
-   * Polls every 1 seconds, batches up to 50 tokens per request
+   * Polls every 5 seconds, batches up to 10 tokens per request
    */
   private startBatchedPolling() {
     if (this.batchPollingInterval) {
@@ -144,7 +151,7 @@ export class OnChainPriceMonitor extends EventEmitter {
         const batch = activeCampaigns.slice(i, i + BATCH_SIZE);
         await this.pollBatch(batch);
       }
-    }, 1000); // 1 seconds
+    }, 1000); // 1 seconds (safe with single worker)
 
     console.log(`📊 Started batched price polling (2s intervals, max 50 tokens per batch)`);
   }
