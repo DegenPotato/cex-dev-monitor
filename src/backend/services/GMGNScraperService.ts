@@ -227,23 +227,44 @@ class GMGNScraperService extends EventEmitter {
         ? indicator.split('_') 
         : [indicator, null];
       
-      // Click the indicators button by finding the specific fx icon SVG
+      // Click the indicators button - try text first (visible in bot's browser)
       const clicked = await page.evaluate(() => {
-        // Find the SVG with the specific fx icon path
+        // Method 1: Look for "Indicators" text (visible in puppeteer)
+        const allElements = Array.from(document.querySelectorAll('*'));
+        const indicatorElement = allElements.find(el => {
+          const text = el.textContent?.trim().toLowerCase() || '';
+          // Must be the exact text, not containing it (avoid "Indicators and Strategies")
+          return (text === 'indicators' || text === 'indicator') && 
+                 el.children.length === 0 && // Must be a leaf node (no children)
+                 (el as HTMLElement).offsetParent !== null; // Must be visible
+        });
+        
+        if (indicatorElement) {
+          // Find clickable parent
+          let clickable: any = indicatorElement;
+          while (clickable && clickable.tagName !== 'BUTTON' && clickable.tagName !== 'DIV' && clickable !== document.body) {
+            clickable = clickable.parentElement;
+          }
+          
+          if (clickable && clickable !== document.body) {
+            console.log('🎯 Found "Indicators" text, clicking parent:', clickable.tagName);
+            clickable.click();
+            return true;
+          }
+        }
+        
+        // Method 2: Find the SVG with the fx icon path
         const fxIcon = Array.from(document.querySelectorAll('svg')).find(svg => {
-          // Look for the characteristic path that defines the fx icon
           const path = svg.querySelector('path');
           if (!path) return false;
           
           const d = path.getAttribute('d') || '';
-          // This is the unique path for the fx/indicators icon
           return d.includes('M7.5 5.5C7.5 4.11929') || 
                  d.includes('M14.2071 14.5001') ||
                  (svg.classList.contains('cursor-pointer') && svg.getAttribute('width') === '20');
         });
         
         if (fxIcon) {
-          // Click the parent button/clickable element
           let clickable = fxIcon.parentElement;
           while (clickable && clickable.tagName !== 'BUTTON' && !clickable.onclick && clickable !== document.body) {
             clickable = clickable.parentElement;
@@ -254,14 +275,9 @@ class GMGNScraperService extends EventEmitter {
             (clickable as HTMLElement).click();
             return true;
           }
-          
-          // Fallback: click the SVG itself
-          console.log('🎯 Clicking fx icon directly');
-          (fxIcon as any).click();
-          return true;
         }
         
-        console.log('❌ Could not find fx icon SVG');
+        console.log('❌ Could not find indicators button (neither text nor icon)');
         return false;
       });
       
