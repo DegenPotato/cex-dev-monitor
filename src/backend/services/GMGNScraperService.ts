@@ -184,8 +184,30 @@ class GMGNScraperService extends EventEmitter {
       throw error;
     }
 
-    // Wait for chart container
-    await page.waitForSelector('.chart-container, [class*="chart"], canvas', { timeout: 10000 });
+    // Wait for chart container - be more lenient with selectors
+    console.log('⏳ Waiting for chart to load...');
+    try {
+      await page.waitForSelector('iframe, canvas, [class*="chart"], [class*="tradingview"]', { timeout: 15000 });
+      console.log('✅ Chart area detected');
+    } catch (waitError) {
+      console.log('⚠️ Chart wait timeout, checking what\'s on the page...');
+      
+      // Debug what's actually on the page
+      const pageContent = await page.evaluate(() => {
+        return {
+          iframes: document.querySelectorAll('iframe').length,
+          canvas: document.querySelectorAll('canvas').length,
+          charts: document.querySelectorAll('[class*="chart"]').length,
+          title: document.title,
+          bodyText: document.body?.innerText?.substring(0, 200)
+        };
+      });
+      
+      console.log('📄 Page content:', pageContent);
+      
+      // Continue anyway - maybe the chart loads dynamically
+      console.log('⏩ Continuing despite timeout...');
+    }
     
     // Check if TradingView is embedded
     console.log('📊 Checking for TradingView iframe...');
