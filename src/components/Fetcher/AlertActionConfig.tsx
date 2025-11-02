@@ -18,7 +18,7 @@ interface AlertActionConfigProps {
 interface TradingWallet {
   id: number;
   wallet_name: string;
-  wallet_address: string;
+  public_key: string;
 }
 
 interface TelegramAccount {
@@ -193,8 +193,8 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                       >
                         <option value="">Select Trading Wallet</option>
                         {tradingWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.wallet_address}>
-                            {wallet.wallet_name} ({wallet.wallet_address.slice(0, 8)}...)
+                          <option key={wallet.id} value={wallet.public_key}>
+                            {wallet.wallet_name} ({wallet.public_key?.slice(0, 8) || 'N/A'}...)
                           </option>
                         ))}
                       </select>
@@ -232,8 +232,8 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                       >
                         <option value="">Select Trading Wallet</option>
                         {tradingWallets.map((wallet) => (
-                          <option key={wallet.id} value={wallet.wallet_address}>
-                            {wallet.wallet_name} ({wallet.wallet_address.slice(0, 8)}...)
+                          <option key={wallet.id} value={wallet.public_key}>
+                            {wallet.wallet_name} ({wallet.public_key?.slice(0, 8) || 'N/A'}...)
                           </option>
                         ))}
                       </select>

@@ -38,6 +38,7 @@ interface Alert {
   targetPrice: number;
   targetPercent: number;
   direction: 'above' | 'below';
+  priceType: 'percentage' | 'exact_sol' | 'exact_usd';
   hit: boolean;
   hitAt?: number;
 }
@@ -67,6 +68,7 @@ export const TestLabTab: React.FC = () => {
   const [poolAddress, setPoolAddress] = useState('');
   const [newAlertPercent, setNewAlertPercent] = useState('');
   const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
+  const [newAlertPriceType, setNewAlertPriceType] = useState<'percentage' | 'exact_sol' | 'exact_usd'>('percentage');
   const [newAlertActions, setNewAlertActions] = useState<AlertAction[]>([{ type: 'notification' }]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'campaigns' | 'history'>('campaigns');
@@ -394,13 +396,13 @@ export const TestLabTab: React.FC = () => {
   // Add alert with actions
   const addAlert = async () => {
     if (!selectedCampaign || !newAlertPercent) {
-      toast.error('Please enter a percentage');
+      toast.error(newAlertPriceType === 'percentage' ? 'Please enter a percentage' : 'Please enter a price');
       return;
     }
 
-    const percent = parseFloat(newAlertPercent);
-    if (isNaN(percent)) {
-      toast.error('Invalid percentage');
+    const value = parseFloat(newAlertPercent);
+    if (isNaN(value)) {
+      toast.error('Invalid value');
       return;
     }
 
@@ -417,8 +419,9 @@ export const TestLabTab: React.FC = () => {
         credentials: 'include',
         body: JSON.stringify({ 
           campaignId: selectedCampaign.id,
-          targetPercent: percent,
+          targetPercent: value,  // Re-use same field for percentage or exact price
           direction: newAlertDirection,
+          priceType: newAlertPriceType,
           actions: newAlertActions
         })
       });
@@ -797,21 +800,34 @@ export const TestLabTab: React.FC = () => {
 
             {/* Add Alert */}
             <div className="space-y-4 mb-6">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <select
+                  value={newAlertPriceType}
+                  onChange={(e) => setNewAlertPriceType(e.target.value as 'percentage' | 'exact_sol' | 'exact_usd')}
+                  className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="percentage">Percentage %</option>
+                  <option value="exact_sol">Exact SOL Price</option>
+                  <option value="exact_usd">Exact USD Price</option>
+                </select>
                 <select
                   value={newAlertDirection}
                   onChange={(e) => setNewAlertDirection(e.target.value as 'above' | 'below')}
                   className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
                 >
-                  <option value="above">Above (+)</option>
-                  <option value="below">Below (-)</option>
+                  <option value="above">Above</option>
+                  <option value="below">Below</option>
                 </select>
                 <input
                   type="number"
                   value={newAlertPercent}
                   onChange={(e) => setNewAlertPercent(e.target.value)}
-                  placeholder="% from baseline..."
-                  step="0.1"
+                  placeholder={
+                    newAlertPriceType === 'percentage' ? '% from baseline...' :
+                    newAlertPriceType === 'exact_sol' ? 'SOL price...' :
+                    'USD price...'
+                  }
+                  step={newAlertPriceType === 'percentage' ? '0.1' : '0.000001'}
                   className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
                 />
                 <button
@@ -855,11 +871,19 @@ export const TestLabTab: React.FC = () => {
                       )}
                       <div className="flex-1">
                         <div className="font-medium text-white">
-                          {alert.direction === 'above' ? '+' : ''}{alert.targetPercent.toFixed(2)}%
+                          {alert.priceType === 'percentage' ? (
+                            `${alert.direction === 'above' ? '+' : ''}${alert.targetPercent.toFixed(2)}%`
+                          ) : alert.priceType === 'exact_sol' ? (
+                            `${alert.direction === 'above' ? 'Above' : 'Below'} ${alert.targetPercent.toFixed(9)} SOL`
+                          ) : (
+                            `${alert.direction === 'above' ? 'Above' : 'Below'} $${alert.targetPercent.toFixed(8)} USD`
+                          )}
                         </div>
-                        <div className="text-sm text-gray-400">
-                          Target: {alert.targetPrice.toFixed(9)} SOL
-                        </div>
+                        {alert.priceType === 'percentage' && (
+                          <div className="text-sm text-gray-400">
+                            Target: {alert.targetPrice.toFixed(9)} SOL
+                          </div>
+                        )}
                         {alert.hit && alert.hitAt && (
                           <div className="text-xs text-green-400 mt-1">
                             Hit at {new Date(alert.hitAt).toLocaleString('en-US', { 

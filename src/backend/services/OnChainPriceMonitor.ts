@@ -44,6 +44,7 @@ export interface PriceAlert {
   targetPrice: number;
   targetPercent: number;
   direction: 'above' | 'below';
+  priceType: 'percentage' | 'exact_sol' | 'exact_usd';
   hit: boolean;
   hitAt?: number;
   actions: AlertAction[]; // Multiple actions can be triggered
@@ -56,9 +57,12 @@ export interface PriceAlert {
 export class OnChainPriceMonitor extends EventEmitter {
   private campaigns: Map<string, Campaign> = new Map();
   private alerts: Map<string, PriceAlert[]> = new Map();
+  private batchPollingInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
+    // Start batched polling
+    this.startBatchedPolling();
   }
 
   /**
@@ -113,85 +117,131 @@ export class OnChainPriceMonitor extends EventEmitter {
     console.log(`🚀 Started campaign ${campaignId} for ${metadata.symbol || tokenMint}`);
     console.log(`   Initial price: ${priceInSOL.toFixed(9)} SOL ($${priceInUSD?.toFixed(6)})`);  
     
-    // Start polling for this campaign (15 second intervals)
-    this.startPricePolling(campaignId);
-    
+    // Campaign will be automatically polled by batched polling system
     this.emit('campaign_started', campaign);
     return campaign;
   }
 
   /**
-   * Start polling for price updates every 15 seconds
+   * Start batched polling for ALL active campaigns
+   * Polls every 1 seconds, batches up to 50 tokens per request
    */
-  private startPricePolling(campaignId: string) {
-    const interval = setInterval(async () => {
-      const campaign = this.campaigns.get(campaignId);
-      if (!campaign || !campaign.isActive) {
-        clearInterval(interval);
+  private startBatchedPolling() {
+    if (this.batchPollingInterval) {
+      clearInterval(this.batchPollingInterval);
+    }
+
+    this.batchPollingInterval = setInterval(async () => {
+      const activeCampaigns = Array.from(this.campaigns.values()).filter(c => c.isActive);
+      
+      if (activeCampaigns.length === 0) {
         return;
       }
 
-      try {
-        // Fetch real-time price from Jupiter (actual swap price)
-        const { priceInSOL, priceInUSD } = await this.fetchJupiterPrice(campaign.tokenMint);
+      // Batch campaigns into groups of 50
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < activeCampaigns.length; i += BATCH_SIZE) {
+        const batch = activeCampaigns.slice(i, i + BATCH_SIZE);
+        await this.pollBatch(batch);
+      }
+    }, 1000); // 1 seconds
+
+    console.log(`📊 Started batched price polling (2s intervals, max 50 tokens per batch)`);
+  }
+
+  /**
+   * Poll a batch of campaigns together
+   */
+  private async pollBatch(campaigns: Campaign[]) {
+    try {
+      const SOL_MINT = 'So11111111111111111111111111111111111111112';
+      const tokenMints = campaigns.map(c => c.tokenMint);
+      const allMints = [...tokenMints, SOL_MINT].join(',');
+      
+      // Batch request to Price API
+      const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${allMints}`;
+      const response = await fetch(priceUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Price API error: ${response.status}`);
+      }
+      
+      const priceData = await response.json();
+      const solData = priceData[SOL_MINT];
+      const solUsdPrice = solData?.usdPrice ? parseFloat(solData.usdPrice) : 0;
+      
+      // Update each campaign
+      for (const campaign of campaigns) {
+        const tokenData = priceData[campaign.tokenMint];
+        
+        if (!tokenData?.usdPrice) {
+          console.warn(`⚠️ No price data for ${campaign.tokenMint.slice(0, 8)}, skipping`);
+          continue;
+        }
+        
+        const tokenUsdPrice = parseFloat(tokenData.usdPrice);
+        const priceInSOL = solUsdPrice > 0 ? tokenUsdPrice / solUsdPrice : 0;
+        
+        if (priceInSOL === 0) {
+          console.warn(`⚠️ Invalid price for ${campaign.tokenMint.slice(0, 8)}, skipping`);
+          continue;
+        }
         
         // Update campaign stats
         campaign.currentPrice = priceInSOL;
-        campaign.currentPriceUSD = priceInUSD;
-        campaign.high = Math.max(campaign.high, priceInSOL); // Track session high locally
-        campaign.highUSD = Math.max(campaign.highUSD || 0, priceInUSD || 0);
-        campaign.low = Math.min(campaign.low, priceInSOL);   // Track session low locally
-        campaign.lowUSD = Math.min(campaign.lowUSD || Infinity, priceInUSD || Infinity);
+        campaign.currentPriceUSD = tokenUsdPrice;
+        campaign.high = Math.max(campaign.high, priceInSOL);
+        campaign.highUSD = Math.max(campaign.highUSD || 0, tokenUsdPrice);
+        campaign.low = Math.min(campaign.low, priceInSOL);
+        campaign.lowUSD = Math.min(campaign.lowUSD || Infinity, tokenUsdPrice);
         campaign.changePercent = ((priceInSOL - campaign.startPrice) / campaign.startPrice) * 100;
-        
-        // Track highest gain and lowest drop from start price
         campaign.highestGainPercent = Math.max(campaign.highestGainPercent, campaign.changePercent);
         campaign.lowestDropPercent = Math.min(campaign.lowestDropPercent, campaign.changePercent);
-        
         campaign.lastUpdate = Date.now();
         
         // Add to history
         campaign.priceHistory.push({ price: priceInSOL, timestamp: Date.now() });
-        
-        // Keep last 100 data points
         if (campaign.priceHistory.length > 100) {
           campaign.priceHistory.shift();
         }
         
-        // ALWAYS log price updates with timestamp
+        // Log
         const timestamp = new Date().toISOString();
         const symbol = campaign.tokenSymbol || campaign.tokenMint.slice(0, 8);
-        console.log(`📊 [${timestamp}] ${symbol} SOL: ${priceInSOL.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${(priceInUSD || 0).toFixed(8)} | High: ${campaign.high.toFixed(9)} ($${(campaign.highUSD || 0).toFixed(6)}) | Low: ${campaign.low.toFixed(9)} ($${(campaign.lowUSD || 0).toFixed(6)})`);
+        console.log(`📊 [${timestamp}] ${symbol} SOL: ${priceInSOL.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${tokenUsdPrice.toFixed(8)} | High: ${campaign.high.toFixed(9)} ($${(campaign.highUSD || 0).toFixed(6)}) | Low: ${campaign.low.toFixed(9)} ($${(campaign.lowUSD || 0).toFixed(6)})`);
         
         // Broadcast update
-        console.log(`🔔 [${timestamp}] Emitting price_update for campaign ${campaignId}`);
         this.emit('price_update', campaign);
         
         // Check alerts
-        this.checkAlerts(campaignId, priceInSOL);
-      } catch (error) {
-        console.error(`Error polling price for ${campaignId}:`, error);
+        this.checkAlerts(campaign.id, priceInSOL);
       }
-    }, 2000); // 2 seconds (safe for Jupiter API)
-
-    console.log(`📊 Started price polling for ${campaignId} (2s intervals)`);
+    } catch (error) {
+      console.error(`Error polling batch:`, error);
+    }
   }
 
   /**
-   * Fetch token metadata (name, symbol, logo)
+   * Fetch token metadata (name, symbol, logo) from lite-api tokens endpoint
    */
   private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string }> {
     try {
-      const tokenApiUrl = `https://api.jup.ag/tokens/v2/search?mint=${tokenMint}`;
-      const response = await fetch(tokenApiUrl);
+      const tokensUrl = `https://lite-api.jup.ag/tokens/v2/search?query=${tokenMint}`;
+      const response = await fetch(tokensUrl);
       
       if (response.ok) {
         const data = await response.json();
-        return {
-          name: data.name || undefined,
-          symbol: data.symbol || undefined,
-          logo: data.logoURI || undefined
-        };
+        
+        // Response is an array, find the exact match
+        if (Array.isArray(data) && data.length > 0) {
+          const tokenData = data.find(t => t.id === tokenMint) || data[0];
+          
+          return {
+            name: tokenData.name || undefined,
+            symbol: tokenData.symbol || undefined,
+            logo: tokenData.icon || undefined  // Field is 'icon', not 'logoURI'
+          };
+        }
       }
     } catch (error) {
       console.warn(`⚠️ Could not fetch token metadata for ${tokenMint}`);
@@ -244,42 +294,21 @@ export class OnChainPriceMonitor extends EventEmitter {
       throw new Error(`No quote available for ${tokenMint}`);
     }
     
-    // Get decimals: Try Jupiter Token API first, fallback to Solana RPC
+    // Get decimals from lite-api tokens endpoint
     let decimals = 6; // Default fallback
     
     try {
-      // Try Jupiter Token API v2 first (fast, includes metadata)
-      const tokenApiUrl = `https://api.jup.ag/tokens/v2/search?mint=${tokenMint}`;
-      const tokenApiResponse = await fetch(tokenApiUrl);
+      const tokensUrl = `https://lite-api.jup.ag/tokens/v2/search?query=${tokenMint}`;
+      const tokenApiResponse = await fetch(tokensUrl);
       
       if (tokenApiResponse.ok) {
-        const tokenData = await tokenApiResponse.json();
-        if (tokenData?.decimals !== undefined) {
-          decimals = tokenData.decimals;
-          console.log(`✅ Got decimals from Jupiter Token API: ${decimals}`);
-        }
-      } else {
-        // Fallback to Solana RPC (works for all tokens)
-        const rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
-        const rpcResponse = await fetch(rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getAccountInfo',
-            params: [tokenMint, { encoding: 'jsonParsed' }]
-          })
-        });
-        
-        const rpcData = await rpcResponse.json();
-        const tokenDecimals = rpcData?.result?.value?.data?.parsed?.info?.decimals;
-        
-        if (tokenDecimals !== undefined) {
-          decimals = tokenDecimals;
-          console.log(`✅ Got decimals from Solana RPC: ${decimals}`);
-        } else {
-          console.warn(`⚠️ Could not fetch decimals, using default 6`);
+        const data = await tokenApiResponse.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const tokenData = data.find(t => t.id === tokenMint) || data[0];
+          if (tokenData?.decimals !== undefined) {
+            decimals = tokenData.decimals;
+            console.log(`✅ Got decimals from lite-api: ${decimals}`);
+          }
         }
       }
     } catch (error) {
@@ -323,18 +352,30 @@ export class OnChainPriceMonitor extends EventEmitter {
     const alerts = this.alerts.get(campaignId);
     if (!alerts) return;
 
+    const campaign = this.campaigns.get(campaignId);
+    if (!campaign) return;
+
     for (const alert of alerts) {
       if (alert.hit) continue;
 
+      // Determine comparison value based on price type
+      let comparisonValue: number;
+      if (alert.priceType === 'exact_usd') {
+        // Compare USD prices
+        comparisonValue = campaign.currentPriceUSD || 0;
+      } else {
+        // Compare SOL prices (both percentage and exact_sol)
+        comparisonValue = currentPrice;
+      }
+
       const triggered = alert.direction === 'above'
-        ? currentPrice >= alert.targetPrice
-        : currentPrice <= alert.targetPrice;
+        ? comparisonValue >= alert.targetPrice
+        : comparisonValue <= alert.targetPrice;
 
       if (triggered) {
         alert.hit = true;
         alert.hitAt = Date.now();
 
-        const campaign = this.campaigns.get(campaignId);
         const hitTime = new Date(alert.hitAt).toLocaleString('en-US', { 
           month: 'short', 
           day: 'numeric', 
@@ -343,15 +384,21 @@ export class OnChainPriceMonitor extends EventEmitter {
           second: '2-digit' 
         });
 
-        console.log(`🎯 [${hitTime}] Alert triggered for campaign ${campaignId}: ${alert.direction} ${alert.targetPercent}% (target: ${alert.targetPrice.toFixed(9)} SOL, hit at: ${currentPrice.toFixed(9)} SOL)`);
+        const logMessage = alert.priceType === 'percentage'
+          ? `${alert.direction} ${alert.targetPercent}% (target: ${alert.targetPrice.toFixed(9)} SOL, hit at: ${currentPrice.toFixed(9)} SOL)`
+          : alert.priceType === 'exact_sol'
+          ? `${alert.direction} ${alert.targetPrice.toFixed(9)} SOL (hit at: ${currentPrice.toFixed(9)} SOL)`
+          : `${alert.direction} $${alert.targetPrice.toFixed(8)} USD (hit at: $${comparisonValue.toFixed(8)} USD)`;
+        
+        console.log(`🎯 [${hitTime}] Alert triggered for campaign ${campaignId}: ${logMessage}`);
         
         this.emit('alert_triggered', {
           campaignId,
           alert,
           currentPrice,
-          currentPriceUSD: campaign?.currentPriceUSD,
-          changePercent: campaign?.changePercent,
-          tokenMint: campaign?.tokenMint,
+          currentPriceUSD: campaign.currentPriceUSD,
+          changePercent: campaign.changePercent,
+          tokenMint: campaign.tokenMint,
           hitTime,
           timestamp: Date.now()
         });
@@ -366,14 +413,26 @@ export class OnChainPriceMonitor extends EventEmitter {
     campaignId: string, 
     targetPercent: number, 
     direction: 'above' | 'below',
+    priceType: 'percentage' | 'exact_sol' | 'exact_usd' = 'percentage',
     actions: AlertAction[] = [{ type: 'notification' }]
   ): PriceAlert | null {
     const campaign = this.campaigns.get(campaignId);
     if (!campaign) return null;
 
-    const targetPrice = direction === 'above'
-      ? campaign.startPrice * (1 + targetPercent / 100)
-      : campaign.startPrice * (1 - Math.abs(targetPercent) / 100);
+    // Calculate target price based on type
+    let targetPrice: number;
+    if (priceType === 'percentage') {
+      // Percentage-based: calculate from start price
+      targetPrice = direction === 'above'
+        ? campaign.startPrice * (1 + targetPercent / 100)
+        : campaign.startPrice * (1 - Math.abs(targetPercent) / 100);
+    } else if (priceType === 'exact_sol') {
+      // Exact SOL price
+      targetPrice = targetPercent; // Re-use targetPercent field for exact price value
+    } else {
+      // Exact USD price - will be converted to SOL during alert checking
+      targetPrice = targetPercent; // Re-use targetPercent field for exact USD value
+    }
 
     const alert: PriceAlert = {
       id: `${campaignId}_alert_${Date.now()}`,
@@ -381,6 +440,7 @@ export class OnChainPriceMonitor extends EventEmitter {
       targetPrice,
       targetPercent,
       direction,
+      priceType,
       hit: false,
       actions
     };
@@ -390,7 +450,12 @@ export class OnChainPriceMonitor extends EventEmitter {
     this.alerts.set(campaignId, campaignAlerts);
 
     const actionTypes = actions.map(a => a.type).join(', ');
-    console.log(`⚠️ Alert added: ${direction} ${targetPercent}% (${targetPrice.toFixed(9)} SOL) with actions: ${actionTypes}`);
+    const priceDisplay = priceType === 'percentage' 
+      ? `${direction} ${targetPercent}% (${targetPrice.toFixed(9)} SOL)` 
+      : priceType === 'exact_sol'
+      ? `${direction} ${targetPercent.toFixed(9)} SOL`
+      : `${direction} $${targetPercent.toFixed(8)} USD`;
+    console.log(`⚠️ Alert added: ${priceDisplay} with actions: ${actionTypes}`);
     return alert;
   }
 

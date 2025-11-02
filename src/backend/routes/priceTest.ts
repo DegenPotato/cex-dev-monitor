@@ -181,7 +181,7 @@ router.post('/api/test-lab/campaign/reset', authService.requireSecureAuth(), asy
  */
 router.post('/api/test-lab/alerts', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
-    const { campaignId, targetPercent, direction, actions } = req.body;
+    const { campaignId, targetPercent, direction, priceType, actions } = req.body;
     
     if (!campaignId || targetPercent === undefined || !direction) {
       return res.status(400).json({ error: 'campaignId, targetPercent and direction required' });
@@ -190,7 +190,10 @@ router.post('/api/test-lab/alerts', authService.requireSecureAuth(), async (req:
     // Default to notification if no actions provided
     const alertActions = actions || [{ type: 'notification' }];
     
-    const alert = monitor.addAlert(campaignId, targetPercent, direction, alertActions);
+    // Default to percentage if not specified
+    const alertPriceType = priceType || 'percentage';
+    
+    const alert = monitor.addAlert(campaignId, targetPercent, direction, alertPriceType, alertActions);
     
     if (!alert) {
       return res.status(404).json({ error: 'Campaign not found' });
