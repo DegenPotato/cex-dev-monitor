@@ -35,7 +35,7 @@ class GMGNScraperService extends EventEmitter {
   private updateInterval: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
   private debugMode: boolean = true;  // Enable debug mode for screenshots
-  private screenshotDir: string = '/var/www/cex-monitor/public/screenshots';  // Web-accessible directory
+  private screenshotDir: string = './screenshots';  // Back to what was working
   private screenshotCounter: number = 0;
 
   constructor() {
@@ -322,14 +322,9 @@ class GMGNScraperService extends EventEmitter {
     try {
       const firstMonitor = Array.from(this.monitors.values())[0];
       if (firstMonitor?.page) {
-        const timestamp = Date.now();
-        const filename = `${this.screenshotDir}/${name}_${this.screenshotCounter++}_${timestamp}.png`;
+        const filename = `${this.screenshotDir}/${name}_${this.screenshotCounter++}_${Date.now()}.png`;
         await firstMonitor.page.screenshot({ path: filename });
-        
-        // Log both local path and web URL
-        const webUrl = `https://api.sniff.agency/screenshots/${name}_${this.screenshotCounter - 1}_${timestamp}.png`;
         console.log(`📸 Screenshot saved: ${filename}`);
-        console.log(`🌐 View at: ${webUrl}`);
       }
     } catch (error) {
       console.log('⚠️ Failed to take screenshot:', error);

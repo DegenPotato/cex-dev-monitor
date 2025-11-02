@@ -390,17 +390,8 @@ app.use('/hdri', express.static(hdriPath, {
   }
 }));
 
-// Serve screenshots from GMGN scraper
-const screenshotsPath = path.join(__dirname, '../../public/screenshots');
-app.use('/screenshots', express.static(screenshotsPath, {
-  setHeaders: (_res, filepath) => {
-    console.log(`📸 [Screenshots] Serving file: ${filepath}`);
-  }
-}));
-
 console.log('📁 [Server] Serving static files from /assets and root');
 console.log('📁 [Server] Public assets path:', publicAssetsPath);
-console.log('📸 [Server] Screenshots path:', screenshotsPath);
 
 // Load separate concurrency configs for Proxy and RPC rotation
 const proxyMaxConcurrent = await ConfigProvider.get('proxy_max_concurrent');
