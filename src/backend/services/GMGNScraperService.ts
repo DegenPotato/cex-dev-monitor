@@ -136,6 +136,12 @@ class GMGNScraperService extends EventEmitter {
    * Add a token to monitor
    */
   async addMonitor(tokenMint: string, interval: string = '5m', indicators: string[] = ['RSI_14', 'RSI_2', 'EMA_21', 'EMA_50', 'EMA_100', 'EMA_200']) {
+    // Validate token mint address
+    if (!tokenMint || tokenMint.length < 32 || tokenMint.length > 44) {
+      console.error(`❌ Invalid token mint address: ${tokenMint} (length: ${tokenMint.length})`);
+      throw new Error(`Invalid token mint address format. Expected 32-44 characters, got ${tokenMint.length}`);
+    }
+    
     if (this.monitors.has(tokenMint)) {
       console.log(`⚠️ Already monitoring ${tokenMint}`);
       return;
@@ -145,7 +151,7 @@ class GMGNScraperService extends EventEmitter {
       throw new Error('Browser not initialized. Call start() first');
     }
 
-    console.log(`📊 Adding monitor for ${tokenMint}`);
+    console.log(`📊 Adding monitor for ${tokenMint} (${tokenMint.length} chars)`);
     
     // Create new page for this monitor
     const page = await this.browser.newPage();
@@ -154,13 +160,29 @@ class GMGNScraperService extends EventEmitter {
     await page.setViewport({ width: 1920, height: 1080 });
 
     // Navigate to GMGN chart
-    const url = `https://gmgn.cc/sol/token/${tokenMint}`;
-    await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
-    });
-
-    console.log(`📊 Loaded GMGN page for ${tokenMint}`);
+    const url = `https://www.gmgn.cc/sol/token/${tokenMint}`;
+    console.log(`🌐 Navigating to: ${url}`);
+    
+    try {
+      await page.goto(url, { 
+        waitUntil: 'networkidle2',
+        timeout: 30000 
+      });
+      console.log(`📊 Loaded GMGN page for ${tokenMint}`);
+    } catch (error: any) {
+      console.error(`❌ Navigation failed:`, error.message);
+      
+      // If DNS error, could be server IP blocked or DNS issue
+      if (error.message.includes('ERR_NAME_NOT_RESOLVED')) {
+        console.log('💡 Possible causes:');
+        console.log('   1. Server IP might be blocked by gmgn.cc');
+        console.log('   2. DNS resolver issues on server');
+        console.log('   3. Try using a proxy or different server');
+      }
+      
+      await page.close();
+      throw error;
+    }
 
     // Wait for chart container
     await page.waitForSelector('.chart-container, [class*="chart"], canvas', { timeout: 10000 });
