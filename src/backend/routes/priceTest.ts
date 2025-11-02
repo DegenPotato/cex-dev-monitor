@@ -194,8 +194,11 @@ function broadcast(message: any) {
   });
 }
 
-// Forward events to native WebSocket
+// Forward events to native WebSocket with logging
 monitor.on('price_update', (campaign) => {
+  const timestamp = new Date().toISOString();
+  console.log(`🔔 [${timestamp}] Broadcasting price update for ${campaign.id} to ${wss?.clients.size || 0} WebSocket clients`);
+  
   broadcast({
     type: 'test_lab_price_update',
     data: campaign
@@ -203,6 +206,9 @@ monitor.on('price_update', (campaign) => {
 });
 
 monitor.on('alert_triggered', (data) => {
+  const timestamp = new Date().toISOString();
+  console.log(`🚨 [${timestamp}] Broadcasting alert for ${data.campaignId} to ${wss?.clients.size || 0} WebSocket clients`);
+  
   broadcast({
     type: 'test_lab_alert',
     data

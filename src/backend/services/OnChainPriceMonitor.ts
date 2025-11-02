@@ -122,12 +122,12 @@ export class OnChainPriceMonitor extends EventEmitter {
           campaign.priceHistory.shift();
         }
         
-        // Log significant price changes (with both SOL and USD)
-        if (Math.abs(campaign.changePercent) > 1) {
-          console.log(`📊 ${campaign.tokenMint.slice(0, 8)}... SOL: ${newPrice.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${usdPrice.toFixed(8)} | High: ${campaign.high.toFixed(9)} | Low: ${campaign.low.toFixed(9)}`);
-        }
+        // ALWAYS log price updates with timestamp
+        const timestamp = new Date().toISOString();
+        console.log(`📊 [${timestamp}] ${campaign.tokenMint.slice(0, 8)}... SOL: ${newPrice.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${usdPrice.toFixed(8)} | High: ${campaign.high.toFixed(9)} | Low: ${campaign.low.toFixed(9)}`);
         
         // Broadcast update
+        console.log(`🔔 [${timestamp}] Emitting price_update for campaign ${campaignId}`);
         this.emit('price_update', campaign);
         
         // Check alerts

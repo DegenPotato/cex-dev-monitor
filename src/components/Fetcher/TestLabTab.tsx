@@ -30,6 +30,18 @@ interface Alert {
   hitAt?: number;
 }
 
+interface HistoryEntry {
+  timestamp: string;
+  campaignId: string;
+  tokenMint: string;
+  priceSOL: number;
+  priceUSD?: number;
+  changePercent: number;
+  high: number;
+  low: number;
+  type: 'update' | 'alert';
+}
+
 export const TestLabTab: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -39,6 +51,8 @@ export const TestLabTab: React.FC = () => {
   const [newAlertPercent, setNewAlertPercent] = useState('');
   const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'history'>('campaigns');
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Set up WebSocket for real-time updates (like other tabs)
@@ -57,18 +71,36 @@ export const TestLabTab: React.FC = () => {
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        const timestamp = new Date().toISOString();
+        console.log(`📥 [${timestamp}] Received WebSocket message:`, message.type);
 
         // Handle price updates
         if (message.type === 'test_lab_price_update') {
           const data = message.data;
+          console.log(`📊 [${timestamp}] Price update for ${data.id}: ${data.currentPrice} SOL (${data.changePercent.toFixed(2)}%)`);
+          
           setCampaigns(prev => prev.map(c =>
             c.id === data.id ? { ...c, ...data } : c
           ));
+
+          // Add to history
+          setHistory(prev => [{
+            timestamp,
+            campaignId: data.id,
+            tokenMint: data.tokenMint,
+            priceSOL: data.currentPrice,
+            changePercent: data.changePercent,
+            high: data.high,
+            low: data.low,
+            type: 'update' as const
+          }, ...prev].slice(0, 100)); // Keep last 100
         }
 
         // Handle alert triggers
         if (message.type === 'test_lab_alert') {
           const data = message.data;
+          console.log(`🚨 [${timestamp}] Alert triggered for ${data.campaignId}`);
+          
           toast.success(
             <div className="flex flex-col gap-1">
               <div className="font-semibold">🎯 Alert Triggered!</div>
@@ -87,7 +119,7 @@ export const TestLabTab: React.FC = () => {
           ));
         }
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        console.error('❌ Error parsing WebSocket message:', error);
       }
     };
 
@@ -291,6 +323,37 @@ export const TestLabTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Tab Switcher */}
+      <div className="flex gap-4 border-b border-gray-700">
+        <button
+          onClick={() => setActiveTab('campaigns')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'campaigns'
+              ? 'text-cyan-400 border-b-2 border-cyan-400'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          Campaigns
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2 font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'history'
+              ? 'text-cyan-400 border-b-2 border-cyan-400'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          Update History
+          {history.length > 0 && (
+            <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 rounded-full text-xs">
+              {history.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'campaigns' && (
+        <>
       {/* New Campaign */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -521,6 +584,58 @@ export const TestLabTab: React.FC = () => {
           Run multiple campaigns simultaneously, each with independent alerts. Perfect for testing strategies
           across multiple tokens without any trading.
         </div>
+      )}
+        </>
+      )}
+
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gray-800 border border-gray-700 rounded-xl p-6"
+        >
+          <h3 className="text-lg font-bold text-white mb-4">Update History</h3>
+          {history.length === 0 ? (
+            <div className="text-center text-gray-400 py-8">
+              No updates yet. Start a campaign to see real-time price updates logged here.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              {history.map((entry, index) => (
+                <div
+                  key={`${entry.timestamp}-${index}`}
+                  className="bg-gray-900 border border-gray-700 rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-gray-500 font-mono">{entry.timestamp}</span>
+                      {entry.type === 'alert' && (
+                        <span className="px-2 py-0.5 bg-red-500/20 text-red-400 rounded text-xs">ALERT</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-400 font-mono mb-1">
+                      {entry.tokenMint.slice(0, 8)}...
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-white font-mono">{entry.priceSOL.toFixed(9)} SOL</span>
+                      {entry.priceUSD && (
+                        <span className="text-gray-400">${entry.priceUSD.toFixed(8)}</span>
+                      )}
+                      <span className={entry.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        {entry.changePercent >= 0 ? '+' : ''}{entry.changePercent.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-gray-500">
+                    <div>High: {entry.high.toFixed(9)}</div>
+                    <div>Low: {entry.low.toFixed(9)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
       )}
     </div>
   );
