@@ -210,7 +210,7 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     try {
       // Try Price API v3 first (only works for listed tokens)
-      const priceUrl = `https://api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
+      const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},${SOL_MINT}`;
       const priceResponse = await fetch(priceUrl);
       
       if (priceResponse.ok) {
@@ -293,17 +293,22 @@ export class OnChainPriceMonitor extends EventEmitter {
     // Get SOL USD price to calculate token USD price
     let priceInUSD: number | undefined;
     try {
-      const solPriceUrl = `https://api.jup.ag/price/v3?ids=${SOL_MINT}`;
+      const solPriceUrl = `https://lite-api.jup.ag/price/v3?ids=${SOL_MINT}`;
       const solPriceResponse = await fetch(solPriceUrl);
       if (solPriceResponse.ok) {
         const solPriceData = await solPriceResponse.json();
         const solUsdPrice = parseFloat(solPriceData[SOL_MINT]?.usdPrice || '0');
         if (solUsdPrice > 0) {
           priceInUSD = priceInSOL * solUsdPrice;
+          console.log(`✅ Calculated USD price: $${priceInUSD.toFixed(8)} (SOL at $${solUsdPrice.toFixed(2)})`);
+        } else {
+          console.warn(`⚠️ SOL USD price is 0 or invalid`);
         }
+      } else {
+        console.warn(`⚠️ Failed to fetch SOL price: ${solPriceResponse.status}`);
       }
-    } catch {
-      // USD price optional
+    } catch (error) {
+      console.error(`⚠️ Error calculating USD price:`, error);
     }
     
     console.log(`💰 Jupiter Quote API: ${tokenMint.slice(0, 8)}... = ${priceInSOL.toFixed(12)} SOL${priceInUSD ? ` ($${priceInUSD.toFixed(8)})` : ''} (${decimals} decimals)`);
