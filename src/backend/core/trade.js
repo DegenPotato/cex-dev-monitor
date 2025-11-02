@@ -157,12 +157,11 @@ export class TradingEngine {
                 throw new Error('No wallet available');
             }
             const keypair = await this.walletManager.getKeypair(params.userId, walletAddress);
-            // Get token balance if selling percentage
-            let amountToSell = params.amount;
-            if (params.percentage) {
-                const balance = await this.getTokenBalance(walletAddress, params.tokenMint);
-                amountToSell = balance * (params.percentage / 100);
-            }
+            // Get token balance for percentage-based sells
+            const balance = await this.getTokenBalance(walletAddress, params.tokenMint);
+            const percentage = params.percentage || 100; // Default to 100% if not specified
+            const amountToSell = balance * (percentage / 100);
+            console.log(`🎯 Selling ${percentage}% of ${balance} tokens = ${amountToSell}`);
             // Get Jupiter quote
             const inputMint = params.tokenMint;
             const outputMint = 'So11111111111111111111111111111111111112'; // SOL
