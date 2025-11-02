@@ -190,7 +190,7 @@ export class OnChainPriceMonitor extends EventEmitter {
     
     // Fallback: Use Quote API (works for all tokens with liquidity)
     const AMOUNT_IN_LAMPORTS = 1000000000; // 1 SOL
-    const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
+    const quoteUrl = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${AMOUNT_IN_LAMPORTS}&slippageBps=50`;
     
     const quoteResponse = await fetch(quoteUrl);
     if (!quoteResponse.ok) {
