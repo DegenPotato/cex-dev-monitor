@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, TrendingUp, MessageSquare, Send, X, Plus } from 'lucide-react';
+import { Bell, TrendingUp, MessageSquare, Send, X, Plus, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { useTradingSettingsStore } from '../../stores/tradingSettingsStore';
@@ -7,8 +7,8 @@ import { useTradingStore } from '../../stores/tradingStore';
 
 export type AlertAction = 
   | { type: 'notification' }
-  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; walletId?: string }
-  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; walletId?: string }
+  | { type: 'buy'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
   | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
@@ -61,10 +61,10 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
         newAction = { type: 'notification' };
         break;
       case 'buy':
-        newAction = { type: 'buy', amount: 0.1, slippage: defaultSlippage, priorityFee: 0.0001 };
+        newAction = { type: 'buy', amount: 0.1, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false };
         break;
       case 'sell':
-        newAction = { type: 'sell', amount: 50, slippage: defaultSlippage, priorityFee: 0.0001 };
+        newAction = { type: 'sell', amount: 50, slippage: defaultSlippage, priorityFee: 0.0001, skipTax: false };
         break;
       case 'telegram':
         newAction = { type: 'telegram', chatId: '' };
@@ -206,6 +206,27 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                           ))}
                         </select>
                       </div>
+                      
+                      {/* Platform Tax Toggle */}
+                      <div className="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-3 h-3 text-yellow-400" />
+                          <span className="text-xs text-gray-300">Platform Tax (0.87%)</span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!action.skipTax}
+                            onChange={(e) => updateAction(index, { skipTax: !e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-700 rounded-full peer-checked:bg-cyan-500 
+                                        peer-checked:after:translate-x-full after:content-[''] 
+                                        after:absolute after:top-[2px] after:left-[2px] 
+                                        after:bg-white after:rounded-full after:h-4 after:w-4 
+                                        after:transition-all"></div>
+                        </label>
+                      </div>
                     </div>
                   )}
 
@@ -269,6 +290,27 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                             </option>
                           ))}
                         </select>
+                      </div>
+                      
+                      {/* Platform Tax Toggle */}
+                      <div className="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-3 h-3 text-yellow-400" />
+                          <span className="text-xs text-gray-300">Platform Tax (0.87%)</span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!action.skipTax}
+                            onChange={(e) => updateAction(index, { skipTax: !e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-700 rounded-full peer-checked:bg-cyan-500 
+                                        peer-checked:after:translate-x-full after:content-[''] 
+                                        after:absolute after:top-[2px] after:left-[2px] 
+                                        after:bg-white after:rounded-full after:h-4 after:w-4 
+                                        after:transition-all"></div>
+                        </label>
                       </div>
                     </div>
                   )}
