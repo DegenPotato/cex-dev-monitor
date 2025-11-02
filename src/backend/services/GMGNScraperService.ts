@@ -187,6 +187,18 @@ class GMGNScraperService extends EventEmitter {
       throw error;
     }
 
+    // Close any popups first
+    await page.evaluate(() => {
+      // Try to close GMGN popup/modal
+      const closeButtons = document.querySelectorAll('button, [role="button"], .close, [class*="close"]');
+      for (const btn of closeButtons) {
+        const text = btn.textContent?.toLowerCase() || '';
+        if (text.includes('close') || text.includes('x') || text === '×') {
+          (btn as HTMLElement).click();
+        }
+      }
+    });
+    
     // Wait for chart container - be more lenient with selectors
     console.log('⏳ Waiting for chart to load...');
     try {
@@ -396,10 +408,38 @@ class GMGNScraperService extends EventEmitter {
       
       // Final summary
       console.log(`\n${'='.repeat(50)}`);
-      console.log(`📊 FINAL RESULTS:`);
+      console.log(`📊 FINAL INDICATOR ADDITION RESULTS:`);
       console.log(`   ✅ Succeeded: ${results.succeeded}`);
       console.log(`   ❌ Failed: ${results.failed}`);
       console.log(`   📈 Total: ${results.attempted}`);
+      console.log(`${'='.repeat(50)}`);
+      
+      // Check what indicators are actually visible on the chart
+      const visibleIndicators = await pageOrFrame.evaluate(() => {
+        const legends = Array.from(document.querySelectorAll('[class*="legend"], [class*="source"], [class*="pane"]'));
+        const indicators: string[] = [];
+        
+        for (const el of legends) {
+          const text = el.textContent || '';
+          if (text.includes('RSI')) {
+            const match = text.match(/RSI\s*(\d+)/);
+            if (match) indicators.push(`RSI(${match[1]})`);
+          }
+          if (text.includes('EMA')) {
+            const match = text.match(/EMA\s*(\d+)/);
+            if (match) indicators.push(`EMA(${match[1]})`);
+          }
+        }
+        
+        return [...new Set(indicators)]; // Remove duplicates
+      });
+      
+      console.log(`\n📊 INDICATORS VISIBLE ON CHART:`);
+      if (visibleIndicators.length > 0) {
+        visibleIndicators.forEach((ind: string) => console.log(`   ✅ ${ind}`));
+      } else {
+        console.log(`   ⚠️ No indicators detected on chart`);
+      }
       console.log(`${'='.repeat(50)}`);
       
     } catch (error) {
@@ -413,7 +453,13 @@ class GMGNScraperService extends EventEmitter {
    */
   private async addSingleIndicator(pageOrFrame: any, indicatorType: string): Promise<boolean> {
     try {
-      // Open indicators menu
+      // ALWAYS close menu first to ensure clean state
+      await pageOrFrame.evaluate(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+      });
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Open indicators menu fresh
       const menuOpened = await this.openIndicatorsMenu(pageOrFrame);
       if (!menuOpened) {
         console.log(`⚠️ Could not open menu for ${indicatorType}`);
