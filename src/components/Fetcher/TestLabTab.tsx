@@ -101,6 +101,7 @@ export const TestLabTab: React.FC = () => {
   const [triggerHistory, setTriggerHistory] = useState<TriggerHistoryEntry[]>([]);
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
   const wsRef = useRef<WebSocket | null>(null);
 
   // Copy address to clipboard
@@ -844,6 +845,49 @@ export const TestLabTab: React.FC = () => {
               {selectedCampaign.lowUSD && (
                 <div className="text-xs text-gray-400">${selectedCampaign.lowUSD.toFixed(6)} USD</div>
               )}
+            </div>
+          </motion.div>
+
+          {/* GMGN Price Chart */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gray-800 border border-gray-700 rounded-xl p-4"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-white">Price Chart</h4>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Interval:</span>
+                <select
+                  value={chartInterval}
+                  onChange={(e) => setChartInterval(e.target.value as '1' | '5')}
+                  className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white"
+                >
+                  <option value="1">1m</option>
+                  <option value="5">5m</option>
+                </select>
+              </div>
+            </div>
+            <div className="relative w-full" style={{ height: '500px' }}>
+              <iframe
+                key={`${selectedCampaign.tokenMint}-${chartInterval}`}
+                src={`https://gmgn.ai/kline/sol/${selectedCampaign.tokenMint}?interval=${chartInterval}&theme=dark`}
+                className="w-full h-full rounded-lg"
+                style={{ border: 'none' }}
+                title="GMGN Price Chart"
+                sandbox="allow-scripts allow-same-origin"
+              />
+            </div>
+            <div className="text-xs text-gray-500 mt-2 flex items-center justify-between">
+              <span>Powered by GMGN.ai</span>
+              <a
+                href={`https://gmgn.ai/sol/token/${selectedCampaign.tokenMint}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+              >
+                View on GMGN <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
           </motion.div>
 
