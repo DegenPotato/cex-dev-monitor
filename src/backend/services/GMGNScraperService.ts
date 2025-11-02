@@ -416,22 +416,37 @@ class GMGNScraperService extends EventEmitter {
       
       // Check what indicators are actually visible on the chart
       const visibleIndicators = await pageOrFrame.evaluate(() => {
-        const legends = Array.from(document.querySelectorAll('[class*="legend"], [class*="source"], [class*="pane"]'));
-        const indicators: string[] = [];
+        // Look specifically for legend items that are indicator titles
+        const legends = Array.from(document.querySelectorAll('[class*="legendMainSourceWrapper"], [class*="sourcesWrapper"], [class*="legendSource"]'));
+        const indicators: { type: string, period: string }[] = [];
         
-        for (const el of legends) {
-          const text = el.textContent || '';
-          if (text.includes('RSI')) {
+        for (const legend of legends) {
+          const text = legend.textContent || '';
+          
+          // Look for RSI indicators (format: "RSI 14" or just "RSI")
+          if (text.includes('RSI') && !text.includes('RSI(')) {
+            // Extract the period if visible
             const match = text.match(/RSI\s*(\d+)/);
-            if (match) indicators.push(`RSI(${match[1]})`);
+            if (match) {
+              indicators.push({ type: 'RSI', period: match[1] });
+            } else {
+              indicators.push({ type: 'RSI', period: '?' });
+            }
           }
-          if (text.includes('EMA')) {
-            const match = text.match(/EMA\s*(\d+)/);
-            if (match) indicators.push(`EMA(${match[1]})`);
+          
+          // Look for EMA indicators (format: "EMA 9" or "EMA(9)")
+          if (text.includes('EMA') && !indicators.some(i => i.type === 'EMA' && text.includes(i.period))) {
+            const match = text.match(/EMA\s*\(?\s*(\d+)/);
+            if (match) {
+              indicators.push({ type: 'EMA', period: match[1] });
+            } else if (text.includes('EMA')) {
+              indicators.push({ type: 'EMA', period: '?' });
+            }
           }
         }
         
-        return [...new Set(indicators)]; // Remove duplicates
+        // Format for display
+        return indicators.map(i => `${i.type}(${i.period})`);
       });
       
       console.log(`\n📊 INDICATORS VISIBLE ON CHART:`);
@@ -759,8 +774,8 @@ class GMGNScraperService extends EventEmitter {
     try {
       console.log(`🔧 Configuring ${indicatorType} #${index + 1} to period ${period}`);
       
-      // Find the indicator in the legend by index
-      const settingsOpened = await pageOrFrame.evaluate((indType: string, idx: number) => {
+      // Step 1: Click the indicator text to reveal buttons
+      const indicatorClicked = await pageOrFrame.evaluate((indType: string, idx: number) => {
         // Find all legends with this indicator type
         const legends = Array.from(document.querySelectorAll('[class*="legend"], [class*="source"], [class*="title"]'));
         let matchCount = 0;
@@ -776,47 +791,55 @@ class GMGNScraperService extends EventEmitter {
               // This is the indicator we want to configure
               console.log(`Found ${indType} #${idx + 1}: ${text.substring(0, 50)}`);
               
-              // Method 1: Look for settings icon/button near this legend
-              const settingsBtn = legend.querySelector('[class*="settings"], [class*="gear"], [title*="Settings"], [aria-label*="Settings"]') ||
-                                legend.parentElement?.querySelector('[class*="settings"], [class*="gear"]');
-              
-              if (settingsBtn) {
-                (settingsBtn as HTMLElement).click();
-                return 'settings_clicked';
-              }
-              
-              // Method 2: Try right-clicking on the legend
-              const rightClickEvent = new MouseEvent('contextmenu', {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                button: 2,
-                buttons: 2
-              });
-              legend.dispatchEvent(rightClickEvent);
-              
-              // Check if context menu appeared
-              setTimeout(() => {
-                const contextMenu = document.querySelector('[class*="context"], [class*="menu"][style*="position"]');
-                if (contextMenu) {
-                  // Look for settings option in context menu
-                  const settingsOption = Array.from(contextMenu.querySelectorAll('*')).find(el => 
-                    el.textContent?.toLowerCase().includes('setting') ||
-                    el.textContent?.toLowerCase().includes('properties')
-                  );
-                  if (settingsOption) {
-                    (settingsOption as HTMLElement).click();
-                  }
-                }
-              }, 100);
-              
-              return 'rightclick_attempted';
+              // Click the indicator text to reveal buttons
+              (legend as HTMLElement).click();
+              return true;
             }
             matchCount++;
           }
         }
         return false;
       }, indicatorType, index);
+      
+      if (!indicatorClicked) {
+        console.log(`⚠️ Could not find ${indicatorType} #${index + 1} in legend`);
+        return false;
+      }
+      
+      // Step 2: Wait for buttons to appear
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Step 3: Click the settings button (3rd button or with aria-label="Settings")
+      const settingsOpened = await pageOrFrame.evaluate(() => {
+        // Look for the settings button that should now be visible
+        const settingsButtons = Array.from(document.querySelectorAll('[aria-label="Settings"], [data-name="legend-settings-action"], button[class*="button-l31H9iuA"]'));
+        
+        for (const btn of settingsButtons) {
+          // Check if it's visible and is the settings button
+          if ((btn as HTMLElement).offsetParent !== null && 
+              (btn.getAttribute('aria-label') === 'Settings' || 
+               btn.getAttribute('data-name') === 'legend-settings-action')) {
+            (btn as HTMLElement).click();
+            return 'settings_clicked';
+          }
+        }
+        
+        // Fallback: Try right-clicking if settings button not found
+        const legends = Array.from(document.querySelectorAll('[class*="legend"]:hover, [class*="source"]:hover'));
+        if (legends.length > 0) {
+          const rightClickEvent = new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 2,
+            buttons: 2
+          });
+          legends[0].dispatchEvent(rightClickEvent);
+          return 'rightclick_attempted';
+        }
+        
+        return false;
+      });
       
       if (settingsOpened) {
         console.log(`✅ Settings menu opened via: ${settingsOpened}`);
