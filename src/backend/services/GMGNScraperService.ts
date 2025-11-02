@@ -835,22 +835,22 @@ class GMGNScraperService extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Step 3: Look for the settings button in the revealed button menu
-      const settingsOpened = await pageOrFrame.evaluate(() => {
+      const buttonDebug = await pageOrFrame.evaluate(() => {
         // Look for buttons container that should have appeared
         const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"], [class*="buttonsWrapper"]'));
-        console.log(`🔍 Found ${buttonContainers.length} button containers`);
         
         // Look for all buttons, especially the settings button
         const allButtons = Array.from(document.querySelectorAll('button[class*="button-l31H9iuA"]'));
-        console.log(`🔍 Found ${allButtons.length} total buttons`);
         
         const visibleButtons = allButtons.filter(btn => (btn as HTMLElement).offsetParent !== null);
-        console.log(`🔍 Found ${visibleButtons.length} visible buttons`);
         
-        // Log what buttons we can see
-        visibleButtons.slice(0, 10).forEach((btn, i) => {
-          console.log(`   Button ${i+1}: aria-label="${btn.getAttribute('aria-label')}", data-name="${btn.getAttribute('data-name')}"`);
-        });
+        // Collect button info for debugging
+        const buttonInfo = visibleButtons.slice(0, 10).map((btn, i) => ({
+          index: i + 1,
+          ariaLabel: btn.getAttribute('aria-label'),
+          dataName: btn.getAttribute('data-name'),
+          className: btn.className
+        }));
         
         // Look specifically for Settings button
         for (const btn of visibleButtons) {
@@ -858,18 +858,31 @@ class GMGNScraperService extends EventEmitter {
           const dataName = btn.getAttribute('data-name');
           
           if (ariaLabel === 'Settings' || dataName === 'legend-settings-action') {
-            console.log(`✅ Found Settings button! Clicking...`);
             (btn as HTMLElement).click();
-            return 'settings_clicked';
+            return {
+              success: 'settings_clicked',
+              buttonContainers: buttonContainers.length,
+              totalButtons: allButtons.length,
+              visibleButtons: visibleButtons.length,
+              buttons: buttonInfo
+            };
           }
         }
         
-        console.log(`❌ Settings button not found among visible buttons`);
-        return false;
+        return {
+          success: false,
+          buttonContainers: buttonContainers.length,
+          totalButtons: allButtons.length,
+          visibleButtons: visibleButtons.length,
+          buttons: buttonInfo
+        };
       });
       
-      if (settingsOpened) {
-        console.log(`✅ Settings menu opened via: ${settingsOpened}`);
+      // Log the debug info
+      console.log(`🔍 Button Debug:`, JSON.stringify(buttonDebug, null, 2));
+      
+      if (buttonDebug.success) {
+        console.log(`✅ Settings menu opened via: ${buttonDebug.success}`);
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Take screenshot of settings dialog
