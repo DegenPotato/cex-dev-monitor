@@ -34,8 +34,9 @@ class GMGNScraperService extends EventEmitter {
   private monitors: Map<string, ChartMonitor> = new Map();
   private updateInterval: NodeJS.Timeout | null = null;
   private isRunning: boolean = false;
-  private debugMode: boolean = false;
+  private debugMode: boolean = true;  // Enable debug mode for screenshots
   private screenshotDir: string = './screenshots';
+  private screenshotCounter: number = 0;
 
   constructor() {
     super();
@@ -134,7 +135,7 @@ class GMGNScraperService extends EventEmitter {
   /**
    * Add a token to monitor
    */
-  async addMonitor(tokenMint: string, interval: string = '5m', indicators: string[] = ['RSI', 'EMA_9', 'EMA_20']) {
+  async addMonitor(tokenMint: string, interval: string = '5m', indicators: string[] = ['RSI_14', 'RSI_2', 'EMA_21', 'EMA_50', 'EMA_100', 'EMA_200']) {
     if (this.monitors.has(tokenMint)) {
       console.log(`⚠️ Already monitoring ${tokenMint}`);
       return;
@@ -144,67 +145,94 @@ class GMGNScraperService extends EventEmitter {
       throw new Error('Browser not initialized. Call start() first');
     }
 
-    console.log(`📊 Adding monitor for ${tokenMint} (${interval}, ${indicators.join(', ')})`);
-
-    // Open new page
+    console.log(`📊 Adding monitor for ${tokenMint}`);
+    
+    // Create new page for this monitor
     const page = await this.browser.newPage();
     
     // Set viewport
     await page.setViewport({ width: 1920, height: 1080 });
 
     // Navigate to GMGN chart
-    const url = `https://www.gmgn.cc/kline/sol/${tokenMint}?interval=${interval}&theme=dark`;
+    const url = `https://gmgn.cc/sol/token/${tokenMint}`;
     await page.goto(url, { 
       waitUntil: 'networkidle2',
       timeout: 30000 
     });
 
-    // Wait for chart iframe to load (TradingView embeds in iframe)
-    await page.waitForSelector('iframe', { 
-      timeout: 15000 
-    }).catch(() => {
-      console.log('⚠️ No iframe found, chart might not be embedded');
-    });
+    console.log(`📊 Loaded GMGN page for ${tokenMint}`);
 
-    // Wait for the iframe to be ready and chart to render
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    // Wait for chart container
+    await page.waitForSelector('.chart-container, [class*="chart"], canvas', { timeout: 10000 });
     
+    // Check if TradingView is embedded
     console.log('📊 Checking for TradingView iframe...');
-    
-    // Check if chart is in an iframe
     const frames = page.frames();
     console.log(`🔍 Found ${frames.length} frames on page`);
     
-    // Find the TradingView iframe
-    const tvFrame = frames.find((f: any) => 
-      f.url().includes('tradingview') || 
-      f.url().includes('tv_chart') ||
-      f.name().includes('tradingview')
-    );
-    
-    if (tvFrame) {
-      console.log(`✅ Found TradingView iframe: ${tvFrame.url()}`);
-      // We'll need to interact with this frame, not the main page
-    } else {
-      console.log('⚠️ No TradingView iframe found, chart might be directly embedded');
+    let tvFrame = null;
+    for (const frame of frames) {
+      const frameUrl = frame.url();
+      if (frameUrl.includes('tradingview') || frameUrl.includes('charting_library') || frameUrl.startsWith('blob:')) {
+        console.log(`✅ Found TradingView iframe: ${frameUrl.substring(0, 50)}...`);
+        tvFrame = frame;
+        break;
+      }
     }
-    
-    console.log('📊 Chart loaded, checking if indicators are already available...');
-    
-    // Check if GMGN already shows indicators without needing to add them
-    const hasIndicators = await page.evaluate(() => {
-      const legendElements = document.querySelectorAll('[class*="legend"], [class*="source"]');
-      return legendElements.length > 0;
-    });
-    
-    if (hasIndicators) {
-      console.log('✅ Indicators appear to be already available on chart');
-    } else {
-      console.log('⚠️ No indicators found, attempting to add via UI...');
-      // Try to add indicators via UI - use the iframe if available
-      const targetFrame = tvFrame || page;
-      for (const indicator of indicators) {
-        await this.addIndicatorToChart(targetFrame, indicator);
+
+    // Wait for TradingView to fully load within iframe
+    if (tvFrame) {
+      console.log('📊 Chart loaded, checking if indicators are already available...');
+      
+      // Wait a bit for TradingView to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Check if indicators already exist
+      const hasIndicators = await tvFrame.evaluate(() => {
+        const legends = document.querySelectorAll('[class*="legend"], [class*="source"]');
+        for (const legend of legends) {
+          const text = legend.textContent || '';
+          if (text.includes('RSI') || text.includes('EMA')) {
+            return true;
+          }
+        }
+        return false;
+      });
+      
+      if (!hasIndicators) {
+        console.log('⚠️ No indicators found, adding all indicators first with default values...');
+        
+        // STEP 1: Add all indicators with default values
+        console.log('📊 Step 1: Adding all indicators in one session...');
+        await this.addAllIndicators(tvFrame);
+        
+        console.log('✅ All indicators added with default values');
+        
+        // STEP 2: Configure each indicator to correct period
+        console.log('📊 Step 2: Configuring indicator periods...');
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Let everything settle
+        
+        // Take screenshot before configuration
+        await this.takeDebugScreenshot('before_configuration');
+        
+        // Now configure each indicator
+        const configurations = [
+          { type: 'RSI', index: 0, period: '14' }, // First RSI stays at 14
+          { type: 'RSI', index: 1, period: '2' },  // Second RSI to 2
+          { type: 'EMA', index: 0, period: '21' },
+          { type: 'EMA', index: 1, period: '50' },
+          { type: 'EMA', index: 2, period: '100' },
+          { type: 'EMA', index: 3, period: '200' },
+        ];
+        
+        for (const config of configurations) {
+          console.log(`  Configuring ${config.type} #${config.index + 1} to period ${config.period}`);
+          await this.configureIndicatorByIndex(tvFrame, config.type, config.index, config.period);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        console.log('✅ All indicators configured');
+        await this.takeDebugScreenshot('after_configuration');
       }
     }
 
@@ -239,13 +267,112 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Add an indicator to the chart via TradingView UI
+   * Take a debug screenshot if debug mode is enabled
    */
-  private async addIndicatorToChart(pageOrFrame: any, indicator: string) {
+  private async takeDebugScreenshot(name: string) {
+    if (!this.debugMode || this.monitors.size === 0) return;
+    
     try {
-      console.log(`🔧 Adding indicator: ${indicator}`);
+      const firstMonitor = Array.from(this.monitors.values())[0];
+      if (firstMonitor?.page) {
+        const filename = `${this.screenshotDir}/${name}_${this.screenshotCounter++}_${Date.now()}.png`;
+        await firstMonitor.page.screenshot({ path: filename });
+        console.log(`📸 Screenshot saved: ${filename}`);
+      }
+    } catch (error) {
+      console.log('⚠️ Failed to take screenshot:', error);
+    }
+  }
+
+  /**
+   * Add all indicators in one session without closing the search menu
+   */
+  private async addAllIndicators(pageOrFrame: any) {
+    try {
+      console.log('🔍 Opening indicators menu...');
       
-      // Debug: What's actually on the page/frame?
+      // Click the indicators button to open menu
+      const indicatorsOpened = await this.openIndicatorsMenu(pageOrFrame);
+      if (!indicatorsOpened) {
+        throw new Error('Could not open indicators menu');
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await this.takeDebugScreenshot('indicators_menu_open');
+      
+      // Find the search input ONCE
+      const searchInput = await this.findSearchInput(pageOrFrame);
+      if (!searchInput) {
+        throw new Error('Could not find search input in indicators menu');
+      }
+      
+      console.log('✅ Found search input, adding all indicators...');
+      
+      // List of indicators to add in order
+      const indicatorsToAdd = [
+        { type: 'RSI', name: 'Relative Strength Index' },
+        { type: 'RSI', name: 'Relative Strength Index' },
+        { type: 'EMA', name: 'Moving Average Exponential' },
+        { type: 'EMA', name: 'Moving Average Exponential' },
+        { type: 'EMA', name: 'Moving Average Exponential' },
+        { type: 'EMA', name: 'Moving Average Exponential' },
+      ];
+      
+      for (let i = 0; i < indicatorsToAdd.length; i++) {
+        const indicator = indicatorsToAdd[i];
+        console.log(`  Adding ${indicator.type} (${i + 1}/${indicatorsToAdd.length})...`);
+        
+        // Clear search input first
+        await pageOrFrame.evaluate(() => {
+          const input = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+          if (input) {
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        
+        // Type the indicator name
+        await searchInput.type(indicator.name);
+        console.log(`    Typed: ${indicator.name}`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Click the first result
+        const resultClicked = await this.clickSearchResult(pageOrFrame, indicator.name);
+        if (resultClicked) {
+          console.log(`    ✅ Added ${indicator.type}`);
+        } else {
+          console.log(`    ⚠️ Could not click result for ${indicator.type}`);
+        }
+        
+        // Wait for indicator to be added before next one
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      // Close the indicators menu if it's still open
+      await pageOrFrame.evaluate(() => {
+        // Press ESC to close menu
+        const escEvent = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          code: 'Escape',
+          keyCode: 27,
+          bubbles: true
+        });
+        document.dispatchEvent(escEvent);
+      });
+      
+      console.log('✅ All indicators added successfully');
+      
+    } catch (error) {
+      console.error('Error adding indicators:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Open the indicators menu
+   */
+  private async openIndicatorsMenu(pageOrFrame: any): Promise<boolean> {
+    try {
       const debugInfo = await pageOrFrame.evaluate(() => {
         return {
           svgCount: document.querySelectorAll('svg').length,
@@ -313,24 +440,26 @@ class GMGNScraperService extends EventEmitter {
         return null;
       });
       
-      if (!clicked) {
-        console.error('❌ Could not find indicators button. Page has:', debugInfo);
-        throw new Error('Could not find indicators button');
+      if (clicked) {
+        console.log(`✅ Opened indicators menu`);
+        return true;
       }
       
-      console.log(`✅ Clicked indicators button via ${clicked.method}: ${clicked.tag}`);
-      
-      // Wait for menu to open and search for input field
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Take debug screenshot to see if menu opened (frames don't have screenshot, use page)
-      if (this.debugMode && this.monitors.size > 0) {
-        const firstMonitor = Array.from(this.monitors.values())[0];
-        if (firstMonitor?.page) {
-          await firstMonitor.page.screenshot({ path: `${this.screenshotDir}/indicator_menu_${Date.now()}.png` });
-          console.log('📸 Menu screenshot captured');
-        }
-      }
+      console.error('❌ Could not find indicators button. Page has:', debugInfo);
+      return false;
+    } catch (error) {
+      console.error('Error opening indicators menu:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Find the search input in the indicators menu
+   */
+  private async findSearchInput(pageOrFrame: any): Promise<any> {
+    try {
+      // Wait a bit for the menu to fully render
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Debug: Log what's actually in the DOM
       const availableElements = await pageOrFrame.evaluate(() => {
@@ -353,7 +482,7 @@ class GMGNScraperService extends EventEmitter {
         };
       });
       
-      console.log('🔍 DOM Debug:', JSON.stringify(availableElements, null, 2));
+      console.log('📍 DOM Debug:', availableElements);
       
       // Find the search input in TradingView's indicator modal
       // TradingView opens a modal dialog, not a dropdown menu
@@ -392,21 +521,19 @@ class GMGNScraperService extends EventEmitter {
         throw new Error('Could not find search input in indicators menu');
       }
       
-      // Parse indicator (e.g., "RSI_14", "EMA_9")
-      const [indicatorType, period] = indicator.includes('_') 
-        ? indicator.split('_') 
-        : [indicator, null];
+      return searchInput;
       
-      const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 
-                           indicatorType === 'EMA' ? 'Moving Average Exponential' :
-                           indicatorType === 'SMA' ? 'Moving Average' :
-                           indicatorType === 'MACD' ? 'MACD' : indicatorType;
-      
-      await searchInput.type(indicatorName);
-      console.log(`⌨️ Typed: ${indicatorName}`);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Click first result in TradingView's search results
+    } catch (error) {
+      console.error('Error finding search input:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Click the search result for an indicator
+   */
+  private async clickSearchResult(pageOrFrame: any, indicatorName: string): Promise<boolean> {
+    try {
       const resultClicked = await pageOrFrame.evaluate((indName: string) => {
         // TradingView shows results in a list
         const resultSelectors = [
@@ -414,7 +541,8 @@ class GMGNScraperService extends EventEmitter {
           '[class*="item-"]',
           '[class*="listItem"]',
           'div[role="option"]',
-          '[class*="search-"] [class*="item"]'
+          '[class*="search-"] [class*="item"]',
+          '.tv-insert-study-item'
         ];
         
         for (const sel of resultSelectors) {
@@ -422,7 +550,7 @@ class GMGNScraperService extends EventEmitter {
           for (const result of results) {
             // Check if this result matches our indicator
             const text = result.textContent?.toLowerCase() || '';
-            if (text.includes(indName.toLowerCase())) {
+            if (text.includes(indName.toLowerCase()) || text.includes('moving average')) {
               console.log('🎯 Found matching result:', text.substring(0, 50));
               (result as HTMLElement).click();
               return true;
@@ -442,76 +570,214 @@ class GMGNScraperService extends EventEmitter {
         return false;
       }, indicatorName);
       
-      if (!resultClicked) {
-        console.warn('⚠️ Could not find search result to click');
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // If period specified, configure indicator settings
-      if (period) {
-        await this.configureIndicatorPeriod(pageOrFrame, indicatorType, period);
-      }
-      
-      console.log(`✅ Indicator added: ${indicator}`);
-      
-      // Note: Removed invalid CSS selector :has-text() that was causing DOM exceptions
-
-      console.log(`  ➕ Added ${indicator} indicator`);
+      return resultClicked;
     } catch (error) {
-      console.log(`  ⚠️ Could not add ${indicator} indicator:`, error);
+      console.error('Error clicking search result:', error);
+      return false;
     }
   }
 
   /**
-   * Configure indicator period (for RSI, EMA, etc.)
+   * Configure a specific indicator by its index in the legend
    */
-  private async configureIndicatorPeriod(pageOrFrame: any, indicatorType: string, period: string) {
+  private async configureIndicatorByIndex(pageOrFrame: any, indicatorType: string, index: number, period: string) {
     try {
-      // Look for settings/gear icon
-      await pageOrFrame.evaluate(() => {
-        const settingsBtn = Array.from(document.querySelectorAll('[data-name="legend-settings-action"], .icon-TUJGrV9w'))
-          .find(el => el.getAttribute('aria-label')?.includes('Settings'));
-        if (settingsBtn) {
-          (settingsBtn as HTMLElement).click();
+      console.log(`🔧 Configuring ${indicatorType} #${index + 1} to period ${period}`);
+      
+      // Find the indicator in the legend by index
+      const settingsOpened = await pageOrFrame.evaluate((indType: string, idx: number) => {
+        // Find all legends with this indicator type
+        const legends = Array.from(document.querySelectorAll('[class*="legend"], [class*="source"], [class*="title"]'));
+        let matchCount = 0;
+        
+        for (const legend of legends) {
+          const text = legend.textContent?.toLowerCase() || '';
+          
+          // Check if this legend contains our indicator type
+          if ((indType.toLowerCase() === 'ema' && text.includes('ema')) ||
+              (indType.toLowerCase() === 'rsi' && text.includes('rsi'))) {
+            
+            if (matchCount === idx) {
+              // This is the indicator we want to configure
+              console.log(`Found ${indType} #${idx + 1}: ${text.substring(0, 50)}`);
+              
+              // Method 1: Look for settings icon/button near this legend
+              const settingsBtn = legend.querySelector('[class*="settings"], [class*="gear"], [title*="Settings"], [aria-label*="Settings"]') ||
+                                legend.parentElement?.querySelector('[class*="settings"], [class*="gear"]');
+              
+              if (settingsBtn) {
+                (settingsBtn as HTMLElement).click();
+                return 'settings_clicked';
+              }
+              
+              // Method 2: Try right-clicking on the legend
+              const rightClickEvent = new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                button: 2,
+                buttons: 2
+              });
+              legend.dispatchEvent(rightClickEvent);
+              
+              // Check if context menu appeared
+              setTimeout(() => {
+                const contextMenu = document.querySelector('[class*="context"], [class*="menu"][style*="position"]');
+                if (contextMenu) {
+                  // Look for settings option in context menu
+                  const settingsOption = Array.from(contextMenu.querySelectorAll('*')).find(el => 
+                    el.textContent?.toLowerCase().includes('setting') ||
+                    el.textContent?.toLowerCase().includes('properties')
+                  );
+                  if (settingsOption) {
+                    (settingsOption as HTMLElement).click();
+                  }
+                }
+              }, 100);
+              
+              return 'rightclick_attempted';
+            }
+            matchCount++;
+          }
         }
+        return false;
+      }, indicatorType, index);
+      
+      if (settingsOpened) {
+        console.log(`✅ Settings menu opened via: ${settingsOpened}`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Take screenshot of settings dialog
+        await this.takeDebugScreenshot(`settings_${indicatorType}_${index}`);
+        
+        // Now look for the inputs tab and period field
+        await this.configureIndicatorSettings(pageOrFrame, indicatorType, period);
+      } else {
+        console.warn(`⚠️ Could not open settings for ${indicatorType} #${index + 1}`);
+      }
+    } catch (error) {
+      console.error(`Error configuring ${indicatorType} #${index + 1}:`, error);
+    }
+  }
+
+  /**
+   * Configure indicator settings after opening the settings dialog
+   */
+  private async configureIndicatorSettings(pageOrFrame: any, indicatorType: string, period: string) {
+    try {
+      console.log(`🔍 Looking for settings dialog or input fields...`);
+      
+      // First check what's available in the DOM
+      const configElements = await pageOrFrame.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input[type="number"], input[inputmode="numeric"], input[type="text"]'));
+        const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [class*="dialog"], [class*="modal"]'));
+        const buttons = Array.from(document.querySelectorAll('button'));
+        
+        return {
+          inputCount: inputs.length,
+          inputs: inputs.map(i => ({
+            type: i.getAttribute('type'),
+            value: (i as HTMLInputElement).value,
+            placeholder: i.getAttribute('placeholder'),
+            visible: (i as HTMLElement).offsetParent !== null,
+            parentText: i.parentElement?.textContent?.substring(0, 50)
+          })),
+          dialogCount: dialogs.length,
+          dialogs: dialogs.map(d => ({
+            visible: (d as HTMLElement).offsetParent !== null,
+            text: d.textContent?.substring(0, 100)
+          })),
+          buttons: buttons.filter(b => 
+            b.textContent?.match(/OK|Apply|Save|Confirm/i)
+          ).map(b => b.textContent)
+        };
       });
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('📋 Config elements found:', JSON.stringify(configElements, null, 2));
       
-      // Find "Length" input for RSI or "Period" for EMA
-      const inputSelector = 'input[type="number"], input[inputmode="numeric"]';
-      await pageOrFrame.waitForSelector(inputSelector, { timeout: 3000 });
-      
-      // Clear and set new period
-      await pageOrFrame.evaluate((sel: string, val: string) => {
-        const inputs = Array.from(document.querySelectorAll(sel)) as HTMLInputElement[];
-        const lengthInput = inputs.find(input => 
-          input.closest('tr')?.textContent?.includes('Length') ||
-          input.closest('tr')?.textContent?.includes('Period')
-        );
-        if (lengthInput) {
-          lengthInput.value = '';
-          lengthInput.value = val;
-          lengthInput.dispatchEvent(new Event('input', { bubbles: true }));
-          lengthInput.dispatchEvent(new Event('change', { bubbles: true }));
+      // Try different approaches to find and set the period input
+      const inputFound = await pageOrFrame.evaluate((targetPeriod: string) => {
+        // Method 1: Look for visible number inputs
+        const numberInputs = Array.from(document.querySelectorAll('input[type="number"], input[inputmode="numeric"]')) as HTMLInputElement[];
+        for (const input of numberInputs) {
+          if ((input as HTMLElement).offsetParent !== null) {
+            // Check if this looks like a period/length input
+            const parentText = input.parentElement?.textContent?.toLowerCase() || '';
+            const labelText = input.getAttribute('aria-label')?.toLowerCase() || '';
+            
+            if (parentText.includes('period') || parentText.includes('length') || 
+                labelText.includes('period') || labelText.includes('length') ||
+                input.value === '9' || input.value === '14' || input.value === '20') {
+              
+              console.log(`Found potential period input with value: ${input.value}`);
+              input.value = targetPeriod;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              
+              // Also try setting via React if needed
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+              if (nativeInputValueSetter) {
+                nativeInputValueSetter.call(input, targetPeriod);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              
+              return true;
+            }
+          }
         }
-      }, inputSelector, period);
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Click OK/Apply button
-      await pageOrFrame.evaluate(() => {
-        const okBtn = Array.from(document.querySelectorAll('button'))
-          .find(el => el.textContent?.includes('OK') || el.textContent?.includes('Apply'));
-        if (okBtn) {
-          (okBtn as HTMLElement).click();
+        
+        // Method 2: Look for any visible text input that might contain the period
+        const textInputs = Array.from(document.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
+        for (const input of textInputs) {
+          if ((input as HTMLElement).offsetParent !== null && 
+              (input.value === '9' || input.value === '14' || input.value === '20')) {
+            console.log(`Found text input with period value: ${input.value}`);
+            input.value = targetPeriod;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
         }
-      });
+        
+        return false;
+      }, period);
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (inputFound) {
+        console.log(`✅ Set period to ${period}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Click OK/Apply button
+        await pageOrFrame.evaluate(() => {
+          const okBtn = Array.from(document.querySelectorAll('button'))
+            .find(el => {
+              const text = el.textContent?.toLowerCase() || '';
+              return text.includes('ok') || text.includes('apply') || text.includes('save');
+            });
+          if (okBtn) {
+            (okBtn as HTMLElement).click();
+            return true;
+          }
+          
+          // Alternative: Press Enter key
+          const activeElement = document.activeElement as HTMLElement;
+          if (activeElement) {
+            const enterEvent = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              code: 'Enter',
+              keyCode: 13,
+              bubbles: true
+            });
+            activeElement.dispatchEvent(enterEvent);
+          }
+          return false;
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`✅ Configured ${indicatorType} period: ${period}`);
+      } else {
+        console.warn(`⚠️ Could not find period input field for ${indicatorType}`);
+      }
       
-      console.log(`✅ Configured ${indicatorType} period: ${period}`);
     } catch (error) {
       console.error(`Error configuring indicator period:`, error);
     }
