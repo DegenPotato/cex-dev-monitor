@@ -203,27 +203,57 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Add an indicator to the chart
+   * Add an indicator to the chart via TradingView UI
    */
   private async addIndicatorToChart(page: Page, indicator: string) {
     try {
-      // This would need to be adapted based on GMGN's actual UI
-      // Example approach:
+      console.log(`🔧 Adding indicator: ${indicator}`);
       
-      // 1. Click indicators button
-      const indicatorBtn = await page.$('[data-testid="indicators"], .indicators-button, button:has-text("Indicators")');
-      if (indicatorBtn) {
-        await indicatorBtn.click();
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // Parse indicator (e.g., "RSI_14", "EMA_9")
+      const [indicatorType, period] = indicator.includes('_') 
+        ? indicator.split('_') 
+        : [indicator, null];
+      
+      // Click "Indicators" button on TradingView chart
+      await page.evaluate(() => {
+        const indicatorsBtn = Array.from(document.querySelectorAll('button, div[role="button"]'))
+          .find(el => el.textContent?.includes('Indicators') || el.getAttribute('aria-label')?.includes('Indicators'));
+        if (indicatorsBtn) {
+          (indicatorsBtn as HTMLElement).click();
+        }
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Type in indicator search
+      const searchSelector = 'input[type="text"]';
+      await page.waitForSelector(searchSelector, { timeout: 5000 });
+      
+      const indicatorName = indicatorType === 'RSI' ? 'Relative Strength Index' : 
+                           indicatorType === 'EMA' ? 'Exponential Moving Average' :
+                           indicatorType === 'SMA' ? 'Simple Moving Average' :
+                           indicatorType === 'MACD' ? 'MACD' : indicatorType;
+      
+      await page.type(searchSelector, indicatorName);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Click first result
+      await page.evaluate(() => {
+        const firstResult = document.querySelector('[data-role="list-item"], .item-2IihgTnv');
+        if (firstResult) {
+          (firstResult as HTMLElement).click();
+        }
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // If period specified, configure indicator settings
+      if (period) {
+        await this.configureIndicatorPeriod(page, indicatorType, period);
       }
-
-      // 2. Search for indicator
-      const searchInput = await page.$('input[placeholder*="Search"], .indicator-search');
-      if (searchInput) {
-        await searchInput.type(indicator);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
+      
+      console.log(`✅ Indicator added: ${indicator}`);
+      
       // 3. Click on indicator result
       const indicatorOption = await page.$(`[data-name="${indicator}"], .indicator-item:has-text("${indicator}")`);
       if (indicatorOption) {
@@ -234,6 +264,60 @@ class GMGNScraperService extends EventEmitter {
       console.log(`  ➕ Added ${indicator} indicator`);
     } catch (error) {
       console.log(`  ⚠️ Could not add ${indicator} indicator:`, error);
+    }
+  }
+
+  /**
+   * Configure indicator period/length in settings dialog
+   */
+  private async configureIndicatorPeriod(page: Page, indicatorType: string, period: string) {
+    try {
+      // Look for settings/gear icon
+      await page.evaluate(() => {
+        const settingsBtn = Array.from(document.querySelectorAll('[data-name="legend-settings-action"], .icon-TUJGrV9w'))
+          .find(el => el.getAttribute('aria-label')?.includes('Settings'));
+        if (settingsBtn) {
+          (settingsBtn as HTMLElement).click();
+        }
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Find "Length" input for RSI or "Period" for EMA
+      const inputSelector = 'input[type="number"], input[inputmode="numeric"]';
+      await page.waitForSelector(inputSelector, { timeout: 3000 });
+      
+      // Clear and set new period
+      await page.evaluate((sel: string, val: string) => {
+        const inputs = Array.from(document.querySelectorAll(sel)) as HTMLInputElement[];
+        const lengthInput = inputs.find(input => 
+          input.closest('tr')?.textContent?.includes('Length') ||
+          input.closest('tr')?.textContent?.includes('Period')
+        );
+        if (lengthInput) {
+          lengthInput.value = '';
+          lengthInput.value = val;
+          lengthInput.dispatchEvent(new Event('input', { bubbles: true }));
+          lengthInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }, inputSelector, period);
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Click OK/Apply button
+      await page.evaluate(() => {
+        const okBtn = Array.from(document.querySelectorAll('button'))
+          .find(el => el.textContent?.includes('OK') || el.textContent?.includes('Apply'));
+        if (okBtn) {
+          (okBtn as HTMLElement).click();
+        }
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log(`✅ Configured ${indicatorType} period: ${period}`);
+    } catch (error) {
+      console.error(`Error configuring indicator period:`, error);
     }
   }
 
@@ -308,49 +392,44 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Extract current price from the page
+   * Extract current price from TradingView chart
    */
   private async extractPrice(page: Page): Promise<number | null> {
     try {
-      // Try multiple selectors that might contain the price
-      const selectors = [
-        '.price-value',
-        '.current-price',
-        '[data-testid="price"]',
-        '.chart-price',
-        '.token-price',
-        // GMGN specific selectors (adjust based on actual DOM)
-        '.price-display',
-        '.main-price',
-        'div:has-text("$"):first'
-      ];
-
-      for (const selector of selectors) {
-        const element = await page.$(selector);
-        if (element) {
-          const text = await element.evaluate((el: Element) => el.textContent);
-          const price = this.parsePrice(text);
-          if (price !== null) return price;
-        }
-      }
-
-      // Try to get from page evaluation
+      // Extract from TradingView's price scale or legend
       const price = await page.evaluate(() => {
-        // Look for price in various places
-        const priceElements = document.querySelectorAll('[class*="price"], [id*="price"]');
-        for (const el of priceElements) {
+        // Method 1: Try chart legend (top-left where O/H/L/C appears)
+        const legendValues = document.querySelectorAll('[class*="valueValue"], [class*="value-"], .value');
+        for (const el of legendValues) {
           const text = el.textContent || '';
-          if (text.includes('$')) {
+          // Look for "C" (Close) value which is current price
+          const parent = el.parentElement?.textContent || '';
+          if (parent.includes('C') && !parent.includes('Vol')) {
+            return text.trim();
+          }
+        }
+        
+        // Method 2: Price scale on right side
+        const priceLabels = document.querySelectorAll('[class*="priceLabel"], [class*="price-axis"]');
+        for (const el of priceLabels) {
+          const text = el.textContent || '';
+          if (text.match(/^[0-9.]+$/)) {
             return text;
           }
         }
+        
+        // Method 3: GMGN-specific header price
+        const headerPrice = document.querySelector('.token-price, .price-display, [class*="currentPrice"]');
+        if (headerPrice?.textContent) {
+          return headerPrice.textContent.replace(/[^0-9.]/g, '');
+        }
+        
         return null;
       });
 
       if (price) {
         return this.parsePrice(price);
       }
-
     } catch (error) {
       console.error('Error extracting price:', error);
     }
@@ -358,41 +437,52 @@ class GMGNScraperService extends EventEmitter {
   }
 
   /**
-   * Extract indicator value from the page
+   * Extract indicator value from TradingView chart legend
    */
   private async extractIndicatorValue(page: Page, indicator: string): Promise<number | null> {
     try {
-      // Try to find indicator value in the DOM
-      const value = await page.evaluate((ind: string) => {
-        // Look for indicator values in various places
-        // This needs to be customized based on GMGN's actual DOM structure
+      // Parse indicator name (e.g., "RSI_14" -> look for "RSI")
+      const indicatorType = indicator.split('_')[0];
+      
+      const value = await page.evaluate((indType: string) => {
+        // TradingView shows indicators in legend items
+        const legendSources = document.querySelectorAll('[class*="legendMainSourceWrapper"], [class*="sourcesWrapper"]');
         
-        // Try legend/data panel
-        const legendItems = document.querySelectorAll('.legend-item, .indicator-value, [class*="indicator"]');
-        for (const item of legendItems) {
-          const text = item.textContent || '';
-          if (text.includes(ind)) {
-            // Extract number from text like "RSI: 45.23" or "RSI(14): 45.23"
-            const match = text.match(/[\d.]+/g);
-            if (match && match.length > 0) {
-              // Return the last number (usually the value)
-              return parseFloat(match[match.length - 1]);
+        for (const source of legendSources) {
+          const text = source.textContent || '';
+          
+          // Look for indicator by name
+          if (text.includes(indType) || 
+              text.includes('RSI') && indType === 'RSI' ||
+              text.includes('EMA') && indType === 'EMA' ||
+              text.includes('SMA') && indType === 'SMA' ||
+              text.includes('MACD') && indType === 'MACD') {
+            
+            // Extract the numeric value (usually after indicator name)
+            // Format examples: "RSI 14: 45.32", "EMA(9): 0.00012"
+            const matches = text.match(/([0-9]+\.?[0-9]*)/);
+            if (matches && matches[1]) {
+              const val = parseFloat(matches[1]);
+              // Sanity check: RSI should be 0-100, prices should be reasonable
+              if (indType === 'RSI' && (val < 0 || val > 100)) return null;
+              return val.toString();
             }
           }
         }
-
-        // Try data attributes
-        const dataElement = document.querySelector(`[data-indicator="${ind}"], [data-name="${ind}"]`);
-        if (dataElement) {
-          const value = dataElement.getAttribute('data-value') || dataElement.textContent;
-          if (value) {
-            const num = parseFloat(value);
-            if (!isNaN(num)) return num;
+        
+        // Fallback: Try to find in any element containing indicator name
+        const allElements = document.querySelectorAll('*');
+        for (const el of allElements) {
+          if (el.children.length > 0) continue; // Skip parent elements
+          const text = el.textContent || '';
+          if (text.includes(indType) && text.length < 100) {
+            const matches = text.match(/[0-9]+\.[0-9]+/);
+            if (matches) return matches[0];
           }
         }
 
         return null;
-      }, indicator);
+      }, indicatorType);
 
       return value;
 
