@@ -66,18 +66,16 @@ class GMGNScraperService extends EventEmitter {
       fs.mkdirSync(this.screenshotDir, { recursive: true });
     }
 
-    // Launch browser (headless or visible based on debug mode)
+    // Launch browser (always headless on server, no X display available)
     this.browser = await puppeteer.launch({
-      headless: !this.debugMode, // Visible browser in debug mode
+      headless: true, // Always headless - server has no display
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--window-size=1920,1080'
-      ],
-      // In debug mode, slow down operations to observe
-      ...(this.debugMode && { slowMo: 100 })
+      ]
     });
 
     this.isRunning = true;

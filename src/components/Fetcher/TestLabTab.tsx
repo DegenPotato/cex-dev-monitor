@@ -917,7 +917,7 @@ export const TestLabTab: React.FC = () => {
 
           <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
             <p className="text-sm text-yellow-300">
-              <strong>🧪 Test Mode:</strong> This will launch a browser window, navigate to GMGN chart, and attempt to extract price & indicator values (RSI, EMA) in real-time. Watch the console for extracted values.
+              <strong>🧪 Test Mode:</strong> Launches headless browser, navigates to GMGN chart, and extracts price & indicator values (RSI, EMA) every 5 seconds. Enable screenshots to see what the bot sees.
             </p>
           </div>
 
@@ -930,7 +930,7 @@ export const TestLabTab: React.FC = () => {
               className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-2 focus:ring-purple-500"
             />
             <label htmlFor="gmgn-debug-mode" className="text-sm text-gray-300">
-              📸 Enable Debug Mode (take screenshots)
+              📸 Enable Screenshots (captures what the bot sees)
             </label>
           </div>
 
