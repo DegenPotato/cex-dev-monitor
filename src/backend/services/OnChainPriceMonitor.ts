@@ -133,7 +133,7 @@ export class OnChainPriceMonitor extends EventEmitter {
 
   /**
    * Start batched polling for ALL active campaigns
-   * Polls every 1.5 seconds, batches up to 50 tokens per request
+   * Polls every 2 seconds, batches up to 50 tokens per request
    */
   private startBatchedPolling() {
     if (this.batchPollingInterval) {
@@ -153,9 +153,9 @@ export class OnChainPriceMonitor extends EventEmitter {
         const batch = activeCampaigns.slice(i, i + BATCH_SIZE);
         await this.pollBatch(batch);
       }
-    }, 1500); // 1,5 seconds (safe with single worker)
+    }, 2000); // 2 seconds (safe with single worker)
 
-    console.log(`📊 Started batched price polling (1.5s intervals, max 50 tokens per batch)`);
+    console.log(`📊 Started batched price polling (2s intervals, max 50 tokens per batch)`);
   }
 
   /**
