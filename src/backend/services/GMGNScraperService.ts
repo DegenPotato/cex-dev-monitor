@@ -336,7 +336,10 @@ class GMGNScraperService extends EventEmitter {
    */
   private async addAllIndicators(pageOrFrame: any) {
     try {
-      console.log('📊 Adding all indicators with default values...');
+      console.log('📊 Starting indicator addition process...');
+      
+      // Take initial screenshot
+      await this.takeDebugScreenshot('0_initial_chart');
       
       // List of indicators to add
       const indicators = [
@@ -344,18 +347,39 @@ class GMGNScraperService extends EventEmitter {
         'EMA', 'EMA', 'EMA', 'EMA'  // 4x EMA
       ];
       
+      const results = {
+        attempted: 0,
+        succeeded: 0,
+        failed: 0
+      };
+      
       for (let i = 0; i < indicators.length; i++) {
         const indicatorType = indicators[i];
-        console.log(`\n🔧 Adding ${indicatorType} (${i + 1}/${indicators.length})...`);
+        console.log(`\n${'='.repeat(50)}`);
+        console.log(`📍 INDICATOR ${i + 1}/${indicators.length}: ${indicatorType}`);
+        console.log(`${'='.repeat(50)}`);
+        
+        results.attempted++;
         
         // For EACH indicator, open menu fresh
-        await this.addSingleIndicator(pageOrFrame, indicatorType);
+        const success = await this.addSingleIndicator(pageOrFrame, indicatorType);
+        
+        if (success) {
+          results.succeeded++;
+          console.log(`✅ Successfully added ${indicatorType} #${i + 1}`);
+        } else {
+          results.failed++;
+          console.log(`❌ Failed to add ${indicatorType} #${i + 1}`);
+        }
         
         // Wait between additions
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         // Take screenshot after each addition
-        await this.takeDebugScreenshot(`after_adding_${indicatorType}_${i}`);
+        await this.takeDebugScreenshot(`${i + 1}_after_${indicatorType}`);
+        
+        // Log current status
+        console.log(`📊 Progress: ${results.succeeded}/${indicators.length} added successfully`);
       }
       
       // Close the indicators menu if it's still open
@@ -370,7 +394,13 @@ class GMGNScraperService extends EventEmitter {
         document.dispatchEvent(escEvent);
       });
       
-      console.log('✅ All indicators added successfully');
+      // Final summary
+      console.log(`\n${'='.repeat(50)}`);
+      console.log(`📊 FINAL RESULTS:`);
+      console.log(`   ✅ Succeeded: ${results.succeeded}`);
+      console.log(`   ❌ Failed: ${results.failed}`);
+      console.log(`   📈 Total: ${results.attempted}`);
+      console.log(`${'='.repeat(50)}`);
       
     } catch (error) {
       console.error('Error adding indicators:', error);
@@ -381,13 +411,13 @@ class GMGNScraperService extends EventEmitter {
   /**
    * Add a single indicator - open menu, add it, close menu
    */
-  private async addSingleIndicator(pageOrFrame: any, indicatorType: string) {
+  private async addSingleIndicator(pageOrFrame: any, indicatorType: string): Promise<boolean> {
     try {
       // Open indicators menu
       const menuOpened = await this.openIndicatorsMenu(pageOrFrame);
       if (!menuOpened) {
         console.log(`⚠️ Could not open menu for ${indicatorType}`);
-        return;
+        return false;
       }
       
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -400,7 +430,7 @@ class GMGNScraperService extends EventEmitter {
         await pageOrFrame.evaluate(() => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
         });
-        return;
+        return false;
       }
       
       // Type indicator name
@@ -410,11 +440,6 @@ class GMGNScraperService extends EventEmitter {
       
       // Click result
       const clicked = await this.clickSearchResult(pageOrFrame, indicatorName);
-      if (clicked) {
-        console.log(`✅ Added ${indicatorType}`);
-      } else {
-        console.log(`⚠️ Could not add ${indicatorType}`);
-      }
       
       // Close menu regardless
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -422,8 +447,17 @@ class GMGNScraperService extends EventEmitter {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
       });
       
+      if (clicked) {
+        console.log(`✅ Added ${indicatorType}`);
+        return true;
+      } else {
+        console.log(`⚠️ Could not add ${indicatorType}`);
+        return false;
+      }
+      
     } catch (error) {
       console.log(`Error adding ${indicatorType}:`, error);
+      return false;
     }
   }
   
