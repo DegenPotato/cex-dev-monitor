@@ -467,6 +467,7 @@ export class TelegramAutoTrader extends EventEmitter {
    * Handle price updates
    */
   private async handlePriceUpdate(data: any): Promise<void> {
+    // Data from OnChainPriceMonitor has: currentPrice (SOL), currentPriceUSD (USD)
     const positions = await queryAll(
       `SELECT * FROM telegram_trading_positions 
        WHERE token_mint = ? AND status = 'open'`,
@@ -474,39 +475,44 @@ export class TelegramAutoTrader extends EventEmitter {
     ) as any[];
     
     for (const position of positions) {
-      const oldPrice = position.current_price || position.avg_entry_price;
-      const newPrice = data.currentPrice;
+      // Use buy_price_sol if available, else fall back to buy_price_usd (which is actually SOL)
+      const avgEntryPriceSOL = position.buy_price_sol || position.buy_price_usd || position.avg_entry_price || 0;
+      const oldPriceSOL = position.current_price || avgEntryPriceSOL;
+      const newPriceSOL = data.currentPrice; // This is already in SOL from OnChainPriceMonitor
+      const newPriceUSD = data.currentPriceUSD || 0;
       
-      // Calculate P&L
-      const marketValue = position.current_balance * newPrice;
-      const costBasis = position.current_balance * position.avg_entry_price;
-      const unrealizedPnl = marketValue - costBasis;
-      const totalPnl = position.realized_pnl_sol + unrealizedPnl;
-      const roi = (totalPnl / position.total_invested_sol) * 100;
+      // Calculate P&L in SOL (like Test Lab)
+      const currentTokens = position.current_tokens || position.tokens_bought || 0;
+      const currentValueSOL = currentTokens * newPriceSOL;
+      const costBasisSOL = currentTokens * avgEntryPriceSOL;
+      const unrealizedPnlSOL = currentValueSOL - costBasisSOL;
+      const totalPnlSOL = (position.realized_pnl_sol || 0) + unrealizedPnlSOL;
+      const roi = position.total_invested_sol > 0 ? (totalPnlSOL / position.total_invested_sol) * 100 : 0;
       
-      // Update
+      // Update position
       await this.updatePosition(position.id, {
-        current_price: newPrice,
-        unrealized_pnl_sol: unrealizedPnl,
-        total_pnl_sol: totalPnl,
+        current_price: newPriceSOL,  // Store SOL price
+        unrealized_pnl_sol: unrealizedPnlSOL,
+        total_pnl_sol: totalPnlSOL,
         roi_percent: roi
       });
       
-      // Broadcast (REAL-TIME!)
+      // Broadcast (matches Test Lab format)
       this.broadcast('telegram_position_price_update', {
         position_id: position.id,
         token_symbol: position.token_symbol,
-        old_price: oldPrice,
-        new_price: newPrice,
-        change_percent: ((newPrice - oldPrice) / oldPrice) * 100,
-        unrealized_pnl: unrealizedPnl,
-        total_pnl: totalPnl,
-        roi_percent: roi
+        old_price: oldPriceSOL,
+        new_price: newPriceSOL,
+        new_price_usd: newPriceUSD,
+        change_percent: oldPriceSOL > 0 ? ((newPriceSOL - oldPriceSOL) / oldPriceSOL) * 100 : 0,
+        unrealized_pnl: unrealizedPnlSOL,
+        total_pnl: totalPnlSOL,
+        roi_percent: roi,
+        current_tokens: currentTokens
       });
     }
   }
 
-  /**
   /**
    * Update position
    */
