@@ -26,6 +26,7 @@ export interface AutoTradeConfig {
   auto_monitor_enabled: boolean;
   monitor_duration_hours: number;
   alert_price_changes?: string; // JSON array of price change percentages to alert on
+  alert_templates?: string | any[]; // Comprehensive alerts support
 }
 
 export interface DetectionContext {
@@ -285,7 +286,7 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Setup auto-sell alerts
+   * Setup comprehensive auto-sell alerts (like Test Lab)
    */
   private async setupAutoSell(positionId: number, config: AutoTradeConfig): Promise<void> {
     const position = await queryOne(
@@ -303,39 +304,143 @@ export class TelegramAutoTrader extends EventEmitter {
     
     this.positionCampaigns.set(positionId, campaign.id);
     
-    // Stop loss
-    if (config.stop_loss_percent < 0) {
-      await this.priceMonitor.addAlert(
-        campaign.id,
-        config.stop_loss_percent,
-        'below',
-        'percentage',
-        [{
-          type: 'sell',
-          walletId: position.wallet_id,
-          amount: 100,
-          slippage: config.auto_sell_slippage_bps / 100,
-          priorityFee: 0.001 // Default priority fee
-        }]
-      );
+    // Build alert templates
+    let alertTemplates = [];
+    
+    // Check for comprehensive alert templates (like Test Lab)
+    if (config.alert_templates) {
+      try {
+        alertTemplates = typeof config.alert_templates === 'string'
+          ? JSON.parse(config.alert_templates)
+          : config.alert_templates;
+      } catch (e) {
+        console.error('Failed to parse alert templates:', e);
+      }
     }
     
-    // Take profit
-    if (config.take_profit_percent > 0) {
+    // If no templates provided, create default ones based on simple stop/take profit
+    if (!alertTemplates.length) {
+      // Stop loss at configured percentage (default -30%)
+      if (config.stop_loss_percent && config.stop_loss_percent < 0) {
+        alertTemplates.push({
+          target_percent: config.stop_loss_percent,
+          direction: 'below',
+          price_type: 'percentage',
+          actions: [{
+            type: 'sell',
+            amount: 100, // Sell all
+            slippage: config.auto_sell_slippage_bps || 1000,
+            priorityFee: 0.0001,
+            walletId: position.wallet_id
+          }, {
+            type: 'notification'
+          }]
+        });
+      }
+      
+      // Progressive take profits (like Test Lab)
+      if (config.take_profit_percent && config.take_profit_percent > 0) {
+        // First take profit at configured % - sell 25%
+        alertTemplates.push({
+          target_percent: config.take_profit_percent,
+          direction: 'above',
+          price_type: 'percentage',
+          actions: [{
+            type: 'sell',
+            amount: 25,
+            slippage: config.auto_sell_slippage_bps || 1000,
+            priorityFee: 0.0001,
+            walletId: position.wallet_id
+          }, {
+            type: 'notification'
+          }]
+        });
+        
+        // Second at 2x - sell another 25%
+        alertTemplates.push({
+          target_percent: config.take_profit_percent * 2,
+          direction: 'above',
+          price_type: 'percentage',
+          actions: [{
+            type: 'sell',
+            amount: 25,
+            slippage: config.auto_sell_slippage_bps || 1000,
+            priorityFee: 0.0001,
+            walletId: position.wallet_id
+          }, {
+            type: 'notification'
+          }]
+        });
+        
+        // Third at 3x - sell another 25%
+        alertTemplates.push({
+          target_percent: config.take_profit_percent * 3,
+          direction: 'above',
+          price_type: 'percentage',
+          actions: [{
+            type: 'sell',
+            amount: 25,
+            slippage: config.auto_sell_slippage_bps || 1000,
+            priorityFee: 0.0001,
+            walletId: position.wallet_id
+          }, {
+            type: 'notification'
+          }]
+        });
+        
+        // Final at 5x - sell remaining
+        alertTemplates.push({
+          target_percent: config.take_profit_percent * 5,
+          direction: 'above',
+          price_type: 'percentage',
+          actions: [{
+            type: 'sell',
+            amount: 25,
+            slippage: config.auto_sell_slippage_bps || 1000,
+            priorityFee: 0.0001,
+            walletId: position.wallet_id
+          }, {
+            type: 'notification'
+          }]
+        });
+      }
+    }
+    
+    // Create alerts in price monitor and database
+    for (const template of alertTemplates) {
+      // Add to price monitor
       await this.priceMonitor.addAlert(
         campaign.id,
-        config.take_profit_percent,
-        'above',
-        'percentage',
-        [{
-          type: 'sell',
-          walletId: position.wallet_id,
-          amount: 100,
-          slippage: config.auto_sell_slippage_bps / 100,
-          priorityFee: 0.001 // Default priority fee
-        }]
+        template.target_percent || template.target_price,
+        template.direction,
+        template.price_type || 'percentage',
+        template.actions
       );
+      
+      // Store in database for tracking (if table exists)
+      try {
+        await execute(
+          `INSERT INTO telegram_position_alerts 
+           (position_id, user_id, target_price, target_percent, direction, price_type, actions, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            positionId,
+            position.user_id,
+            template.target_price || null,
+            template.target_percent || null,
+            template.direction,
+            template.price_type || 'percentage',
+            JSON.stringify(template.actions),
+            Math.floor(Date.now() / 1000)
+          ]
+        );
+      } catch (e) {
+        // Table might not exist yet if migration hasn't run
+        console.log('Alert tracking table not ready yet');
+      }
     }
+    
+    console.log(`🎯 [AutoTrader] Set up ${alertTemplates.length} alerts for position ${positionId}`);
   }
 
   /**
