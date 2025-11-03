@@ -23,12 +23,15 @@ import {
   CheckSquare,
   Crown,
   LogOut,
-  Brain
+  Brain,
+  TrendingUp
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import TelegramChatHistory from './TelegramChatHistory';
+import { TelegramPositionsDashboard } from './TelegramPositionsDashboard';
+import { TelegramAutoTradeConfig } from './TelegramAutoTradeConfig';
 
 interface TelegramAccount {
   configured: boolean;
@@ -57,6 +60,8 @@ interface SnifferChat {
   processBotMessages?: boolean;
   forwardAccountId?: number | null;
   monitoredTopicIds?: string[];
+  action_on_detection?: string;
+  autoTradeConfig?: any;
 }
 
 interface ContractDetection {
@@ -76,7 +81,7 @@ interface ContractDetection {
 export function TelegramSnifferTab() {
   const { isAuthenticated } = useAuth();
   const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
-  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'detections' | 'forwards' | 'traffic' | 'settings'>('sniffer');
+  const [activeSection, setActiveSection] = useState<'sniffer' | 'monitored' | 'positions' | 'detections' | 'forwards' | 'traffic' | 'settings'>('sniffer');
   const [fetchProgress, setFetchProgress] = useState<{saved: number, total: number} | null>(null);
   const [userAccount, setUserAccount] = useState<TelegramAccount | null>(null);
   const [botAccount, setBotAccount] = useState<TelegramAccount | null>(null);
@@ -192,6 +197,10 @@ export function TelegramSnifferTab() {
   const [trafficMetrics, setTrafficMetrics] = useState<any>(null);
   const [trafficReport, setTrafficReport] = useState<any>(null);
   const [trafficReportPeriod, setTrafficReportPeriod] = useState(60);
+  
+  // Auto-trade configuration states
+  const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
+  const [autoTradeChat, setAutoTradeChat] = useState<any | null>(null);
 
   // Load available forward targets when modal opens
   const loadAvailableForwardTargets = async () => {
@@ -207,7 +216,7 @@ export function TelegramSnifferTab() {
       console.error('Failed to load forward targets:', error);
     }
   };
-
+  
   // Load existing forward destinations for a chat
   const loadForwardDestinations = async (chatId: string) => {
     try {
@@ -315,20 +324,8 @@ export function TelegramSnifferTab() {
     };
   }, [subscribe, activeSection]);
 
-  // Load account status and chats when authentication changes
+  // WebSocket listeners for metadata and status updates
   useEffect(() => {
-    if (isAuthenticated) {
-      loadAccountStatus();
-      loadSnifferChats(); // Load existing chats from database
-      loadDetections(); // Load existing detections
-      loadTelegramAccounts(); // Load available accounts for forwarding
-    }
-  }, [isAuthenticated]);
-  
-  // Subscribe to real-time metadata updates
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    
     const unsubMetadata = subscribe('metadata_update', (data: any) => {
       setAvailableChats(prev => prev.map(chat => 
         chat.chatId === data.chatId 
@@ -352,13 +349,44 @@ export function TelegramSnifferTab() {
           : chat
       ));
     });
+
+    // Subscribe to position updates for auto-trading
+    const unsubscribePositionCreated = subscribe('telegram_position_created', (data: any) => {
+      setMessage({ type: 'success', text: `New position: ${data.token_symbol || data.token_mint?.slice(0, 8) || 'Unknown'}...` });
+    });
+
+    const unsubscribeTradeExecuted = subscribe('telegram_trade_executed', (data: any) => {
+      const action = data.trade_type === 'buy' ? '🟢 Bought' : '🔴 Sold';
+      setMessage({ type: 'success', text: `${action} ${data.token_symbol || ''}` });
+    });
+
+    const unsubscribePositionClosed = subscribe('telegram_position_closed', (data: any) => {
+      const emoji = data.roi_percent > 0 ? '🎉' : '😔';
+      setMessage({ 
+        type: data.roi_percent > 0 ? 'success' : 'error', 
+        text: `${emoji} Position closed: ${data.roi_percent > 0 ? '+' : ''}${data.roi_percent?.toFixed(2)}% ROI` 
+      });
+    });
     
     return () => {
       unsubMetadata();
       unsubStatus();
       unsubContracts();
+      unsubscribePositionCreated();
+      unsubscribeTradeExecuted();
+      unsubscribePositionClosed();
     };
-  }, [isAuthenticated, subscribe]);
+  }, [subscribe]);
+
+  // Load account status and chats when authentication changes
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAccountStatus();
+      loadSnifferChats(); 
+      loadDetections();
+      loadTelegramAccounts();
+    }
+  }, [isAuthenticated]);
 
   const loadAccountStatus = async () => {
     try {
@@ -1065,6 +1093,16 @@ export function TelegramSnifferTab() {
           }`}
         >
           Detections ({detections.length})
+        </button>
+        <button
+          onClick={() => setActiveSection('positions')}
+          className={`px-6 py-3 font-medium transition-all ${
+            activeSection === 'positions' 
+              ? 'text-cyan-400 border-b-2 border-cyan-400' 
+              : 'text-gray-400 hover:text-cyan-300'
+          }`}
+        >
+          Positions 💹
         </button>
         <button
           onClick={() => setActiveSection('forwards')}
@@ -2412,6 +2450,17 @@ export function TelegramSnifferTab() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAutoTradeChat(chat);
+                            setAutoTradeModalOpen(true);
+                          }}
+                          className="p-2 bg-gradient-to-r from-green-500/20 to-blue-500/20 hover:from-green-500/30 hover:to-blue-500/30 border border-green-500/40 rounded-lg transition-all group"
+                          title="Configure Auto-Trading"
+                        >
+                          <TrendingUp className="w-4 h-4 text-green-400 group-hover:text-green-300" />
+                        </button>
+                        <button
                           onClick={() => setSelectedHistoryChat({ 
                             id: chat.chatId, 
                             name: chat.chatName || chat.chatId, 
@@ -2501,6 +2550,25 @@ export function TelegramSnifferTab() {
                           <span className="text-gray-500">Forwarding:</span>
                           <span className="text-green-400 flex items-center gap-1">
                             📤 To: {chat.forwardToChatId}{chat.forwardAccountId ? ' (custom account)' : ''}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Trading Status Indicator */}
+                      {chat.action_on_detection && chat.action_on_detection !== 'forward_only' && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Actions:</span>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            chat.action_on_detection === 'trade_only' ? 'bg-green-500/20 text-green-400' :
+                            chat.action_on_detection === 'monitor_only' ? 'bg-purple-500/20 text-purple-400' :
+                            chat.action_on_detection === 'forward_and_trade' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {chat.action_on_detection === 'trade_only' ? '🤖 Auto-Trade' :
+                             chat.action_on_detection === 'monitor_only' ? '📊 Monitor' :
+                             chat.action_on_detection === 'forward_and_trade' ? '📤🤖 Forward+Trade' :
+                             chat.action_on_detection === 'forward_and_monitor' ? '📤📊 Forward+Monitor' :
+                             chat.action_on_detection === 'all' ? '🔥 All Actions' : ''}
                           </span>
                         </div>
                       )}
@@ -2622,6 +2690,13 @@ export function TelegramSnifferTab() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Positions Section */}
+      {activeSection === 'positions' && (
+        <div className="space-y-6">
+          <TelegramPositionsDashboard />
         </div>
       )}
 
@@ -4026,6 +4101,73 @@ export function TelegramSnifferTab() {
               >
                 {loading ? 'Applying...' : `Apply to ${selectedChats.size} Chats`}
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Auto-Trade Configuration Modal */}
+      {autoTradeModalOpen && autoTradeChat && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-cyan-500/30 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gray-900/95 backdrop-blur-sm border-b border-cyan-500/20 p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold text-cyan-300 mb-2">Auto-Trading Configuration</h3>
+                  <p className="text-gray-400">
+                    {autoTradeChat.chatName || autoTradeChat.chatId}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAutoTradeModalOpen(false);
+                    setAutoTradeChat(null);
+                  }}
+                  className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-red-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <TelegramAutoTradeConfig
+                chatId={autoTradeChat.chatId}
+                currentConfig={autoTradeChat.autoTradeConfig}
+                onSave={async (newConfig) => {
+                  // Save configuration
+                  try {
+                    const response = await fetch(`${config.apiUrl}/api/telegram/auto-trade/config`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        chatId: autoTradeChat.chatId,
+                        config: newConfig
+                      })
+                    });
+
+                    if (response.ok) {
+                      setMessage({ type: 'success', text: 'Auto-trade configuration saved!' });
+                      setAutoTradeModalOpen(false);
+                      setAutoTradeChat(null);
+                      // Refresh monitored chats to show new config
+                      await loadSnifferChats();
+                    } else {
+                      setMessage({ type: 'error', text: 'Failed to save configuration' });
+                    }
+                  } catch (error) {
+                    setMessage({ type: 'error', text: 'Error saving configuration' });
+                  }
+                }}
+                onCancel={() => {
+                  setAutoTradeModalOpen(false);
+                  setAutoTradeChat(null);
+                }}
+              />
             </div>
           </div>
         </div>,
