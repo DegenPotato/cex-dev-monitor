@@ -801,20 +801,32 @@ class GMGNScraperService extends EventEmitter {
               console.log(`✅ Found ${indType} #${idx + 1}: "${text.substring(0, 80)}"`);
               console.log(`   Element: ${legend.tagName}, Classes: ${legend.className}`);
               
-              // Find the actual text element to click (not the wrapper)
+              // Find the actual clickable text element (not the wrapper)
               let clickTarget = legend;
               
-              // Try to find the actual text/title element inside the legend
-              const textElements = legend.querySelectorAll('[class*="title"], [class*="text"], span');
-              if (textElements.length > 0) {
-                // Use the first text element that contains our indicator name
-                for (const elem of textElements) {
-                  if (elem.textContent?.toLowerCase().includes(indType.toLowerCase())) {
-                    clickTarget = elem;
-                    break;
-                  }
+              // Look for the actual interactive element with the indicator name
+              // Priority order: look for elements that are typically clickable
+              const selectors = [
+                '[class*="mainTitle"]',      // Main title element
+                '[class*="titleWrapper"] > div:first-child', // First child of wrapper
+                '[class*="apply-overflow-tooltip"]',  // Tooltip-enabled text
+                'div[class*="title"]:not([class*="Wrapper"])', // Title but not wrapper
+                'span:first-child',           // First span child
+                'div:first-child'             // First div child as fallback
+              ];
+              
+              for (const selector of selectors) {
+                const elem = legend.querySelector(selector);
+                if (elem && elem.textContent?.toLowerCase().includes(indType.toLowerCase())) {
+                  clickTarget = elem;
+                  console.log(`   Found clickable element with selector: ${selector}`);
+                  break;
                 }
               }
+              
+              // Log what we're about to click
+              const rect = (clickTarget as HTMLElement).getBoundingClientRect();
+              console.log(`   Clicking on: tag=${clickTarget.tagName}, class="${(clickTarget as HTMLElement).className}", position=(${rect.left},${rect.top})`);
               
               // CLICK on the indicator text to make menu persist (not just hover)
               (clickTarget as HTMLElement).click();
@@ -845,18 +857,26 @@ class GMGNScraperService extends EventEmitter {
       // Step 2: Wait for menu to appear after click
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Step 3: Look for the settings button ONLY in the indicator's hover menu
+      // Step 3: Look for the settings button in the indicator's menu
       const buttonDebug = await pageOrFrame.evaluate(() => {
-        // Look ONLY for the hover menu that should have appeared near the indicator
-        // These buttons appear in a specific container with class containing "l31H9iuA"
+        // Debug: Log all elements with button-like classes
+        const allButtonLikeElements = document.querySelectorAll('[class*="button"], button, [role="button"]');
+        console.log(`[Browser] Found ${allButtonLikeElements.length} button-like elements in DOM`);
+        
+        // Look for the hover menu containers
         const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"]'));
+        console.log(`[Browser] Found ${buttonContainers.length} button containers`);
         
         // Find buttons ONLY within these hover menu containers
         let hoveredButtons: Element[] = [];
         for (const container of buttonContainers) {
-          // Only look at containers that are visible (the hover menu)
-          if ((container as HTMLElement).offsetParent !== null) {
-            const buttons = container.querySelectorAll('button');
+          const isVisible = (container as HTMLElement).offsetParent !== null;
+          const rect = (container as HTMLElement).getBoundingClientRect();
+          console.log(`[Browser] Container visible: ${isVisible}, position: (${rect.left}, ${rect.top})`);
+          
+          if (isVisible) {
+            const buttons = container.querySelectorAll('button, [role="button"], div[class*="button"]');
+            console.log(`[Browser] Found ${buttons.length} buttons in visible container`);
             hoveredButtons.push(...Array.from(buttons));
           }
         }
