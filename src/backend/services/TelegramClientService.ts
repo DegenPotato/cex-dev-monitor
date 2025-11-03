@@ -3081,14 +3081,15 @@ export class TelegramClientService extends EventEmitter {
       const monitors = (stmt as any).all([chatId]);
       
       for (const monitor of monitors) {
-        // Check if this message is from the monitored user
+        // Check if this message is from the monitored user (support both old username and new userId)
         const targetMatches = 
+          monitor.target_user_id === senderId || // New: userId matching
           monitor.target_username === senderId ||
           monitor.target_username === senderUsername ||
           monitor.target_username === `@${senderUsername}`;
         
         if (targetMatches) {
-          console.log(`🎯 [Test Lab] Monitored user ${senderUsername} posted tokens in chat ${chatId}`);
+          console.log(`🎯 [Test Lab] Monitored user ${senderUsername} (ID: ${senderId}) posted tokens in chat ${chatId}`);
           
           // Auto-create Test Lab campaign for each detected token
           for (const contract of contracts) {
@@ -3145,6 +3146,24 @@ export class TelegramClientService extends EventEmitter {
       const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
       
       if (campaign) {
+        // Apply configured alerts to the campaign
+        const alerts = monitor.alerts ? JSON.parse(monitor.alerts) : [];
+        if (alerts.length > 0) {
+          console.log(`📋 [Test Lab] Applying ${alerts.length} configured alert(s) to campaign ${campaign.id}`);
+          
+          for (const alert of alerts) {
+            priceMonitor.addAlert(
+              campaign.id,
+              alert.targetPercent,
+              alert.direction,
+              alert.priceType,
+              alert.actions
+            );
+          }
+          
+          console.log(`✅ [Test Lab] Applied ${alerts.length} alert(s) to campaign`);
+        }
+        
         // Log the auto-created campaign
         const db = await getDb();
         const stmt = db.prepare(`
@@ -3155,7 +3174,7 @@ export class TelegramClientService extends EventEmitter {
         stmt.run([monitor.id, campaign.id, tokenMint, messageId, Date.now()]);
         saveDatabase();
         
-        console.log(`✅ [Test Lab] Campaign ${campaign.id} created for ${tokenMint}`);
+        console.log(`✅ [Test Lab] Campaign ${campaign.id} created for ${tokenMint} with ${alerts.length} alert(s)`);
       }
     } catch (error) {
       console.error(`❌ [Test Lab] Failed to create campaign for ${tokenMint}:`, error);
