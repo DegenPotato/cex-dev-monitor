@@ -676,6 +676,13 @@ export const TestLabTab: React.FC = () => {
       return;
     }
 
+    console.log('Starting monitor with:', {
+      telegramAccountId,
+      telegramChatId,
+      monitorAllUsers: telegramMonitorAllUsers,
+      selectedUserIds: telegramSelectedUserIds
+    });
+
     setLoading(true);
     try {
       const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-monitor/start`, {
@@ -697,7 +704,17 @@ export const TestLabTab: React.FC = () => {
         })
       });
 
+      console.log('Response status:', response.status, response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        toast.error(`Server error: ${response.status} - ${errorText.substring(0, 100)}`);
+        return;
+      }
+
       const data = await response.json();
+      console.log('Response data:', data);
       
       if (data.success) {
         const message = telegramMonitorAllUsers 
@@ -708,15 +725,16 @@ export const TestLabTab: React.FC = () => {
         
         // Refresh campaigns list to show any auto-created campaigns
         fetchCampaigns();
+        fetchActiveTelegramMonitors();
         
         // Show that monitoring is active
         toast.success('Monitor active! Campaigns will appear here when contracts are detected.');
       } else {
         toast.error(data.error || 'Failed to start monitoring');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start monitoring:', error);
-      toast.error('Failed to start monitoring');
+      toast.error(`Failed to start monitoring: ${error.message}`);
     } finally {
       setLoading(false);
     }
