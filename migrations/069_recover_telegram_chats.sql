@@ -7,6 +7,7 @@
 -- Add back all missing columns that the application needs
 ALTER TABLE telegram_monitored_chats ADD COLUMN chat_type TEXT;
 ALTER TABLE telegram_monitored_chats ADD COLUMN access_hash TEXT;
+ALTER TABLE telegram_monitored_chats ADD COLUMN username TEXT;
 ALTER TABLE telegram_monitored_chats ADD COLUMN participants_count INTEGER DEFAULT 0;
 ALTER TABLE telegram_monitored_chats ADD COLUMN can_send_messages INTEGER DEFAULT 1;
 ALTER TABLE telegram_monitored_chats ADD COLUMN topics TEXT; -- JSON array
