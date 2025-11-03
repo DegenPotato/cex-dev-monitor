@@ -127,7 +127,10 @@ export class TradingEngine {
       }
 
       const quoteData = await quoteResponse.json();
-      console.log(`💱 Best route found: ${quoteData.outAmount / Math.pow(10, quoteData.outputDecimals || 9)} tokens`);
+      // Get actual token decimals from blockchain (don't trust Jupiter's decimals)
+      const tokenInfo = await this.getTokenInfo(params.tokenMint, params.tokenSymbol);
+      const actualTokenDecimals = tokenInfo.decimals;
+      console.log(`💱 Best route found: ${quoteData.outAmount / Math.pow(10, actualTokenDecimals)} tokens (${actualTokenDecimals} decimals)`);
 
       // Get swap transaction
       const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
@@ -176,7 +179,7 @@ export class TradingEngine {
           tokenMint: params.tokenMint,
           tokenSymbol: params.tokenSymbol || 'UNKNOWN',
           amountIn: params.amount,
-          amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
+          amountOut: Number(quoteData.outAmount) / Math.pow(10, actualTokenDecimals),
           netAmount,
           taxAmount,
           slippageBps: params.slippageBps || 100,
@@ -215,7 +218,7 @@ export class TradingEngine {
         success: true,
         signature,
         amountIn: params.amount,
-        amountOut: Number(quoteData.outAmount) / Math.pow(10, quoteData.outputDecimals || 9),
+        amountOut: Number(quoteData.outAmount) / Math.pow(10, actualTokenDecimals),
         priceImpact: quoteData.priceImpactPct,
         fee: this.getPriorityFee(params.priorityLevel) / LAMPORTS_PER_SOL,
         taxAmount,
