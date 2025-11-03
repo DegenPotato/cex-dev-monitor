@@ -533,7 +533,7 @@ router.get('/api/test-lab/telegram-monitors', authService.requireSecureAuth(), a
     const userId = (req as any).user.id;
     const db = await getDb();
     
-    const monitors = (db as any).prepare(`
+    const stmt = db.prepare(`
       SELECT 
         tmc.*,
         ta.phone_number as account_phone,
@@ -543,7 +543,9 @@ router.get('/api/test-lab/telegram-monitors', authService.requireSecureAuth(), a
       LEFT JOIN test_lab_auto_campaigns tlac ON tmc.id = tlac.monitor_id
       WHERE tmc.user_id = ? AND tmc.test_lab_alerts IS NOT NULL AND tmc.is_active = 1
       GROUP BY tmc.id
-    `).all([userId]);
+    `);
+    
+    const monitors = (stmt as any).all([userId]);
     
     // Parse JSON fields
     const parsedMonitors = monitors.map((m: any) => ({
