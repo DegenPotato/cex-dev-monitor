@@ -86,6 +86,42 @@ export function createTelegramRoutes() {
   });
 
   /**
+   * Get users from a specific chat
+   */
+  router.get('/chat-users', authService.requireSecureAuth(), async (req, res) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { accountId, chatId } = req.query;
+      
+      if (!accountId || !chatId) {
+        return res.status(400).json({ error: 'accountId and chatId query parameters required' });
+      }
+      
+      // Verify account belongs to user
+      const account = await queryOne(
+        'SELECT id FROM telegram_user_accounts WHERE id = ? AND user_id = ?',
+        [accountId, userId]
+      );
+      
+      if (!account) {
+        return res.status(403).json({ error: 'Account not found or access denied' });
+      }
+      
+      // TODO: Implement actual user fetching from Telegram
+      // For now, return mock data - you'll need to integrate with your TelegramUserService
+      // to fetch actual chat members
+      const users = [
+        { id: '123456', username: 'example_user', first_name: 'Example', last_name: 'User' }
+      ];
+      
+      res.json({ users });
+    } catch (error: any) {
+      console.error('Failed to get chat users:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * Get account status (user account, bot account, monitored chats)
    */
   router.get('/status', authService.requireSecureAuth(), async (req, res) => {

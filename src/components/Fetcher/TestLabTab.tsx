@@ -106,8 +106,12 @@ export const TestLabTab: React.FC = () => {
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramUsername, setTelegramUsername] = useState<string>('');
+  const [telegramUserId, setTelegramUserId] = useState<string>('');
   const [telegramAccounts, setTelegramAccounts] = useState<any[]>([]);
   const [telegramChats, setTelegramChats] = useState<any[]>([]);
+  const [telegramUsers, setTelegramUsers] = useState<any[]>([]);
+  const [telegramUserSearch, setTelegramUserSearch] = useState<string>('');
+  const [telegramAlerts, setTelegramAlerts] = useState<Alert[]>([]);
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
     RSI: null,
@@ -148,6 +152,7 @@ export const TestLabTab: React.FC = () => {
   useEffect(() => {
     if (!telegramAccountId) {
       setTelegramChats([]);
+      setTelegramUsers([]);
       return;
     }
 
@@ -166,6 +171,29 @@ export const TestLabTab: React.FC = () => {
     };
     fetchChats();
   }, [telegramAccountId]);
+
+  // Fetch users when chat is selected
+  useEffect(() => {
+    if (!telegramChatId || !telegramAccountId) {
+      setTelegramUsers([]);
+      return;
+    }
+
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/telegram/chat-users?accountId=${telegramAccountId}&chatId=${telegramChatId}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTelegramUsers(data.users || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+      }
+    };
+    fetchUsers();
+  }, [telegramChatId, telegramAccountId]);
 
   // Set up WebSocket for real-time updates (like other tabs)
   useEffect(() => {
@@ -569,8 +597,13 @@ export const TestLabTab: React.FC = () => {
 
   // Start telegram monitoring
   const startTelegramMonitoring = async () => {
-    if (!telegramAccountId || !telegramChatId || !telegramUsername) {
-      toast.error('Please select account, chat, and username');
+    if (!telegramAccountId || !telegramChatId || !telegramUserId) {
+      toast.error('Please select account, chat, and user');
+      return;
+    }
+
+    if (telegramAlerts.length === 0) {
+      toast.error('Please add at least one alert');
       return;
     }
 
@@ -583,7 +616,9 @@ export const TestLabTab: React.FC = () => {
         body: JSON.stringify({
           telegramAccountId,
           chatId: telegramChatId,
-          username: telegramUsername
+          userId: telegramUserId,
+          username: telegramUsername,
+          alerts: telegramAlerts
         })
       });
 
@@ -595,6 +630,9 @@ export const TestLabTab: React.FC = () => {
         setTelegramAccountId(null);
         setTelegramChatId('');
         setTelegramUsername('');
+        setTelegramUserId('');
+        setTelegramAlerts([]);
+        setTelegramUserSearch('');
       } else {
         toast.error(data.error || 'Failed to start monitoring');
       }
@@ -869,18 +907,170 @@ export const TestLabTab: React.FC = () => {
               </select>
             </div>
 
+          </div>
+
+          {/* User Search & Selection */}
+          {telegramChatId && (
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Target Username</label>
+              <label className="block text-sm text-gray-400 mb-2">Users to Monitor</label>
               <input
                 type="text"
-                value={telegramUsername}
-                onChange={(e) => setTelegramUsername(e.target.value)}
-                placeholder="@username or user ID"
-                disabled={!telegramChatId}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                value={telegramUserSearch}
+                onChange={(e) => setTelegramUserSearch(e.target.value)}
+                placeholder="Search users..."
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm mb-2"
               />
+              <div className="bg-gray-900 border border-gray-700 rounded-lg max-h-64 overflow-y-auto">
+                {telegramUsers
+                  .filter(user => 
+                    !telegramUserSearch || 
+                    user.username?.toLowerCase().includes(telegramUserSearch.toLowerCase()) ||
+                    user.first_name?.toLowerCase().includes(telegramUserSearch.toLowerCase()) ||
+                    user.id?.toString().includes(telegramUserSearch)
+                  )
+                  .map((user) => {
+                    const isSelected = telegramUserId === user.id;
+                    return (
+                      <button
+                        key={user.id}
+                        onClick={() => {
+                          setTelegramUserId(user.id);
+                          setTelegramUsername(user.username || `User ${user.id}`);
+                        }}
+                        className={`w-full px-4 py-3 text-left border-b border-gray-800 hover:bg-gray-800 transition-colors flex items-center gap-2 ${
+                          isSelected ? 'bg-cyan-500/20 border-cyan-500' : ''
+                        }`}
+                      >
+                        {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
+                        <div className="flex-1">
+                          <div className="font-medium text-white">
+                            {user.first_name || 'Unknown'} {user.last_name || ''}
+                          </div>
+                          {user.username && (
+                            <div className="text-sm text-gray-400">@{user.username}</div>
+                          )}
+                          <div className="text-xs text-gray-500">ID: {user.id}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                {telegramUsers.length === 0 && (
+                  <div className="p-4 text-center text-gray-500">No users found</div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Alert Configuration */}
+          {telegramUserId && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Configure Alerts</h3>
+                <span className="text-sm text-gray-400">{telegramAlerts.length} alert(s)</span>
+              </div>
+              
+              {/* Add Alert Section */}
+              <div className="p-4 bg-gray-900 border border-gray-700 rounded-lg space-y-4">
+                <h4 className="text-sm font-medium text-gray-300">Add New Alert</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Price Type</label>
+                    <select
+                      value={newAlertPriceType}
+                      onChange={(e) => setNewAlertPriceType(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                    >
+                      <option value="percentage">Percentage Change</option>
+                      <option value="exact_sol">Exact Price (SOL)</option>
+                      <option value="exact_usd">Exact Price (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Direction</label>
+                    <select
+                      value={newAlertDirection}
+                      onChange={(e) => setNewAlertDirection(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                    >
+                      <option value="above">Above</option>
+                      <option value="below">Below</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Value</label>
+                    <input
+                      type="number"
+                      value={newAlertPercent}
+                      onChange={(e) => setNewAlertPercent(e.target.value)}
+                      placeholder={newAlertPriceType === 'percentage' ? '50' : '0.001'}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Alert Actions */}
+                <AlertActionConfig
+                  actions={newAlertActions}
+                  onChange={setNewAlertActions}
+                />
+
+                <button
+                  onClick={() => {
+                    if (!newAlertPercent) {
+                      toast.error('Please enter alert value');
+                      return;
+                    }
+                    const newAlert: Alert = {
+                      id: `telegram-alert-${Date.now()}`,
+                      campaignId: '', // Will be set when monitoring starts
+                      targetPrice: 0,
+                      targetPercent: parseFloat(newAlertPercent),
+                      direction: newAlertDirection,
+                      priceType: newAlertPriceType,
+                      hit: false,
+                      actions: newAlertActions
+                    };
+                    setTelegramAlerts([...telegramAlerts, newAlert]);
+                    setNewAlertPercent('');
+                    setNewAlertActions([{ type: 'notification' }]);
+                    toast.success('Alert added!');
+                  }}
+                  className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4 inline mr-2" />
+                  Add Alert
+                </button>
+              </div>
+
+              {/* Alerts List */}
+              {telegramAlerts.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-300">Configured Alerts</h4>
+                  {telegramAlerts.map((alert) => (
+                    <div key={alert.id} className="p-3 bg-gray-900 border border-gray-700 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="text-sm text-white font-medium">
+                            {alert.priceType === 'percentage' ? `${alert.targetPercent}%` : `${alert.targetPercent} ${alert.priceType === 'exact_sol' ? 'SOL' : 'USD'}`}
+                            {' '}{alert.direction === 'above' ? '↑' : '↓'}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Actions: {alert.actions.map(a => a.type).join(', ')}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setTelegramAlerts(telegramAlerts.filter(a => a.id !== alert.id))}
+                          className="p-1 hover:bg-gray-800 rounded transition-colors"
+                        >
+                          <X className="w-4 h-4 text-gray-400" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
             <p className="text-sm text-cyan-300">
@@ -891,11 +1081,11 @@ export const TestLabTab: React.FC = () => {
           <div className="flex justify-end">
             <button
               onClick={startTelegramMonitoring}
-              disabled={loading || !telegramAccountId || !telegramChatId || !telegramUsername}
+              disabled={loading || !telegramAccountId || !telegramChatId || !telegramUserId || telegramAlerts.length === 0}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               <Play className="w-4 h-4" />
-              {loading ? 'Starting...' : 'Start Monitoring'}
+              {!telegramUserId ? 'Select User' : telegramAlerts.length === 0 ? 'Add at least 1 alert' : loading ? 'Starting...' : 'Start Monitoring'}
             </button>
           </div>
         </div>
