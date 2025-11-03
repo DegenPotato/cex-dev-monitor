@@ -518,16 +518,33 @@ const PositionCard: React.FC<{
             <DollarSign className="w-3 h-3" /> Entry
           </p>
           <p className="text-sm font-bold text-white">{position.total_invested_sol.toFixed(6)} SOL</p>
-          <p className="text-xs text-gray-500">${((position.avg_entry_price || 0) * 175).toFixed(4)}</p>
+          <p className="text-xs text-gray-500">
+            {position.current_tokens ? `${position.current_tokens.toFixed(4)} tokens` : ''}
+          </p>
+          <p className="text-xs text-gray-500">
+            @ {(position.avg_entry_price || 0).toFixed(9)} SOL/token
+          </p>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
             <Activity className="w-3 h-3" /> Current
           </p>
-          <p className="text-sm font-bold text-white">{(position.current_price || 0).toFixed(6)} SOL</p>
-          <p className="text-xs text-gray-500">
-            {position.current_tokens ? `${position.current_tokens.toFixed(2)} tokens` : 'Loading...'}
+          <p className="text-sm font-bold text-white">
+            {(position.current_price || 0) > 0 ? 
+              `${(position.current_price || 0).toFixed(9)} SOL/token` : 
+              'No price data'
+            }
           </p>
+          {(position.current_price || 0) > 0 && position.current_tokens && (
+            <p className="text-xs text-gray-500">
+              Value: {(position.current_tokens * (position.current_price || 0)).toFixed(6)} SOL
+            </p>
+          )}
+          {(position.current_price || 0) > 0 && (position.avg_entry_price || 0) > 0 && (
+            <p className="text-xs text-gray-500">
+              {(((position.current_price || 0) / (position.avg_entry_price || 1) - 1) * 100).toFixed(1)}% from entry
+            </p>
+          )}
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">

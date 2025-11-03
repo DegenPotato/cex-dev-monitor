@@ -206,36 +206,50 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
       p.unrealized_pnl_sol = p.unrealized_pnl_sol || 0;
       p.total_pnl_sol = p.total_pnl_sol || 0;
       p.total_invested_sol = p.total_invested_sol || p.buy_amount_sol || 0;
-      p.current_tokens = p.current_tokens || p.tokens_bought || 0;
       
-      // Map to frontend expected fields
-      p.current_balance = p.current_tokens || p.tokens_bought || 0;
+      // Use stored tokens - these are the ACTUAL tokens we have
+      const actualTokens = p.current_tokens || p.tokens_bought || 0;
+      p.current_tokens = actualTokens;
+      p.current_balance = actualTokens; // Frontend expects this field
       
-      // IMPORTANT: buy_price_usd is actually price in SOL (misnamed column)
-      p.avg_entry_price = p.buy_price_usd || 0;  // This is SOL per token
+      // Get buy price (prefer buy_price_sol, fallback to buy_price_usd which is also SOL)
+      const buyPriceSOL = p.buy_price_sol || p.buy_price_usd || 0;
+      p.avg_entry_price = buyPriceSOL;  // SOL per token at time of buy
       
-      // Calculate current price in SOL from market data
-      // price_sol from token_market_data is the SOL price per token
-      p.current_price = p.price_sol || 0;  // Use SOL price, not USD
+      // Get current market price in SOL
+      const currentPriceSOL = p.price_sol || 0;  // From token_market_data
+      p.current_price = currentPriceSOL;
+      
+      // Add USD reference prices
+      p.buy_price_usd_display = p.price_usd || 0;  // Current USD price for display
       
       // Calculate P&L in SOL
-      if (p.current_price > 0 && p.current_tokens > 0) {
-        // Current value in SOL = tokens * price per token in SOL
-        p.current_value_sol = p.current_tokens * p.current_price;
+      if (currentPriceSOL > 0 && actualTokens > 0) {
+        // Current value in SOL = tokens * current price per token in SOL
+        p.current_value_sol = actualTokens * currentPriceSOL;
         
-        // Unrealized P&L = current value - invested amount (both in SOL)
-        p.unrealized_pnl_sol = p.current_value_sol - p.total_invested_sol;
+        // Cost basis in SOL = what we paid
+        const costBasisSOL = p.total_invested_sol;
+        
+        // Unrealized P&L = current value - cost basis (both in SOL)
+        p.unrealized_pnl_sol = p.current_value_sol - costBasisSOL;
         
         // Total P&L = realized + unrealized (in SOL)
         p.total_pnl_sol = p.realized_pnl_sol + p.unrealized_pnl_sol;
         
         // ROI calculation
-        p.roi_percent = p.total_invested_sol > 0 
-          ? (p.total_pnl_sol / p.total_invested_sol) * 100 
+        p.roi_percent = costBasisSOL > 0 
+          ? (p.total_pnl_sol / costBasisSOL) * 100 
           : 0;
+          
+        // Log extreme losses for debugging
+        if (p.roi_percent < -90) {
+          console.log(`⚠️ Position ${p.id}: ${actualTokens.toFixed(4)} tokens, buy @ ${buyPriceSOL.toFixed(9)} SOL, now @ ${currentPriceSOL.toFixed(9)} SOL (${p.roi_percent.toFixed(1)}% loss)`);
+        }
       } else {
-        // Use stored values if available
+        // No market data - use stored values
         p.roi_percent = p.roi_percent || 0;
+        p.current_value_sol = 0;
       }
       
       // Set default status if missing
