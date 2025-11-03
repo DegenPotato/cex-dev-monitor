@@ -512,10 +512,16 @@ export const TestLabTab: React.FC = () => {
 
         // Handle campaign summary on stop
         if (message.type === 'test_lab_campaign_summary') {
-          const data = message.data as CampaignSummary;
+          const data = message.data as any;
           console.log(`🏆 Campaign Summary received:`, data);
           
-          // Validate data structure
+          // Handle empty campaign (no positions)
+          if (data && data.totalPositions === 0 && data.message) {
+            toast(`Monitor stopped: ${data.message}`, { icon: 'ℹ️' });
+            return;
+          }
+          
+          // Validate data structure for campaigns with positions
           if (!data || !data.overview) {
             console.error('❌ Invalid summary data:', data);
             toast.error('Failed to load campaign summary');
