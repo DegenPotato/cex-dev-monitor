@@ -142,14 +142,19 @@ export class TelegramAutoTrader extends EventEmitter {
       console.log(`✅ [AutoTrader] Buy executed: ${result.signature}`);
       
       // Create position in database
+      // Calculate buy price in SOL (SOL per token)
+      const buyPriceInSol = result.amountIn && result.amountOut 
+        ? (result.amountIn / result.amountOut)  // SOL spent / tokens received
+        : 0;
+      
       const positionId = await this.createPosition({
         userId: wallet.user_id,
         walletId: config.auto_buy_wallet_id,
         tokenMint,
         buyAmount: config.auto_buy_amount_sol,
         buySignature: result.signature,
-        tokensBought: result.amountOut || 0,  // Use amountOut from TradeResult
-        buyPriceUsd: result.amountIn && result.amountOut ? (result.amountIn / result.amountOut) : 0,
+        tokensBought: result.amountOut || 0,  // Tokens received
+        buyPriceSol: buyPriceInSol,  // Price per token in SOL
         context,
         config
       });
@@ -202,7 +207,7 @@ export class TelegramAutoTrader extends EventEmitter {
         data.buyAmount,
         data.buyAmount, // total_invested_sol starts same as buy amount
         data.buySignature,
-        data.buyPriceUsd || 0,
+        data.buyPriceSol || 0,  // This column is misnamed but stores SOL price
         data.tokensBought || 0,
         data.tokensBought || 0, // current_tokens starts same as bought
         data.context.chatId,

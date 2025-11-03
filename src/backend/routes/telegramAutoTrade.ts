@@ -203,7 +203,6 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
     const enrichedPositions = positions.map(p => {
       // Initialize values if they don't exist
       p.realized_pnl_sol = p.realized_pnl_sol || 0;
-      p.realized_pnl_usd = p.realized_pnl_usd || 0;
       p.unrealized_pnl_sol = p.unrealized_pnl_sol || 0;
       p.total_pnl_sol = p.total_pnl_sol || 0;
       p.total_invested_sol = p.total_invested_sol || p.buy_amount_sol || 0;
@@ -211,22 +210,29 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
       
       // Map to frontend expected fields
       p.current_balance = p.current_tokens || p.tokens_bought || 0;
-      p.avg_entry_price = p.buy_price_usd || 0;
       
-      // Use price_usd from token_market_data if available
-      p.current_price = p.price_usd || p.current_price || 0;
+      // IMPORTANT: buy_price_usd is actually price in SOL (misnamed column)
+      p.avg_entry_price = p.buy_price_usd || 0;  // This is SOL per token
       
-      // Calculate current value if we have current price and tokens
-      if (p.current_price && p.current_tokens > 0) {
-        p.current_value_usd = p.current_tokens * p.current_price;
-        // Get actual SOL price if available
-        const solPrice = p.price_sol ? (p.price_usd / p.price_sol) : 175;
-        p.current_value_sol = p.current_value_usd / solPrice;
+      // Calculate current price in SOL from market data
+      // price_sol from token_market_data is the SOL price per token
+      p.current_price = p.price_sol || 0;  // Use SOL price, not USD
+      
+      // Calculate P&L in SOL
+      if (p.current_price > 0 && p.current_tokens > 0) {
+        // Current value in SOL = tokens * price per token in SOL
+        p.current_value_sol = p.current_tokens * p.current_price;
+        
+        // Unrealized P&L = current value - invested amount (both in SOL)
         p.unrealized_pnl_sol = p.current_value_sol - p.total_invested_sol;
-        p.unrealized_pnl_usd = p.unrealized_pnl_sol * solPrice;
+        
+        // Total P&L = realized + unrealized (in SOL)
         p.total_pnl_sol = p.realized_pnl_sol + p.unrealized_pnl_sol;
-        p.total_pnl_usd = p.total_pnl_sol * solPrice;
-        p.roi_percent = p.total_invested_sol > 0 ? (p.total_pnl_sol / p.total_invested_sol) * 100 : 0;
+        
+        // ROI calculation
+        p.roi_percent = p.total_invested_sol > 0 
+          ? (p.total_pnl_sol / p.total_invested_sol) * 100 
+          : 0;
       } else {
         // Use stored values if available
         p.roi_percent = p.roi_percent || 0;
@@ -340,14 +346,16 @@ router.post('/api/telegram/positions/:id/sell', authService.requireSecureAuth(),
     } as any);
 
     if (sellResult.success) {
-      // Calculate realized P&L
-      const soldAmount = position.current_balance * (percentage / 100);
-      const proceeds = sellResult.amountOut || 0;
-      const realizedPnl = proceeds - (soldAmount * position.avg_entry_price);
+      // Calculate realized P&L (use current_tokens for token balance)
+      const tokensToSell = (position.current_tokens || position.tokens_bought || 0) * (percentage / 100);
+      const proceeds = sellResult.amountOut || 0;  // SOL received
+      const costBasis = tokensToSell * (position.buy_price_usd || 0); // buy_price_usd is actually SOL price
+      const realizedPnl = proceeds - costBasis;
 
       // Update position
       await execute(
         `UPDATE telegram_trading_positions SET
+          current_tokens = current_tokens * ?,
           current_balance = current_balance * ?,
           realized_pnl_sol = realized_pnl_sol + ?,
           total_pnl_sol = realized_pnl_sol + ? + unrealized_pnl_sol,
@@ -355,12 +363,13 @@ router.post('/api/telegram/positions/:id/sell', authService.requireSecureAuth(),
           exit_reason = CASE WHEN ? = 100 THEN 'manual' ELSE exit_reason END,
           closed_at = CASE WHEN ? = 100 THEN ? ELSE closed_at END,
           last_trade_at = ?,
-          total_sells = total_sells + 1,
-          total_trades = total_trades + 1,
+          total_sells = COALESCE(total_sells, 0) + 1,
+          total_trades = COALESCE(total_trades, 0) + 1,
           updated_at = ?
         WHERE id = ?`,
         [
-          1 - (percentage / 100),
+          1 - (percentage / 100),  // current_tokens multiplier
+          1 - (percentage / 100),  // current_balance multiplier
           realizedPnl,
           realizedPnl,
           percentage,
@@ -386,9 +395,9 @@ router.post('/api/telegram/positions/:id/sell', authService.requireSecureAuth(),
       res.json({ 
         success: true, 
         signature: sellResult.signature,
-        amountSold: soldAmount,
-        proceeds: proceeds,
-        realizedPnl: realizedPnl
+        amountSold: tokensToSell,  // Number of tokens sold
+        proceeds: proceeds,  // SOL received
+        realizedPnl: realizedPnl  // P&L in SOL
       });
     } else {
       res.status(400).json({ 
