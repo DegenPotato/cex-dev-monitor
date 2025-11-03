@@ -117,6 +117,7 @@ export const TestLabTab: React.FC = () => {
   const [telegramInitialAction, setTelegramInitialAction] = useState<'monitor_only' | 'buy_and_monitor'>('monitor_only');
   const [telegramBuyAmountSol, setTelegramBuyAmountSol] = useState<number>(0.1);
   const [telegramWalletId, setTelegramWalletId] = useState<number | null>(null);
+  const [telegramOnlyBuyNew, setTelegramOnlyBuyNew] = useState<boolean>(true);
   const [tradingWallets, setTradingWallets] = useState<any[]>([]);
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
@@ -655,6 +656,7 @@ export const TestLabTab: React.FC = () => {
           initialAction: telegramInitialAction,
           buyAmountSol: telegramBuyAmountSol,
           walletId: telegramWalletId,
+          onlyBuyNew: telegramOnlyBuyNew,
           alerts: telegramAlerts
         })
       });
@@ -1100,7 +1102,7 @@ export const TestLabTab: React.FC = () => {
                       <option value="">Select wallet...</option>
                       {tradingWallets.map((wallet) => (
                         <option key={wallet.id} value={wallet.id}>
-                          {wallet.wallet_name || wallet.wallet_address.substring(0, 8) + '...'} 
+                          {wallet.wallet_name || (wallet.wallet_address ? wallet.wallet_address.substring(0, 8) + '...' : 'Wallet')} 
                           {wallet.is_default && ' (Default)'}
                           {' - '}
                           {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
@@ -1121,6 +1123,21 @@ export const TestLabTab: React.FC = () => {
                       placeholder="0.1"
                     />
                     <p className="text-xs text-gray-500 mt-1">Amount of SOL to spend on initial buy</p>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={telegramOnlyBuyNew}
+                        onChange={(e) => setTelegramOnlyBuyNew(e.target.checked)}
+                        className="w-4 h-4 bg-gray-800 border-gray-600 rounded"
+                      />
+                      <span className="text-gray-300">Only buy NEW tokens (skip if already in token_registry)</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1 ml-6">
+                      When enabled, will skip buy if token already exists in your system
+                    </p>
                   </div>
 
                   <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">

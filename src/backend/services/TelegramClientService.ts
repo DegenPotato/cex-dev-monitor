@@ -3156,43 +3156,96 @@ export class TelegramClientService extends EventEmitter {
       
       // Handle initial action: buy_and_monitor
       if (monitor.test_lab_initial_action === 'buy_and_monitor' && monitor.test_lab_wallet_id && monitor.test_lab_buy_amount_sol) {
-        console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id}`);
         
-        try {
+        // Check if only_buy_new_tokens is enabled and token already exists in token_registry
+        if (monitor.only_buy_new_tokens) {
           const db = await getDb();
-          const tradeSignalStmt = db.prepare(`
-            INSERT INTO trade_signals (
-              user_id, signal_type, signal_source, source_reference,
-              token_mint, action, amount, status, created_at, metadata_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `);
+          const existingToken = (db as any).prepare(`
+            SELECT token_mint FROM token_registry WHERE token_mint = ?
+          `).get([tokenMint]);
           
-          const metadata = {
-            test_lab: true,
-            pool_address: poolAddress,
-            chat_id: monitor.chat_id,
-            message_id: messageId,
-            initial_liquidity_usd: liquidityUsd
-          };
+          if (existingToken) {
+            console.log(`⏭️  [Test Lab] Skipping buy - token ${tokenMint} already exists in token_registry (only_buy_new enabled)`);
+            // Still create campaign to monitor, just skip the buy
+          } else {
+            console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id} (new token)`);
+            
+            try {
+              const tradeSignalStmt = db.prepare(`
+                INSERT INTO trade_signals (
+                  user_id, signal_type, signal_source, source_reference,
+                  token_mint, action, amount, status, created_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `);
+              
+              const metadata = {
+                test_lab: true,
+                pool_address: poolAddress,
+                chat_id: monitor.chat_id,
+                message_id: messageId,
+                initial_liquidity_usd: liquidityUsd
+              };
+              
+              tradeSignalStmt.run([
+                monitor.user_id,
+                'buy',
+                'telegram_test_lab',
+                `${monitor.chat_id}_${messageId}`,
+                tokenMint,
+                'buy',
+                monitor.test_lab_buy_amount_sol,
+                'pending',
+                Math.floor(Date.now() / 1000),
+                JSON.stringify(metadata)
+              ]);
+              saveDatabase();
+              
+              console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
+            } catch (buyError) {
+              console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
+              // Continue with monitoring even if buy fails
+            }
+          }
+        } else {
+          // only_buy_new_tokens is disabled, always buy
+          console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id}`);
           
-          tradeSignalStmt.run([
-            monitor.user_id,
-            'buy',
-            'telegram_test_lab',
-            `${monitor.chat_id}_${messageId}`,
-            tokenMint,
-            'buy',
-            monitor.test_lab_buy_amount_sol,
-            'pending',
-            Math.floor(Date.now() / 1000),
-            JSON.stringify(metadata)
-          ]);
-          saveDatabase();
-          
-          console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
-        } catch (buyError) {
-          console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
-          // Continue with monitoring even if buy fails
+          try {
+            const db = await getDb();
+            const tradeSignalStmt = db.prepare(`
+              INSERT INTO trade_signals (
+                user_id, signal_type, signal_source, source_reference,
+                token_mint, action, amount, status, created_at, metadata_json
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            
+            const metadata = {
+              test_lab: true,
+              pool_address: poolAddress,
+              chat_id: monitor.chat_id,
+              message_id: messageId,
+              initial_liquidity_usd: liquidityUsd
+            };
+            
+            tradeSignalStmt.run([
+              monitor.user_id,
+              'buy',
+              'telegram_test_lab',
+              `${monitor.chat_id}_${messageId}`,
+              tokenMint,
+              'buy',
+              monitor.test_lab_buy_amount_sol,
+              'pending',
+              Math.floor(Date.now() / 1000),
+              JSON.stringify(metadata)
+            ]);
+            saveDatabase();
+            
+            console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
+          } catch (buyError) {
+            console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
+            // Continue with monitoring even if buy fails
+          }
         }
       }
       

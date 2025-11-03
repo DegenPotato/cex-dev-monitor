@@ -541,6 +541,7 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       initialAction,
       buyAmountSol,
       walletId,
+      onlyBuyNew,
       alerts 
     } = req.body;
     
@@ -571,12 +572,14 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
     const excludeNoUsernameValue = excludeNoUsername ? 1 : 0;
     const now = Math.floor(Date.now() / 1000);
     
+    const onlyBuyNewValue = onlyBuyNew !== false ? 1 : 0; // Default to true (1)
+    
     const stmt = db.prepare(`
       INSERT INTO telegram_monitored_chats 
       (user_id, chat_id, telegram_account_id, monitored_user_ids, process_bot_messages, 
        exclude_no_username, test_lab_alerts, test_lab_initial_action, test_lab_buy_amount_sol, 
-       test_lab_wallet_id, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+       test_lab_wallet_id, only_buy_new_tokens, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(user_id, chat_id) DO UPDATE SET
         monitored_user_ids = excluded.monitored_user_ids,
         process_bot_messages = excluded.process_bot_messages,
@@ -585,6 +588,7 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
         test_lab_initial_action = excluded.test_lab_initial_action,
         test_lab_buy_amount_sol = excluded.test_lab_buy_amount_sol,
         test_lab_wallet_id = excluded.test_lab_wallet_id,
+        only_buy_new_tokens = excluded.only_buy_new_tokens,
         telegram_account_id = excluded.telegram_account_id,
         is_active = 1,
         updated_at = excluded.updated_at
@@ -593,7 +597,7 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
     stmt.run([
       userId, chatId, telegramAccountId, monitoredUserIdsJson, processBotMessages, 
       excludeNoUsernameValue, testLabAlertsJson, initialAction || 'monitor_only', 
-      buyAmountSol || null, walletId || null, now, now
+      buyAmountSol || null, walletId || null, onlyBuyNewValue, now, now
     ]);
     saveDatabase();
     

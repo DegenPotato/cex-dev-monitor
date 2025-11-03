@@ -20,6 +20,9 @@ ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_buy_amount_sol REAL;
 -- Add wallet_id to link Test Lab campaigns to trading wallet (for position tracking)
 ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_wallet_id INTEGER REFERENCES trading_wallets(id);
 
+-- Add only_buy_new_tokens filter (skip tokens already in token_registry)
+ALTER TABLE telegram_monitored_chats ADD COLUMN only_buy_new_tokens BOOLEAN DEFAULT 1;
+
 -- Create index for faster Test Lab queries (only index rows where test_lab_alerts is set)
 CREATE INDEX IF NOT EXISTS idx_telegram_monitored_chats_test_lab 
   ON telegram_monitored_chats(test_lab_alerts) 
