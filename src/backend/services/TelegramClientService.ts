@@ -3216,6 +3216,9 @@ export class TelegramClientService extends EventEmitter {
       
       console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
       
+      // Campaign ID will be set after campaign creation (declared here for position tracking)
+      let campaignId: string | undefined;
+      
       // Handle initial action: buy_and_monitor (monitor IS the config!)
       const config = monitor; // The monitor object itself contains all config properties
       if (config.initialAction === 'buy_and_monitor' && config.walletId && config.buyAmountSol) {
@@ -3257,8 +3260,25 @@ export class TelegramClientService extends EventEmitter {
                 
                 console.log(`   Buy result:`, JSON.stringify(result, null, 2));
                 
-                if (result.success) {
+                if (result.success && result.signature) {
                   console.log(`✅ [Test Lab] Buy executed: ${result.signature}`);
+                  
+                  // Track position for Test Lab (in-memory, session-only)
+                  if (result.amountOut && result.amountIn) {
+                    const { trackTestLabBuy } = await import('../routes/priceTest.js');
+                    const pricePerToken = result.amountIn / result.amountOut; // SOL per token
+                    trackTestLabBuy(
+                      wallet.user_id,
+                      config.walletId,
+                      tokenMint,
+                      result.tokenSymbol || tokenMint.slice(0, 8),
+                      result.amountIn, // SOL spent
+                      result.amountOut, // Tokens received
+                      pricePerToken,
+                      result.signature,
+                      undefined // campaignId will be set after campaign creation
+                    );
+                  }
                 } else {
                   console.error(`❌ [Test Lab] Buy failed: ${result.error || 'Unknown error'}`);
                   if ((result as any).details) {
@@ -3298,8 +3318,25 @@ export class TelegramClientService extends EventEmitter {
               
               console.log(`   Buy result:`, JSON.stringify(result, null, 2));
               
-              if (result.success) {
+              if (result.success && result.signature) {
                 console.log(`✅ [Test Lab] Buy executed: ${result.signature}`);
+                
+                // Track position for Test Lab (in-memory, session-only)
+                if (result.amountOut && result.amountIn) {
+                  const { trackTestLabBuy } = await import('../routes/priceTest.js');
+                  const pricePerToken = result.amountIn / result.amountOut;
+                  trackTestLabBuy(
+                    wallet.user_id,
+                    config.walletId,
+                    tokenMint,
+                    result.tokenSymbol || tokenMint.slice(0, 8),
+                    result.amountIn,
+                    result.amountOut,
+                    pricePerToken,
+                    result.signature,
+                    campaignId
+                  );
+                }
               } else {
                 console.error(`❌ [Test Lab] Buy failed: ${result.error || 'Unknown error'}`);
                 if ((result as any).details) {
@@ -3320,6 +3357,7 @@ export class TelegramClientService extends EventEmitter {
       
       // Start campaign with token and pool
       const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
+      campaignId = campaign?.id; // Set campaignId for position tracking
       
       if (campaign) {
         // CRITICAL: Track campaign for the user (this is what makes it show in UI!)

@@ -25,6 +25,211 @@ const monitor = getOnChainPriceMonitor();
 const testLabMonitors = new Map<string, any>();
 const testLabMonitorIdCounter = { value: 1 };
 
+// In-memory position tracking for Test Lab (session-only)
+interface TestLabPosition {
+  userId: number;
+  walletId: number;
+  tokenMint: string;
+  tokenSymbol?: string;
+  balance: number; // Token balance
+  avgEntryPrice: number; // In SOL
+  totalInvested: number; // Total SOL invested
+  realizedPnl: number; // Realized profit/loss in SOL
+  trades: Array<{
+    type: 'buy' | 'sell';
+    amountSol: number;
+    amountTokens: number;
+    pricePerToken: number;
+    signature: string;
+    timestamp: number;
+  }>;
+  campaignId?: string;
+  firstTradeAt: number;
+  lastTradeAt: number;
+}
+
+const testLabPositions = new Map<string, TestLabPosition>(); // key: `${walletId}_${tokenMint}`
+
+// Helper to get/create position
+function getOrCreatePosition(walletId: number, tokenMint: string, userId: number, tokenSymbol?: string): TestLabPosition {
+  const key = `${walletId}_${tokenMint}`;
+  if (!testLabPositions.has(key)) {
+    testLabPositions.set(key, {
+      userId,
+      walletId,
+      tokenMint,
+      tokenSymbol,
+      balance: 0,
+      avgEntryPrice: 0,
+      totalInvested: 0,
+      realizedPnl: 0,
+      trades: [],
+      firstTradeAt: Date.now(),
+      lastTradeAt: Date.now()
+    });
+  }
+  return testLabPositions.get(key)!;
+}
+
+// Track buy trade
+export function trackTestLabBuy(userId: number, walletId: number, tokenMint: string, tokenSymbol: string, amountSol: number, amountTokens: number, pricePerToken: number, signature: string, campaignId?: string) {
+  const position = getOrCreatePosition(walletId, tokenMint, userId, tokenSymbol);
+  position.tokenSymbol = tokenSymbol || position.tokenSymbol;
+  
+  // Update position
+  position.balance += amountTokens;
+  position.totalInvested += amountSol;
+  position.avgEntryPrice = position.totalInvested / position.balance; // Weighted average
+  position.lastTradeAt = Date.now();
+  position.campaignId = campaignId || position.campaignId;
+  
+  // Record trade
+  position.trades.push({
+    type: 'buy',
+    amountSol,
+    amountTokens,
+    pricePerToken,
+    signature,
+    timestamp: Date.now()
+  });
+  
+  console.log(`📊 [Test Lab Position] BUY tracked: ${amountTokens.toFixed(2)} ${tokenSymbol} @ ${pricePerToken.toFixed(6)} SOL`);
+  console.log(`   New balance: ${position.balance.toFixed(2)} | Avg entry: ${position.avgEntryPrice.toFixed(6)} SOL | Invested: ${position.totalInvested.toFixed(4)} SOL`);
+  
+  // Broadcast position update
+  broadcastTestLabUpdate({
+    type: 'test_lab_position_update',
+    data: {
+      userId,
+      walletId,
+      tokenMint,
+      tokenSymbol,
+      position: {
+        balance: position.balance,
+        avgEntryPrice: position.avgEntryPrice,
+        totalInvested: position.totalInvested,
+        realizedPnl: position.realizedPnl,
+        tradeCount: position.trades.length
+      }
+    }
+  });
+}
+
+// Track sell trade
+export function trackTestLabSell(userId: number, walletId: number, tokenMint: string, tokenSymbol: string, amountSol: number, amountTokens: number, pricePerToken: number, signature: string) {
+  const position = getOrCreatePosition(walletId, tokenMint, userId, tokenSymbol);
+  
+  if (position.balance === 0) {
+    console.warn(`⚠️  [Test Lab Position] Sell attempted but position is already closed`);
+    return;
+  }
+  
+  // Calculate realized P/L for this sell
+  const costBasis = position.avgEntryPrice * amountTokens;
+  const saleProceeds = amountSol;
+  const realizedPnl = saleProceeds - costBasis;
+  position.realizedPnl += realizedPnl;
+  
+  // Update position
+  const percentageSold = amountTokens / position.balance;
+  position.balance -= amountTokens;
+  position.totalInvested *= (1 - percentageSold);
+  position.lastTradeAt = Date.now();
+  
+  // Record trade
+  position.trades.push({
+    type: 'sell',
+    amountSol,
+    amountTokens,
+    pricePerToken,
+    signature,
+    timestamp: Date.now()
+  });
+  
+  const pnlPercent = (realizedPnl / costBasis) * 100;
+  console.log(`📊 [Test Lab Position] SELL tracked: ${amountTokens.toFixed(2)} ${tokenSymbol} @ ${pricePerToken.toFixed(6)} SOL`);
+  console.log(`   💰 Trade P/L: ${realizedPnl.toFixed(4)} SOL (${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)`);
+  console.log(`   💵 Total Realized P/L: ${position.realizedPnl.toFixed(4)} SOL`);
+  console.log(`   📦 Remaining balance: ${position.balance.toFixed(2)} tokens`);
+  
+  // Check if position is closed
+  if (position.balance === 0) {
+    finalizeTestLabPosition(position);
+  } else {
+    // Broadcast position update
+    broadcastTestLabUpdate({
+      type: 'test_lab_position_update',
+      data: {
+        userId,
+        walletId,
+        tokenMint,
+        tokenSymbol,
+        position: {
+          balance: position.balance,
+          avgEntryPrice: position.avgEntryPrice,
+          totalInvested: position.totalInvested,
+          realizedPnl: position.realizedPnl,
+          tradeCount: position.trades.length
+        }
+      }
+    });
+  }
+}
+
+// Finalize closed position
+function finalizeTestLabPosition(position: TestLabPosition) {
+  const duration = position.lastTradeAt - position.firstTradeAt;
+  const durationMinutes = Math.floor(duration / 60000);
+  const durationHours = Math.floor(durationMinutes / 60);
+  const durationDays = Math.floor(durationHours / 24);
+  
+  let durationStr = '';
+  if (durationDays > 0) durationStr = `${durationDays}d ${durationHours % 24}h`;
+  else if (durationHours > 0) durationStr = `${durationHours}h ${durationMinutes % 60}m`;
+  else durationStr = `${durationMinutes}m`;
+  
+  const totalBuys = position.trades.filter(t => t.type === 'buy').length;
+  const totalSells = position.trades.filter(t => t.type === 'sell').length;
+  const roiPercent = (position.realizedPnl / position.trades.filter(t => t.type === 'buy').reduce((sum, t) => sum + t.amountSol, 0)) * 100;
+  
+  console.log(`\n🏁 ===== TEST LAB POSITION CLOSED =====`);
+  console.log(`   Token: ${position.tokenSymbol || position.tokenMint.slice(0, 8)}`);
+  console.log(`   Campaign: ${position.campaignId || 'N/A'}`);
+  console.log(`   Duration: ${durationStr}`);
+  console.log(`   Total Trades: ${position.trades.length} (${totalBuys} buys, ${totalSells} sells)`);
+  console.log(`   Total Invested: ${position.trades.filter(t => t.type === 'buy').reduce((sum, t) => sum + t.amountSol, 0).toFixed(4)} SOL`);
+  console.log(`   Final Realized P/L: ${position.realizedPnl.toFixed(4)} SOL`);
+  console.log(`   ROI: ${roiPercent > 0 ? '+' : ''}${roiPercent.toFixed(2)}%`);
+  console.log(`========================================\n`);
+  
+  // Broadcast final summary to frontend
+  broadcastTestLabUpdate({
+    type: 'test_lab_position_closed',
+    data: {
+      userId: position.userId,
+      walletId: position.walletId,
+      tokenMint: position.tokenMint,
+      tokenSymbol: position.tokenSymbol,
+      summary: {
+        campaignId: position.campaignId,
+        duration: durationStr,
+        durationMs: duration,
+        totalTrades: position.trades.length,
+        totalBuys,
+        totalSells,
+        totalInvested: position.trades.filter(t => t.type === 'buy').reduce((sum, t) => sum + t.amountSol, 0),
+        finalRealizedPnl: position.realizedPnl,
+        roi: roiPercent,
+        trades: position.trades
+      }
+    }
+  });
+  
+  // Remove from memory
+  const key = `${position.walletId}_${position.tokenMint}`;
+  testLabPositions.delete(key);
+}
+
 // Export helper functions for accessing Test Lab monitors from other modules
 export function getTestLabMonitorForChat(chatId: string): any {
   // Find any active monitor for this chat
@@ -480,8 +685,23 @@ monitor.on('alert_triggered', async (data) => {
           
           console.log(`   Sell result:`, JSON.stringify(result, null, 2));
           
-          if (result.success) {
+          if (result.success && result.signature) {
             console.log(`✅ Sell executed: ${result.signature}`);
+            
+            // Track Test Lab sell position (in-memory)
+            if (result.amountOut && result.amountIn) {
+              const pricePerToken = result.amountOut / result.amountIn; // SOL per token
+              trackTestLabSell(
+                wallet.user_id,
+                action.walletId,
+                data.tokenMint,
+                data.tokenSymbol || data.tokenMint.slice(0, 8),
+                result.amountOut, // SOL received
+                result.amountIn, // Tokens sold
+                pricePerToken,
+                result.signature
+              );
+            }
           } else {
             console.error(`❌ Sell failed: ${result.error || 'Unknown error'}`);
             if ((result as any).details) {
