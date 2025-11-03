@@ -12,7 +12,12 @@ import {
   RefreshCw,
   ArrowUpCircle,
   ArrowDownCircle,
-  Target
+  Target,
+  Zap,
+  Shield,
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { config } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -39,6 +44,8 @@ interface Position {
   total_pnl_sol: number;
   roi_percent: number;
   peak_price?: number;
+  peak_roi_percent?: number;
+  max_drawdown_percent?: number;
   stop_loss_target?: number;
   take_profit_target?: number;
   trailing_stop_active?: boolean;
@@ -46,6 +53,9 @@ interface Position {
   first_buy_at?: number;
   closed_at?: number;
   detected_at: number;
+  buy_signature?: string;
+  tokens_bought?: number;
+  current_tokens?: number;
 }
 
 interface PositionUpdate {
@@ -207,6 +217,10 @@ export const TelegramPositionsDashboard: React.FC = () => {
       }
     });
 
+  // Separate open and closed positions
+  const openPositions = positions.filter(p => p.status === 'open' || p.status === 'pending');
+  const closedPositions = positions.filter(p => p.status === 'closed' || p.status === 'failed');
+
   // Calculate totals
   const totals = filteredPositions.reduce(
     (acc, p) => ({
@@ -217,6 +231,11 @@ export const TelegramPositionsDashboard: React.FC = () => {
     }),
     { invested: 0, realized: 0, unrealized: 0, total: 0 }
   );
+  
+  const totalInvested = totals.invested;
+  const totalRealized = totals.realized;
+  const totalUnrealized = totals.unrealized;
+  const totalPnl = totals.total;
 
   return (
     <div className="space-y-6">
@@ -237,29 +256,34 @@ export const TelegramPositionsDashboard: React.FC = () => {
             <TrendingUp className="w-5 h-5 text-green-400" />
             <span className="text-xs text-gray-400">Realized P&L</span>
           </div>
-          <div className={`text-2xl font-bold ${totals.realized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totals.realized >= 0 ? '+' : ''}{totals.realized.toFixed(4)} SOL
-          </div>
+          <p className={`text-2xl font-bold ${totalRealized >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {totalRealized >= 0 ? '+' : ''}{totalRealized.toFixed(6)} SOL
+          </p>
+          <p className="text-xs text-gray-500 mt-1">{closedPositions.length} closed | {openPositions.length} active</p>
         </div>
-
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-500/30 rounded-xl p-4">
+        <div className="bg-gradient-to-br from-cyan-900/20 to-black border border-cyan-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <Activity className="w-5 h-5 text-purple-400" />
-            <span className="text-xs text-gray-400">Unrealized P&L</span>
+            <p className="text-gray-400 text-sm">Unrealized P&L</p>
+            <Activity className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className={`text-2xl font-bold ${totals.unrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totals.unrealized >= 0 ? '+' : ''}{totals.unrealized.toFixed(4)} SOL
-          </div>
+          <p className={`text-2xl font-bold ${totalUnrealized >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {totalUnrealized >= 0 ? '+' : ''}{totalUnrealized.toFixed(6)} SOL
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {totalUnrealized >= 0 ? 'Paper gains' : 'Paper loss'}
+          </p>
         </div>
-
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-yellow-500/30 rounded-xl p-4">
+        <div className="bg-gradient-to-br from-purple-900/20 to-black border border-purple-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <Target className="w-5 h-5 text-yellow-400" />
-            <span className="text-xs text-gray-400">Total P&L</span>
+            <p className="text-gray-400 text-sm">Total P&L</p>
+            <TrendingUp className="w-4 h-4 text-purple-400" />
           </div>
-          <div className={`text-2xl font-bold ${totals.total >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totals.total >= 0 ? '+' : ''}{totals.total.toFixed(4)} SOL
-          </div>
+          <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(6)} SOL
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {((totalPnl / Math.max(totalInvested, 0.0001)) * 100).toFixed(1)}% ROI
+          </p>
         </div>
       </div>
 
@@ -385,7 +409,7 @@ const PositionCard: React.FC<{
             )}
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              {formatDistanceToNow(position.first_buy_at || position.detected_at, { addSuffix: true })}
+              {formatDistanceToNow((position.first_buy_at || position.detected_at) * 1000, { addSuffix: true })}
             </span>
           </div>
         </div>
@@ -414,67 +438,69 @@ const PositionCard: React.FC<{
         )}
       </div>
 
-      <div className="grid grid-cols-5 gap-4">
-        {/* Balance */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">Balance</div>
-          <div className="text-white font-medium">
-            {position.current_balance.toFixed(2)}
-          </div>
+      {/* Enhanced Trading Info Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="bg-black/20 rounded-lg p-3">
+          <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+            <DollarSign className="w-3 h-3" /> Entry
+          </p>
+          <p className="text-sm font-bold text-white">{position.total_invested_sol.toFixed(6)} SOL</p>
+          <p className="text-xs text-gray-500">${((position.avg_entry_price || 0) * 175).toFixed(4)}</p>
         </div>
-
-        {/* Entry Price */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">Entry</div>
-          <div className="text-white font-medium">
-            {position.avg_entry_price.toFixed(6)} SOL
-          </div>
+        <div className="bg-black/20 rounded-lg p-3">
+          <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+            <Activity className="w-3 h-3" /> Current
+          </p>
+          <p className="text-sm font-bold text-white">{(position.current_price || 0).toFixed(6)} SOL</p>
+          <p className="text-xs text-gray-500">
+            {position.current_tokens ? `${position.current_tokens.toFixed(2)} tokens` : 'Loading...'}
+          </p>
         </div>
-
-        {/* Current Price */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">Current</div>
-          <div className="text-white font-medium">
-            {position.current_price?.toFixed(6) || '---'} SOL
-          </div>
+        <div className="bg-black/20 rounded-lg p-3">
+          <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+            {pnl >= 0 ? <ArrowUpCircle className="w-3 h-3" /> : <ArrowDownCircle className="w-3 h-3" />} P&L
+          </p>
+          <p className={`text-sm font-bold ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {pnl >= 0 ? '+' : ''}{pnl.toFixed(6)} SOL
+          </p>
+          <p className="text-xs text-gray-500">
+            ${(pnl * 175).toFixed(2)}
+          </p>
         </div>
-
-        {/* P&L */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">P&L</div>
-          <div className={`font-medium ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {pnl >= 0 ? '+' : ''}{pnl.toFixed(4)} SOL
-          </div>
-        </div>
-
-        {/* ROI */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">ROI</div>
-          <div className={`font-medium ${roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        <div className="bg-black/20 rounded-lg p-3">
+          <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+            <TrendingUp className="w-3 h-3" /> ROI
+          </p>
+          <p className={`text-sm font-bold ${roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>
             {roi >= 0 ? '+' : ''}{roi.toFixed(2)}%
-          </div>
+          </p>
+          {position.peak_roi_percent && (
+            <p className="text-xs text-gray-500">
+              Peak: {position.peak_roi_percent.toFixed(1)}%
+            </p>
+          )}
         </div>
       </div>
-
-      {/* Auto-sell indicators */}
-      {isOpen && (position.stop_loss_target || position.take_profit_target) && (
-        <div className="mt-4 flex gap-3">
+      
+      {/* Risk Metrics (if monitoring) */}
+      {isOpen && (position.stop_loss_target || position.take_profit_target || position.trailing_stop_active) && (
+        <div className="flex gap-2 mb-3">
           {position.stop_loss_target && (
-            <div className="flex items-center gap-1 text-xs text-red-400">
-              <ArrowDownCircle className="w-3.5 h-3.5" />
-              Stop: {position.stop_loss_target.toFixed(6)} SOL
+            <div className="flex items-center gap-1 px-2 py-1 bg-red-900/20 text-red-400 rounded-lg text-xs">
+              <Shield className="w-3 h-3" />
+              SL: {position.stop_loss_target}%
             </div>
           )}
           {position.take_profit_target && (
-            <div className="flex items-center gap-1 text-xs text-green-400">
-              <ArrowUpCircle className="w-3.5 h-3.5" />
-              TP: {position.take_profit_target.toFixed(6)} SOL
+            <div className="flex items-center gap-1 px-2 py-1 bg-green-900/20 text-green-400 rounded-lg text-xs">
+              <Target className="w-3 h-3" />
+              TP: {position.take_profit_target}%
             </div>
           )}
           {position.trailing_stop_active && (
-            <div className="flex items-center gap-1 text-xs text-orange-400">
-              <Activity className="w-3.5 h-3.5" />
-              Trailing Active
+            <div className="flex items-center gap-1 px-2 py-1 bg-purple-900/20 text-purple-400 rounded-lg text-xs">
+              <Zap className="w-3 h-3" />
+              Trailing Stop Active
             </div>
           )}
         </div>

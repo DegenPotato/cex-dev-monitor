@@ -91,12 +91,15 @@ export class TelegramAutoTrader extends EventEmitter {
       const buyResult = await this.executeBuy(tokenMint, context, config);
       if (buyResult?.positionId) {
         positionId = buyResult.positionId;
+        // Buy already sets up monitoring via setupAutoSell or setupMonitoring
+        // No need to call startMonitoring again
+        return;
       }
     }
     
-    // Start monitoring (with or without position)
-    if (actions.includes('monitor') && config.auto_monitor_enabled) {
-      await this.startMonitoring(tokenMint, context, config, positionId);
+    // Only start monitoring if no position was created (monitor-only mode)
+    if (actions.includes('monitor') && config.auto_monitor_enabled && !positionId) {
+      await this.startMonitoring(tokenMint, context, config, null);
     }
   }
 
@@ -153,10 +156,9 @@ export class TelegramAutoTrader extends EventEmitter {
       
       console.log(`📊 [AutoTrader] Position created with ID: ${positionId}`);
       
-      // Setup auto-sell if configured
-      if (config.auto_sell_enabled) {
-        await this.setupAutoSell(positionId, config);
-      }
+      // ALWAYS setup monitoring after buy (for price tracking)
+      // This handles both auto-sell alerts AND general monitoring
+      await this.setupPositionMonitoring(positionId, config);
       
       // Broadcast position creation
       this.broadcast('telegram_position_created', {
@@ -237,14 +239,15 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Start price monitoring with position tracking
+   * Start price monitoring (for monitor-only mode, no position)
    */
   async startMonitoring(
     tokenMint: string,
     context: DetectionContext,
     config: AutoTradeConfig,
-    positionId?: number | null  // Track position if created
+    positionId?: number | null  // Should always be null for monitor-only
   ): Promise<any> {
+    console.log(`👁️ [AutoTrader] Starting monitor-only mode for ${tokenMint.slice(0, 8)}`);
     const poolInfo = await this.getPoolAddress(tokenMint);
     if (!poolInfo) {
       console.warn(`⚠️ [AutoTrader] No pool found for monitoring ${tokenMint.slice(0, 8)}...`);
@@ -286,9 +289,12 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Setup comprehensive auto-sell alerts (like Test Lab)
+   * Setup position monitoring with optional auto-sell alerts
+   * This consolidates monitoring setup to avoid duplicate campaigns
    */
-  private async setupAutoSell(positionId: number, config: AutoTradeConfig): Promise<void> {
+  private async setupPositionMonitoring(positionId: number, config: AutoTradeConfig): Promise<void> {
+    console.log(`📊 [AutoTrader] Setting up monitoring for position ${positionId}`);
+    
     const position = await queryOne(
       'SELECT * FROM telegram_trading_positions WHERE id = ?',
       [positionId]
@@ -297,12 +303,21 @@ export class TelegramAutoTrader extends EventEmitter {
     const poolInfo = await this.getPoolAddress(position.token_mint);
     if (!poolInfo) return;
     
+    // Always create/get a campaign for this position
+    // The price monitor handles deduplication internally
     const campaign = await this.priceMonitor.startCampaign(
       position.token_mint,
       poolInfo.pool_address
     );
     
     this.positionCampaigns.set(positionId, campaign.id);
+    console.log(`🔗 [AutoTrader] Position ${positionId} linked to campaign ${campaign.id}`);
+    
+    // Only setup alerts if auto-sell is enabled
+    if (!config.auto_sell_enabled) {
+      console.log(`📈 [AutoTrader] Monitoring-only mode for position ${positionId}`);
+      return;
+    }
     
     // Build alert templates
     let alertTemplates = [];
