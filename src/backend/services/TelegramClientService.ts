@@ -688,18 +688,29 @@ export class TelegramClientService extends EventEmitter {
           chatId = message.peerId.chatId.toString();
         }
         
+        // Check if this is a Test Lab monitored chat FIRST
+        const { getTestLabMonitorForChat } = await import('../routes/priceTest.js');
+        const testLabMonitor = getTestLabMonitorForChat(chatId);
+        const isTestLabChat = testLabMonitor && testLabMonitor.isActive;
+        
         const monitoredChatIds = cachedChats.map(c => c.chatId);
-        if (!monitoredChatIds.includes(chatId)) {
+        const isProductionChat = monitoredChatIds.includes(chatId);
+        
+        // If neither Test Lab nor production monitor, skip
+        if (!isProductionChat && !isTestLabChat) {
           // Only log unmonitored chats occasionally to reduce noise
           if (!this.unmonitoredLogThrottle[chatId] || Date.now() - this.unmonitoredLogThrottle[chatId] > 60000) {
             console.log(`⏭️  [Telegram:${userIdentifier}] Message from unmonitored chat: ${chatId}`);
-            console.log(`   Monitored chats: ${monitoredChatIds.join(', ')}`);
+            console.log(`   Monitored chats (production): ${monitoredChatIds.join(', ')}`);
             this.unmonitoredLogThrottle[chatId] = Date.now();
           }
           return;
         }
         
-        const monitoredChat = cachedChats.find(c => c.chatId === chatId);
+        // For Test Lab chats, create a minimal monitoredChat object
+        let monitoredChat = isTestLabChat && !isProductionChat 
+          ? { chatId, chatName: `Test Lab Chat`, processBotMessages: true } 
+          : cachedChats.find(c => c.chatId === chatId);
         
         // Topic filtering logic
         if (topicId && monitoredChat.monitoredTopicIds && monitoredChat.monitoredTopicIds.length > 0) {
@@ -741,6 +752,45 @@ export class TelegramClientService extends EventEmitter {
           } catch (error) {
             console.log(`   ⚠️ Could not check topic user filter:`, error);
           }
+        }
+        
+        // For Test Lab chats, log and skip production logic
+        if (isTestLabChat && !isProductionChat) {
+          console.log(`🧪 [Test Lab:${userIdentifier}] Message in chat ${chatId}`);
+          console.log(`   Text preview: ${message.message.substring(0, 100)}...`);
+          
+          // Extract contracts for Test Lab
+          const potentialContracts = this.extractContracts(message.message);
+          const contracts = [];
+          
+          if (potentialContracts.length > 0) {
+            console.log(`   🔍 [Test Lab] Found ${potentialContracts.length} potential addresses`);
+            
+            // Validate each address
+            for (const contract of potentialContracts) {
+              const validation = await this.validateAndExtractToken(contract.address);
+              if (validation.isValid) {
+                for (const tokenAddress of validation.actualTokens) {
+                  contracts.push({
+                    address: tokenAddress,
+                    type: contract.type,
+                    original: contract.original
+                  });
+                }
+              }
+            }
+            
+            if (contracts.length > 0) {
+              console.log(`   ✅ [Test Lab] Validated ${contracts.length} token(s): ${contracts.map(c => c.address.substring(0, 8) + '...').join(', ')}`);
+              
+              // Check Test Lab monitors
+              const msgSenderId = message.senderId?.toString();
+              const msgSender = (message as any).sender;
+              const msgUsername = msgSender?.username || msgSender?.firstName || msgSenderId;
+              await this.checkTestLabMonitors(event, contracts, msgSenderId, msgUsername);
+            }
+          }
+          return; // Skip all production logic for Test Lab
         }
         
         const topicInfo = topicId ? ` [Topic: ${topicId}]` : '';
@@ -3277,8 +3327,20 @@ export class TelegramClientService extends EventEmitter {
         // Update in-memory monitor to track campaigns
         if (monitor.id) {
           // Increment active campaigns counter
-          const { incrementTestLabCampaigns } = await import('../routes/priceTest.js');
+          const { incrementTestLabCampaigns, broadcastTestLabUpdate } = await import('../routes/priceTest.js');
           incrementTestLabCampaigns(monitor.id);
+          
+          // Broadcast new campaign to frontend (real-time update!)
+          broadcastTestLabUpdate({
+            type: 'test_lab_campaign_created',
+            data: {
+              campaign,
+              monitorId: monitor.id,
+              tokenMint,
+              source: 'telegram',
+              chatId: monitor.chatId
+            }
+          });
         }
         
         console.log(`✅ [Test Lab] Campaign ${campaign.id} created for ${tokenMint} with ${alerts.length} alert(s)`);

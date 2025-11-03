@@ -46,6 +46,11 @@ export function incrementTestLabCampaigns(monitorId: string): void {
   }
 }
 
+export function broadcastTestLabUpdate(message: any): void {
+  // Broadcast Test Lab updates to all connected clients
+  broadcast(message);
+}
+
 // Store WebSocket server instance
 let wss: WebSocketServer | null = null;
 

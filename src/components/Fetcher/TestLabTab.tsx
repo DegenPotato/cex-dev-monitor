@@ -325,6 +325,34 @@ export const TestLabTab: React.FC = () => {
           }, ...prev].slice(0, 100)); // Keep last 100
         }
 
+        // Handle new campaign created from Telegram
+        if (message.type === 'test_lab_campaign_created') {
+          const data = message.data;
+          console.log(`🚀 [${timestamp}] New campaign auto-created from Telegram:`, data);
+          
+          // Automatically fetch campaigns to show the new one
+          fetchCampaigns();
+          
+          // Show notification
+          toast.success(
+            <div className="flex flex-col gap-2">
+              <div className="font-bold text-base">🎯 New Campaign Created!</div>
+              <div className="text-sm">
+                Token detected from <span className="font-medium">Telegram</span>
+              </div>
+              <div className="text-xs text-gray-400">
+                {data.tokenMint?.slice(0, 8)}...
+              </div>
+            </div>,
+            { duration: 5000 }
+          );
+          
+          // Also refresh active monitors to update campaign count
+          if (campaignSource === 'telegram') {
+            fetchActiveTelegramMonitors();
+          }
+        }
+
         // Handle alert triggers
         if (message.type === 'test_lab_alert') {
           const data = message.data;
