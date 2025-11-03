@@ -515,6 +515,13 @@ export const TestLabTab: React.FC = () => {
           const data = message.data as CampaignSummary;
           console.log(`🏆 Campaign Summary received:`, data);
           
+          // Validate data structure
+          if (!data || !data.overview) {
+            console.error('❌ Invalid summary data:', data);
+            toast.error('Failed to load campaign summary');
+            return;
+          }
+          
           // Show summary modal
           setCampaignSummary(data);
           setShowSummaryModal(true);
@@ -2416,8 +2423,9 @@ export const TestLabTab: React.FC = () => {
                 {/* All Tokens Table */}
                 <div className="bg-gray-800/30 border border-cyan-500/30 rounded-xl overflow-hidden">
                   <div className="p-4 border-b border-cyan-500/30 bg-cyan-900/10">
-                    <h3 className="text-lg font-bold text-cyan-400">All Positions ({campaignSummary.tokens.length})</h3>
+                    <h3 className="text-lg font-bold text-cyan-400">All Positions ({campaignSummary.tokens?.length || 0})</h3>
                   </div>
+                  {campaignSummary.tokens && campaignSummary.tokens.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-800/50 text-xs text-gray-400 uppercase">
@@ -2484,6 +2492,11 @@ export const TestLabTab: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                  ) : (
+                    <div className="p-8 text-center text-gray-400">
+                      No positions to display
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
