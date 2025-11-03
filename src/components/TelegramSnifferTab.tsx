@@ -201,6 +201,35 @@ export function TelegramSnifferTab() {
   // Auto-trade configuration states
   const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
   const [autoTradeChat, setAutoTradeChat] = useState<any | null>(null);
+  const [tradingWallets, setTradingWallets] = useState<any[]>([]);
+
+  // Auto-trade configuration states for Configure Monitoring modal
+  const [configActionOnDetection, setConfigActionOnDetection] = useState<string>('forward_only');
+  const [configAutoBuyAmount, setConfigAutoBuyAmount] = useState<number>(0.1);
+  const [configAutoBuyWalletId, setConfigAutoBuyWalletId] = useState<number | null>(null);
+  const [configAutoBuySlippage, setConfigAutoBuySlippage] = useState<number>(1000); // basis points
+  const [configAutoBuyPriority, setConfigAutoBuyPriority] = useState<string>('medium');
+  const [configStopLoss, setConfigStopLoss] = useState<number>(50);
+  const [configTakeProfit, setConfigTakeProfit] = useState<number>(100);
+  const [configTrailingStop, setConfigTrailingStop] = useState<number>(0);
+  const [configTrailingStopEnabled, setConfigTrailingStopEnabled] = useState<boolean>(false);
+  const [configMonitorDuration, setConfigMonitorDuration] = useState<number>(24);
+  const [configAlertThreshold, setConfigAlertThreshold] = useState<number>(50);
+
+  // Fetch trading wallets for auto-trade configuration
+  const fetchTradingWallets = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const wallets = await response.json();
+        setTradingWallets(wallets);
+      }
+    } catch (error) {
+      console.error('Failed to fetch trading wallets:', error);
+    }
+  };
 
   // Load available forward targets when modal opens
   const loadAvailableForwardTargets = async () => {
@@ -385,6 +414,7 @@ export function TelegramSnifferTab() {
       loadSnifferChats(); 
       loadDetections();
       loadTelegramAccounts();
+      fetchTradingWallets();
     }
   }, [isAuthenticated]);
 
@@ -1771,6 +1801,7 @@ export function TelegramSnifferTab() {
                               loadForwardDestinations(chat.chatId);
                               loadAvailableForwardTargets();
                               setConfigModalOpen(true);
+                              fetchTradingWallets();
                             }}
                             className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-lg text-cyan-400 transition-all"
                           >
@@ -3679,6 +3710,221 @@ export function TelegramSnifferTab() {
                 </div>
               </div>
 
+              {/* Auto-Trading Configuration */}
+              <div className="border-t border-cyan-500/20 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="text-lg font-bold text-green-400 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Auto-Trading Configuration
+                  </label>
+                  <span className="text-xs px-2 py-1 bg-green-500/20 border border-green-500/40 rounded text-green-300">
+                    BETA
+                  </span>
+                </div>
+
+                {/* Action on Detection */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-cyan-300 mb-2">
+                    Action on Detection
+                  </label>
+                  <select
+                    value={configActionOnDetection || 'forward_only'}
+                    onChange={(e) => setConfigActionOnDetection(e.target.value)}
+                    className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="forward_only">Forward Only (Default)</option>
+                    <option value="trade_only">Trade Only (No Forwarding)</option>
+                    <option value="monitor_only">Monitor Only (Track Price)</option>
+                    <option value="forward_and_trade">Forward + Trade</option>
+                    <option value="forward_and_monitor">Forward + Monitor</option>
+                    <option value="trade_and_monitor">Trade + Monitor</option>
+                    <option value="all">All Actions (Forward + Trade + Monitor)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Choose what happens when a contract is detected
+                  </p>
+                </div>
+
+                {/* Auto-Buy Configuration */}
+                {(configActionOnDetection?.includes('trade') || configActionOnDetection === 'all') && (
+                  <div className="space-y-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                    <h4 className="text-sm font-bold text-green-300">Auto-Buy Settings</h4>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Buy Amount (SOL)
+                        </label>
+                        <input
+                          type="number"
+                          value={configAutoBuyAmount || 0.1}
+                          onChange={(e) => setConfigAutoBuyAmount(parseFloat(e.target.value))}
+                          step="0.01"
+                          min="0.01"
+                          className="w-full px-3 py-2 bg-black/40 border border-green-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Trading Wallet
+                        </label>
+                        <select
+                          value={configAutoBuyWalletId || ''}
+                          onChange={(e) => setConfigAutoBuyWalletId(e.target.value ? parseInt(e.target.value) : null)}
+                          className="w-full px-3 py-2 bg-black/40 border border-green-500/30 rounded text-white text-sm"
+                        >
+                          <option value="">Select Wallet</option>
+                          {tradingWallets.map((wallet: any) => (
+                            <option key={wallet.id} value={wallet.id}>
+                              {wallet.wallet_name} ({wallet.sol_balance?.toFixed(2)} SOL)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Slippage (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={(configAutoBuySlippage || 1000) / 100}
+                          onChange={(e) => setConfigAutoBuySlippage(Math.round(parseFloat(e.target.value) * 100))}
+                          step="0.5"
+                          min="0.5"
+                          max="50"
+                          className="w-full px-3 py-2 bg-black/40 border border-green-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Priority Level
+                        </label>
+                        <select
+                          value={configAutoBuyPriority || 'medium'}
+                          onChange={(e) => setConfigAutoBuyPriority(e.target.value)}
+                          className="w-full px-3 py-2 bg-black/40 border border-green-500/30 rounded text-white text-sm"
+                        >
+                          <option value="low">Low (Slower)</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High (Faster)</option>
+                          <option value="very_high">Very High</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto-Sell Configuration */}
+                {(configActionOnDetection?.includes('trade') || configActionOnDetection === 'all') && (
+                  <div className="space-y-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg mt-4">
+                    <h4 className="text-sm font-bold text-red-300">Auto-Sell Settings</h4>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Stop Loss (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={configStopLoss || 50}
+                          onChange={(e) => setConfigStopLoss(parseFloat(e.target.value))}
+                          step="5"
+                          min="0"
+                          max="100"
+                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Take Profit (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={configTakeProfit || 100}
+                          onChange={(e) => setConfigTakeProfit(parseFloat(e.target.value))}
+                          step="10"
+                          min="0"
+                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Trailing Stop (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={configTrailingStop || 0}
+                          onChange={(e) => setConfigTrailingStop(parseFloat(e.target.value))}
+                          step="5"
+                          min="0"
+                          max="50"
+                          disabled={!configTrailingStopEnabled}
+                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="trailing-stop-enabled"
+                        checked={configTrailingStopEnabled || false}
+                        onChange={(e) => setConfigTrailingStopEnabled(e.target.checked)}
+                        className="rounded border-gray-600 text-red-500 focus:ring-red-500"
+                      />
+                      <label htmlFor="trailing-stop-enabled" className="text-xs text-gray-300">
+                        Enable Trailing Stop (locks in profits)
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Monitoring Configuration */}
+                {(configActionOnDetection?.includes('monitor') || configActionOnDetection === 'all') && (
+                  <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg mt-4">
+                    <h4 className="text-sm font-bold text-blue-300">Price Monitoring Settings</h4>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Monitor Duration (hours)
+                        </label>
+                        <input
+                          type="number"
+                          value={configMonitorDuration || 24}
+                          onChange={(e) => setConfigMonitorDuration(parseInt(e.target.value))}
+                          step="1"
+                          min="1"
+                          max="168"
+                          className="w-full px-3 py-2 bg-black/40 border border-blue-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                          Alert on Price Change (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={configAlertThreshold || 50}
+                          onChange={(e) => setConfigAlertThreshold(parseFloat(e.target.value))}
+                          step="10"
+                          min="10"
+                          className="w-full px-3 py-2 bg-black/40 border border-blue-500/30 rounded text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Forward Configuration */}
               <div className="space-y-4 p-4 bg-black/20 rounded-lg border border-yellow-500/20">
                 <h4 className="text-sm font-medium text-yellow-300">Auto-Forward Settings (Optional)</h4>
@@ -3903,7 +4149,22 @@ export function TelegramSnifferTab() {
                         initialHistoryLimit: configInitialHistory,
                         isActive: true,
                         processBotMessages: configProcessBotMessages,
-                        monitoredTopicIds: !monitorAllTopics ? selectedTopicIds : []
+                        monitoredTopicIds: !monitorAllTopics ? selectedTopicIds : [],
+                        // Auto-trading configuration
+                        action_on_detection: configActionOnDetection,
+                        auto_buy_enabled: configActionOnDetection?.includes('trade') || false,
+                        auto_buy_amount_sol: configAutoBuyAmount,
+                        auto_buy_wallet_id: configAutoBuyWalletId,
+                        auto_buy_slippage_bps: configAutoBuySlippage,
+                        auto_buy_priority_level: configAutoBuyPriority,
+                        auto_sell_enabled: configActionOnDetection?.includes('trade') || false,
+                        stop_loss_percent: configStopLoss,
+                        take_profit_percent: configTakeProfit,
+                        trailing_stop_enabled: configTrailingStopEnabled,
+                        trailing_stop_percent: configTrailingStop,
+                        auto_monitor_enabled: configActionOnDetection?.includes('monitor') || false,
+                        monitor_duration_hours: configMonitorDuration,
+                        alert_price_changes: `${configAlertThreshold}%`
                       })
                     });
 
