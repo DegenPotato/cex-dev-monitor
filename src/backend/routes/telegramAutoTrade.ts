@@ -178,11 +178,12 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
         w.public_key as wallet_address,
         t.token_symbol,
         t.token_name,
-        t.current_price,
-        t.market_cap as current_mcap_usd
+        t.price_usd,
+        t.price_sol,
+        t.market_cap_usd as current_mcap_usd
       FROM telegram_trading_positions p
       LEFT JOIN trading_wallets w ON p.wallet_id = w.id
-      LEFT JOIN token_market_data t ON p.token_mint = t.token_mint
+      LEFT JOIN token_market_data t ON p.token_mint = t.mint_address
       WHERE p.user_id = ?
     `;
     
@@ -200,14 +201,31 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
     
     // Calculate current values and P&L for each position
     const enrichedPositions = positions.map(p => {
-      // Calculate current value if we have current price
-      if (p.current_price && p.current_tokens) {
+      // Initialize values if they don't exist
+      p.realized_pnl_sol = p.realized_pnl_sol || 0;
+      p.realized_pnl_usd = p.realized_pnl_usd || 0;
+      p.unrealized_pnl_sol = p.unrealized_pnl_sol || 0;
+      p.total_pnl_sol = p.total_pnl_sol || 0;
+      p.total_invested_sol = p.total_invested_sol || p.buy_amount_sol || 0;
+      p.current_tokens = p.current_tokens || p.tokens_bought || 0;
+      
+      // Use price_usd from token_market_data if available
+      p.current_price = p.price_usd || p.current_price || 0;
+      
+      // Calculate current value if we have current price and tokens
+      if (p.current_price && p.current_tokens > 0) {
         p.current_value_usd = p.current_tokens * p.current_price;
-        p.unrealized_pnl_usd = p.current_value_usd - p.buy_amount_usd;
-        p.unrealized_pnl_sol = p.unrealized_pnl_usd / 175; // Approximate SOL price
-        p.total_pnl_usd = p.realized_pnl_usd + p.unrealized_pnl_usd;
+        // Get actual SOL price if available
+        const solPrice = p.price_sol ? (p.price_usd / p.price_sol) : 175;
+        p.current_value_sol = p.current_value_usd / solPrice;
+        p.unrealized_pnl_sol = p.current_value_sol - p.total_invested_sol;
+        p.unrealized_pnl_usd = p.unrealized_pnl_sol * solPrice;
         p.total_pnl_sol = p.realized_pnl_sol + p.unrealized_pnl_sol;
-        p.roi_percent = (p.total_pnl_usd / p.buy_amount_usd) * 100;
+        p.total_pnl_usd = p.total_pnl_sol * solPrice;
+        p.roi_percent = p.total_invested_sol > 0 ? (p.total_pnl_sol / p.total_invested_sol) * 100 : 0;
+      } else {
+        // Use stored values if available
+        p.roi_percent = p.roi_percent || 0;
       }
       return p;
     });
@@ -234,11 +252,12 @@ router.get('/api/telegram/positions/:id', authService.requireSecureAuth(), async
         w.public_key as wallet_address,
         t.token_symbol,
         t.token_name,
-        t.current_price,
-        t.market_cap as current_mcap_usd
+        t.price_usd,
+        t.price_sol,
+        t.market_cap_usd as current_mcap_usd
       FROM telegram_trading_positions p
       LEFT JOIN trading_wallets w ON p.wallet_id = w.id
-      LEFT JOIN token_market_data t ON p.token_mint = t.token_mint
+      LEFT JOIN token_market_data t ON p.token_mint = t.mint_address
       WHERE p.id = ? AND p.user_id = ?`,
       [id, userId]
     ) as any;

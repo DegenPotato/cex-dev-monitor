@@ -180,30 +180,24 @@ export class TelegramAutoTrader extends EventEmitter {
   private async createPosition(data: any): Promise<number> {
     const now = Math.floor(Date.now() / 1000);
     
-    // Get current SOL price for USD calculations
-    const solPrice = await queryOne('SELECT price FROM sol_price_oracle ORDER BY timestamp DESC LIMIT 1') as any;
-    const currentSolPrice = solPrice?.price || 175;
-    
-    const buyAmountUsd = data.buyAmount * currentSolPrice;
-    
     const result = await execute(
       `INSERT INTO telegram_trading_positions (
         user_id, wallet_id, token_mint, 
-        buy_amount_sol, buy_amount_usd,
+        buy_amount_sol, total_invested_sol,
         buy_signature, buy_price_usd,
         tokens_bought, current_tokens,
         source_chat_id, source_chat_name,
         source_message_id, source_sender_id,
-        source_sender_username,
-        status, entry_mcap_usd,
+        source_sender_username, detection_type,
+        status, detected_at, first_buy_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
       [
         data.userId,
         data.walletId,
         data.tokenMint,
         data.buyAmount,
-        buyAmountUsd,
+        data.buyAmount, // total_invested_sol starts same as buy amount
         data.buySignature,
         data.buyPriceUsd || 0,
         data.tokensBought || 0,
@@ -213,7 +207,9 @@ export class TelegramAutoTrader extends EventEmitter {
         data.context.messageId || 0,
         data.context.senderId,
         data.context.senderUsername,
-        0, // entry_mcap_usd - will update after
+        data.context.detectionType || 'standard',
+        now, // detected_at
+        now, // first_buy_at
         now,
         now
       ]
