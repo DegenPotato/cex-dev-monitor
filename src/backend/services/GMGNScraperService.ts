@@ -914,7 +914,18 @@ class GMGNScraperService extends EventEmitter {
           const dataName = btn.getAttribute('data-name');
           
           if (ariaLabel === 'Settings' || dataName === 'legend-settings-action') {
-            (btn as HTMLElement).click();
+            console.log(`[Browser] Found settings button, attempting click...`);
+            
+            // Try clicking the icon inside the button if it exists
+            const icon = btn.querySelector('.buttonIcon-l31H9iuA, svg, [class*="icon"]');
+            if (icon) {
+              console.log(`[Browser] Clicking icon element inside button`);
+              (icon as HTMLElement).click();
+            } else {
+              console.log(`[Browser] Clicking button directly`);
+              (btn as HTMLElement).click();
+            }
+            
             return {
               success: 'settings_clicked',
               buttonContainers: buttonContainers.length,
@@ -939,18 +950,21 @@ class GMGNScraperService extends EventEmitter {
       
       if (buttonDebug.success) {
         console.log(`✅ Settings menu opened via: ${buttonDebug.success}`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Take screenshot of settings dialog
-        await this.takeDebugScreenshot(`settings_${indicatorType}_${index}`);
+        // Step 4: Wait longer for settings dialog to open (might be async/animated)
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Now look for the inputs tab and period field
+        // Step 5: Configure the indicator settings
         await this.configureIndicatorSettings(pageOrFrame, indicatorType, period);
       } else {
         console.warn(`⚠️ Could not open settings for ${indicatorType} #${index + 1}`);
       }
-    } catch (error) {
+      
+      return true;
+      
+    } catch (error: any) {
       console.error(`Error configuring ${indicatorType} #${index + 1}:`, error);
+      return false;
     }
   }
 
