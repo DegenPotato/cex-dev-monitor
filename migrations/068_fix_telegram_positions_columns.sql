@@ -141,9 +141,40 @@ CREATE TABLE telegram_monitored_chats (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Restore monitored chats data
-INSERT OR IGNORE INTO telegram_monitored_chats
-SELECT * FROM telegram_monitored_chats_backup WHERE 1=1;
+-- Restore monitored chats data with explicit column mapping
+INSERT OR IGNORE INTO telegram_monitored_chats (
+  id, user_id, chat_id, chat_name, access_hash,
+  forward_to_chat_id, forward_to_chat_name, forward_account_id,
+  created_at, action_on_detection,
+  auto_buy_enabled, auto_buy_amount_sol, auto_buy_wallet_id,
+  auto_buy_slippage_bps, auto_buy_priority_level, auto_buy_jito_tip_sol,
+  auto_buy_skip_tax, auto_sell_enabled, auto_sell_slippage_bps,
+  stop_loss_percent, take_profit_percent, trailing_stop_enabled,
+  trailing_stop_percent, auto_monitor_enabled, monitor_duration_hours,
+  alert_price_changes
+)
+SELECT 
+  id, user_id, chat_id, chat_name, access_hash,
+  forward_to_chat_id, forward_to_chat_name, forward_account_id,
+  created_at, 
+  COALESCE(action_on_detection, 'forward_only'),
+  COALESCE(auto_buy_enabled, 0),
+  COALESCE(auto_buy_amount_sol, 0.1),
+  auto_buy_wallet_id,
+  COALESCE(auto_buy_slippage_bps, 300),
+  COALESCE(auto_buy_priority_level, 'medium'),
+  COALESCE(auto_buy_jito_tip_sol, 0),
+  COALESCE(auto_buy_skip_tax, 0),
+  COALESCE(auto_sell_enabled, 0),
+  COALESCE(auto_sell_slippage_bps, 1000),
+  COALESCE(stop_loss_percent, -50),
+  COALESCE(take_profit_percent, 100),
+  COALESCE(trailing_stop_enabled, 0),
+  COALESCE(trailing_stop_percent, 0),
+  COALESCE(auto_monitor_enabled, 0),
+  COALESCE(monitor_duration_hours, 24),
+  alert_price_changes
+FROM telegram_monitored_chats_backup WHERE 1=1;
 
 -- Drop backup
 DROP TABLE IF EXISTS telegram_monitored_chats_backup;
