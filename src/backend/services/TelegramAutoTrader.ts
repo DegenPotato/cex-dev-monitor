@@ -142,18 +142,27 @@ export class TelegramAutoTrader extends EventEmitter {
       console.log(`✅ [AutoTrader] Buy executed: ${result.signature}`);
       
       // Create position in database
+      // IMPORTANT: result.amountOut from TradingEngine is the tokens received
+      const tokensReceived = result.amountOut || 0;
+      const solSpent = result.amountIn || config.auto_buy_amount_sol;
+      
       // Calculate buy price in SOL (SOL per token)
-      const buyPriceInSol = result.amountIn && result.amountOut 
-        ? (result.amountIn / result.amountOut)  // SOL spent / tokens received
+      const buyPriceInSol = tokensReceived > 0 
+        ? (solSpent / tokensReceived)  // SOL spent / tokens received
         : 0;
+      
+      console.log(`💰 [AutoTrader] Trade executed:`);
+      console.log(`   SOL spent: ${solSpent}`);
+      console.log(`   Tokens received: ${tokensReceived}`);
+      console.log(`   Price per token: ${buyPriceInSol} SOL`);
       
       const positionId = await this.createPosition({
         userId: wallet.user_id,
         walletId: config.auto_buy_wallet_id,
         tokenMint,
-        buyAmount: config.auto_buy_amount_sol,
+        buyAmount: solSpent,
         buySignature: result.signature,
-        tokensBought: result.amountOut || 0,  // Tokens received
+        tokensBought: tokensReceived,  // Tokens received from trade
         buyPriceSol: buyPriceInSol,  // Price per token in SOL
         context,
         config
@@ -192,14 +201,14 @@ export class TelegramAutoTrader extends EventEmitter {
       `INSERT INTO telegram_trading_positions (
         user_id, wallet_id, token_mint, 
         buy_amount_sol, total_invested_sol,
-        buy_signature, buy_price_usd,
+        buy_signature, buy_price_usd, buy_price_sol,
         tokens_bought, current_tokens,
         source_chat_id, source_chat_name,
         source_message_id, source_sender_id,
         source_sender_username, detection_type,
         status, detected_at, first_buy_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
       [
         data.userId,
         data.walletId,
@@ -207,7 +216,8 @@ export class TelegramAutoTrader extends EventEmitter {
         data.buyAmount,
         data.buyAmount, // total_invested_sol starts same as buy amount
         data.buySignature,
-        data.buyPriceSol || 0,  // This column is misnamed but stores SOL price
+        data.buyPriceSol || 0,  // buy_price_usd (legacy column, stores SOL)
+        data.buyPriceSol || 0,  // buy_price_sol (new correct column)
         data.tokensBought || 0,
         data.tokensBought || 0, // current_tokens starts same as bought
         data.context.chatId,
