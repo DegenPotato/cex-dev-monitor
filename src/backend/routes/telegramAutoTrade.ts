@@ -175,9 +175,14 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
       SELECT 
         p.*,
         w.wallet_name,
-        w.public_key as wallet_address
+        w.public_key as wallet_address,
+        t.token_symbol,
+        t.token_name,
+        t.current_price,
+        t.market_cap as current_mcap_usd
       FROM telegram_trading_positions p
       LEFT JOIN trading_wallets w ON p.wallet_id = w.id
+      LEFT JOIN token_market_data t ON p.token_mint = t.token_mint
       WHERE p.user_id = ?
     `;
     
@@ -192,8 +197,22 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
     params.push(Number(limit));
 
     const positions = await queryAll(query, params) as any[];
+    
+    // Calculate current values and P&L for each position
+    const enrichedPositions = positions.map(p => {
+      // Calculate current value if we have current price
+      if (p.current_price && p.current_tokens) {
+        p.current_value_usd = p.current_tokens * p.current_price;
+        p.unrealized_pnl_usd = p.current_value_usd - p.buy_amount_usd;
+        p.unrealized_pnl_sol = p.unrealized_pnl_usd / 175; // Approximate SOL price
+        p.total_pnl_usd = p.realized_pnl_usd + p.unrealized_pnl_usd;
+        p.total_pnl_sol = p.realized_pnl_sol + p.unrealized_pnl_sol;
+        p.roi_percent = (p.total_pnl_usd / p.buy_amount_usd) * 100;
+      }
+      return p;
+    });
 
-    res.json({ positions });
+    res.json({ positions: enrichedPositions });
   } catch (error: any) {
     console.error('Error fetching positions:', error);
     res.status(500).json({ error: error.message });
@@ -212,9 +231,14 @@ router.get('/api/telegram/positions/:id', authService.requireSecureAuth(), async
       `SELECT 
         p.*,
         w.wallet_name,
-        w.public_key as wallet_address
+        w.public_key as wallet_address,
+        t.token_symbol,
+        t.token_name,
+        t.current_price,
+        t.market_cap as current_mcap_usd
       FROM telegram_trading_positions p
       LEFT JOIN trading_wallets w ON p.wallet_id = w.id
+      LEFT JOIN token_market_data t ON p.token_mint = t.token_mint
       WHERE p.id = ? AND p.user_id = ?`,
       [id, userId]
     ) as any;

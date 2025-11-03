@@ -4,10 +4,9 @@
  */
 
 import { EventEmitter } from 'events';
+import { execute, queryOne, queryAll } from '../database/helpers.js';
 import { getTradingEngine } from '../core/trade.js';
 import { getOnChainPriceMonitor } from './OnChainPriceMonitor.js';
-import { queryOne, queryAll, execute } from '../database/helpers.js';
-import { getDb } from '../database/connection.js';
 
 export interface AutoTradeConfig {
   action_on_detection: string;
@@ -73,7 +72,7 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Handle contract detection and execute configured actions
+   * Handle contract detection
    */
   async handleContractDetection(
     tokenMint: string,
@@ -82,150 +81,192 @@ export class TelegramAutoTrader extends EventEmitter {
   ): Promise<void> {
     console.log(`🎯 [AutoTrader] Processing ${tokenMint.slice(0, 8)}... (${config.action_on_detection})`);
     
+    // Parse action
     const actions = this.parseActions(config.action_on_detection);
-    const promises = [];
+    let positionId: number | null = null;
     
+    // Execute buy first if configured (creates position)
     if (actions.includes('trade') && config.auto_buy_enabled) {
-      promises.push(this.initiateTrade(tokenMint, context, config));
+      const buyResult = await this.executeBuy(tokenMint, context, config);
+      if (buyResult?.positionId) {
+        positionId = buyResult.positionId;
+      }
     }
     
+    // Start monitoring (with or without position)
     if (actions.includes('monitor') && config.auto_monitor_enabled) {
-      promises.push(this.startMonitoring(tokenMint, context, config));
+      await this.startMonitoring(tokenMint, context, config, positionId);
     }
-    
-    await Promise.all(promises);
   }
 
   /**
-   * Execute auto-buy and create position
+   * Execute buy order and create position
    */
-  async initiateTrade(
+  async executeBuy(
     tokenMint: string,
     context: DetectionContext,
     config: AutoTradeConfig
   ): Promise<any> {
+    if (!config.auto_buy_wallet_id || !config.auto_buy_amount_sol) {
+      console.log(`⏭️ [AutoTrader] Skipping buy - missing wallet or amount`);
+      return null;
+    }
+    
     // Get wallet
     const wallet = await queryOne(
-      'SELECT * FROM trading_wallets WHERE id = ? AND user_id = ?',
-      [config.auto_buy_wallet_id, context.userId]
+      'SELECT public_key, user_id FROM trading_wallets WHERE id = ?',
+      [config.auto_buy_wallet_id]
     ) as any;
     
-    if (!wallet) throw new Error('Wallet not found');
-    
-    // Create position
-    const positionId = await this.createPosition({
-      user_id: context.userId,
-      wallet_id: config.auto_buy_wallet_id,
-      token_mint: tokenMint,
-      source_chat_id: context.chatId,
-      source_chat_name: context.chatName,
-      source_message_id: context.messageId,
-      source_sender_id: context.senderId,
-      source_sender_username: context.senderUsername,
-      detection_type: context.detectionType,
-      detected_at: Date.now(),
-      status: 'pending'
-    });
-    
-    // Broadcast creation (REAL-TIME!)
-    this.broadcast('telegram_position_created', {
-      position_id: positionId,
-      user_id: context.userId,
-      token_mint: tokenMint,
-      source_chat_name: context.chatName,
-      source_sender_username: context.senderUsername,
-      action: 'Initiating buy...'
-    });
+    if (!wallet) {
+      console.error(`❌ [AutoTrader] Wallet ${config.auto_buy_wallet_id} not found`);
+      return null;
+    }
     
     // Execute buy
-    const tradeResult = await this.tradingEngine.buyToken({
-      userId: context.userId,
-      walletAddress: wallet.wallet_address || wallet.public_key,
-      tokenMint: tokenMint,
+    const result = await this.tradingEngine.buyToken({
+      userId: wallet.user_id,
+      walletAddress: wallet.public_key,
+      tokenMint,
       amount: config.auto_buy_amount_sol,
-      slippageBps: config.auto_buy_slippage_bps,
-      priorityLevel: config.auto_buy_priority_level as any,
-      jitoTip: config.auto_buy_jito_tip_sol,
-      skipTax: config.auto_buy_skip_tax
-    });
+      slippageBps: config.auto_buy_slippage_bps || 300,
+      priorityLevel: config.auto_buy_priority_level || 'medium',
+      skipTax: config.auto_buy_skip_tax || false
+    } as any);
     
-    if (tradeResult.success) {
-      const pricePerToken = config.auto_buy_amount_sol / (tradeResult.amountOut || 1);
+    if (result.success && result.signature) {
+      console.log(`✅ [AutoTrader] Buy executed: ${result.signature}`);
       
-      // Update position
-      await this.updatePosition(positionId, {
-        status: 'open',
-        token_symbol: tradeResult.tokenSymbol,
-        initial_balance: tradeResult.amountOut,
-        current_balance: tradeResult.amountOut,
-        avg_entry_price: pricePerToken,
-        current_price: pricePerToken,
-        total_invested_sol: config.auto_buy_amount_sol,
-        total_buys: 1,
-        first_buy_at: Date.now()
+      // Create position in database
+      const positionId = await this.createPosition({
+        userId: wallet.user_id,
+        walletId: config.auto_buy_wallet_id,
+        tokenMint,
+        buyAmount: config.auto_buy_amount_sol,
+        buySignature: result.signature,
+        tokensBought: result.amountOut || 0,  // Use amountOut from TradeResult
+        buyPriceUsd: result.amountIn && result.amountOut ? (result.amountIn / result.amountOut) : 0,
+        context,
+        config
       });
       
-      // Link transaction
-      if (tradeResult.signature) {
-        await execute(
-          `UPDATE trading_transactions 
-           SET position_id = ?, triggered_by = ? 
-           WHERE signature = ?`,
-          [positionId, 'telegram_detection', tradeResult.signature]
-        );
-      }
+      console.log(`📊 [AutoTrader] Position created with ID: ${positionId}`);
       
-      // Broadcast success (REAL-TIME!)
-      this.broadcast('telegram_trade_executed', {
-        position_id: positionId,
-        trade_type: 'buy',
-        amount_sol: config.auto_buy_amount_sol,
-        amount_tokens: tradeResult.amountOut,
-        signature: tradeResult.signature,
-        new_balance: tradeResult.amountOut,
-        new_avg_price: pricePerToken,
-        token_symbol: tradeResult.tokenSymbol
-      });
-      
-      // Setup auto-sell
+      // Setup auto-sell if configured
       if (config.auto_sell_enabled) {
         await this.setupAutoSell(positionId, config);
       }
       
-      return { success: true, positionId, signature: tradeResult.signature };
-    } else {
-      // Failed
-      await this.updatePosition(positionId, {
-        status: 'failed',
-        exit_reason: tradeResult.error
-      });
-      
-      this.broadcast('telegram_position_alert', {
+      // Broadcast position creation
+      this.broadcast('telegram_position_created', {
         position_id: positionId,
-        alert_type: 'error',
-        message: `Buy failed: ${tradeResult.error}`
+        token_mint: tokenMint,
+        amount_sol: config.auto_buy_amount_sol,
+        tokens_bought: result.amountOut || 0,  // Use amountOut from TradeResult
+        source_chat_name: context.chatName,
+        wallet_address: wallet.public_key
       });
       
-      throw new Error(tradeResult.error);
+      return { success: true, positionId, signature: result.signature };
     }
+    
+    console.error(`❌ [AutoTrader] Buy failed:`, result.error);
+    return { success: false, error: result.error };
   }
 
   /**
-   * Start price monitoring
+   * Create position record with full tracking
+   */
+  private async createPosition(data: any): Promise<number> {
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Get current SOL price for USD calculations
+    const solPrice = await queryOne('SELECT price FROM sol_price_oracle ORDER BY timestamp DESC LIMIT 1') as any;
+    const currentSolPrice = solPrice?.price || 175;
+    
+    const buyAmountUsd = data.buyAmount * currentSolPrice;
+    
+    const result = await execute(
+      `INSERT INTO telegram_trading_positions (
+        user_id, wallet_id, token_mint, 
+        buy_amount_sol, buy_amount_usd,
+        buy_signature, buy_price_usd,
+        tokens_bought, current_tokens,
+        source_chat_id, source_chat_name,
+        source_message_id, source_sender_id,
+        source_sender_username,
+        status, entry_mcap_usd,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)`,
+      [
+        data.userId,
+        data.walletId,
+        data.tokenMint,
+        data.buyAmount,
+        buyAmountUsd,
+        data.buySignature,
+        data.buyPriceUsd || 0,
+        data.tokensBought || 0,
+        data.tokensBought || 0, // current_tokens starts same as bought
+        data.context.chatId,
+        data.context.chatName,
+        data.context.messageId || 0,
+        data.context.senderId,
+        data.context.senderUsername,
+        0, // entry_mcap_usd - will update after
+        now,
+        now
+      ]
+    );
+    
+    const positionId = result.lastInsertRowid as number;
+    
+    // Queue position update for WebSocket
+    await execute(
+      `INSERT INTO position_updates (type, data, created_at) VALUES (?, ?, ?)`,
+      [
+        'telegram_position_created',
+        JSON.stringify({
+          position_id: positionId,
+          token_mint: data.tokenMint,
+          user_id: data.userId,
+          wallet_id: data.walletId
+        }),
+        now
+      ]
+    );
+    
+    return positionId;
+  }
+
+  /**
+   * Start price monitoring with position tracking
    */
   async startMonitoring(
     tokenMint: string,
     context: DetectionContext,
-    config: AutoTradeConfig
+    config: AutoTradeConfig,
+    positionId?: number | null  // Track position if created
   ): Promise<any> {
     const poolInfo = await this.getPoolAddress(tokenMint);
-    if (!poolInfo) throw new Error('No pool found');
+    if (!poolInfo) {
+      console.warn(`⚠️ [AutoTrader] No pool found for monitoring ${tokenMint.slice(0, 8)}...`);
+      return { success: false, error: 'No pool found' };
+    }
     
     const campaign = await this.priceMonitor.startCampaign(tokenMint, poolInfo.pool_address);
     
+    // Link campaign to position if we have one
+    if (positionId) {
+      this.positionCampaigns.set(positionId, campaign.id);
+      console.log(`🔗 [AutoTrader] Linked campaign ${campaign.id} to position ${positionId}`);
+    }
+    
     // Add price alerts
     if (config.alert_price_changes) {
-      const alerts = JSON.parse(config.alert_price_changes);
+      const alerts = typeof config.alert_price_changes === 'string' 
+        ? JSON.parse(config.alert_price_changes) 
+        : config.alert_price_changes;
       for (const change of alerts) {
         await this.priceMonitor.addAlert(
           campaign.id,
@@ -345,30 +386,6 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Create position record
-   */
-  private async createPosition(data: any): Promise<number> {
-    const db = await getDb();
-    const stmt = db.prepare(`
-      INSERT INTO telegram_trading_positions (
-        user_id, wallet_id, token_mint,
-        source_chat_id, source_chat_name, source_message_id,
-        source_sender_id, source_sender_username, detection_type,
-        detected_at, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run([
-      data.user_id, data.wallet_id, data.token_mint,
-      data.source_chat_id, data.source_chat_name, data.source_message_id,
-      data.source_sender_id, data.source_sender_username, data.detection_type,
-      data.detected_at, data.status, Date.now(), Date.now()
-    ]);
-    
-    // For sql.js, the lastID is on the result object directly
-    return (result as any).lastID || (result as any).lastInsertRowid || 0;
-  }
-
   /**
    * Update position
    */
@@ -385,16 +402,68 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Get pool address
+   * Get pool address - fetches from GeckoTerminal if not in DB
    */
   private async getPoolAddress(tokenMint: string): Promise<any> {
-    return await queryOne(
+    // First check database
+    const dbPool = await queryOne(
       `SELECT pool_address FROM token_pools 
        WHERE mint_address = ? 
        ORDER BY liquidity_usd DESC 
        LIMIT 1`,
       [tokenMint]
-    );
+    ) as any;
+    
+    if (dbPool) {
+      return dbPool;
+    }
+    
+    // Fetch from GeckoTerminal API
+    console.log(`📊 [AutoTrader] Fetching pool from GeckoTerminal for ${tokenMint.slice(0, 8)}...`);
+    
+    try {
+      const response = await fetch(
+        `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`
+      );
+      
+      if (!response.ok) {
+        console.error(`❌ [AutoTrader] GeckoTerminal API error: ${response.status}`);
+        return null;
+      }
+      
+      const data = await response.json();
+      const pools = data.data || [];
+      
+      if (pools.length === 0) {
+        console.log(`⚠️ [AutoTrader] No pools found on GeckoTerminal`);
+        return null;
+      }
+      
+      // Get highest liquidity pool
+      const bestPool = pools.sort((a: any, b: any) => {
+        const liqA = parseFloat(a.attributes.reserve_in_usd || '0');
+        const liqB = parseFloat(b.attributes.reserve_in_usd || '0');
+        return liqB - liqA;
+      })[0];
+      
+      const poolAddress = bestPool.attributes.address;
+      const liquidityUsd = parseFloat(bestPool.attributes.reserve_in_usd || '0');
+      
+      console.log(`✅ [AutoTrader] Found pool ${poolAddress.slice(0, 8)}... ($${liquidityUsd.toFixed(0)} liquidity)`);
+      
+      // Save to database
+      await execute(
+        `INSERT OR REPLACE INTO token_pools (
+          mint_address, pool_address, liquidity_usd, dex, created_at
+        ) VALUES (?, ?, ?, 'pumpfun', ?)`,
+        [tokenMint, poolAddress, liquidityUsd, Math.floor(Date.now() / 1000)]
+      );
+      
+      return { pool_address: poolAddress };
+    } catch (error) {
+      console.error(`❌ [AutoTrader] Failed to fetch pool:`, error);
+      return null;
+    }
   }
 
   /**
