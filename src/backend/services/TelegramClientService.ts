@@ -3087,13 +3087,20 @@ export class TelegramClientService extends EventEmitter {
         const monitoredUserIds = monitor.monitored_user_ids ? JSON.parse(monitor.monitored_user_ids) : [];
         
         // Use YOUR existing logic: empty array = monitor all users
-        const shouldProcess = monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
+        let shouldProcess = monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
         
         // YOUR existing bot filtering
         const sender = (event.message as any).sender;
         const isBot = sender?.bot || false;
         if (isBot && !monitor.process_bot_messages) {
           continue; // Skip bots if process_bot_messages is false
+        }
+        
+        // NEW: No-username filtering (Test Lab feature)
+        const hasUsername = !!senderUsername;
+        if (monitor.exclude_no_username && !hasUsername) {
+          console.log(`   ⏭️  [Test Lab] Skipping user ${senderId} - no username (filter enabled)`);
+          continue; // Skip users without username if filter is enabled
         }
         
         if (shouldProcess) {
@@ -3146,6 +3153,48 @@ export class TelegramClientService extends EventEmitter {
       const liquidityUsd = parseFloat(bestPool.attributes.reserve_in_usd || '0');
       
       console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
+      
+      // Handle initial action: buy_and_monitor
+      if (monitor.test_lab_initial_action === 'buy_and_monitor' && monitor.test_lab_wallet_id && monitor.test_lab_buy_amount_sol) {
+        console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id}`);
+        
+        try {
+          const db = await getDb();
+          const tradeSignalStmt = db.prepare(`
+            INSERT INTO trade_signals (
+              user_id, signal_type, signal_source, source_reference,
+              token_mint, action, amount, status, created_at, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          
+          const metadata = {
+            test_lab: true,
+            pool_address: poolAddress,
+            chat_id: monitor.chat_id,
+            message_id: messageId,
+            initial_liquidity_usd: liquidityUsd
+          };
+          
+          tradeSignalStmt.run([
+            monitor.user_id,
+            'buy',
+            'telegram_test_lab',
+            `${monitor.chat_id}_${messageId}`,
+            tokenMint,
+            'buy',
+            monitor.test_lab_buy_amount_sol,
+            'pending',
+            Math.floor(Date.now() / 1000),
+            JSON.stringify(metadata)
+          ]);
+          saveDatabase();
+          
+          console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
+        } catch (buyError) {
+          console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
+          // Continue with monitoring even if buy fails
+        }
+      }
       
       // Import dynamically to avoid circular dependencies
       const { getOnChainPriceMonitor } = await import('./OnChainPriceMonitor.js');

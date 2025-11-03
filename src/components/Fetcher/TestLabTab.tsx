@@ -114,6 +114,10 @@ export const TestLabTab: React.FC = () => {
   const [telegramMonitorAllUsers, setTelegramMonitorAllUsers] = useState<boolean>(false);
   const [telegramExcludeBots, setTelegramExcludeBots] = useState<boolean>(true);
   const [telegramExcludeNoUsername, setTelegramExcludeNoUsername] = useState<boolean>(false);
+  const [telegramInitialAction, setTelegramInitialAction] = useState<'monitor_only' | 'buy_and_monitor'>('monitor_only');
+  const [telegramBuyAmountSol, setTelegramBuyAmountSol] = useState<number>(0.1);
+  const [telegramWalletId, setTelegramWalletId] = useState<number | null>(null);
+  const [tradingWallets, setTradingWallets] = useState<any[]>([]);
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
     RSI: null,
@@ -148,6 +152,27 @@ export const TestLabTab: React.FC = () => {
       }
     };
     fetchTelegramAccounts();
+  }, []);
+
+  // Fetch trading wallets for buy_and_monitor option
+  useEffect(() => {
+    const fetchWallets = async () => {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTradingWallets(data.wallets || []);
+          // Auto-select default wallet
+          const defaultWallet = (data.wallets || []).find((w: any) => w.is_default);
+          if (defaultWallet) setTelegramWalletId(defaultWallet.id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch wallets:', error);
+      }
+    };
+    fetchWallets();
   }, []);
 
   // Fetch chats when account is selected
@@ -627,6 +652,9 @@ export const TestLabTab: React.FC = () => {
           selectedUserIds: telegramSelectedUserIds,
           excludeBots: telegramExcludeBots,
           excludeNoUsername: telegramExcludeNoUsername,
+          initialAction: telegramInitialAction,
+          buyAmountSol: telegramBuyAmountSol,
+          walletId: telegramWalletId,
           alerts: telegramAlerts
         })
       });
@@ -1039,6 +1067,68 @@ export const TestLabTab: React.FC = () => {
                 <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-sm text-cyan-300">
                   ✓ Monitoring all users in chat (filters still apply)
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Initial Action & Buy Configuration */}
+          {(telegramMonitorAllUsers || telegramSelectedUserIds.length > 0) && (
+            <div className="space-y-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
+              <h3 className="text-lg font-semibold text-white">Action on Detection</h3>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">When contract is detected:</label>
+                <select
+                  value={telegramInitialAction}
+                  onChange={(e) => setTelegramInitialAction(e.target.value as 'monitor_only' | 'buy_and_monitor')}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+                >
+                  <option value="monitor_only">Monitor Only (Just track price)</option>
+                  <option value="buy_and_monitor">Buy & Monitor (Execute buy, then track position + price)</option>
+                </select>
+              </div>
+
+              {telegramInitialAction === 'buy_and_monitor' && (
+                <>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Trading Wallet</label>
+                    <select
+                      value={telegramWalletId || ''}
+                      onChange={(e) => setTelegramWalletId(parseInt(e.target.value))}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+                    >
+                      <option value="">Select wallet...</option>
+                      {tradingWallets.map((wallet) => (
+                        <option key={wallet.id} value={wallet.id}>
+                          {wallet.wallet_name || wallet.wallet_address.substring(0, 8) + '...'} 
+                          {wallet.is_default && ' (Default)'}
+                          {' - '}
+                          {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Buy Amount (SOL)</label>
+                    <input
+                      type="number"
+                      value={telegramBuyAmountSol}
+                      onChange={(e) => setTelegramBuyAmountSol(parseFloat(e.target.value))}
+                      min="0.001"
+                      step="0.01"
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white"
+                      placeholder="0.1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Amount of SOL to spend on initial buy</p>
+                  </div>
+
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <p className="text-sm text-blue-300">
+                      💰 When a contract is detected, we'll automatically execute a buy order and then monitor both price alerts AND your position value.
+                    </p>
+                  </div>
+                </>
               )}
             </div>
           )}

@@ -537,6 +537,10 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       monitorAllUsers, 
       selectedUserIds, 
       excludeBots, 
+      excludeNoUsername,
+      initialAction,
+      buyAmountSol,
+      walletId,
       alerts 
     } = req.body;
     
@@ -548,6 +552,15 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       return res.status(400).json({ error: 'At least one alert is required' });
     }
 
+    if (initialAction === 'buy_and_monitor') {
+      if (!walletId) {
+        return res.status(400).json({ error: 'Wallet selection required for buy_and_monitor' });
+      }
+      if (!buyAmountSol || buyAmountSol <= 0) {
+        return res.status(400).json({ error: 'Buy amount must be greater than 0' });
+      }
+    }
+
     // Use EXISTING telegram_monitored_chats table with existing filtering logic!
     const db = await getDb();
     
@@ -555,22 +568,33 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
     const monitoredUserIdsJson = monitorAllUsers ? '[]' : JSON.stringify(selectedUserIds.map((id: string) => parseInt(id)));
     const testLabAlertsJson = JSON.stringify(alerts);
     const processBotMessages = excludeBots ? 0 : 1;
+    const excludeNoUsernameValue = excludeNoUsername ? 1 : 0;
     const now = Math.floor(Date.now() / 1000);
     
     const stmt = db.prepare(`
       INSERT INTO telegram_monitored_chats 
-      (user_id, chat_id, telegram_account_id, monitored_user_ids, process_bot_messages, test_lab_alerts, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      (user_id, chat_id, telegram_account_id, monitored_user_ids, process_bot_messages, 
+       exclude_no_username, test_lab_alerts, test_lab_initial_action, test_lab_buy_amount_sol, 
+       test_lab_wallet_id, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(user_id, chat_id) DO UPDATE SET
         monitored_user_ids = excluded.monitored_user_ids,
         process_bot_messages = excluded.process_bot_messages,
+        exclude_no_username = excluded.exclude_no_username,
         test_lab_alerts = excluded.test_lab_alerts,
+        test_lab_initial_action = excluded.test_lab_initial_action,
+        test_lab_buy_amount_sol = excluded.test_lab_buy_amount_sol,
+        test_lab_wallet_id = excluded.test_lab_wallet_id,
         telegram_account_id = excluded.telegram_account_id,
         is_active = 1,
         updated_at = excluded.updated_at
     `);
     
-    stmt.run([userId, chatId, telegramAccountId, monitoredUserIdsJson, processBotMessages, testLabAlertsJson, now, now]);
+    stmt.run([
+      userId, chatId, telegramAccountId, monitoredUserIdsJson, processBotMessages, 
+      excludeNoUsernameValue, testLabAlertsJson, initialAction || 'monitor_only', 
+      buyAmountSol || null, walletId || null, now, now
+    ]);
     saveDatabase();
     
     const target = monitorAllUsers 

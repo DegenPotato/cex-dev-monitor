@@ -7,6 +7,19 @@
 -- When this column is NOT NULL, the chat is being monitored for Test Lab auto-campaigns
 ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_alerts TEXT;
 
+-- Add filter for users without username
+ALTER TABLE telegram_monitored_chats ADD COLUMN exclude_no_username BOOLEAN DEFAULT 0;
+
+-- Add initial action on contract detection
+-- Options: 'monitor_only' (just price tracking), 'buy_and_monitor' (buy then track position + price)
+ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_initial_action TEXT DEFAULT 'monitor_only';
+
+-- Add buy amount for buy_and_monitor action
+ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_buy_amount_sol REAL;
+
+-- Add wallet_id to link Test Lab campaigns to trading wallet (for position tracking)
+ALTER TABLE telegram_monitored_chats ADD COLUMN test_lab_wallet_id INTEGER REFERENCES trading_wallets(id);
+
 -- Create index for faster Test Lab queries (only index rows where test_lab_alerts is set)
 CREATE INDEX IF NOT EXISTS idx_telegram_monitored_chats_test_lab 
   ON telegram_monitored_chats(test_lab_alerts) 
@@ -39,14 +52,43 @@ CREATE INDEX IF NOT EXISTS idx_telegram_monitored_chats_test_lab
 --    - No new logic needed
 --
 -- ============================================================================
+-- NEW TEST LAB COLUMNS ADDED:
+-- ============================================================================
+-- 📋 test_lab_alerts (TEXT/JSON):
+--    - Alert configurations for price monitoring
+--    - When NOT NULL, this chat is Test Lab monitored
+--
+-- 🚫 exclude_no_username (BOOLEAN):
+--    - 0 = allow users without username
+--    - 1 = exclude users without username
+--
+-- ⚡ test_lab_initial_action (TEXT):
+--    - 'monitor_only' = just start price monitoring (default)
+--    - 'buy_and_monitor' = execute buy order then monitor position + price
+--
+-- 💰 test_lab_buy_amount_sol (REAL):
+--    - Amount of SOL to buy when initial_action = 'buy_and_monitor'
+--
+-- 👛 test_lab_wallet_id (INTEGER):
+--    - Links to trading_wallets.id for executing buys and tracking positions
+--    - Required if initial_action = 'buy_and_monitor'
+--
+-- ============================================================================
 -- HOW TEST LAB WORKS WITH EXISTING INFRASTRUCTURE:
 -- ============================================================================
 -- 1. Test Lab UI creates entry in telegram_monitored_chats with test_lab_alerts set
 -- 2. TelegramClientService detects contract (existing logic)
 -- 3. checkTestLabMonitors() queries WHERE test_lab_alerts IS NOT NULL
--- 4. Existing user filtering (monitored_user_ids) determines if sender matches
+-- 4. Existing user filtering (monitored_user_ids) applies
 -- 5. Existing bot filtering (process_bot_messages) applies
--- 6. Existing duplicate handling applies
--- 7. If all pass, create Test Lab campaign with configured alerts
+-- 6. New exclude_no_username filter applies
+-- 7. Existing duplicate handling applies
+-- 8. If all pass AND initial_action = 'buy_and_monitor':
+--    → Create trade_signal for buy order
+--    → Trading system executes buy
+--    → Position tracked in wallet_token_holdings
+-- 9. Create Test Lab campaign with configured alerts
+-- 10. Monitor tracks BOTH price alerts AND position value (if bought)
 --
--- ZERO new tables, ZERO duplicate logic, MAXIMUM reuse! 🎯
+-- REUSES: trading_wallets, wallet_token_holdings, trade_signals, trading_transactions
+-- ZERO duplicate trading logic! 🎯
