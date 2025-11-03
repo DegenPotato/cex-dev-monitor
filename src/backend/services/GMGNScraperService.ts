@@ -807,8 +807,21 @@ class GMGNScraperService extends EventEmitter {
               console.log(`✅ Found ${indType} #${idx + 1}: "${text.substring(0, 80)}"`);
               console.log(`   Element: ${legend.tagName}, Classes: ${legend.className}`);
               
-              // Click the indicator name to reveal button menu
-              (legend as HTMLElement).click();
+              // Hover over the indicator name to reveal button menu
+              const hoverEvent = new MouseEvent('mouseenter', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              });
+              legend.dispatchEvent(hoverEvent);
+              
+              // Also trigger mouseover for good measure
+              const mouseOverEvent = new MouseEvent('mouseover', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              });
+              legend.dispatchEvent(mouseOverEvent);
               
               return {
                 success: true,
@@ -829,18 +842,25 @@ class GMGNScraperService extends EventEmitter {
         return false;
       }
       
-      console.log(`✅ Clicked indicator: ${indicatorInfo.text}`);
+      console.log(`✅ Hovered over indicator: ${indicatorInfo.text}`);
       
-      // Step 2: Wait for buttons to appear
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Step 2: Wait for hover menu to appear
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Step 3: Look for the settings button in the revealed button menu
       const buttonDebug = await pageOrFrame.evaluate(() => {
         // Look for buttons container that should have appeared
-        const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"], [class*="buttonsWrapper"]'));
+        const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"], [class*="buttonsWrapper"], [class*="buttonGroup"]'));
         
-        // Look for all buttons, especially the settings button
-        const allButtons = Array.from(document.querySelectorAll('button[class*="button-l31H9iuA"]'));
+        // Look for all buttons with multiple possible selectors
+        const allButtons = Array.from(document.querySelectorAll(
+          'button[class*="button-l31H9iuA"], ' +
+          'button[class*="button"], ' + 
+          '[aria-label="Settings"], ' +
+          '[data-name="legend-settings-action"], ' +
+          'svg[class*="settings"], ' +
+          '[role="button"]'
+        ));
         
         const visibleButtons = allButtons.filter(btn => (btn as HTMLElement).offsetParent !== null);
         
