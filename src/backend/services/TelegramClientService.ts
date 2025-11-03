@@ -6,7 +6,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
-import { getDb, saveDatabase } from '../database/connection.js';
+import { getDb } from '../database/connection.js';
 import { telegramRateLimiter } from './TelegramRateLimiter.js';
 import { tokenSourceTracker } from './TokenSourceTracker.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
@@ -3183,7 +3183,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Auto-create Test Lab campaign for monitored token
    */
-  private async createTestLabCampaign(monitor: any, tokenMint: string, messageId: number, alerts: any[]) {
+  private async createTestLabCampaign(monitor: any, tokenMint: string, _messageId: number, alerts: any[]) {
     try {
       console.log(`🚀 [Test Lab] Auto-creating campaign for token ${tokenMint}`);
       
