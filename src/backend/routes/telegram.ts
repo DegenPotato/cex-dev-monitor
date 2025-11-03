@@ -63,17 +63,19 @@ export function createTelegramRoutes() {
         return res.status(403).json({ error: 'Account not found or access denied' });
       }
       
-      // Get all chats from telegram_cached_entities for this user
+      // Get all monitored chats for this user's account
+      // Note: telegram_entity_cache doesn't have user_id, it's a shared cache
+      // We query telegram_monitored_chats which stores the user's configured chats
       const chats = await queryAll(
         `SELECT DISTINCT 
-          entity_id as id, 
-          title, 
+          chat_id as id, 
+          chat_name as title, 
           username,
-          entity_type as type
-        FROM telegram_cached_entities 
-        WHERE user_id = ? AND entity_type IN ('channel', 'chat', 'group')
-        ORDER BY title`,
-        [userId]
+          chat_type as type
+        FROM telegram_monitored_chats 
+        WHERE telegram_account_id = ? AND is_active = 1
+        ORDER BY chat_name`,
+        [accountId]
       );
       
       res.json({ chats });
