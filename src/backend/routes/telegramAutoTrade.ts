@@ -10,13 +10,24 @@ import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
 const router = Router();
 const authService = new SecureAuthService();
-const autoTrader = getTelegramAutoTrader();
+
+// Initialize autoTrader lazily to avoid startup issues
+let autoTrader: any = null;
+const getAutoTrader = () => {
+  if (!autoTrader) {
+    autoTrader = getTelegramAutoTrader();
+  }
+  return autoTrader;
+};
 
 /**
  * Get auto-trade configuration for a chat
  */
 router.get('/api/telegram/auto-trade/config/:chatId', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
+    // Initialize WebSocket listener on first access
+    initializeWebSocket();
+    
     const userId = req.user!.id;
     const { chatId } = req.params;
 
@@ -388,14 +399,21 @@ router.get('/api/telegram/analytics/source', authService.requireSecureAuth(), as
 
 /**
  * Subscribe to position updates via WebSocket
+ * Initialize this only when the first route is accessed
  */
-autoTrader.on('websocket_broadcast', (event) => {
-  // This will be handled by the main WebSocket server
-  // The event should be broadcasted to all connected clients
-  const { broadcast } = require('../websocket.js');
-  if (broadcast) {
-    broadcast(event);
-  }
-});
+let websocketInitialized = false;
+const initializeWebSocket = () => {
+  if (websocketInitialized) return;
+  websocketInitialized = true;
+  
+  getAutoTrader().on('websocket_broadcast', (event: any) => {
+    // This will be handled by the main WebSocket server
+    // The event should be broadcasted to all connected clients
+    const { broadcast } = require('../websocket.js');
+    if (broadcast) {
+      broadcast(event);
+    }
+  });
+};
 
 export default router;
