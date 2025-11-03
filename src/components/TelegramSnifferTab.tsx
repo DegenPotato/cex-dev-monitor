@@ -216,7 +216,7 @@ export function TelegramSnifferTab() {
   const [configMonitorDuration, setConfigMonitorDuration] = useState<number>(24);
   const [configAlertThreshold, setConfigAlertThreshold] = useState<number>(50);
 
-  // Fetch trading wallets for auto-trade configuration
+  // Fetch trading wallets for auto-trade configuration (following Fetcher pattern)
   const fetchTradingWallets = async () => {
     try {
       const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
@@ -224,8 +224,8 @@ export function TelegramSnifferTab() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Ensure we always have an array
-        const wallets = Array.isArray(data) ? data : (data?.wallets || []);
+        // API returns { wallets: [...] } structure, same as Fetcher
+        const wallets = data.wallets || [];
         setTradingWallets(wallets);
       } else {
         console.error('Failed to fetch wallets, status:', response.status);
@@ -3787,7 +3787,10 @@ export function TelegramSnifferTab() {
                           </option>
                           {Array.isArray(tradingWallets) && tradingWallets.map((wallet: any) => (
                             <option key={wallet.id} value={wallet.id}>
-                              {wallet.wallet_name} ({wallet.sol_balance?.toFixed(2)} SOL)
+                              {wallet.name || (wallet.publicKey ? wallet.publicKey.substring(0, 8) + '...' : 'Wallet')} 
+                              {wallet.isDefault && ' (Default)'}
+                              {' - '}
+                              {(wallet.balance || 0).toFixed(4)} SOL
                             </option>
                           ))}
                         </select>
