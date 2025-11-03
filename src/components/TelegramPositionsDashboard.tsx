@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
-  TrendingDown,
   Activity,
   DollarSign,
   Clock,
-  AlertCircle,
-  CheckCircle,
   XCircle,
   MessageSquare,
   User,
   ExternalLink,
   Copy,
   RefreshCw,
-  Filter,
   ArrowUpCircle,
   ArrowDownCircle,
   Target
@@ -76,7 +72,7 @@ export const TelegramPositionsDashboard: React.FC = () => {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   
   // WebSocket subscription
-  const { subscribe, unsubscribe } = useWebSocket(`${config.wsUrl}/ws`);
+  const { subscribe } = useWebSocket(`${config.wsUrl}/ws`);
 
   // Fetch initial positions
   useEffect(() => {
