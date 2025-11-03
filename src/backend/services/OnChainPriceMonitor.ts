@@ -398,6 +398,20 @@ export class OnChainPriceMonitor extends EventEmitter {
     };
 
     const campaignAlerts = this.alerts.get(campaignId) || [];
+    
+    // Check for duplicate alerts (same targetPercent, direction, and priceType)
+    const isDuplicate = campaignAlerts.some(existing => 
+      existing.targetPercent === alert.targetPercent &&
+      existing.direction === alert.direction &&
+      existing.priceType === alert.priceType &&
+      !existing.hit // Only check non-triggered alerts
+    );
+    
+    if (isDuplicate) {
+      console.log(`⏭️  Alert skipped (duplicate): ${direction} ${targetPercent}% already exists`);
+      return null;
+    }
+    
     campaignAlerts.push(alert);
     this.alerts.set(campaignId, campaignAlerts);
 
