@@ -787,6 +787,7 @@ export class TelegramClientService extends EventEmitter {
               const msgSenderId = message.senderId?.toString();
               const msgSender = (message as any).sender;
               const msgUsername = msgSender?.username || msgSender?.firstName || msgSenderId;
+              console.log(`   🔬 [Test Lab] Calling checkTestLabMonitors for chat ${chatId} with sender ${msgSenderId}`);
               await this.checkTestLabMonitors(event, contracts, msgSenderId, msgUsername);
             }
           }
@@ -3116,10 +3117,17 @@ export class TelegramClientService extends EventEmitter {
    * Uses in-memory Test Lab monitors - no database persistence
    */
   private async checkTestLabMonitors(event: any, contracts: any[], senderId?: string, senderUsername?: string) {
-    if (!contracts || contracts.length === 0 || !senderId) return;
+    if (!contracts || contracts.length === 0) return;
     
-    // Get chat info
-    const chatId = event.message?.peerId?.channelId?.toString() || event.message?.peerId?.chatId?.toString();
+    // SenderId might be null for some messages (channels, etc) - that's OK for monitoring all users
+    
+    // Get chat info - MUST match format from main handler!
+    let chatId = event.message?.chatId?.toString();
+    if (event.message?.peerId?.channelId) {
+      chatId = `-100${event.message.peerId.channelId.toString()}`;
+    } else if (event.message?.peerId?.chatId) {
+      chatId = event.message.peerId.chatId.toString();
+    }
     if (!chatId) return;
 
     try {
@@ -3127,7 +3135,11 @@ export class TelegramClientService extends EventEmitter {
       // Import from priceTest route to access the same Map
       const { getTestLabMonitorForChat } = await import('../routes/priceTest.js');
       const monitor = getTestLabMonitorForChat(chatId);
-      if (!monitor || !monitor.isActive) return;
+      console.log(`🔍 [Test Lab] Looking for monitor for chat ${chatId}, found:`, monitor ? 'YES' : 'NO');
+      if (!monitor || !monitor.isActive) {
+        console.log(`   ⏭️  [Test Lab] No active monitor for chat ${chatId}`);
+        return;
+      }
       
       // Config is directly on monitor object (no JSON parsing needed)
       const config = monitor;
@@ -3136,7 +3148,7 @@ export class TelegramClientService extends EventEmitter {
       const monitoredUserIds = config.selectedUserIds || [];
       
       // Empty array = monitor all users (unless monitorAllUsers is explicitly false)
-      let shouldProcess = config.monitorAllUsers || monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
+      let shouldProcess = config.monitorAllUsers || monitoredUserIds.length === 0 || (senderId && monitoredUserIds.includes(parseInt(senderId)));
       
       // Bot filtering
       const sender = (event.message as any).sender;
