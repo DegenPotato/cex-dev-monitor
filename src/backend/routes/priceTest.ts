@@ -842,6 +842,7 @@ monitor.on('alert_triggered', async (data) => {
         } else if (action.type === 'sell') {
           const dynamicMode = action.useDynamicPercentage === true;
           console.log(`💸 SELL: ${action.amount}% (${dynamicMode ? 'DYNAMIC' : 'FIXED'}) (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          console.log(`   🔍 DEBUG: action.amount RAW VALUE = ${action.amount}, TYPE = ${typeof action.amount}`);
           console.log(`   Token: ${data.tokenMint} (${data.tokenSymbol || 'unknown'})`);
           
           if (!action.walletId) {
@@ -864,6 +865,7 @@ monitor.on('alert_triggered', async (data) => {
           if (dynamicMode) {
             // Dynamic: Use percentage of current on-chain balance (for stop losses)
             console.log(`   📊 Dynamic mode: Using % of current balance`);
+            console.log(`   🔍 DEBUG: Passing percentage to sellToken = ${action.amount}`);
             sellParams = {
               userId: wallet.user_id,
               walletAddress: wallet.public_key,
@@ -877,7 +879,9 @@ monitor.on('alert_triggered', async (data) => {
           } else {
             // Fixed: Use absolute amount from reference balance (for take profits)
             console.log(`   📊 Fixed mode: Using % of reference balance`);
+            console.log(`   🔍 DEBUG: Converting ${action.amount}% to absolute amount...`);
             const absoluteAmount = getAbsoluteAmountFromPercentage(action.walletId, data.tokenMint, action.amount);
+            console.log(`   🔍 DEBUG: Calculated absoluteAmount = ${absoluteAmount}`);
             
             if (absoluteAmount === null) {
               console.error(`❌ Cannot determine sell amount - no reference balance found`);

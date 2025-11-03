@@ -249,7 +249,10 @@ export class TradingEngine {
       let amountToSell = params.amount;
       
       if (params.percentage) {
+        console.log(`🔍 DEBUG: sellToken received percentage = ${params.percentage}, TYPE = ${typeof params.percentage}`);
         const balance = await this.getTokenBalance(walletAddress, params.tokenMint);
+        console.log(`🔍 DEBUG: Current balance = ${balance}`);
+        console.log(`🔍 DEBUG: Calculation: ${balance} * (${params.percentage} / 100) = ${balance * (params.percentage / 100)}`);
         amountToSell = balance * (params.percentage / 100);
         console.log(`📊 Token balance: ${balance}, selling ${params.percentage}% = ${amountToSell} tokens`);
       }
