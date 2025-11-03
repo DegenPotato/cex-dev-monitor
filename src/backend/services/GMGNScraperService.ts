@@ -274,14 +274,9 @@ class GMGNScraperService extends EventEmitter {
         // Take screenshot before configuration
         await this.takeDebugScreenshot('before_configuration');
         
-        // Now configure each indicator
+        // SIMPLIFIED: Just 1 RSI for testing
         const configurations = [
-          { type: 'RSI', index: 0, period: '14' }, // First RSI stays at 14
-          { type: 'RSI', index: 1, period: '2' },  // Second RSI to 2
-          { type: 'EMA', index: 0, period: '21' },
-          { type: 'EMA', index: 1, period: '50' },
-          { type: 'EMA', index: 2, period: '100' },
-          { type: 'EMA', index: 3, period: '200' },
+          { type: 'RSI', index: 0, period: '2' },   // RSI #1 change from 14 to 2
         ];
         
         for (const config of configurations) {
@@ -353,10 +348,9 @@ class GMGNScraperService extends EventEmitter {
       // Take initial screenshot
       await this.takeDebugScreenshot('0_initial_chart');
       
-      // List of indicators to add
+      // SIMPLIFIED: Just 1 RSI for testing
       const indicators = [
-        'RSI', 'RSI',  // 2x RSI
-        'EMA', 'EMA', 'EMA', 'EMA'  // 4x EMA
+        'RSI'  // Just 1x RSI for faster testing
       ];
       
       const results = {
