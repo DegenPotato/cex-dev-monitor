@@ -105,13 +105,15 @@ export const TestLabTab: React.FC = () => {
   const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
-  const [telegramUsername, setTelegramUsername] = useState<string>('');
-  const [telegramUserId, setTelegramUserId] = useState<string>('');
+  const [telegramSelectedUserIds, setTelegramSelectedUserIds] = useState<string[]>([]);
   const [telegramAccounts, setTelegramAccounts] = useState<any[]>([]);
   const [telegramChats, setTelegramChats] = useState<any[]>([]);
   const [telegramUsers, setTelegramUsers] = useState<any[]>([]);
   const [telegramUserSearch, setTelegramUserSearch] = useState<string>('');
   const [telegramAlerts, setTelegramAlerts] = useState<Alert[]>([]);
+  const [telegramMonitorAllUsers, setTelegramMonitorAllUsers] = useState<boolean>(false);
+  const [telegramExcludeBots, setTelegramExcludeBots] = useState<boolean>(true);
+  const [telegramExcludeNoUsername, setTelegramExcludeNoUsername] = useState<boolean>(false);
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
     RSI: null,
@@ -597,8 +599,13 @@ export const TestLabTab: React.FC = () => {
 
   // Start telegram monitoring
   const startTelegramMonitoring = async () => {
-    if (!telegramAccountId || !telegramChatId || !telegramUserId) {
-      toast.error('Please select account, chat, and user');
+    if (!telegramAccountId || !telegramChatId) {
+      toast.error('Please select account and chat');
+      return;
+    }
+
+    if (!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0) {
+      toast.error('Please select at least one user or enable "Monitor All Users"');
       return;
     }
 
@@ -616,8 +623,10 @@ export const TestLabTab: React.FC = () => {
         body: JSON.stringify({
           telegramAccountId,
           chatId: telegramChatId,
-          userId: telegramUserId,
-          username: telegramUsername,
+          monitorAllUsers: telegramMonitorAllUsers,
+          selectedUserIds: telegramSelectedUserIds,
+          excludeBots: telegramExcludeBots,
+          excludeNoUsername: telegramExcludeNoUsername,
           alerts: telegramAlerts
         })
       });
@@ -625,14 +634,17 @@ export const TestLabTab: React.FC = () => {
       const data = await response.json();
       
       if (data.success) {
-        toast.success(`Now monitoring ${telegramUsername}!`);
+        const message = telegramMonitorAllUsers 
+          ? 'Now monitoring all users in chat!'
+          : `Now monitoring ${telegramSelectedUserIds.length} user(s)!`;
+        toast.success(message);
         // Reset form
         setTelegramAccountId(null);
         setTelegramChatId('');
-        setTelegramUsername('');
-        setTelegramUserId('');
+        setTelegramSelectedUserIds([]);
         setTelegramAlerts([]);
         setTelegramUserSearch('');
+        setTelegramMonitorAllUsers(false);
       } else {
         toast.error(data.error || 'Failed to start monitoring');
       }
@@ -911,58 +923,128 @@ export const TestLabTab: React.FC = () => {
 
           {/* User Search & Selection */}
           {telegramChatId && (
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Users to Monitor</label>
-              <input
-                type="text"
-                value={telegramUserSearch}
-                onChange={(e) => setTelegramUserSearch(e.target.value)}
-                placeholder="Search users..."
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm mb-2"
-              />
-              <div className="bg-gray-900 border border-gray-700 rounded-lg max-h-64 overflow-y-auto">
-                {telegramUsers
-                  .filter(user => 
-                    !telegramUserSearch || 
-                    user.username?.toLowerCase().includes(telegramUserSearch.toLowerCase()) ||
-                    user.first_name?.toLowerCase().includes(telegramUserSearch.toLowerCase()) ||
-                    user.id?.toString().includes(telegramUserSearch)
-                  )
-                  .map((user) => {
-                    const isSelected = telegramUserId === user.id;
-                    return (
-                      <button
-                        key={user.id}
-                        onClick={() => {
-                          setTelegramUserId(user.id);
-                          setTelegramUsername(user.username || `User ${user.id}`);
-                        }}
-                        className={`w-full px-4 py-3 text-left border-b border-gray-800 hover:bg-gray-800 transition-colors flex items-center gap-2 ${
-                          isSelected ? 'bg-cyan-500/20 border-cyan-500' : ''
-                        }`}
-                      >
-                        {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
-                        <div className="flex-1">
-                          <div className="font-medium text-white">
-                            {user.first_name || 'Unknown'} {user.last_name || ''}
-                          </div>
-                          {user.username && (
-                            <div className="text-sm text-gray-400">@{user.username}</div>
-                          )}
-                          <div className="text-xs text-gray-500">ID: {user.id}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                {telegramUsers.length === 0 && (
-                  <div className="p-4 text-center text-gray-500">No users found</div>
-                )}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm text-gray-400">Users to Monitor</label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={telegramMonitorAllUsers}
+                    onChange={(e) => {
+                      setTelegramMonitorAllUsers(e.target.checked);
+                      if (e.target.checked) setTelegramSelectedUserIds([]);
+                    }}
+                    className="w-4 h-4 bg-gray-800 border-gray-600 rounded"
+                  />
+                  <span className="text-cyan-400">Monitor All Users</span>
+                </label>
               </div>
+
+              {!telegramMonitorAllUsers && (
+                <>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 text-sm text-gray-400">
+                      <input
+                        type="checkbox"
+                        checked={telegramExcludeBots}
+                        onChange={(e) => setTelegramExcludeBots(e.target.checked)}
+                        className="w-4 h-4 bg-gray-800 border-gray-600 rounded"
+                      />
+                      Exclude Bots
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-400">
+                      <input
+                        type="checkbox"
+                        checked={telegramExcludeNoUsername}
+                        onChange={(e) => setTelegramExcludeNoUsername(e.target.checked)}
+                        className="w-4 h-4 bg-gray-800 border-gray-600 rounded"
+                      />
+                      Exclude No Username
+                    </label>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={telegramUserSearch}
+                    onChange={(e) => setTelegramUserSearch(e.target.value)}
+                    placeholder="Search users..."
+                    className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm"
+                  />
+
+                  <div className="bg-gray-900 border border-gray-700 rounded-lg max-h-64 overflow-y-auto">
+                    {telegramUsers
+                      .filter(user => {
+                        // Apply filters
+                        if (telegramExcludeBots && user.is_bot) return false;
+                        if (telegramExcludeNoUsername && !user.username) return false;
+                        // Apply search
+                        if (telegramUserSearch && 
+                            !user.username?.toLowerCase().includes(telegramUserSearch.toLowerCase()) &&
+                            !user.first_name?.toLowerCase().includes(telegramUserSearch.toLowerCase()) &&
+                            !user.id?.toString().includes(telegramUserSearch)
+                        ) return false;
+                        return true;
+                      })
+                      .map((user) => {
+                        const isSelected = telegramSelectedUserIds.includes(user.id);
+                        return (
+                          <button
+                            key={user.id}
+                            onClick={() => {
+                              setTelegramSelectedUserIds(prev => 
+                                isSelected 
+                                  ? prev.filter(id => id !== user.id)
+                                  : [...prev, user.id]
+                              );
+                            }}
+                            className={`w-full px-4 py-3 text-left border-b border-gray-800 hover:bg-gray-800 transition-colors flex items-center gap-2 ${
+                              isSelected ? 'bg-cyan-500/20 border-cyan-500' : ''
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="w-4 h-4 bg-gray-800 border-gray-600 rounded"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-white flex items-center gap-2">
+                                {user.first_name || 'Unknown'} {user.last_name || ''}
+                                {user.is_bot && <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded">BOT</span>}
+                              </div>
+                              {user.username ? (
+                                <div className="text-sm text-gray-400">@{user.username}</div>
+                              ) : (
+                                <div className="text-sm text-gray-500 italic">No username</div>
+                              )}
+                              <div className="text-xs text-gray-500">ID: {user.id}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    {telegramUsers.length === 0 && (
+                      <div className="p-4 text-center text-gray-500">No users found</div>
+                    )}
+                  </div>
+
+                  {telegramSelectedUserIds.length > 0 && (
+                    <div className="text-sm text-cyan-400">
+                      {telegramSelectedUserIds.length} user(s) selected
+                    </div>
+                  )}
+                </>
+              )}
+
+              {telegramMonitorAllUsers && (
+                <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-sm text-cyan-300">
+                  ✓ Monitoring all users in chat (filters still apply)
+                </div>
+              )}
             </div>
           )}
 
           {/* Alert Configuration */}
-          {telegramUserId && (
+          {(telegramMonitorAllUsers || telegramSelectedUserIds.length > 0) && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">Configure Alerts</h3>
@@ -1081,11 +1163,11 @@ export const TestLabTab: React.FC = () => {
           <div className="flex justify-end">
             <button
               onClick={startTelegramMonitoring}
-              disabled={loading || !telegramAccountId || !telegramChatId || !telegramUserId || telegramAlerts.length === 0}
+              disabled={loading || !telegramAccountId || !telegramChatId || (!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0) || telegramAlerts.length === 0}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               <Play className="w-4 h-4" />
-              {!telegramUserId ? 'Select User' : telegramAlerts.length === 0 ? 'Add at least 1 alert' : loading ? 'Starting...' : 'Start Monitoring'}
+              {!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0 ? 'Select User(s) or Enable Monitor All' : telegramAlerts.length === 0 ? 'Add at least 1 alert' : loading ? 'Starting...' : 'Start Monitoring'}
             </button>
           </div>
         </div>

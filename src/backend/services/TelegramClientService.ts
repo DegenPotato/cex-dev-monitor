@@ -3063,6 +3063,7 @@ export class TelegramClientService extends EventEmitter {
 
   /**
    * Check if message should trigger Test Lab auto-monitoring
+   * Uses EXISTING telegram_monitored_chats table with test_lab_alerts column
    */
   private async checkTestLabMonitors(event: any, contracts: any[], senderId?: string, senderUsername?: string) {
     if (!contracts || contracts.length === 0 || !senderId) return;
@@ -3072,28 +3073,36 @@ export class TelegramClientService extends EventEmitter {
     if (!chatId) return;
 
     try {
+      // Query EXISTING telegram_monitored_chats where test_lab_alerts is configured
       const db = await getDb();
       const stmt = db.prepare(`
-        SELECT * FROM test_lab_telegram_monitors
-        WHERE chat_id = ? AND is_active = 1
+        SELECT * FROM telegram_monitored_chats
+        WHERE chat_id = ? AND is_active = 1 AND test_lab_alerts IS NOT NULL
       `);
       
       const monitors = (stmt as any).all([chatId]);
       
       for (const monitor of monitors) {
-        // Check if this message is from the monitored user (support both old username and new userId)
-        const targetMatches = 
-          monitor.target_user_id === senderId || // New: userId matching
-          monitor.target_username === senderId ||
-          monitor.target_username === senderUsername ||
-          monitor.target_username === `@${senderUsername}`;
+        // Parse existing monitored_user_ids (YOUR existing filtering logic)
+        const monitoredUserIds = monitor.monitored_user_ids ? JSON.parse(monitor.monitored_user_ids) : [];
         
-        if (targetMatches) {
+        // Use YOUR existing logic: empty array = monitor all users
+        const shouldProcess = monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
+        
+        // YOUR existing bot filtering
+        const sender = (event.message as any).sender;
+        const isBot = sender?.bot || false;
+        if (isBot && !monitor.process_bot_messages) {
+          continue; // Skip bots if process_bot_messages is false
+        }
+        
+        if (shouldProcess) {
           console.log(`🎯 [Test Lab] Monitored user ${senderUsername} (ID: ${senderId}) posted tokens in chat ${chatId}`);
           
           // Auto-create Test Lab campaign for each detected token
+          const alerts = monitor.test_lab_alerts ? JSON.parse(monitor.test_lab_alerts) : [];
           for (const contract of contracts) {
-            await this.createTestLabCampaign(monitor, contract.address, message.id);
+            await this.createTestLabCampaign(monitor, contract.address, message.id, alerts);
           }
         }
       }
@@ -3105,7 +3114,7 @@ export class TelegramClientService extends EventEmitter {
   /**
    * Auto-create Test Lab campaign for monitored token
    */
-  private async createTestLabCampaign(monitor: any, tokenMint: string, messageId: number) {
+  private async createTestLabCampaign(monitor: any, tokenMint: string, messageId: number, alerts: any[]) {
     try {
       console.log(`🚀 [Test Lab] Auto-creating campaign for token ${tokenMint}`);
       
@@ -3146,9 +3155,8 @@ export class TelegramClientService extends EventEmitter {
       const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
       
       if (campaign) {
-        // Apply configured alerts to the campaign
-        const alerts = monitor.alerts ? JSON.parse(monitor.alerts) : [];
-        if (alerts.length > 0) {
+        // Apply configured alerts to the campaign (alerts already parsed and passed as parameter)
+        if (alerts && alerts.length > 0) {
           console.log(`📋 [Test Lab] Applying ${alerts.length} configured alert(s) to campaign ${campaign.id}`);
           
           for (const alert of alerts) {

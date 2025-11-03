@@ -118,11 +118,12 @@ export function createTelegramRoutes() {
       
       // Format users for frontend
       const users = participants.map((p: any) => ({
-        id: p.id?.toString(),
+        id: p.userId?.toString() || p.id?.toString(), // userId is the correct field
         username: p.username,
         first_name: p.firstName,
         last_name: p.lastName,
-        phone: p.phone
+        phone: p.phone,
+        is_bot: p.isBot || false
       }));
       
       res.json({ users });

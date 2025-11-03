@@ -526,41 +526,61 @@ monitor.on('alert_triggered', async (data) => {
 });
 
 /**
- * Start telegram monitoring for Test Lab (integrates with existing contract detection)
+ * Start telegram monitoring for Test Lab (reuses existing telegram_monitored_chats infrastructure)
  */
 router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { telegramAccountId, chatId, userId: targetUserId, username, alerts } = req.body;
+    const { 
+      telegramAccountId, 
+      chatId, 
+      monitorAllUsers, 
+      selectedUserIds, 
+      excludeBots, 
+      alerts 
+    } = req.body;
     
-    if (!telegramAccountId || !chatId || !targetUserId) {
-      return res.status(400).json({ error: 'telegramAccountId, chatId, and userId required' });
+    if (!telegramAccountId || !chatId) {
+      return res.status(400).json({ error: 'telegramAccountId and chatId required' });
     }
 
     if (!alerts || alerts.length === 0) {
       return res.status(400).json({ error: 'At least one alert is required' });
     }
 
+    // Use EXISTING telegram_monitored_chats table with existing filtering logic!
     const db = await getDb();
+    
+    // Insert/Update into telegram_monitored_chats (your existing table!)
+    const monitoredUserIdsJson = monitorAllUsers ? '[]' : JSON.stringify(selectedUserIds.map((id: string) => parseInt(id)));
+    const testLabAlertsJson = JSON.stringify(alerts);
+    const processBotMessages = excludeBots ? 0 : 1;
+    const now = Math.floor(Date.now() / 1000);
+    
     const stmt = db.prepare(`
-      INSERT INTO test_lab_telegram_monitors (user_id, telegram_account_id, chat_id, target_user_id, target_username, alerts)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO telegram_monitored_chats 
+      (user_id, chat_id, telegram_account_id, monitored_user_ids, process_bot_messages, test_lab_alerts, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(user_id, chat_id) DO UPDATE SET
+        monitored_user_ids = excluded.monitored_user_ids,
+        process_bot_messages = excluded.process_bot_messages,
+        test_lab_alerts = excluded.test_lab_alerts,
+        telegram_account_id = excluded.telegram_account_id,
+        is_active = 1,
+        updated_at = excluded.updated_at
     `);
     
-    stmt.run([userId, telegramAccountId, chatId, targetUserId, username, JSON.stringify(alerts)]);
+    stmt.run([userId, chatId, telegramAccountId, monitoredUserIdsJson, processBotMessages, testLabAlertsJson, now, now]);
     saveDatabase();
     
-    console.log(`✅ Started Test Lab monitoring: User ${targetUserId} (@${username}) in chat ${chatId} with ${alerts.length} alert(s)`);
-    
-    // TODO: Integrate with existing TelegramSnifferService to listen for contracts from this user
-    // When a contract is detected from targetUserId in chatId:
-    // 1. Create a campaign with the detected contract
-    // 2. Apply the configured alerts to that campaign
-    // 3. Execute alert actions when conditions are met
+    const target = monitorAllUsers 
+      ? 'all users' 
+      : `${selectedUserIds.length} user(s)`;
+    console.log(`✅ [Test Lab] Started monitoring: ${target} in chat ${chatId} with ${alerts.length} alert(s)`);
     
     res.json({ 
       success: true,
-      message: `Now monitoring ${username} with ${alerts.length} alert(s)` 
+      message: `Now monitoring ${target} with ${alerts.length} alert(s)` 
     });
   } catch (error: any) {
     console.error('❌ Error starting telegram monitor:', error);
