@@ -86,7 +86,7 @@ export function createTelegramRoutes() {
   });
 
   /**
-   * Get users from a specific chat
+   * Get users from a specific chat (using existing Telegram client)
    */
   router.get('/chat-users', authService.requireSecureAuth(), async (req, res) => {
     try {
@@ -107,12 +107,23 @@ export function createTelegramRoutes() {
         return res.status(403).json({ error: 'Account not found or access denied' });
       }
       
-      // TODO: Implement actual user fetching from Telegram
-      // For now, return mock data - you'll need to integrate with your TelegramUserService
-      // to fetch actual chat members
-      const users = [
-        { id: '123456', username: 'example_user', first_name: 'Example', last_name: 'User' }
-      ];
+      // Use existing TelegramClientService to get chat participants
+      const client = await telegramClientService.getClient(userId);
+      if (!client) {
+        return res.status(400).json({ error: 'Telegram client not connected. Please connect your account first.' });
+      }
+      
+      // Get participants from the chat using existing fetchChatParticipants method
+      const participants = await telegramClientService.fetchChatParticipants(userId, chatId as string, 1000);
+      
+      // Format users for frontend
+      const users = participants.map((p: any) => ({
+        id: p.id?.toString(),
+        username: p.username,
+        first_name: p.firstName,
+        last_name: p.lastName,
+        phone: p.phone
+      }));
       
       res.json({ users });
     } catch (error: any) {

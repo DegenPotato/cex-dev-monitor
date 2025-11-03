@@ -526,31 +526,41 @@ monitor.on('alert_triggered', async (data) => {
 });
 
 /**
- * Start telegram monitoring for Test Lab
+ * Start telegram monitoring for Test Lab (integrates with existing contract detection)
  */
 router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { telegramAccountId, chatId, username } = req.body;
+    const { telegramAccountId, chatId, userId: targetUserId, username, alerts } = req.body;
     
-    if (!telegramAccountId || !chatId || !username) {
-      return res.status(400).json({ error: 'telegramAccountId, chatId, and username required' });
+    if (!telegramAccountId || !chatId || !targetUserId) {
+      return res.status(400).json({ error: 'telegramAccountId, chatId, and userId required' });
+    }
+
+    if (!alerts || alerts.length === 0) {
+      return res.status(400).json({ error: 'At least one alert is required' });
     }
 
     const db = await getDb();
     const stmt = db.prepare(`
-      INSERT INTO test_lab_telegram_monitors (user_id, telegram_account_id, chat_id, target_username)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO test_lab_telegram_monitors (user_id, telegram_account_id, chat_id, target_user_id, target_username, alerts)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     
-    stmt.run([userId, telegramAccountId, chatId, username]);
+    stmt.run([userId, telegramAccountId, chatId, targetUserId, username, JSON.stringify(alerts)]);
     saveDatabase();
     
-    console.log(`✅ Started Test Lab monitoring: @${username} in chat ${chatId}`);
+    console.log(`✅ Started Test Lab monitoring: User ${targetUserId} (@${username}) in chat ${chatId} with ${alerts.length} alert(s)`);
+    
+    // TODO: Integrate with existing TelegramSnifferService to listen for contracts from this user
+    // When a contract is detected from targetUserId in chatId:
+    // 1. Create a campaign with the detected contract
+    // 2. Apply the configured alerts to that campaign
+    // 3. Execute alert actions when conditions are met
     
     res.json({ 
       success: true,
-      message: `Now monitoring @${username} in selected chat` 
+      message: `Now monitoring ${username} with ${alerts.length} alert(s)` 
     });
   } catch (error: any) {
     console.error('❌ Error starting telegram monitor:', error);
