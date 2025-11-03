@@ -219,6 +219,14 @@ export class OnChainPriceMonitor extends EventEmitter {
         const symbol = campaign.tokenSymbol || campaign.tokenMint.slice(0, 8);
         console.log(`📊 [${timestamp}] ${symbol} SOL: ${priceInSOL.toFixed(9)} (${campaign.changePercent >= 0 ? '+' : ''}${campaign.changePercent.toFixed(2)}%) | USD: $${tokenUsdPrice.toFixed(8)} | High: ${campaign.high.toFixed(9)} ($${(campaign.highUSD || 0).toFixed(6)}) | Low: ${campaign.low.toFixed(9)} ($${(campaign.lowUSD || 0).toFixed(6)})`);
         
+        // Update unrealized P/L for Test Lab positions
+        try {
+          const { updateUnrealizedPnL } = await import('../routes/priceTest.js');
+          updateUnrealizedPnL(campaign.tokenMint, priceInSOL);
+        } catch (err) {
+          // Silently fail if priceTest not available (shouldn't happen but safeguard)
+        }
+        
         // Broadcast update
         this.emit('price_update', campaign);
         
@@ -386,7 +394,7 @@ export class OnChainPriceMonitor extends EventEmitter {
       direction,
       priceType,
       hit: false,
-      actions
+      actions: JSON.parse(JSON.stringify(actions)) // Deep clone to prevent reference sharing
     };
 
     const campaignAlerts = this.alerts.get(campaignId) || [];
@@ -445,7 +453,7 @@ export class OnChainPriceMonitor extends EventEmitter {
     for (const [campaignId, alerts] of this.alerts.entries()) {
       const alert = alerts.find(a => a.id === alertId);
       if (alert) {
-        alert.actions = actions;
+        alert.actions = JSON.parse(JSON.stringify(actions)); // Deep clone to prevent reference sharing
         this.alerts.set(campaignId, alerts);
         const actionTypes = actions.map(a => a.type).join(', ');
         console.log(`✏️ Alert ${alertId} actions updated: ${actionTypes}`);

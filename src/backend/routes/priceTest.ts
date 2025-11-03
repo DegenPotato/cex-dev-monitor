@@ -32,9 +32,13 @@ interface TestLabPosition {
   tokenMint: string;
   tokenSymbol?: string;
   balance: number; // Token balance
+  referenceBalance: number; // Balance at alert configuration time (for % calculations)
   avgEntryPrice: number; // In SOL
   totalInvested: number; // Total SOL invested
   realizedPnl: number; // Realized profit/loss in SOL
+  unrealizedPnl?: number; // Current unrealized P/L (calculated from market price)
+  currentPrice?: number; // Latest market price (SOL per token)
+  totalPnl?: number; // Total P/L (realized + unrealized)
   trades: Array<{
     type: 'buy' | 'sell';
     amountSol: number;
@@ -57,6 +61,65 @@ export function hasActivePosition(walletId: number, tokenMint: string): boolean 
   return position ? position.balance > 0 : false;
 }
 
+// Convert percentage to absolute token amount based on reference balance
+export function getAbsoluteAmountFromPercentage(walletId: number, tokenMint: string, percentage: number): number | null {
+  const key = `${walletId}_${tokenMint}`;
+  const position = testLabPositions.get(key);
+  
+  if (!position || position.referenceBalance === 0) {
+    console.warn(`⚠️ No reference balance found for ${tokenMint.slice(0, 8)}...`);
+    return null;
+  }
+  
+  const absoluteAmount = position.referenceBalance * (percentage / 100);
+  console.log(`💡 [Test Lab] Converting ${percentage}% to ${absoluteAmount.toFixed(2)} tokens (ref balance: ${position.referenceBalance.toFixed(2)})`);
+  
+  return absoluteAmount;
+}
+
+// Update unrealized P/L for all positions of a token when price changes
+export function updateUnrealizedPnL(tokenMint: string, currentPriceSOL: number): void {
+  let updatedCount = 0;
+  
+  for (const [, position] of testLabPositions.entries()) {
+    if (position.tokenMint === tokenMint && position.balance > 0) {
+      // Calculate unrealized P/L
+      const marketValue = position.balance * currentPriceSOL;
+      const costBasis = position.balance * position.avgEntryPrice;
+      position.unrealizedPnl = marketValue - costBasis;
+      position.currentPrice = currentPriceSOL;
+      position.totalPnl = position.realizedPnl + position.unrealizedPnl;
+      
+      // Broadcast update
+      broadcastTestLabUpdate({
+        type: 'test_lab_position_update',
+        data: {
+          userId: position.userId,
+          walletId: position.walletId,
+          tokenMint: position.tokenMint,
+          tokenSymbol: position.tokenSymbol,
+          position: {
+            balance: position.balance,
+            avgEntryPrice: position.avgEntryPrice,
+            totalInvested: position.totalInvested,
+            currentPrice: position.currentPrice,
+            realizedPnl: position.realizedPnl,
+            unrealizedPnl: position.unrealizedPnl,
+            totalPnl: position.totalPnl,
+            tradeCount: position.trades.length
+          }
+        }
+      });
+      
+      updatedCount++;
+    }
+  }
+  
+  if (updatedCount > 0) {
+    console.log(`📊 [Test Lab] Updated unrealized P/L for ${updatedCount} position(s) of ${tokenMint.slice(0, 8)}...`);
+  }
+}
+
 // Helper to get/create position
 function getOrCreatePosition(walletId: number, tokenMint: string, userId: number, tokenSymbol?: string): TestLabPosition {
   const key = `${walletId}_${tokenMint}`;
@@ -67,6 +130,7 @@ function getOrCreatePosition(walletId: number, tokenMint: string, userId: number
       tokenMint,
       tokenSymbol,
       balance: 0,
+      referenceBalance: 0, // Will be set after first buy
       avgEntryPrice: 0,
       totalInvested: 0,
       realizedPnl: 0,
@@ -89,6 +153,9 @@ export function trackTestLabBuy(userId: number, walletId: number, tokenMint: str
   position.avgEntryPrice = position.totalInvested / position.balance; // Weighted average
   position.lastTradeAt = Date.now();
   position.campaignId = campaignId || position.campaignId;
+  
+  // Update reference balance (snapshot for percentage-based sell calculations)
+  position.referenceBalance = position.balance;
   
   // Record trade
   position.trades.push({
@@ -115,7 +182,10 @@ export function trackTestLabBuy(userId: number, walletId: number, tokenMint: str
         balance: position.balance,
         avgEntryPrice: position.avgEntryPrice,
         totalInvested: position.totalInvested,
+        currentPrice: position.currentPrice,
         realizedPnl: position.realizedPnl,
+        unrealizedPnl: position.unrealizedPnl,
+        totalPnl: position.totalPnl,
         tradeCount: position.trades.length
       }
     }
@@ -163,7 +233,7 @@ export function trackTestLabSell(userId: number, walletId: number, tokenMint: st
   if (position.balance === 0) {
     finalizeTestLabPosition(position);
   } else {
-    // Broadcast position update
+    // Broadcast position update (still open)
     broadcastTestLabUpdate({
       type: 'test_lab_position_update',
       data: {
@@ -175,7 +245,10 @@ export function trackTestLabSell(userId: number, walletId: number, tokenMint: st
           balance: position.balance,
           avgEntryPrice: position.avgEntryPrice,
           totalInvested: position.totalInvested,
+          currentPrice: position.currentPrice,
           realizedPnl: position.realizedPnl,
+          unrealizedPnl: position.unrealizedPnl,
+          totalPnl: position.totalPnl,
           tradeCount: position.trades.length
         }
       }
@@ -675,12 +748,20 @@ monitor.on('alert_triggered', async (data) => {
           
           console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
           
+          // Convert percentage to absolute amount based on reference balance
+          const absoluteAmount = getAbsoluteAmountFromPercentage(action.walletId, data.tokenMint, action.amount);
+          
+          if (absoluteAmount === null) {
+            console.error(`❌ Cannot determine sell amount - no reference balance found`);
+            continue;
+          }
+          
           const sellParams = {
             userId: wallet.user_id,
             walletAddress: wallet.public_key,
             tokenMint: data.tokenMint,
             tokenSymbol: data.tokenSymbol || undefined, // Include token symbol to avoid Jupiter lookup
-            percentage: action.amount,
+            amount: absoluteAmount, // Use absolute token amount instead of percentage
             slippageBps: action.slippage * 100,
             priorityLevel: 'high',
             skipTax: action.skipTax || false
