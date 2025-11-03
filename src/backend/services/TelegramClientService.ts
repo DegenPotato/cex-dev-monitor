@@ -3063,54 +3063,53 @@ export class TelegramClientService extends EventEmitter {
 
   /**
    * Check if message should trigger Test Lab auto-monitoring
-   * Uses EXISTING telegram_monitored_chats table with test_lab_alerts column
+   * Uses in-memory Test Lab monitors - no database persistence
    */
   private async checkTestLabMonitors(event: any, contracts: any[], senderId?: string, senderUsername?: string) {
     if (!contracts || contracts.length === 0 || !senderId) return;
-
-    const message = event.message;
-    const chatId = message.chat?.id?.toString() || message.peerId?.channelId?.toString();
+    
+    // Get chat info
+    const chatId = event.message?.peerId?.channelId?.toString() || event.message?.peerId?.chatId?.toString();
     if (!chatId) return;
 
     try {
-      // Query EXISTING telegram_monitored_chats where test_lab_alerts is configured
-      const db = await getDb();
-      const stmt = db.prepare(`
-        SELECT * FROM telegram_monitored_chats
-        WHERE chat_id = ? AND is_active = 1 AND test_lab_alerts IS NOT NULL
-      `);
+      // Get Test Lab monitors from shared in-memory storage
+      // Import from priceTest route to access the same Map
+      const { getTestLabMonitorForChat } = await import('../routes/priceTest.js');
+      const monitor = getTestLabMonitorForChat(chatId);
+      if (!monitor || !monitor.isActive) return;
       
-      const monitors = (stmt as any).all([chatId]);
+      // Config is directly on monitor object (no JSON parsing needed)
+      const config = monitor;
       
-      for (const monitor of monitors) {
-        // Parse existing monitored_user_ids (YOUR existing filtering logic)
-        const monitoredUserIds = monitor.monitored_user_ids ? JSON.parse(monitor.monitored_user_ids) : [];
+      // Use config to determine monitoring behavior
+      const monitoredUserIds = config.selectedUserIds || [];
+      
+      // Empty array = monitor all users (unless monitorAllUsers is explicitly false)
+      let shouldProcess = config.monitorAllUsers || monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
+      
+      // Bot filtering
+      const sender = (event.message as any).sender;
+      const isBot = sender?.bot || false;
+      if (isBot && config.excludeBots) {
+        console.log(`   ⏭️  [Test Lab] Skipping bot ${senderId}`);
+        return; // Skip bots if excludeBots is true
+      }
+      
+      // No-username filtering
+      const hasUsername = !!senderUsername;
+      if (config.excludeNoUsername && !hasUsername) {
+        console.log(`   ⏭️  [Test Lab] Skipping user ${senderId} - no username`);
+        return; // Skip users without username if filter is enabled
+      }
+      
+      if (shouldProcess) {
+        console.log(`🎯 [Test Lab] Monitored user ${senderUsername} (ID: ${senderId}) posted ${contracts.length} token(s) in chat ${chatId}`);
         
-        // Use YOUR existing logic: empty array = monitor all users
-        let shouldProcess = monitoredUserIds.length === 0 || monitoredUserIds.includes(parseInt(senderId));
-        
-        // YOUR existing bot filtering
-        const sender = (event.message as any).sender;
-        const isBot = sender?.bot || false;
-        if (isBot && !monitor.process_bot_messages) {
-          continue; // Skip bots if process_bot_messages is false
-        }
-        
-        // NEW: No-username filtering (Test Lab feature)
-        const hasUsername = !!senderUsername;
-        if (monitor.exclude_no_username && !hasUsername) {
-          console.log(`   ⏭️  [Test Lab] Skipping user ${senderId} - no username (filter enabled)`);
-          continue; // Skip users without username if filter is enabled
-        }
-        
-        if (shouldProcess) {
-          console.log(`🎯 [Test Lab] Monitored user ${senderUsername} (ID: ${senderId}) posted tokens in chat ${chatId}`);
-          
-          // Auto-create Test Lab campaign for each detected token
-          const alerts = monitor.test_lab_alerts ? JSON.parse(monitor.test_lab_alerts) : [];
-          for (const contract of contracts) {
-            await this.createTestLabCampaign(monitor, contract.address, message.id, alerts);
-          }
+        // Auto-create Test Lab campaign for each detected token
+        const alerts = config.alerts || [];
+        for (const contract of contracts) {
+          await this.createTestLabCampaign({...monitor, config}, contract.address, event.message.id, alerts);
         }
       }
     } catch (error) {
@@ -3154,11 +3153,12 @@ export class TelegramClientService extends EventEmitter {
       
       console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
       
-      // Handle initial action: buy_and_monitor
-      if (monitor.test_lab_initial_action === 'buy_and_monitor' && monitor.test_lab_wallet_id && monitor.test_lab_buy_amount_sol) {
+      // Handle initial action: buy_and_monitor (from config)
+      const config = monitor.config || {};
+      if (config.initialAction === 'buy_and_monitor' && config.walletId && config.buyAmountSol) {
         
-        // Check if only_buy_new_tokens is enabled and token already exists in token_registry
-        if (monitor.only_buy_new_tokens) {
+        // Check if onlyBuyNew is enabled and token already exists in token_registry
+        if (config.onlyBuyNew) {
           const db = await getDb();
           const existingToken = (db as any).prepare(`
             SELECT token_mint FROM token_registry WHERE token_mint = ?
@@ -3168,7 +3168,7 @@ export class TelegramClientService extends EventEmitter {
             console.log(`⏭️  [Test Lab] Skipping buy - token ${tokenMint} already exists in token_registry (only_buy_new enabled)`);
             // Still create campaign to monitor, just skip the buy
           } else {
-            console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id} (new token)`);
+            console.log(`💰 [Test Lab] Executing buy order: ${config.buyAmountSol} SOL using wallet ${config.walletId} (new token)`);
             
             try {
               const tradeSignalStmt = db.prepare(`
@@ -3193,7 +3193,7 @@ export class TelegramClientService extends EventEmitter {
                 `${monitor.chat_id}_${messageId}`,
                 tokenMint,
                 'buy',
-                monitor.test_lab_buy_amount_sol,
+                config.buyAmountSol,
                 'pending',
                 Math.floor(Date.now() / 1000),
                 JSON.stringify(metadata)
@@ -3207,8 +3207,8 @@ export class TelegramClientService extends EventEmitter {
             }
           }
         } else {
-          // only_buy_new_tokens is disabled, always buy
-          console.log(`💰 [Test Lab] Executing buy order: ${monitor.test_lab_buy_amount_sol} SOL using wallet ${monitor.test_lab_wallet_id}`);
+          // onlyBuyNew is disabled, always buy
+          console.log(`💰 [Test Lab] Executing buy order: ${config.buyAmountSol} SOL using wallet ${config.walletId}`);
           
           try {
             const db = await getDb();
@@ -3234,7 +3234,7 @@ export class TelegramClientService extends EventEmitter {
               `${monitor.chat_id}_${messageId}`,
               tokenMint,
               'buy',
-              monitor.test_lab_buy_amount_sol,
+              config.buyAmountSol,
               'pending',
               Math.floor(Date.now() / 1000),
               JSON.stringify(metadata)
@@ -3274,15 +3274,12 @@ export class TelegramClientService extends EventEmitter {
           console.log(`✅ [Test Lab] Applied ${alerts.length} alert(s) to campaign`);
         }
         
-        // Log the auto-created campaign
-        const db = await getDb();
-        const stmt = db.prepare(`
-          INSERT INTO test_lab_auto_campaigns (monitor_id, campaign_id, token_mint, message_id, detected_at)
-          VALUES (?, ?, ?, ?, ?)
-        `);
-        
-        stmt.run([monitor.id, campaign.id, tokenMint, messageId, Date.now()]);
-        saveDatabase();
+        // Update in-memory monitor to track campaigns
+        if (monitor.id) {
+          // Increment active campaigns counter
+          const { incrementTestLabCampaigns } = await import('../routes/priceTest.js');
+          incrementTestLabCampaigns(monitor.id);
+        }
         
         console.log(`✅ [Test Lab] Campaign ${campaign.id} created for ${tokenMint} with ${alerts.length} alert(s)`);
       }

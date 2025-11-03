@@ -21,6 +21,31 @@ const getTradingEngineInstance = () => {
 const authService = new SecureAuthService();
 const monitor = getOnChainPriceMonitor();
 
+// In-memory storage for Test Lab monitors (session-only, clears on restart)
+const testLabMonitors = new Map<string, any>();
+const testLabMonitorIdCounter = { value: 1 };
+
+// Export helper functions for accessing Test Lab monitors from other modules
+export function getTestLabMonitorForChat(chatId: string): any {
+  // Find any active monitor for this chat
+  for (const monitor of testLabMonitors.values()) {
+    if (monitor.chatId === chatId && monitor.isActive) {
+      return monitor;
+    }
+  }
+  return null;
+}
+
+export function incrementTestLabCampaigns(monitorId: string): void {
+  // Find monitor and increment campaign counter
+  for (const monitor of testLabMonitors.values()) {
+    if (monitor.id === monitorId) {
+      monitor.activeCampaigns = (monitor.activeCampaigns || 0) + 1;
+      break;
+    }
+  }
+}
+
 // Store WebSocket server instance
 let wss: WebSocketServer | null = null;
 
@@ -526,32 +551,29 @@ monitor.on('alert_triggered', async (data) => {
 });
 
 /**
- * List active Telegram monitors
+ * List active Telegram monitors (from in-memory storage)
  */
 router.get('/api/test-lab/telegram-monitors', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const db = await getDb();
     
-    const stmt = db.prepare(`
-      SELECT 
-        tmc.*,
-        ta.phone_number as account_phone,
-        COUNT(DISTINCT tlac.campaign_id) as active_campaigns
-      FROM telegram_monitored_chats tmc
-      LEFT JOIN telegram_user_accounts ta ON tmc.telegram_account_id = ta.id
-      LEFT JOIN test_lab_auto_campaigns tlac ON tmc.id = tlac.monitor_id
-      WHERE tmc.user_id = ? AND tmc.test_lab_alerts IS NOT NULL AND tmc.is_active = 1
-      GROUP BY tmc.id
-    `);
+    // Get monitors from memory for this user
+    const userMonitors = Array.from(testLabMonitors.values())
+      .filter(m => m.userId === userId && m.isActive);
     
-    const monitors = (stmt as any).all([userId]);
-    
-    // Parse JSON fields
-    const parsedMonitors = monitors.map((m: any) => ({
-      ...m,
-      monitored_user_ids: m.monitored_user_ids ? JSON.parse(m.monitored_user_ids) : [],
-      test_lab_alerts: m.test_lab_alerts ? JSON.parse(m.test_lab_alerts) : []
+    // Format for frontend compatibility
+    const parsedMonitors = userMonitors.map(m => ({
+      id: m.id,
+      user_id: m.userId,
+      chat_id: m.chatId,
+      telegram_account_id: m.telegramAccountId,
+      monitored_user_ids: m.selectedUserIds || [],
+      exclude_no_username: m.excludeNoUsername,
+      process_bot_messages: !m.excludeBots,
+      test_lab_alerts: m.alerts || [],
+      active_campaigns: m.activeCampaigns || 0,
+      config: m,
+      is_active: m.isActive
     }));
     
     res.json({ success: true, monitors: parsedMonitors });
@@ -562,7 +584,7 @@ router.get('/api/test-lab/telegram-monitors', authService.requireSecureAuth(), a
 });
 
 /**
- * Start telegram monitoring for Test Lab (reuses existing telegram_monitored_chats infrastructure)
+ * Start telegram monitoring for Test Lab (in-memory only, no database persistence)
  */
 router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
   try {
@@ -598,44 +620,32 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       }
     }
 
-    // Use EXISTING telegram_monitored_chats table with existing filtering logic!
-    const db = await getDb();
+    // Store in memory only - no database persistence for Test Lab!
+    const monitorKey = `${userId}_${chatId}`;
+    const monitorId = `test_lab_monitor_${testLabMonitorIdCounter.value++}`;
     
-    // Insert/Update into telegram_monitored_chats (your existing table!)
-    const monitoredUserIdsJson = monitorAllUsers ? '[]' : JSON.stringify(selectedUserIds.map((id: string) => parseInt(id)));
-    const testLabAlertsJson = JSON.stringify(alerts);
-    const processBotMessages = excludeBots ? 0 : 1;
-    const excludeNoUsernameValue = excludeNoUsername ? 1 : 0;
-    const now = Math.floor(Date.now() / 1000);
+    // Store configuration in memory
+    const config = {
+      id: monitorId,
+      userId,
+      telegramAccountId,
+      chatId,
+      monitorAllUsers,
+      selectedUserIds: selectedUserIds.map((id: string) => parseInt(id)),
+      excludeBots,
+      excludeNoUsername,
+      initialAction: initialAction || 'monitor_only',
+      buyAmountSol: buyAmountSol || null,
+      walletId: walletId || null,
+      onlyBuyNew: onlyBuyNew !== false,
+      alerts: alerts || [],
+      activeCampaigns: 0,
+      isActive: true,
+      createdAt: Date.now()
+    };
     
-    const onlyBuyNewValue = onlyBuyNew !== false ? 1 : 0; // Default to true (1)
-    
-    const stmt = db.prepare(`
-      INSERT INTO telegram_monitored_chats 
-      (user_id, chat_id, telegram_account_id, monitored_user_ids, process_bot_messages, 
-       exclude_no_username, test_lab_alerts, test_lab_initial_action, test_lab_buy_amount_sol, 
-       test_lab_wallet_id, only_buy_new_tokens, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-      ON CONFLICT(user_id, chat_id) DO UPDATE SET
-        monitored_user_ids = excluded.monitored_user_ids,
-        process_bot_messages = excluded.process_bot_messages,
-        exclude_no_username = excluded.exclude_no_username,
-        test_lab_alerts = excluded.test_lab_alerts,
-        test_lab_initial_action = excluded.test_lab_initial_action,
-        test_lab_buy_amount_sol = excluded.test_lab_buy_amount_sol,
-        test_lab_wallet_id = excluded.test_lab_wallet_id,
-        only_buy_new_tokens = excluded.only_buy_new_tokens,
-        telegram_account_id = excluded.telegram_account_id,
-        is_active = 1,
-        updated_at = excluded.updated_at
-    `);
-    
-    stmt.run([
-      userId, chatId, telegramAccountId, monitoredUserIdsJson, processBotMessages, 
-      excludeNoUsernameValue, testLabAlertsJson, initialAction || 'monitor_only', 
-      buyAmountSol || null, walletId || null, onlyBuyNewValue, now, now
-    ]);
-    saveDatabase();
+    // Replace any existing monitor for this chat
+    testLabMonitors.set(monitorKey, config);
     
     const target = monitorAllUsers 
       ? 'all users' 
@@ -664,15 +674,19 @@ router.post('/api/test-lab/telegram-monitor/stop', authService.requireSecureAuth
       return res.status(400).json({ error: 'monitorId required' });
     }
 
-    const db = await getDb();
-    const stmt = db.prepare(`
-      UPDATE test_lab_telegram_monitors 
-      SET is_active = 0, updated_at = ?
-      WHERE id = ? AND user_id = ?
-    `);
+    // Find and deactivate the monitor in memory
+    let found = false;
+    for (const [, monitor] of testLabMonitors.entries()) {
+      if (monitor.id === monitorId && monitor.userId === userId) {
+        monitor.isActive = false;
+        found = true;
+        break;
+      }
+    }
     
-    stmt.run([Date.now(), monitorId, userId]);
-    saveDatabase();
+    if (!found) {
+      return res.status(404).json({ error: 'Monitor not found' });
+    }
     
     console.log(`🛑 Stopped Test Lab monitor ID ${monitorId}`);
     
