@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Bell, Plus, X, RefreshCw, Play, Zap, Copy, Ex
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '../../config';
 import { toast } from 'react-hot-toast';
+import { useTradingStore } from '../../stores/tradingStore';
 import { PoolSelectionModal } from './PoolSelectionModal';
 import { AlertActionConfig, AlertAction } from './AlertActionConfig';
 
@@ -118,7 +119,9 @@ export const TestLabTab: React.FC = () => {
   const [telegramBuyAmountSol, setTelegramBuyAmountSol] = useState<number>(0.1);
   const [telegramWalletId, setTelegramWalletId] = useState<number | null>(null);
   const [telegramOnlyBuyNew, setTelegramOnlyBuyNew] = useState<boolean>(true);
-  const [tradingWallets, setTradingWallets] = useState<any[]>([]);
+  
+  // Use existing trading store for wallets
+  const { wallets: tradingWallets, fetchWallets } = useTradingStore();
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
     RSI: null,
@@ -157,24 +160,11 @@ export const TestLabTab: React.FC = () => {
 
   // Fetch trading wallets for buy_and_monitor option
   useEffect(() => {
-    const fetchWallets = async () => {
-      try {
-        const response = await fetch(`${config.apiUrl}/api/trading/wallets`, {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setTradingWallets(data.wallets || []);
-          // Auto-select default wallet
-          const defaultWallet = (data.wallets || []).find((w: any) => w.is_default);
-          if (defaultWallet) setTelegramWalletId(defaultWallet.id);
-        }
-      } catch (error) {
-        console.error('Failed to fetch wallets:', error);
-      }
-    };
     fetchWallets();
-  }, []);
+    // Auto-select default wallet
+    const defaultWallet = tradingWallets.find((w: any) => w.isDefault);
+    if (defaultWallet) setTelegramWalletId(parseInt(defaultWallet.id));
+  }, [fetchWallets]);
 
   // Fetch chats when account is selected
   useEffect(() => {
@@ -1102,10 +1092,10 @@ export const TestLabTab: React.FC = () => {
                       <option value="">Select wallet...</option>
                       {tradingWallets.map((wallet) => (
                         <option key={wallet.id} value={wallet.id}>
-                          {wallet.wallet_name || (wallet.wallet_address ? wallet.wallet_address.substring(0, 8) + '...' : 'Wallet')} 
-                          {wallet.is_default && ' (Default)'}
+                          {wallet.name || (wallet.publicKey ? wallet.publicKey.substring(0, 8) + '...' : 'Wallet')} 
+                          {wallet.isDefault && ' (Default)'}
                           {' - '}
-                          {wallet.sol_balance?.toFixed(4) || '0.0000'} SOL
+                          {wallet.balance?.toFixed(4) || '0.0000'} SOL
                         </option>
                       ))}
                     </select>
