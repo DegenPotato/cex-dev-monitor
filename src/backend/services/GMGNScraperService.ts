@@ -807,26 +807,29 @@ class GMGNScraperService extends EventEmitter {
               console.log(`✅ Found ${indType} #${idx + 1}: "${text.substring(0, 80)}"`);
               console.log(`   Element: ${legend.tagName}, Classes: ${legend.className}`);
               
-              // Hover over the indicator name to reveal button menu
-              const hoverEvent = new MouseEvent('mouseenter', {
-                bubbles: true,
-                cancelable: true,
-                view: window
-              });
-              legend.dispatchEvent(hoverEvent);
+              // Find the actual text element to click (not the wrapper)
+              let clickTarget = legend;
               
-              // Also trigger mouseover for good measure
-              const mouseOverEvent = new MouseEvent('mouseover', {
-                bubbles: true,
-                cancelable: true,
-                view: window
-              });
-              legend.dispatchEvent(mouseOverEvent);
+              // Try to find the actual text/title element inside the legend
+              const textElements = legend.querySelectorAll('[class*="title"], [class*="text"], span');
+              if (textElements.length > 0) {
+                // Use the first text element that contains our indicator name
+                for (const elem of textElements) {
+                  if (elem.textContent?.toLowerCase().includes(indType.toLowerCase())) {
+                    clickTarget = elem;
+                    break;
+                  }
+                }
+              }
+              
+              // CLICK on the indicator text to make menu persist (not just hover)
+              (clickTarget as HTMLElement).click();
               
               return {
                 success: true,
                 text: text.substring(0, 80),
-                className: legend.className
+                className: legend.className,
+                clickTargetClass: (clickTarget as HTMLElement).className
               };
             }
             matchCount++;
@@ -842,9 +845,10 @@ class GMGNScraperService extends EventEmitter {
         return false;
       }
       
-      console.log(`✅ Hovered over indicator: ${indicatorInfo.text}`);
+      console.log(`✅ Clicked indicator: ${indicatorInfo.text}`);
+      console.log(`   Click target class: ${indicatorInfo.clickTargetClass}`);
       
-      // Step 2: Wait for hover menu to appear
+      // Step 2: Wait for menu to appear after click
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Step 3: Look for the settings button ONLY in the indicator's hover menu
