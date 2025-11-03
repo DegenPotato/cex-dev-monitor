@@ -3171,7 +3171,8 @@ export class TelegramClientService extends EventEmitter {
         // Auto-create Test Lab campaign for each detected token
         const alerts = config.alerts || [];
         for (const contract of contracts) {
-          await this.createTestLabCampaign({...monitor, config}, contract.address, event.message.id, alerts);
+          // Pass the monitor directly, it contains all config properties
+          await this.createTestLabCampaign(monitor, contract.address, event.message.id, alerts);
         }
       }
     } catch (error) {
@@ -3215,9 +3216,10 @@ export class TelegramClientService extends EventEmitter {
       
       console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
       
-      // Handle initial action: buy_and_monitor (from config)
-      const config = monitor.config || {};
+      // Handle initial action: buy_and_monitor (monitor IS the config!)
+      const config = monitor; // The monitor object itself contains all config properties
       if (config.initialAction === 'buy_and_monitor' && config.walletId && config.buyAmountSol) {
+        console.log(`💰 [Test Lab] Buy mode detected: action=${config.initialAction}, wallet=${config.walletId}, amount=${config.buyAmountSol} SOL`);
         
         // Check if onlyBuyNew is enabled and token already exists in token_registry
         if (config.onlyBuyNew) {
@@ -3233,36 +3235,37 @@ export class TelegramClientService extends EventEmitter {
             console.log(`💰 [Test Lab] Executing buy order: ${config.buyAmountSol} SOL using wallet ${config.walletId} (new token)`);
             
             try {
-              const tradeSignalStmt = db.prepare(`
-                INSERT INTO trade_signals (
-                  user_id, signal_type, signal_source, source_reference,
-                  token_mint, action, amount, status, created_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `);
-              
-              const metadata = {
-                test_lab: true,
-                pool_address: poolAddress,
-                chat_id: monitor.chat_id,
-                message_id: messageId,
-                initial_liquidity_usd: liquidityUsd
-              };
-              
-              tradeSignalStmt.run([
-                monitor.user_id,
-                'buy',
-                'telegram_test_lab',
-                `${monitor.chat_id}_${messageId}`,
-                tokenMint,
-                'buy',
-                config.buyAmountSol,
-                'pending',
-                Math.floor(Date.now() / 1000),
-                JSON.stringify(metadata)
-              ]);
-              saveDatabase();
-              
-              console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
+              // Get wallet details - SAME AS MANUAL TEST LAB
+              const { queryOne } = await import('../database/helpers.js');
+              const wallet = await queryOne('SELECT public_key, user_id FROM trading_wallets WHERE id = ?', [config.walletId]) as any;
+              if (!wallet) {
+                console.error(`❌ [Test Lab] Wallet ${config.walletId} not found`);
+              } else {
+                console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
+                
+                // Execute buy directly using TradingEngine - SAME AS MANUAL TEST LAB
+                const { getTradingEngine } = await import('../core/trade.js');
+                const result = await getTradingEngine().buyToken({
+                  userId: wallet.user_id,
+                  walletAddress: wallet.public_key,
+                  tokenMint: tokenMint,
+                  amount: config.buyAmountSol,
+                  slippageBps: 300, // 3% default slippage
+                  priorityLevel: 'high',
+                  skipTax: false
+                } as any);
+                
+                console.log(`   Buy result:`, JSON.stringify(result, null, 2));
+                
+                if (result.success) {
+                  console.log(`✅ [Test Lab] Buy executed: ${result.signature}`);
+                } else {
+                  console.error(`❌ [Test Lab] Buy failed: ${result.error || 'Unknown error'}`);
+                  if ((result as any).details) {
+                    console.error(`   Details:`, (result as any).details);
+                  }
+                }
+              }
             } catch (buyError) {
               console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
               // Continue with monitoring even if buy fails
@@ -3273,37 +3276,37 @@ export class TelegramClientService extends EventEmitter {
           console.log(`💰 [Test Lab] Executing buy order: ${config.buyAmountSol} SOL using wallet ${config.walletId}`);
           
           try {
-            const db = await getDb();
-            const tradeSignalStmt = db.prepare(`
-              INSERT INTO trade_signals (
-                user_id, signal_type, signal_source, source_reference,
-                token_mint, action, amount, status, created_at, metadata_json
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            
-            const metadata = {
-              test_lab: true,
-              pool_address: poolAddress,
-              chat_id: monitor.chat_id,
-              message_id: messageId,
-              initial_liquidity_usd: liquidityUsd
-            };
-            
-            tradeSignalStmt.run([
-              monitor.user_id,
-              'buy',
-              'telegram_test_lab',
-              `${monitor.chat_id}_${messageId}`,
-              tokenMint,
-              'buy',
-              config.buyAmountSol,
-              'pending',
-              Math.floor(Date.now() / 1000),
-              JSON.stringify(metadata)
-            ]);
-            saveDatabase();
-            
-            console.log(`✅ [Test Lab] Buy signal created for ${tokenMint} - Trading system will process`);
+            // Get wallet details - SAME AS MANUAL TEST LAB
+            const { queryOne } = await import('../database/helpers.js');
+            const wallet = await queryOne('SELECT public_key, user_id FROM trading_wallets WHERE id = ?', [config.walletId]) as any;
+            if (!wallet) {
+              console.error(`❌ [Test Lab] Wallet ${config.walletId} not found`);
+            } else {
+              console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
+              
+              // Execute buy directly using TradingEngine - SAME AS MANUAL TEST LAB
+              const { getTradingEngine } = await import('../core/trade.js');
+              const result = await getTradingEngine().buyToken({
+                userId: wallet.user_id,
+                walletAddress: wallet.public_key,
+                tokenMint: tokenMint,
+                amount: config.buyAmountSol,
+                slippageBps: 300, // 3% default slippage
+                priorityLevel: 'high',
+                skipTax: false
+              } as any);
+              
+              console.log(`   Buy result:`, JSON.stringify(result, null, 2));
+              
+              if (result.success) {
+                console.log(`✅ [Test Lab] Buy executed: ${result.signature}`);
+              } else {
+                console.error(`❌ [Test Lab] Buy failed: ${result.error || 'Unknown error'}`);
+                if ((result as any).details) {
+                  console.error(`   Details:`, (result as any).details);
+                }
+              }
+            }
           } catch (buyError) {
             console.error(`❌ [Test Lab] Failed to create buy signal:`, buyError);
             // Continue with monitoring even if buy fails
