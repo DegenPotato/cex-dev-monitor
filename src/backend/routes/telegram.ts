@@ -63,8 +63,9 @@ export function createTelegramRoutes() {
         return res.status(403).json({ error: 'Account not found or access denied' });
       }
       
-      // Get all chats for this user's account (not filtering by is_active)
-      // We query telegram_monitored_chats which stores all the user's chats
+      // Get all chats for this user (not filtering by is_active)
+      // Note: Chats may be stored with user_id instead of telegram_account_id
+      // So we filter by user_id to get all chats for this user
       const chats = await queryAll(
         `SELECT DISTINCT 
           chat_id as id, 
@@ -72,9 +73,9 @@ export function createTelegramRoutes() {
           username,
           chat_type as type
         FROM telegram_monitored_chats 
-        WHERE telegram_account_id = ?
+        WHERE user_id = ?
         ORDER BY chat_name`,
-        [accountId]
+        [userId]
       );
       
       res.json({ chats });
