@@ -51,6 +51,15 @@ export function broadcastTestLabUpdate(message: any): void {
   broadcast(message);
 }
 
+export function trackUserCampaign(userId: number, campaignId: string): void {
+  // Track campaign for user (makes it show in UI)
+  if (!userCampaigns.has(userId)) {
+    userCampaigns.set(userId, new Set());
+  }
+  userCampaigns.get(userId)!.add(campaignId);
+  console.log(`✅ [Test Lab] Campaign ${campaignId} tracked for user ${userId}`);
+}
+
 // Store WebSocket server instance
 let wss: WebSocketServer | null = null;
 

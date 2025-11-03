@@ -3307,6 +3307,11 @@ export class TelegramClientService extends EventEmitter {
       const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
       
       if (campaign) {
+        // CRITICAL: Track campaign for the user (this is what makes it show in UI!)
+        const { trackUserCampaign } = await import('../routes/priceTest.js');
+        trackUserCampaign(monitor.userId, campaign.id);
+        console.log(`📌 [Test Lab] Campaign tracked for user ${monitor.userId}`);
+        
         // Apply configured alerts to the campaign (alerts already parsed and passed as parameter)
         if (alerts && alerts.length > 0) {
           console.log(`📋 [Test Lab] Applying ${alerts.length} configured alert(s) to campaign ${campaign.id}`);
