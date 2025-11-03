@@ -847,22 +847,40 @@ class GMGNScraperService extends EventEmitter {
       // Step 2: Wait for hover menu to appear
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Step 3: Look for the settings button in the revealed button menu
+      // Step 3: Look for the settings button ONLY in the indicator's hover menu
       const buttonDebug = await pageOrFrame.evaluate(() => {
-        // Look for buttons container that should have appeared
-        const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"], [class*="buttonsWrapper"], [class*="buttonGroup"]'));
+        // Look ONLY for the hover menu that should have appeared near the indicator
+        // These buttons appear in a specific container with class containing "l31H9iuA"
+        const buttonContainers = Array.from(document.querySelectorAll('[class*="buttons-l31H9iuA"]'));
         
-        // Look for all buttons with multiple possible selectors
-        const allButtons = Array.from(document.querySelectorAll(
-          'button[class*="button-l31H9iuA"], ' +
-          'button[class*="button"], ' + 
-          '[aria-label="Settings"], ' +
-          '[data-name="legend-settings-action"], ' +
-          'svg[class*="settings"], ' +
-          '[role="button"]'
-        ));
+        // Find buttons ONLY within these hover menu containers
+        let hoveredButtons: Element[] = [];
+        for (const container of buttonContainers) {
+          // Only look at containers that are visible (the hover menu)
+          if ((container as HTMLElement).offsetParent !== null) {
+            const buttons = container.querySelectorAll('button');
+            hoveredButtons.push(...Array.from(buttons));
+          }
+        }
         
-        const visibleButtons = allButtons.filter(btn => (btn as HTMLElement).offsetParent !== null);
+        // If we didn't find the hover menu buttons, try looking near the hovered legend
+        if (hoveredButtons.length === 0) {
+          // Look for buttons that just appeared (weren't there before hover)
+          const legendButtons = Array.from(document.querySelectorAll(
+            '[class*="legend"] button, ' +
+            '[class*="source"] button, ' +
+            'button[aria-label="Settings"], ' +
+            'button[data-name="legend-settings-action"]'
+          ));
+          
+          hoveredButtons = legendButtons.filter(btn => {
+            const rect = (btn as HTMLElement).getBoundingClientRect();
+            // Only buttons in the left part of screen where legends are
+            return rect.left < window.innerWidth / 3 && (btn as HTMLElement).offsetParent !== null;
+          });
+        }
+        
+        const visibleButtons = hoveredButtons;
         
         // Collect button info for debugging
         const buttonInfo = visibleButtons.slice(0, 10).map((btn, i) => ({
@@ -882,7 +900,7 @@ class GMGNScraperService extends EventEmitter {
             return {
               success: 'settings_clicked',
               buttonContainers: buttonContainers.length,
-              totalButtons: allButtons.length,
+              totalButtons: hoveredButtons.length,
               visibleButtons: visibleButtons.length,
               buttons: buttonInfo
             };
@@ -892,7 +910,7 @@ class GMGNScraperService extends EventEmitter {
         return {
           success: false,
           buttonContainers: buttonContainers.length,
-          totalButtons: allButtons.length,
+          totalButtons: hoveredButtons.length,
           visibleButtons: visibleButtons.length,
           buttons: buttonInfo
         };
