@@ -20,11 +20,13 @@ import {
   History,
   AlertTriangle,
   ChevronDown,
+  ChevronUp,
   CheckSquare,
   Crown,
   LogOut,
   Brain,
-  TrendingUp
+  TrendingUp,
+  Plus
 } from 'lucide-react';
 import { config } from '../config';
 import { useAuth } from '../contexts/AuthContext';
@@ -215,6 +217,13 @@ export function TelegramSnifferTab() {
   const [configTrailingStopEnabled, setConfigTrailingStopEnabled] = useState<boolean>(false);
   const [configMonitorDuration, setConfigMonitorDuration] = useState<number>(24);
   const [configAlertThreshold, setConfigAlertThreshold] = useState<number>(50);
+  
+  // Comprehensive alerts (like Test Lab)
+  const [configAlerts, setConfigAlerts] = useState<any[]>([]);
+  const [showComprehensiveAlerts, setShowComprehensiveAlerts] = useState<boolean>(false);
+  const [newAlertPercent, setNewAlertPercent] = useState<string>('');
+  const [newAlertDirection, setNewAlertDirection] = useState<'above' | 'below'>('above');
+  const [newAlertPriceType, setNewAlertPriceType] = useState<'percentage' | 'exact_sol' | 'exact_usd'>('percentage');
 
   // Fetch trading wallets for auto-trade configuration (following Fetcher pattern)
   const fetchTradingWallets = async () => {
@@ -3840,67 +3849,317 @@ export function TelegramSnifferTab() {
                 {/* Auto-Sell Configuration */}
                 {(configActionOnDetection?.includes('trade') || configActionOnDetection === 'all') && (
                   <div className="space-y-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg mt-4">
-                    <h4 className="text-sm font-bold text-red-300">Auto-Sell Settings</h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-red-300">Auto-Sell Settings</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowComprehensiveAlerts(!showComprehensiveAlerts)}
+                        className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 text-xs rounded-lg flex items-center gap-1 transition-colors"
+                      >
+                        {showComprehensiveAlerts ? (
+                          <>
+                            <ChevronUp className="w-3 h-3" />
+                            Simple Mode
+                          </>
+                        ) : (
+                          <>
+                            <TrendingUp className="w-3 h-3" />
+                            Advanced Alerts
+                          </>
+                        )}
+                      </button>
+                    </div>
                     
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-300 mb-1">
-                          Stop Loss (%)
-                        </label>
-                        <input
-                          type="number"
-                          value={configStopLoss || 50}
-                          onChange={(e) => setConfigStopLoss(parseFloat(e.target.value))}
-                          step="5"
-                          min="0"
-                          max="100"
-                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-300 mb-1">
-                          Take Profit (%)
-                        </label>
-                        <input
-                          type="number"
-                          value={configTakeProfit || 100}
-                          onChange={(e) => setConfigTakeProfit(parseFloat(e.target.value))}
-                          step="10"
-                          min="0"
-                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-300 mb-1">
-                          Trailing Stop (%)
-                        </label>
-                        <input
-                          type="number"
-                          value={configTrailingStop || 0}
-                          onChange={(e) => setConfigTrailingStop(parseFloat(e.target.value))}
-                          step="5"
-                          min="0"
-                          max="50"
-                          disabled={!configTrailingStopEnabled}
-                          className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm disabled:opacity-50"
-                        />
-                      </div>
-                    </div>
+                    {!showComprehensiveAlerts ? (
+                      /* Simple Mode */
+                      <>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-300 mb-1">
+                              Stop Loss (%)
+                            </label>
+                            <input
+                              type="number"
+                              value={configStopLoss || 50}
+                              onChange={(e) => setConfigStopLoss(parseFloat(e.target.value))}
+                              step="5"
+                              min="0"
+                              max="100"
+                              className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-gray-300 mb-1">
+                              Take Profit (%)
+                            </label>
+                            <input
+                              type="number"
+                              value={configTakeProfit || 100}
+                              onChange={(e) => setConfigTakeProfit(parseFloat(e.target.value))}
+                              step="10"
+                              min="0"
+                              className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-xs font-medium text-gray-300 mb-1">
+                              Trailing Stop (%)
+                            </label>
+                            <input
+                              type="number"
+                              value={configTrailingStop || 0}
+                              onChange={(e) => setConfigTrailingStop(parseFloat(e.target.value))}
+                              step="5"
+                              min="0"
+                              max="50"
+                              disabled={!configTrailingStopEnabled}
+                              className="w-full px-3 py-2 bg-black/40 border border-red-500/30 rounded text-white text-sm disabled:opacity-50"
+                            />
+                          </div>
+                        </div>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="trailing-stop-enabled"
-                        checked={configTrailingStopEnabled || false}
-                        onChange={(e) => setConfigTrailingStopEnabled(e.target.checked)}
-                        className="rounded border-gray-600 text-red-500 focus:ring-red-500"
-                      />
-                      <label htmlFor="trailing-stop-enabled" className="text-xs text-gray-300">
-                        Enable Trailing Stop (locks in profits)
-                      </label>
-                    </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="trailing-stop-enabled"
+                            checked={configTrailingStopEnabled || false}
+                            onChange={(e) => setConfigTrailingStopEnabled(e.target.checked)}
+                            className="rounded border-gray-600 text-red-500 focus:ring-red-500"
+                          />
+                          <label htmlFor="trailing-stop-enabled" className="text-xs text-gray-300">
+                            Enable Trailing Stop (locks in profits)
+                          </label>
+                        </div>
+                      </>
+                    ) : (
+                      /* Comprehensive Alerts Mode */
+                      <div className="space-y-4">
+                        <div className="p-3 bg-gray-900 border border-gray-700 rounded-lg space-y-3">
+                          <h5 className="text-sm font-medium text-gray-300">Add Custom Alert</h5>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Price Type</label>
+                              <select
+                                value={newAlertPriceType}
+                                onChange={(e) => setNewAlertPriceType(e.target.value as any)}
+                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm"
+                              >
+                                <option value="percentage">Percentage</option>
+                                <option value="exact_sol">Exact (SOL)</option>
+                                <option value="exact_usd">Exact (USD)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Direction</label>
+                              <select
+                                value={newAlertDirection}
+                                onChange={(e) => setNewAlertDirection(e.target.value as any)}
+                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm"
+                              >
+                                <option value="above">Above</option>
+                                <option value="below">Below</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Value</label>
+                              <input
+                                type="number"
+                                value={newAlertPercent}
+                                onChange={(e) => setNewAlertPercent(e.target.value)}
+                                placeholder={newAlertPriceType === 'percentage' ? '50' : '0.001'}
+                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm"
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Alert Actions - Simplified inline for now */}
+                          <div className="text-xs text-gray-400">
+                            Actions: Sell {newAlertDirection === 'below' ? '100%' : '25%'} + Notify
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!newAlertPercent) return;
+                              const newAlert = {
+                                id: `alert-${Date.now()}`,
+                                target_percent: parseFloat(newAlertPercent),
+                                direction: newAlertDirection,
+                                price_type: newAlertPriceType,
+                                actions: [{
+                                  type: 'sell',
+                                  amount: newAlertDirection === 'below' ? 100 : 25,
+                                  slippage: configAutoBuySlippage || 1000,
+                                  priorityFee: 0.0001,
+                                  walletId: configAutoBuyWalletId,
+                                  useDynamicPercentage: newAlertDirection === 'below' // Use dynamic % for stop loss
+                                }, {
+                                  type: 'notification'
+                                }]
+                              };
+                              setConfigAlerts([...configAlerts, newAlert]);
+                              setNewAlertPercent('');
+                            }}
+                            className="w-full px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-sm rounded transition-colors"
+                          >
+                            <Plus className="w-3 h-3 inline mr-1" />
+                            Add Alert
+                          </button>
+                        </div>
+                        
+                        {/* Alerts List */}
+                        {configAlerts.length > 0 && (
+                          <div className="space-y-2">
+                            <h5 className="text-sm font-medium text-gray-300">Configured Alerts ({configAlerts.length})</h5>
+                            {configAlerts.map((alert) => (
+                              <div key={alert.id} className="p-2 bg-gray-900 border border-gray-700 rounded flex items-center justify-between">
+                                <div className="text-sm">
+                                  <span className="text-white font-medium">
+                                    {alert.price_type === 'percentage' ? `${alert.target_percent}%` : `${alert.target_percent} ${alert.price_type === 'exact_sol' ? 'SOL' : 'USD'}`}
+                                  </span>
+                                  <span className={`ml-2 ${alert.direction === 'above' ? 'text-green-400' : 'text-red-400'}`}>
+                                    {alert.direction === 'above' ? '↑' : '↓'}
+                                  </span>
+                                  <span className="ml-2 text-xs text-gray-400">
+                                    Sell {alert.actions[0]?.amount}%
+                                    {alert.actions[0]?.useDynamicPercentage && ' (dynamic)'}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfigAlerts(configAlerts.filter(a => a.id !== alert.id))}
+                                  className="p-1 hover:bg-gray-800 rounded transition-colors"
+                                >
+                                  <X className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Quick Templates */}
+                        <div className="p-2 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                          <p className="text-xs text-blue-300 mb-2">💡 Quick Templates:</p>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigAlerts([
+                                  {
+                                    id: 'sl-30',
+                                    target_percent: -30,
+                                    direction: 'below',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 100,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId,
+                                      useDynamicPercentage: true
+                                    }, { type: 'notification' }]
+                                  },
+                                  {
+                                    id: 'tp-50',
+                                    target_percent: 50,
+                                    direction: 'above',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 25,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId
+                                    }, { type: 'notification' }]
+                                  },
+                                  {
+                                    id: 'tp-100',
+                                    target_percent: 100,
+                                    direction: 'above',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 25,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId
+                                    }, { type: 'notification' }]
+                                  },
+                                  {
+                                    id: 'tp-200',
+                                    target_percent: 200,
+                                    direction: 'above',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 25,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId
+                                    }, { type: 'notification' }]
+                                  },
+                                  {
+                                    id: 'tp-500',
+                                    target_percent: 500,
+                                    direction: 'above',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 25,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId
+                                    }, { type: 'notification' }]
+                                  }
+                                ]);
+                              }}
+                              className="px-2 py-1 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 text-xs rounded transition-colors"
+                            >
+                              Progressive Exits
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigAlerts([
+                                  {
+                                    id: 'sl-50',
+                                    target_percent: -50,
+                                    direction: 'below',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 100,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId,
+                                      useDynamicPercentage: true
+                                    }, { type: 'notification' }]
+                                  },
+                                  {
+                                    id: 'tp-100-full',
+                                    target_percent: 100,
+                                    direction: 'above',
+                                    price_type: 'percentage',
+                                    actions: [{
+                                      type: 'sell',
+                                      amount: 100,
+                                      slippage: 1000,
+                                      priorityFee: 0.0001,
+                                      walletId: configAutoBuyWalletId
+                                    }, { type: 'notification' }]
+                                  }
+                                ]);
+                              }}
+                              className="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-300 text-xs rounded transition-colors"
+                            >
+                              Conservative
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
