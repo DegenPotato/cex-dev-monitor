@@ -1187,6 +1187,35 @@ export class TelegramClientService extends EventEmitter {
               message: message.message,
               forwarded: wasForwarded
             });
+
+            // Check if auto-trading is configured for this chat
+            const autoTradeConfig = await this.getAutoTradeConfig(userId, chatId);
+            if (autoTradeConfig && autoTradeConfig.action_on_detection !== 'forward_only') {
+              // Trigger auto-trade/monitor actions
+              console.log(`🤖 [AutoTrade] Processing detection for ${contract.address.slice(0, 8)}... (${autoTradeConfig.action_on_detection})`);
+              
+              // Import auto-trader dynamically to avoid circular dependencies
+              const { getTelegramAutoTrader } = await import('./TelegramAutoTrader.js');
+              const autoTrader = getTelegramAutoTrader();
+              
+              // Handle contract detection with configured actions
+              autoTrader.handleContractDetection(
+                contract.address,
+                {
+                  userId,
+                  chatId,
+                  chatName: monitoredChat.chatName || '',
+                  messageId: message.id,
+                  senderId: message.senderId?.toString() || '',
+                  senderUsername: senderUsername || '',
+                  detectionType: contract.type,
+                  messageText: message.message
+                },
+                autoTradeConfig
+              ).catch(err => {
+                console.error('❌ [AutoTrade] Error handling detection:', err);
+              });
+            }
           }
         }
 
@@ -2759,6 +2788,49 @@ export class TelegramClientService extends EventEmitter {
         backlog_time_limit: 86400,
         min_time_between_duplicates: 0
       };
+    }
+    
+    return config;
+  }
+
+  /**
+   * Get auto-trade configuration for a chat
+   */
+  private async getAutoTradeConfig(userId: number, chatId: string): Promise<any> {
+    const config = await queryOne(`
+      SELECT 
+        action_on_detection,
+        auto_buy_enabled,
+        auto_buy_amount_sol,
+        auto_buy_wallet_id,
+        auto_buy_slippage_bps,
+        auto_buy_priority_level,
+        auto_buy_jito_tip_sol,
+        auto_buy_skip_tax,
+        auto_sell_enabled,
+        auto_sell_slippage_bps,
+        stop_loss_percent,
+        take_profit_percent,
+        trailing_stop_enabled,
+        trailing_stop_percent,
+        auto_monitor_enabled,
+        monitor_duration_hours,
+        alert_price_changes
+      FROM telegram_monitored_chats
+      WHERE user_id = ? AND chat_id = ?
+    `, [userId, chatId]) as any;
+    
+    if (!config || !config.action_on_detection) {
+      return null; // No auto-trade configuration
+    }
+    
+    // Parse JSON fields if needed
+    if (config.alert_price_changes && typeof config.alert_price_changes === 'string') {
+      try {
+        config.alert_price_changes = JSON.parse(config.alert_price_changes);
+      } catch (e) {
+        config.alert_price_changes = [];
+      }
     }
     
     return config;

@@ -252,6 +252,10 @@ app.use('/api/telegram', telegramMetadataRoutes);
 import telegramIntelligenceRoutes from './routes/telegram-intelligence.js';
 app.use('/', telegramIntelligenceRoutes);
 
+// Register Telegram auto-trading routes
+import telegramAutoTradeRoutes from './routes/telegramAutoTrade.js';
+app.use('/', telegramAutoTradeRoutes);
+
 // Register trading routes (already imported above)
 app.use('/', tradingRoutes);
 
