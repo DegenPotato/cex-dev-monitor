@@ -3224,6 +3224,13 @@ export class TelegramClientService extends EventEmitter {
       if (config.initialAction === 'buy_and_monitor' && config.walletId && config.buyAmountSol) {
         console.log(`💰 [Test Lab] Buy mode detected: action=${config.initialAction}, wallet=${config.walletId}, amount=${config.buyAmountSol} SOL`);
         
+        // Check if we already have an active position for this token
+        const { hasActivePosition } = await import('../routes/priceTest.js');
+        if (hasActivePosition(config.walletId, tokenMint)) {
+          console.log(`⏭️  [Test Lab] Skipping buy - active position already exists for ${tokenMint.slice(0, 8)}...`);
+          // Still create campaign to monitor, but skip the buy
+        } else {
+        
         // Check if onlyBuyNew is enabled and token already exists in token_registry
         if (config.onlyBuyNew) {
           const db = await getDb();
@@ -3349,6 +3356,7 @@ export class TelegramClientService extends EventEmitter {
             // Continue with monitoring even if buy fails
           }
         }
+        } // Close the "else" from hasActivePosition check
       }
       
       // Import dynamically to avoid circular dependencies

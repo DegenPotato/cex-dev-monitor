@@ -50,6 +50,13 @@ interface TestLabPosition {
 
 const testLabPositions = new Map<string, TestLabPosition>(); // key: `${walletId}_${tokenMint}`
 
+// Check if position exists and has balance
+export function hasActivePosition(walletId: number, tokenMint: string): boolean {
+  const key = `${walletId}_${tokenMint}`;
+  const position = testLabPositions.get(key);
+  return position ? position.balance > 0 : false;
+}
+
 // Helper to get/create position
 function getOrCreatePosition(walletId: number, tokenMint: string, userId: number, tokenSymbol?: string): TestLabPosition {
   const key = `${walletId}_${tokenMint}`;
