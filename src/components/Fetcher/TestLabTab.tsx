@@ -676,11 +676,6 @@ export const TestLabTab: React.FC = () => {
       return;
     }
 
-    if (telegramAlerts.length === 0) {
-      toast.error('Please add at least one alert');
-      return;
-    }
-
     setLoading(true);
     try {
       const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-monitor/start`, {
@@ -1311,11 +1306,11 @@ export const TestLabTab: React.FC = () => {
           <div className="flex justify-end">
             <button
               onClick={startTelegramMonitoring}
-              disabled={loading || !telegramAccountId || !telegramChatId || (!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0) || telegramAlerts.length === 0}
+              disabled={loading || !telegramAccountId || !telegramChatId || (!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0)}
               className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
             >
               <Play className="w-4 h-4" />
-              {!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0 ? 'Select User(s) or Enable Monitor All' : telegramAlerts.length === 0 ? 'Add at least 1 alert' : loading ? 'Starting...' : 'Start Monitoring'}
+              {!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0 ? 'Select User(s) or Enable Monitor All' : loading ? 'Starting...' : 'Start Monitoring'}
             </button>
           </div>
         </div>
