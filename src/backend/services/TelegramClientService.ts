@@ -3213,8 +3213,9 @@ export class TelegramClientService extends EventEmitter {
       
       const poolAddress = bestPool.attributes.address;
       const liquidityUsd = parseFloat(bestPool.attributes.reserve_in_usd || '0');
+      const marketCapUsd = parseFloat(bestPool.attributes.market_cap_usd || '0');
       
-      console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity`);
+      console.log(`📊 [Test Lab] Using pool ${poolAddress.substring(0, 8)}... with $${liquidityUsd.toFixed(2)} liquidity | MCAP: $${marketCapUsd.toFixed(2)}`);
       
       // Campaign ID will be set after campaign creation (declared here for position tracking)
       let campaignId: string | undefined;
@@ -3224,12 +3225,25 @@ export class TelegramClientService extends EventEmitter {
       if (config.initialAction === 'buy_and_monitor' && config.walletId && config.buyAmountSol) {
         console.log(`💰 [Test Lab] Buy mode detected: action=${config.initialAction}, wallet=${config.walletId}, amount=${config.buyAmountSol} SOL`);
         
-        // Check if we already have an active position for this token
-        const { hasActivePosition } = await import('../routes/priceTest.js');
-        if (hasActivePosition(config.walletId, tokenMint)) {
-          console.log(`⏭️  [Test Lab] Skipping buy - active position already exists for ${tokenMint.slice(0, 8)}...`);
-          // Still create campaign to monitor, but skip the buy
-        } else {
+        // Check market cap filters (optional)
+        let skipBuyDueToMcap = false;
+        if (config.minMcap !== null && marketCapUsd < config.minMcap) {
+          console.log(`⏭️  [Test Lab] Skipping buy - MCAP $${marketCapUsd.toFixed(2)} below minimum $${config.minMcap}`);
+          skipBuyDueToMcap = true;
+        } else if (config.maxMcap !== null && marketCapUsd > config.maxMcap) {
+          console.log(`⏭️  [Test Lab] Skipping buy - MCAP $${marketCapUsd.toFixed(2)} above maximum $${config.maxMcap}`);
+          skipBuyDueToMcap = true;
+        } else if (config.minMcap !== null || config.maxMcap !== null) {
+          console.log(`✅ [Test Lab] MCAP $${marketCapUsd.toFixed(2)} within range [${config.minMcap || 'no min'}, ${config.maxMcap || 'no max'}]`);
+        }
+        
+        if (!skipBuyDueToMcap) {
+          // Check if we already have an active position for this token
+          const { hasActivePosition } = await import('../routes/priceTest.js');
+          if (hasActivePosition(config.walletId, tokenMint)) {
+            console.log(`⏭️  [Test Lab] Skipping buy - active position already exists for ${tokenMint.slice(0, 8)}...`);
+            // Still create campaign to monitor, but skip the buy
+          } else {
         
         // Check if onlyBuyNew is enabled and token already exists in token_registry
         if (config.onlyBuyNew) {
@@ -3356,7 +3370,8 @@ export class TelegramClientService extends EventEmitter {
             // Continue with monitoring even if buy fails
           }
         }
-        } // Close the "else" from hasActivePosition check
+          } // Close the "else" from hasActivePosition check
+        } // Close the skipBuyDueToMcap check
       }
       
       // Import dynamically to avoid circular dependencies

@@ -61,6 +61,115 @@ export function hasActivePosition(walletId: number, tokenMint: string): boolean 
   return position ? position.balance > 0 : false;
 }
 
+// Generate complete campaign summary for all positions
+export function generateCampaignSummary(userId: number, monitorId: string): any {
+  const positions = Array.from(testLabPositions.values())
+    .filter(p => p.userId === userId);
+  
+  if (positions.length === 0) {
+    return {
+      totalPositions: 0,
+      message: 'No positions found for this campaign'
+    };
+  }
+  
+  // Calculate aggregate statistics
+  let totalInvested = 0;
+  let totalRealizedPnl = 0;
+  let totalUnrealizedPnl = 0;
+  let totalTrades = 0;
+  let closedPositions = 0;
+  let openPositions = 0;
+  
+  const tokenSummaries = positions.map(position => {
+    totalInvested += position.totalInvested;
+    totalRealizedPnl += position.realizedPnl;
+    totalUnrealizedPnl += position.unrealizedPnl || 0;
+    totalTrades += position.trades.length;
+    
+    if (position.balance === 0) {
+      closedPositions++;
+    } else {
+      openPositions++;
+    }
+    
+    const totalBuys = position.trades.filter(t => t.type === 'buy').length;
+    const totalSells = position.trades.filter(t => t.type === 'sell').length;
+    const invested = position.trades.filter(t => t.type === 'buy').reduce((sum, t) => sum + t.amountSol, 0);
+    const roi = invested > 0 ? (position.realizedPnl / invested) * 100 : 0;
+    
+    return {
+      tokenMint: position.tokenMint,
+      tokenSymbol: position.tokenSymbol,
+      status: position.balance === 0 ? 'closed' : 'open',
+      balance: position.balance,
+      avgEntryPrice: position.avgEntryPrice,
+      currentPrice: position.currentPrice,
+      invested,
+      realizedPnl: position.realizedPnl,
+      unrealizedPnl: position.unrealizedPnl || 0,
+      totalPnl: (position.realizedPnl || 0) + (position.unrealizedPnl || 0),
+      roi,
+      totalTrades: position.trades.length,
+      buys: totalBuys,
+      sells: totalSells,
+      duration: position.lastTradeAt - position.firstTradeAt
+    };
+  });
+  
+  // Sort by total P/L (best to worst)
+  tokenSummaries.sort((a, b) => b.totalPnl - a.totalPnl);
+  
+  const totalPnl = totalRealizedPnl + totalUnrealizedPnl;
+  const overallRoi = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+  const winningPositions = tokenSummaries.filter(t => t.totalPnl > 0).length;
+  const losingPositions = tokenSummaries.filter(t => t.totalPnl < 0).length;
+  const winRate = positions.length > 0 ? (winningPositions / positions.length) * 100 : 0;
+  
+  const summary = {
+    monitorId,
+    userId,
+    generatedAt: Date.now(),
+    overview: {
+      totalPositions: positions.length,
+      closedPositions,
+      openPositions,
+      totalTrades,
+      totalInvested,
+      totalRealizedPnl,
+      totalUnrealizedPnl,
+      totalPnl,
+      overallRoi,
+      winRate,
+      winningPositions,
+      losingPositions
+    },
+    bestPerformer: tokenSummaries[0] || null,
+    worstPerformer: tokenSummaries[tokenSummaries.length - 1] || null,
+    tokens: tokenSummaries
+  };
+  
+  // Log summary
+  console.log(`\n🏆 ===== TEST LAB CAMPAIGN SUMMARY =====`);
+  console.log(`   Monitor ID: ${monitorId}`);
+  console.log(`   Total Positions: ${summary.overview.totalPositions} (${closedPositions} closed, ${openPositions} open)`);
+  console.log(`   Total Trades: ${totalTrades}`);
+  console.log(`   Total Invested: ${totalInvested.toFixed(4)} SOL`);
+  console.log(`   Realized P/L: ${totalRealizedPnl.toFixed(4)} SOL`);
+  console.log(`   Unrealized P/L: ${totalUnrealizedPnl.toFixed(4)} SOL`);
+  console.log(`   Total P/L: ${totalPnl.toFixed(4)} SOL (${overallRoi > 0 ? '+' : ''}${overallRoi.toFixed(2)}%)`);
+  console.log(`   Win Rate: ${winRate.toFixed(1)}% (${winningPositions}W / ${losingPositions}L)`);
+  if (summary.bestPerformer) {
+    console.log(`   🥇 Best: ${summary.bestPerformer.tokenSymbol} ${summary.bestPerformer.totalPnl > 0 ? '+' : ''}${summary.bestPerformer.totalPnl.toFixed(4)} SOL`);
+  }
+  if (summary.worstPerformer) {
+    console.log(`   📉 Worst: ${summary.worstPerformer.tokenSymbol} ${summary.worstPerformer.totalPnl > 0 ? '+' : ''}${summary.worstPerformer.totalPnl.toFixed(4)} SOL`);
+  }
+  console.log(`=======================================\n`);
+  
+  return summary;
+}
+
 // Convert percentage to absolute token amount based on reference balance
 export function getAbsoluteAmountFromPercentage(walletId: number, tokenMint: string, percentage: number): number | null {
   const key = `${walletId}_${tokenMint}`;
@@ -922,6 +1031,8 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       buyAmountSol,
       walletId,
       onlyBuyNew,
+      minMcap,
+      maxMcap,
       alerts 
     } = req.body;
     
@@ -960,6 +1071,8 @@ router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAut
       buyAmountSol: buyAmountSol || null,
       walletId: walletId || null,
       onlyBuyNew: onlyBuyNew !== false,
+      minMcap: minMcap || null, // Optional: minimum market cap filter (USD)
+      maxMcap: maxMcap || null, // Optional: maximum market cap filter (USD)
       alerts: alerts || [],
       activeCampaigns: 0,
       isActive: true,
@@ -1010,9 +1123,21 @@ router.post('/api/test-lab/telegram-monitor/stop', authService.requireSecureAuth
       return res.status(404).json({ error: 'Monitor not found' });
     }
     
-    console.log(`🛑 Stopped Test Lab monitor ID ${monitorId}`);
+    console.log(`⏹️ [Test Lab] Stopped monitor: ${monitorId}`);
     
-    res.json({ success: true });
+    // Generate comprehensive campaign summary
+    const summary = generateCampaignSummary(userId, monitorId);
+    
+    // Broadcast summary to frontend
+    broadcastTestLabUpdate({
+      type: 'test_lab_campaign_summary',
+      data: summary
+    });
+    
+    res.json({ 
+      success: true,
+      summary
+    });
   } catch (error: any) {
     console.error('❌ Error stopping telegram monitor:', error);
     res.status(500).json({ error: error.message });
