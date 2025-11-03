@@ -223,11 +223,17 @@ export function TelegramSnifferTab() {
         credentials: 'include'
       });
       if (response.ok) {
-        const wallets = await response.json();
+        const data = await response.json();
+        // Ensure we always have an array
+        const wallets = Array.isArray(data) ? data : (data?.wallets || []);
         setTradingWallets(wallets);
+      } else {
+        console.error('Failed to fetch wallets, status:', response.status);
+        setTradingWallets([]);
       }
     } catch (error) {
       console.error('Failed to fetch trading wallets:', error);
+      setTradingWallets([]);
     }
   };
 
@@ -3774,13 +3780,22 @@ export function TelegramSnifferTab() {
                           onChange={(e) => setConfigAutoBuyWalletId(e.target.value ? parseInt(e.target.value) : null)}
                           className="w-full px-3 py-2 bg-black/40 border border-green-500/30 rounded text-white text-sm"
                         >
-                          <option value="">Select Wallet</option>
-                          {tradingWallets.map((wallet: any) => (
+                          <option value="">
+                            {Array.isArray(tradingWallets) && tradingWallets.length > 0 
+                              ? "Select Wallet" 
+                              : "No wallets available"}
+                          </option>
+                          {Array.isArray(tradingWallets) && tradingWallets.map((wallet: any) => (
                             <option key={wallet.id} value={wallet.id}>
                               {wallet.wallet_name} ({wallet.sol_balance?.toFixed(2)} SOL)
                             </option>
                           ))}
                         </select>
+                        {(!Array.isArray(tradingWallets) || tradingWallets.length === 0) && (
+                          <p className="text-xs text-yellow-400 mt-1">
+                            💡 Create wallets in the Fetcher tab first
+                          </p>
+                        )}
                       </div>
                     </div>
 
