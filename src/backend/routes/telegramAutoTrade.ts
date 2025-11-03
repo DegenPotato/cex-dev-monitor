@@ -209,6 +209,10 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
       p.total_invested_sol = p.total_invested_sol || p.buy_amount_sol || 0;
       p.current_tokens = p.current_tokens || p.tokens_bought || 0;
       
+      // Map to frontend expected fields
+      p.current_balance = p.current_tokens || p.tokens_bought || 0;
+      p.avg_entry_price = p.buy_price_usd || 0;
+      
       // Use price_usd from token_market_data if available
       p.current_price = p.price_usd || p.current_price || 0;
       
@@ -227,6 +231,13 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
         // Use stored values if available
         p.roi_percent = p.roi_percent || 0;
       }
+      
+      // Set default status if missing
+      p.status = p.status || 'open';
+      
+      // Ensure detected_at exists (required by frontend)
+      p.detected_at = p.detected_at || p.created_at || Math.floor(Date.now() / 1000);
+      
       return p;
     });
 
