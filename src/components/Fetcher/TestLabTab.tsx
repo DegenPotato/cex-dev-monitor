@@ -696,7 +696,7 @@ export const TestLabTab: React.FC = () => {
           selectedUserIds: telegramSelectedUserIds,
           excludeBots: telegramExcludeBots,
           excludeNoUsername: telegramExcludeNoUsername,
-          initialAction: telegramInitialAction,
+          initialAction: 'monitor_only', // Force monitor only for now
           buyAmountSol: telegramBuyAmountSol,
           walletId: telegramWalletId,
           onlyBuyNew: telegramOnlyBuyNew,
