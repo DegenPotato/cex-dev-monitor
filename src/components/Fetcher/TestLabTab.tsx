@@ -45,6 +45,47 @@ interface Alert {
   actions: AlertAction[]; // Each alert has its own specific actions
 }
 
+interface TokenSummary {
+  tokenMint: string;
+  tokenSymbol?: string;
+  status: 'open' | 'closed';
+  balance: number;
+  avgEntryPrice: number;
+  currentPrice?: number;
+  invested: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalPnl: number;
+  roi: number;
+  totalTrades: number;
+  buys: number;
+  sells: number;
+  duration: number;
+}
+
+interface CampaignSummary {
+  monitorId: string;
+  userId: number;
+  generatedAt: number;
+  overview: {
+    totalPositions: number;
+    closedPositions: number;
+    openPositions: number;
+    totalTrades: number;
+    totalInvested: number;
+    totalRealizedPnl: number;
+    totalUnrealizedPnl: number;
+    totalPnl: number;
+    overallRoi: number;
+    winRate: number;
+    winningPositions: number;
+    losingPositions: number;
+  };
+  bestPerformer: TokenSummary | null;
+  worstPerformer: TokenSummary | null;
+  tokens: TokenSummary[];
+}
+
 interface HistoryEntry {
   timestamp: string;
   campaignId: string;
@@ -131,6 +172,8 @@ export const TestLabTab: React.FC = () => {
   });
   const [gmgnScreenshot, setGmgnScreenshot] = useState<string | null>(null);
   const [gmgnDebugMode, setGmgnDebugMode] = useState(false);
+  const [campaignSummary, setCampaignSummary] = useState<CampaignSummary | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Copy address to clipboard
@@ -465,6 +508,24 @@ export const TestLabTab: React.FC = () => {
           
           // Update screenshot URL
           setGmgnScreenshot(data.url);
+        }
+
+        // Handle campaign summary on stop
+        if (message.type === 'test_lab_campaign_summary') {
+          const data = message.data as CampaignSummary;
+          console.log(`🏆 Campaign Summary received:`, data);
+          
+          // Show summary modal
+          setCampaignSummary(data);
+          setShowSummaryModal(true);
+          
+          // Also show toast
+          const { totalPnl, overallRoi } = data.overview;
+          const pnlColor = totalPnl >= 0 ? 'success' : 'error';
+          toast[pnlColor](
+            `Campaign ended! P/L: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(4)} SOL (${overallRoi >= 0 ? '+' : ''}${overallRoi.toFixed(2)}%)`,
+            { duration: 5000 }
+          );
         }
       } catch (error) {
         console.error('❌ Error parsing WebSocket message:', error);
@@ -2208,6 +2269,227 @@ export const TestLabTab: React.FC = () => {
           toast.success('Pool selected!');
         }}
       />
+
+      {/* Campaign Summary Modal - FIXED z-index to prevent cutoff */}
+      <AnimatePresence>
+        {showSummaryModal && campaignSummary && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSummaryModal(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+              style={{ zIndex: 9999 }}
+            />
+
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-4 md:inset-8 lg:inset-16 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden"
+              style={{ zIndex: 10000 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-cyan-500/30 bg-gradient-to-r from-cyan-900/20 to-blue-900/20">
+                <div>
+                  <h2 className="text-2xl font-bold text-cyan-400 flex items-center gap-2">
+                    🏆 Campaign Summary
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Monitor ID: {campaignSummary.monitorId}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowSummaryModal(false)}
+                  className="p-2 hover:bg-cyan-500/10 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6 text-gray-400 hover:text-white" />
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="overflow-y-auto h-[calc(100%-80px)] p-6">
+                {/* Overview Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/20 border border-cyan-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Total Positions</div>
+                    <div className="text-2xl font-bold text-white">{campaignSummary.overview.totalPositions}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {campaignSummary.overview.closedPositions} closed / {campaignSummary.overview.openPositions} open
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/20 border border-purple-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Total Trades</div>
+                    <div className="text-2xl font-bold text-white">{campaignSummary.overview.totalTrades}</div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/20 border border-green-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Total Invested</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {campaignSummary.overview.totalInvested.toFixed(4)} SOL
+                    </div>
+                  </div>
+
+                  <div className={`bg-gradient-to-br ${campaignSummary.overview.totalPnl >= 0 ? 'from-green-900/30 to-emerald-900/20 border-green-500/30' : 'from-red-900/30 to-pink-900/20 border-red-500/30'} border rounded-xl p-4`}>
+                    <div className="text-xs text-gray-400 mb-1">Total P/L</div>
+                    <div className={`text-2xl font-bold ${campaignSummary.overview.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {campaignSummary.overview.totalPnl >= 0 ? '+' : ''}{campaignSummary.overview.totalPnl.toFixed(4)} SOL
+                    </div>
+                    <div className={`text-xs mt-1 ${campaignSummary.overview.overallRoi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {campaignSummary.overview.overallRoi >= 0 ? '+' : ''}{campaignSummary.overview.overallRoi.toFixed(2)}% ROI
+                    </div>
+                  </div>
+                </div>
+
+                {/* P/L Breakdown */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gray-800/50 border border-green-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Realized P/L</div>
+                    <div className={`text-xl font-bold ${campaignSummary.overview.totalRealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {campaignSummary.overview.totalRealizedPnl >= 0 ? '+' : ''}{campaignSummary.overview.totalRealizedPnl.toFixed(4)} SOL
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800/50 border border-yellow-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Unrealized P/L</div>
+                    <div className={`text-xl font-bold ${campaignSummary.overview.totalUnrealizedPnl >= 0 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                      {campaignSummary.overview.totalUnrealizedPnl >= 0 ? '+' : ''}{campaignSummary.overview.totalUnrealizedPnl.toFixed(4)} SOL
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800/50 border border-cyan-500/30 rounded-xl p-4">
+                    <div className="text-xs text-gray-400 mb-1">Win Rate</div>
+                    <div className="text-xl font-bold text-cyan-400">
+                      {campaignSummary.overview.winRate.toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {campaignSummary.overview.winningPositions}W / {campaignSummary.overview.losingPositions}L
+                    </div>
+                  </div>
+                </div>
+
+                {/* Best/Worst Performers */}
+                {(campaignSummary.bestPerformer || campaignSummary.worstPerformer) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    {campaignSummary.bestPerformer && (
+                      <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/10 border border-green-500/30 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">🥇</span>
+                          <div className="text-sm font-medium text-green-400">Best Performer</div>
+                        </div>
+                        <div className="font-mono text-lg text-white mb-1">
+                          {campaignSummary.bestPerformer.tokenSymbol || campaignSummary.bestPerformer.tokenMint.slice(0, 8)}
+                        </div>
+                        <div className="text-2xl font-bold text-green-400">
+                          +{campaignSummary.bestPerformer.totalPnl.toFixed(4)} SOL
+                        </div>
+                        <div className="text-sm text-green-300 mt-1">
+                          +{campaignSummary.bestPerformer.roi.toFixed(2)}% ROI
+                        </div>
+                      </div>
+                    )}
+
+                    {campaignSummary.worstPerformer && (
+                      <div className="bg-gradient-to-br from-red-900/20 to-pink-900/10 border border-red-500/30 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">📉</span>
+                          <div className="text-sm font-medium text-red-400">Worst Performer</div>
+                        </div>
+                        <div className="font-mono text-lg text-white mb-1">
+                          {campaignSummary.worstPerformer.tokenSymbol || campaignSummary.worstPerformer.tokenMint.slice(0, 8)}
+                        </div>
+                        <div className="text-2xl font-bold text-red-400">
+                          {campaignSummary.worstPerformer.totalPnl.toFixed(4)} SOL
+                        </div>
+                        <div className="text-sm text-red-300 mt-1">
+                          {campaignSummary.worstPerformer.roi.toFixed(2)}% ROI
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* All Tokens Table */}
+                <div className="bg-gray-800/30 border border-cyan-500/30 rounded-xl overflow-hidden">
+                  <div className="p-4 border-b border-cyan-500/30 bg-cyan-900/10">
+                    <h3 className="text-lg font-bold text-cyan-400">All Positions ({campaignSummary.tokens.length})</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-800/50 text-xs text-gray-400 uppercase">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Token</th>
+                          <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-4 py-3 text-right">Invested</th>
+                          <th className="px-4 py-3 text-right">Realized P/L</th>
+                          <th className="px-4 py-3 text-right">Unrealized P/L</th>
+                          <th className="px-4 py-3 text-right">Total P/L</th>
+                          <th className="px-4 py-3 text-right">ROI</th>
+                          <th className="px-4 py-3 text-center">Trades</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700/50">
+                        {campaignSummary.tokens.map((token, idx) => (
+                          <tr key={idx} className="hover:bg-gray-800/30 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-mono text-sm text-white">
+                                {token.tokenSymbol || token.tokenMint.slice(0, 8)}
+                              </div>
+                              <div className="text-xs text-gray-400 font-mono">
+                                {token.tokenMint.slice(0, 12)}...
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                token.status === 'closed' 
+                                  ? 'bg-gray-700 text-gray-300' 
+                                  : 'bg-green-900/30 text-green-400'
+                              }`}>
+                                {token.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono text-sm text-gray-300">
+                              {token.invested.toFixed(4)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono text-sm ${
+                              token.realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {token.realizedPnl >= 0 ? '+' : ''}{token.realizedPnl.toFixed(4)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono text-sm ${
+                              token.unrealizedPnl >= 0 ? 'text-yellow-400' : 'text-orange-400'
+                            }`}>
+                              {token.unrealizedPnl >= 0 ? '+' : ''}{token.unrealizedPnl.toFixed(4)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono text-sm font-bold ${
+                              token.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {token.totalPnl >= 0 ? '+' : ''}{token.totalPnl.toFixed(4)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono text-sm ${
+                              token.roi >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {token.roi >= 0 ? '+' : ''}{token.roi.toFixed(2)}%
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="text-sm text-white">{token.totalTrades}</div>
+                              <div className="text-xs text-gray-400">{token.buys}B / {token.sells}S</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

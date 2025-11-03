@@ -34,7 +34,7 @@ export interface Campaign {
 export type AlertAction = 
   | { type: 'notification' }
   | { type: 'buy'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
-  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string; useDynamicPercentage?: boolean }
   | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 

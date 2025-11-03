@@ -8,7 +8,7 @@ import { useTradingStore } from '../../stores/tradingStore';
 export type AlertAction = 
   | { type: 'notification' }
   | { type: 'buy'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
-  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string }
+  | { type: 'sell'; amount: number; slippage: number; priorityFee: number; skipTax?: boolean; walletId?: string; useDynamicPercentage?: boolean }
   | { type: 'telegram'; chatId: string; message?: string; accountId?: number }
   | { type: 'discord'; webhookUrl: string; message?: string };
 
@@ -293,6 +293,33 @@ export const AlertActionConfig: React.FC<AlertActionConfigProps> = ({ actions, o
                             </option>
                           ))}
                         </select>
+                      </div>
+                      
+                      {/* Dynamic Percentage Toggle */}
+                      <div className="flex items-center justify-between p-2 bg-gradient-to-r from-blue-900/20 to-cyan-900/20 border border-cyan-500/30 rounded-lg">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="w-3 h-3 text-cyan-400" />
+                            <span className="text-xs font-medium text-cyan-300">Dynamic % Mode</span>
+                          </div>
+                          <span className="text-xs text-gray-400 ml-5">
+                            {action.useDynamicPercentage ? 'Uses current balance (for Stop Loss)' : 'Uses reference balance (for Take Profit)'}
+                          </span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={action.useDynamicPercentage || false}
+                            onChange={(e) => updateAction(index, { useDynamicPercentage: e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 
+                                        peer-focus:ring-cyan-500 rounded-full peer 
+                                        peer-checked:after:translate-x-full peer-checked:after:border-white 
+                                        after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                        after:bg-white after:rounded-full after:h-5 after:w-5 
+                                        after:transition-all peer-checked:bg-cyan-600"></div>
+                        </label>
                       </div>
                       
                       {/* Platform Tax Toggle */}

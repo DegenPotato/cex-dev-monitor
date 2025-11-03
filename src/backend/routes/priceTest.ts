@@ -840,7 +840,8 @@ monitor.on('alert_triggered', async (data) => {
           }
           
         } else if (action.type === 'sell') {
-          console.log(`💸 SELL: ${action.amount}% (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
+          const dynamicMode = action.useDynamicPercentage === true;
+          console.log(`💸 SELL: ${action.amount}% (${dynamicMode ? 'DYNAMIC' : 'FIXED'}) (slippage: ${action.slippage}%, priority: ${action.priorityFee}, skipTax: ${action.skipTax})`);
           console.log(`   Token: ${data.tokenMint} (${data.tokenSymbol || 'unknown'})`);
           
           if (!action.walletId) {
@@ -857,24 +858,43 @@ monitor.on('alert_triggered', async (data) => {
           
           console.log(`   Wallet: ${wallet.public_key.slice(0, 8)}... (User: ${wallet.user_id})`);
           
-          // Convert percentage to absolute amount based on reference balance
-          const absoluteAmount = getAbsoluteAmountFromPercentage(action.walletId, data.tokenMint, action.amount);
+          // Determine sell amount based on mode
+          let sellParams: any;
           
-          if (absoluteAmount === null) {
-            console.error(`❌ Cannot determine sell amount - no reference balance found`);
-            continue;
+          if (dynamicMode) {
+            // Dynamic: Use percentage of current on-chain balance (for stop losses)
+            console.log(`   📊 Dynamic mode: Using % of current balance`);
+            sellParams = {
+              userId: wallet.user_id,
+              walletAddress: wallet.public_key,
+              tokenMint: data.tokenMint,
+              tokenSymbol: data.tokenSymbol || undefined,
+              percentage: action.amount, // Pass percentage directly for dynamic calculation
+              slippageBps: action.slippage * 100,
+              priorityLevel: 'high',
+              skipTax: action.skipTax || false
+            };
+          } else {
+            // Fixed: Use absolute amount from reference balance (for take profits)
+            console.log(`   📊 Fixed mode: Using % of reference balance`);
+            const absoluteAmount = getAbsoluteAmountFromPercentage(action.walletId, data.tokenMint, action.amount);
+            
+            if (absoluteAmount === null) {
+              console.error(`❌ Cannot determine sell amount - no reference balance found`);
+              continue;
+            }
+            
+            sellParams = {
+              userId: wallet.user_id,
+              walletAddress: wallet.public_key,
+              tokenMint: data.tokenMint,
+              tokenSymbol: data.tokenSymbol || undefined,
+              amount: absoluteAmount, // Use absolute token amount
+              slippageBps: action.slippage * 100,
+              priorityLevel: 'high',
+              skipTax: action.skipTax || false
+            };
           }
-          
-          const sellParams = {
-            userId: wallet.user_id,
-            walletAddress: wallet.public_key,
-            tokenMint: data.tokenMint,
-            tokenSymbol: data.tokenSymbol || undefined, // Include token symbol to avoid Jupiter lookup
-            amount: absoluteAmount, // Use absolute token amount instead of percentage
-            slippageBps: action.slippage * 100,
-            priorityLevel: 'high',
-            skipTax: action.skipTax || false
-          };
           
           console.log(`   Sell params:`, JSON.stringify(sellParams, null, 2));
           
