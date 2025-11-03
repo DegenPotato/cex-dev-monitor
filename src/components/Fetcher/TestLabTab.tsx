@@ -119,6 +119,7 @@ export const TestLabTab: React.FC = () => {
   const [telegramBuyAmountSol, setTelegramBuyAmountSol] = useState<number>(0.1);
   const [telegramWalletId, setTelegramWalletId] = useState<number | null>(null);
   const [telegramOnlyBuyNew, setTelegramOnlyBuyNew] = useState<boolean>(true);
+  const [activeTelegramMonitors, setActiveTelegramMonitors] = useState<any[]>([]);
   
   // Use existing trading store for wallets
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
@@ -165,6 +166,28 @@ export const TestLabTab: React.FC = () => {
     const defaultWallet = tradingWallets.find((w: any) => w.isDefault);
     if (defaultWallet) setTelegramWalletId(parseInt(defaultWallet.id));
   }, [fetchWallets]);
+
+  // Fetch active Telegram monitors
+  const fetchActiveTelegramMonitors = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-monitors`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setActiveTelegramMonitors(data.monitors || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch active monitors:', error);
+    }
+  };
+
+  // Fetch monitors on mount and when campaign source changes to telegram
+  useEffect(() => {
+    if (campaignSource === 'telegram') {
+      fetchActiveTelegramMonitors();
+    }
+  }, [campaignSource]);
 
   // Fetch chats when account is selected
   useEffect(() => {
@@ -657,14 +680,14 @@ export const TestLabTab: React.FC = () => {
         const message = telegramMonitorAllUsers 
           ? 'Now monitoring all users in chat!'
           : `Now monitoring ${telegramSelectedUserIds.length} user(s)!`;
+        
         toast.success(message);
-        // Reset form
-        setTelegramAccountId(null);
-        setTelegramChatId('');
-        setTelegramSelectedUserIds([]);
-        setTelegramAlerts([]);
-        setTelegramUserSearch('');
-        setTelegramMonitorAllUsers(false);
+        
+        // Refresh campaigns list to show any auto-created campaigns
+        fetchCampaigns();
+        
+        // Show that monitoring is active
+        toast.success('Monitor active! Campaigns will appear here when contracts are detected.');
       } else {
         toast.error(data.error || 'Failed to start monitoring');
       }
@@ -1394,6 +1417,57 @@ export const TestLabTab: React.FC = () => {
         </div>
         )}
       </motion.div>
+
+      {/* Active Telegram Monitors */}
+      {campaignSource === 'telegram' && activeTelegramMonitors.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-4"
+        >
+          <h3 className="text-lg font-bold text-white mb-4">Active Telegram Monitors ({activeTelegramMonitors.length})</h3>
+          <div className="space-y-2">
+            {activeTelegramMonitors.map((monitor: any) => (
+              <div key={monitor.id} className="p-3 bg-gray-900 border border-gray-700 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="text-white font-medium">Chat: {monitor.chat_name || monitor.chat_id}</div>
+                    <div className="text-sm text-gray-400">
+                      {monitor.monitored_user_ids.length === 0 
+                        ? 'Monitoring all users' 
+                        : `Monitoring ${monitor.monitored_user_ids.length} user(s)`}
+                      {monitor.exclude_no_username && ' • Excluding no-username'}
+                      {!monitor.process_bot_messages && ' • Excluding bots'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {monitor.active_campaigns} active campaign(s) • {monitor.test_lab_alerts.length} alert rule(s)
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await fetch(`${config.apiUrl}/api/test-lab/telegram-monitor/stop`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ monitorId: monitor.id })
+                        });
+                        fetchActiveTelegramMonitors();
+                        toast.success('Monitor stopped');
+                      } catch (error) {
+                        toast.error('Failed to stop monitor');
+                      }
+                    }}
+                    className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg text-sm transition-colors"
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Active Campaigns */}
       {campaigns.length > 0 && (

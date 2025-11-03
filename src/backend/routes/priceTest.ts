@@ -526,6 +526,40 @@ monitor.on('alert_triggered', async (data) => {
 });
 
 /**
+ * List active Telegram monitors
+ */
+router.get('/api/test-lab/telegram-monitors', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const db = await getDb();
+    
+    const monitors = (db as any).prepare(`
+      SELECT 
+        tmc.*,
+        ta.phone_number as account_phone,
+        COUNT(DISTINCT tlac.campaign_id) as active_campaigns
+      FROM telegram_monitored_chats tmc
+      LEFT JOIN telegram_user_accounts ta ON tmc.telegram_account_id = ta.id
+      LEFT JOIN test_lab_auto_campaigns tlac ON tmc.id = tlac.monitor_id
+      WHERE tmc.user_id = ? AND tmc.test_lab_alerts IS NOT NULL AND tmc.is_active = 1
+      GROUP BY tmc.id
+    `).all([userId]);
+    
+    // Parse JSON fields
+    const parsedMonitors = monitors.map((m: any) => ({
+      ...m,
+      monitored_user_ids: m.monitored_user_ids ? JSON.parse(m.monitored_user_ids) : [],
+      test_lab_alerts: m.test_lab_alerts ? JSON.parse(m.test_lab_alerts) : []
+    }));
+    
+    res.json({ success: true, monitors: parsedMonitors });
+  } catch (error) {
+    console.error('Failed to fetch monitors:', error);
+    res.status(500).json({ error: 'Failed to fetch monitors' });
+  }
+});
+
+/**
  * Start telegram monitoring for Test Lab (reuses existing telegram_monitored_chats infrastructure)
  */
 router.post('/api/test-lab/telegram-monitor/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
