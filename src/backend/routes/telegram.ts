@@ -923,7 +923,30 @@ export function createTelegramRoutes() {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
       const { chatId } = req.params;
-      const { monitoredKeywords, monitoredUserIds, forwardToChatId, forwardAccountId, isActive, initialHistoryLimit, processBotMessages, monitoredTopicIds } = req.body;
+      const { 
+        monitoredKeywords, 
+        monitoredUserIds, 
+        forwardToChatId, 
+        forwardAccountId, 
+        isActive, 
+        initialHistoryLimit, 
+        processBotMessages, 
+        monitoredTopicIds,
+        action_on_detection,
+        auto_buy_enabled,
+        auto_buy_amount_sol,
+        auto_buy_wallet_id,
+        auto_buy_slippage_bps,
+        auto_buy_priority_level,
+        auto_sell_enabled,
+        stop_loss_percent,
+        take_profit_percent,
+        trailing_stop_enabled,
+        trailing_stop_percent,
+        auto_monitor_enabled,
+        monitor_duration_hours,
+        alert_price_changes
+      } = req.body;
 
       // Update monitoring configuration only (preserves chat metadata like name, type, etc.)
       await telegramService.updateChatConfiguration(userId, chatId, {
@@ -933,7 +956,21 @@ export function createTelegramRoutes() {
         forwardAccountId,
         isActive,
         processBotMessages,
-        monitoredTopicIds
+        monitoredTopicIds,
+        action_on_detection,
+        auto_buy_enabled,
+        auto_buy_amount_sol,
+        auto_buy_wallet_id,
+        auto_buy_slippage_bps,
+        auto_buy_priority_level,
+        auto_sell_enabled,
+        stop_loss_percent,
+        take_profit_percent,
+        trailing_stop_enabled,
+        trailing_stop_percent,
+        auto_monitor_enabled,
+        monitor_duration_hours,
+        alert_price_changes
       });
 
       // If initialHistoryLimit is provided, fetch history in background

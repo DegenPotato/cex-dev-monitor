@@ -430,6 +430,21 @@ export class TelegramUserService {
     isActive?: boolean;
     processBotMessages?: boolean;
     monitoredTopicIds?: string[];
+    // Auto-trading configuration fields
+    action_on_detection?: string;
+    auto_buy_enabled?: boolean;
+    auto_buy_amount_sol?: number;
+    auto_buy_wallet_id?: number;
+    auto_buy_slippage_bps?: number;
+    auto_buy_priority_level?: string;
+    auto_sell_enabled?: boolean;
+    stop_loss_percent?: number;
+    take_profit_percent?: number;
+    trailing_stop_enabled?: boolean;
+    trailing_stop_percent?: number;
+    auto_monitor_enabled?: boolean;
+    monitor_duration_hours?: number;
+    alert_price_changes?: string;
   }) {
     const monitoredKeywordsJson = config.monitoredKeywords ? JSON.stringify(config.monitoredKeywords) : null;
     const monitoredUserIdsJson = config.monitoredUserIds ? JSON.stringify(config.monitoredUserIds) : null;
@@ -445,6 +460,20 @@ export class TelegramUserService {
           is_active = ?,
           process_bot_messages = ?,
           monitored_topic_ids = ?,
+          action_on_detection = ?,
+          auto_buy_enabled = ?,
+          auto_buy_amount_sol = ?,
+          auto_buy_wallet_id = ?,
+          auto_buy_slippage_bps = ?,
+          auto_buy_priority_level = ?,
+          auto_sell_enabled = ?,
+          stop_loss_percent = ?,
+          take_profit_percent = ?,
+          trailing_stop_enabled = ?,
+          trailing_stop_percent = ?,
+          auto_monitor_enabled = ?,
+          monitor_duration_hours = ?,
+          alert_price_changes = ?,
           updated_at = ?
       WHERE user_id = ? AND chat_id = ?
     `, [
@@ -455,6 +484,20 @@ export class TelegramUserService {
       config.isActive !== undefined ? (config.isActive ? 1 : 0) : 1,
       config.processBotMessages !== undefined ? (config.processBotMessages ? 1 : 0) : 0,
       monitoredTopicIdsJson,
+      config.action_on_detection || 'forward_only',
+      config.auto_buy_enabled ? 1 : 0,
+      config.auto_buy_amount_sol || null,
+      config.auto_buy_wallet_id || null,
+      config.auto_buy_slippage_bps || null,
+      config.auto_buy_priority_level || null,
+      config.auto_sell_enabled ? 1 : 0,
+      config.stop_loss_percent || null,
+      config.take_profit_percent || null,
+      config.trailing_stop_enabled ? 1 : 0,
+      config.trailing_stop_percent || null,
+      config.auto_monitor_enabled ? 1 : 0,
+      config.monitor_duration_hours || null,
+      config.alert_price_changes || null,
       now,
       userId,
       chatId
