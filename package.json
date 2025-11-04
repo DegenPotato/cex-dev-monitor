@@ -20,6 +20,8 @@
     "@bitcoinerlab/secp256k1": "^1.0.5",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@googleapis/youtube": "^11.0.0",
+    "@pump-fun/pump-sdk": "^1.19.0",
+    "@pump-fun/pump-swap-sdk": "^1.9.0",
     "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.15.0",
     "@solana/spl-token": "^0.4.14",

@@ -25,6 +25,7 @@ export interface TradeParams {
     realSolReserves?: bigint;
     tokenTotalSupply?: bigint;
     complete?: boolean;
+    creator?: PublicKey;
   };
 }
 
@@ -92,13 +93,14 @@ export class TradingEngine {
         priorityFee: params.priorityFee,
         bondingCurveAddress: params.bondingCurveAddress ? new PublicKey(params.bondingCurveAddress) : undefined,
         associatedBondingCurveAddress: params.associatedBondingCurveAddress ? new PublicKey(params.associatedBondingCurveAddress) : undefined,
-        curveData: params.curveData ? {
+        curveData: (params.curveData && params.curveData.creator) ? {
           virtualTokenReserves: params.curveData.virtualTokenReserves || 0n,
           virtualSolReserves: params.curveData.virtualSolReserves || 0n,
           realTokenReserves: params.curveData.realTokenReserves || 0n,
           realSolReserves: params.curveData.realSolReserves || 0n,
           tokenTotalSupply: params.curveData.tokenTotalSupply || 0n,
-          complete: params.curveData.complete ?? false
+          complete: params.curveData.complete ?? false,
+          creator: params.curveData.creator
         } : undefined
       });
       
