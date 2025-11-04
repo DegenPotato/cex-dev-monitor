@@ -41,10 +41,25 @@ export interface DetectionContext {
 }
 
 export class TelegramAutoTrader extends EventEmitter {
-  private tradingEngine = getTradingEngine();
+  private tradingEngine: any = null; // Lazy load only when needed
   private priceMonitor = getOnChainPriceMonitor();
   // private activePositions = new Map<number, any>(); // Reserved for future caching
   private positionCampaigns = new Map<number, string>();
+  
+  /**
+   * Get trading engine (lazy initialization)
+   */
+  private getTradingEngine() {
+    if (!this.tradingEngine) {
+      try {
+        this.tradingEngine = getTradingEngine();
+      } catch (error) {
+        console.error('❌ [AutoTrader] Failed to initialize TradingEngine:', error);
+        throw error;
+      }
+    }
+    return this.tradingEngine;
+  }
 
   constructor() {
     super();
@@ -129,7 +144,7 @@ export class TelegramAutoTrader extends EventEmitter {
     }
     
     // Execute buy
-    const result = await this.tradingEngine.buyToken({
+    const result = await this.getTradingEngine().buyToken({
       userId: wallet.user_id,
       walletAddress: wallet.public_key,
       tokenMint,
