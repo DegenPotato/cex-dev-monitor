@@ -15,11 +15,15 @@ import {
 import { 
   TOKEN_PROGRAM_ID, 
   getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID
 } from '@solana/spl-token';
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+
+// WSOL Token Mint (Wrapped SOL)
+const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 
 // Pumpfun Global State (usually constant)
 const PUMPFUN_GLOBAL = new PublicKey('4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf');
@@ -52,6 +56,7 @@ export interface BondingCurveData {
   realSolReserves: bigint;
   tokenTotalSupply: bigint;
   complete: boolean;
+  creator: PublicKey;
 }
 
 /**
@@ -131,6 +136,11 @@ export async function fetchBondingCurveData(
     
     // Read complete flag (1 byte)
     const complete = data[offset] === 1;
+    offset += 1;
+    
+    // Read creator (32 bytes)
+    const creatorBytes = data.slice(offset, offset + 32);
+    const creator = new PublicKey(creatorBytes);
     
     return {
       virtualTokenReserves,
@@ -138,7 +148,8 @@ export async function fetchBondingCurveData(
       realTokenReserves,
       realSolReserves,
       tokenTotalSupply,
-      complete
+      complete,
+      creator
     };
   } catch (error) {
     console.error('Error fetching bonding curve data:', error);
@@ -289,6 +300,23 @@ export async function buildPumpfunBuyInstruction(
   // Max sol cost (8 bytes) - same as amount for simplicity
   instructionData.writeBigUInt64LE(solAmountLamports, 16);
   
+  // Derive creator fee accounts (NEW - required since 0.05% creator fee update)
+  const creatorVaultSeed = Buffer.from('creator_vault');
+  const [coinCreatorVaultAuthority] = PublicKey.findProgramAddressSync(
+    [creatorVaultSeed, curveData.creator.toBuffer()],
+    PUMPFUN_PROGRAM_ID
+  );
+  
+  const coinCreatorVaultAta = getAssociatedTokenAddressSync(
+    WSOL_MINT,
+    coinCreatorVaultAuthority,
+    true // allowOwnerOffCurve for PDA
+  );
+  
+  console.log(`💰 [PumpfunBuy] Creator: ${curveData.creator.toBase58()}`);
+  console.log(`💰 [PumpfunBuy] Creator vault authority: ${coinCreatorVaultAuthority.toBase58()}`);
+  console.log(`💰 [PumpfunBuy] Creator vault ATA: ${coinCreatorVaultAta.toBase58()}`);
+  
   // Create buy instruction
   const buyInstruction = new TransactionInstruction({
     keys: [
@@ -303,7 +331,10 @@ export async function buildPumpfunBuyInstruction(
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: PUMPFUN_EVENT_AUTHORITY, isSigner: false, isWritable: false },
-      { pubkey: PUMPFUN_PROGRAM_ID, isSigner: false, isWritable: false }
+      { pubkey: PUMPFUN_PROGRAM_ID, isSigner: false, isWritable: false },
+      // NEW: Creator fee accounts (0.05% creator fee)
+      { pubkey: coinCreatorVaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: coinCreatorVaultAta, isSigner: false, isWritable: true }
     ],
     programId: PUMPFUN_PROGRAM_ID,
     data: instructionData
