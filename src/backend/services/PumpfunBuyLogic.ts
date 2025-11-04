@@ -332,6 +332,36 @@ export async function executePumpfunBuy(
     const confirmation = await connection.confirmTransaction(signature, 'confirmed');
     
     if (confirmation.value.err) {
+      // Decode which account failed if it's an InstructionError
+      const error = confirmation.value.err as any;
+      if (error.InstructionError && Array.isArray(error.InstructionError)) {
+        const accountIndex = error.InstructionError[0];
+        const errorDetails = error.InstructionError[1];
+        
+        // Map account indices to names (based on buyInstruction.keys order)
+        const accountNames = [
+          '0: PUMPFUN_GLOBAL',
+          '1: PUMPFUN_FEE_RECIPIENT',
+          '2: tokenMint',
+          '3: bondingCurve PDA ⚠️',
+          '4: associatedBondingCurve',
+          '5: userAta',
+          '6: wallet.publicKey',
+          '7: SystemProgram',
+          '8: TOKEN_PROGRAM_ID',
+          '9: ASSOCIATED_TOKEN_PROGRAM_ID',
+          '10: PUMPFUN_EVENT_AUTHORITY',
+          '11: PUMPFUN_PROGRAM_ID'
+        ];
+        
+        const accountName = accountNames[accountIndex] || `Unknown account ${accountIndex}`;
+        
+        console.error(`❌ Account ${accountIndex} failed: ${accountName}`);
+        console.error(`   Error details: ${JSON.stringify(errorDetails)}`);
+        
+        throw new Error(`Transaction failed at account ${accountIndex} (${accountName}): ${JSON.stringify(confirmation.value.err)}`);
+      }
+      
       throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
     }
     
