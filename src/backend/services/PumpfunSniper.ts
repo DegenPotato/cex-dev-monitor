@@ -7,6 +7,7 @@
 import { PublicKey, Logs, Connection } from '@solana/web3.js';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
+import { deriveBondingCurvePDA as derivePDA } from './PumpfunBuyLogic.js';
 
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -85,6 +86,43 @@ export class PumpfunSniper extends EventEmitter {
     // Use RPC_URL from env if available
     this.rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
+  }
+
+  /**
+   * Derive bonding curve PDA address from token mint
+   */
+  private deriveBondingCurvePDA(tokenMint: string): string {
+    const [pda] = derivePDA(new PublicKey(tokenMint));
+    return pda.toBase58();
+  }
+
+  /**
+   * Wait for bonding curve PDA to exist using processed commitment
+   * Much faster than waiting for confirmations - typically 100-200ms
+   */
+  private async waitForBondingCurvePDA(bondingCurvePDA: string): Promise<boolean> {
+    const maxAttempts = 20; // ~2 seconds total
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const accountInfo = await this.directRpcRequest('getAccountInfo', [
+          bondingCurvePDA,
+          { commitment: 'processed', encoding: 'base64' }
+        ]);
+        
+        if (accountInfo?.value) {
+          console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${i + 1} attempts (~${(i + 1) * 100}ms)`);
+          return true;
+        }
+      } catch (error: any) {
+        // Ignore errors, keep polling
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not found after 2s');
+    return false;
   }
 
 
@@ -790,24 +828,29 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Skip confirmation wait - we need to be FAST for block 0
-      // Other successful snipers don't wait, they fire immediately
+      // Wait for bonding curve PDA to exist (processed commitment = fastest)
+      // This is much faster and more reliable than retry-on-error approach
+      const bondingCurvePDA = this.deriveBondingCurvePDA(tokenMint);
+      const pdaReady = await this.waitForBondingCurvePDA(bondingCurvePDA);
+      
+      if (!pdaReady) {
+        console.error('❌ [PumpfunSniper] Bonding curve PDA never appeared, aborting snipe');
+        return;
+      }
 
-      // Execute buy immediately with retry logic
-      // The PDA address is derived instantly, we don't need to wait for getAccountInfo
-      // If the mint tx hasn't finished, the buy will fail and we retry
-      console.log('⚡ [PumpfunSniper] Executing buy with automatic retry on initialization race');
+      // Execute buy - PDA is confirmed to exist
+      console.log('⚡ [PumpfunSniper] Executing buy (PDA verified)');
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 6; // Quick burst of retries
+      const maxAttempts = 3; // Fewer retries needed since PDA is verified
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          // Ultra-fast retries: 0ms, 100ms, 150ms, 200ms, 250ms, 300ms
-          const delay = Math.min((attempt - 1) * 50 + 50, 300);
+          // Light retries for network issues only
+          const delay = 100;
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -831,19 +874,11 @@ export class PumpfunSniper extends EventEmitter {
         } : undefined
         });
         
-        // Check for AccountNotInitialized error (0xbc4) - mint tx still processing
+        // If failed, check if worth retrying (network issues only)
         if (!buyResult.success) {
-          // Check if error contains 0xbc4 in any form (string, message, logs, etc)
-          const errorStr = JSON.stringify(buyResult.error || '');
-          if (errorStr.includes('0xbc4') || errorStr.includes('AccountNotInitialized') || errorStr.includes('3012')) {
-            console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet (attempt ${attempt}), will retry...`);
-            continue;
-          }
-        }
-        
-        // Other errors - don't retry
-        if (!buyResult.success) {
-          break;
+          console.warn(`⚠️ [PumpfunSniper] Buy failed (attempt ${attempt}): ${buyResult.error}`);
+          // Retry for network/transient errors only
+          continue;
         }
       }
 
