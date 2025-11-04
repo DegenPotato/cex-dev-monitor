@@ -717,10 +717,11 @@ export class PumpfunSniper extends EventEmitter {
 
     // Add take profit alerts
     if (this.config.takeProfits && this.config.takeProfits.length > 0) {
+      const takeProfits = this.config.takeProfits;
       const tpAmounts = this.config.takeProfitAmounts || 
-        this.config.takeProfits.map(() => 100 / this.config!.takeProfits.length); // Equal split if not specified
+        takeProfits.map(() => 100 / takeProfits.length); // Equal split if not specified
       
-      this.config!.takeProfits.forEach((tp, index) => {
+      takeProfits.forEach((tp, index) => {
         this.onChainMonitor.addAlert(
           campaign.id,
           tp, // e.g., 20 for 20% profit
@@ -812,15 +813,17 @@ export class PumpfunSniper extends EventEmitter {
             position.profitPercent = ((position.currentPrice - position.buyPrice) / position.buyPrice) * 100;
 
             // Check if stop loss or take profit hit
-            if (position.profitPercent <= this.config!.stopLoss && !position.stopLossHit) {
+            if (this.config && this.config.stopLoss && position.profitPercent <= this.config.stopLoss && !position.stopLossHit) {
               position.stopLossHit = true;
               console.log(`🛑 [PumpfunSniper] Stop loss hit for ${position.tokenSymbol || tokenMint}`);
             }
 
-            const highestTakeProfit = Math.max(...this.config!.takeProfits);
-            if (position.profitPercent >= highestTakeProfit && !position.takeProfitHit) {
-              position.takeProfitHit = true;
-              console.log(`💰 [PumpfunSniper] Take profit hit for ${position.tokenSymbol || tokenMint}`);
+            if (this.config && this.config.takeProfits && this.config.takeProfits.length > 0) {
+              const highestTakeProfit = Math.max(...this.config.takeProfits);
+              if (position.profitPercent >= highestTakeProfit && !position.takeProfitHit) {
+                position.takeProfitHit = true;
+                console.log(`💰 [PumpfunSniper] Take profit hit for ${position.tokenSymbol || tokenMint}`);
+              }
             }
 
             // Broadcast position update if price changed
