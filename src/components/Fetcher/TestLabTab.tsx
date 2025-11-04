@@ -190,7 +190,7 @@ export const TestLabTab: React.FC = () => {
   const [pumpfunSnipedTokens, setPumpfunSnipedTokens] = useState<string[]>([]);
   const [selectedPumpfunWallet, setSelectedPumpfunWallet] = useState<number | null>(null);
   
-  // Use existing trading store for wallets
+  // Use existing trading store for wallets 
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
     PRICE: null,
