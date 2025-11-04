@@ -82,6 +82,17 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized');
   }
 
+  private isValidMintAddress(address: string): boolean {
+    try {
+      // Validates base58 length and curve by attempting to construct a PublicKey
+      // If the constructor throws, the address is not a valid Solana public key
+      new PublicKey(address);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Get trading engine instance
    */
@@ -468,52 +479,56 @@ export class PumpfunSniper extends EventEmitter {
       // Look for mint addresses in the logs
       // Pumpfun typically logs the mint address when creating a new token
       let tokenMint: string | null = null;
-      
+
+      const isFilteredAddress = (addr: string) => (
+        addr === PUMPFUN_PROGRAM_ID.toString() ||
+        addr === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' ||
+        addr.startsWith('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') ||
+        addr.startsWith('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') ||
+        addr.startsWith('11111111111111111111111111111111') ||
+        addr.startsWith('ComputeBudget111111111111111111111111111111')
+      );
+
+      const tryAssignMint = (candidate: string): boolean => {
+        if (!candidate || isFilteredAddress(candidate)) return false;
+        if (!this.isValidMintAddress(candidate)) return false;
+
+        tokenMint = candidate;
+        console.log(`🎯 [PumpfunSniper] Extracted token mint: ${tokenMint}`);
+        return true;
+      };
+
       // Try to extract mint from logs - look in Program data logs first
       for (const log of logs.logs) {
-        // Program data logs often contain the token mint
+        if (tokenMint) break;
+
         if (log.includes('Program data:')) {
-          // Extract base58 addresses from data
           const dataSection = log.substring(log.indexOf('Program data:') + 13);
-          const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{44}/g);
-          if (addressMatch && addressMatch.length > 0) {
-            tokenMint = addressMatch[0];
-            console.log(`🎯 [PumpfunSniper] Extracted token mint from data: ${tokenMint}`);
-            break;
+          const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
+          if (addressMatch) {
+            for (const candidate of addressMatch) {
+              if (tryAssignMint(candidate)) break;
+            }
           }
         }
-        
-        // Fallback: Look for any base58 addresses
+
         if (!tokenMint) {
-          const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{44}/g);
+          const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
           if (addressMatch) {
-            // Filter out known program IDs
-            const potentialMints = addressMatch.filter((addr: string) => 
-              addr !== PUMPFUN_PROGRAM_ID.toString() &&
-              addr !== '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' &&
-              !addr.startsWith('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') &&
-              !addr.startsWith('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') &&
-              !addr.startsWith('11111111111111111111111111111111') &&
-              !addr.startsWith('ComputeBudget111111111111111111111111111111')
-            );
-            
-            if (potentialMints.length > 0) {
-              tokenMint = potentialMints[0];
-              console.log(`🎯 [PumpfunSniper] Extracted potential token mint: ${tokenMint}`);
-              break;
+            for (const candidate of addressMatch) {
+              if (tryAssignMint(candidate)) break;
             }
           }
         }
       }
-      
+
       if (!tokenMint) {
-        // Fallback: generate a mock mint for testing
-        tokenMint = 'test_token_' + Date.now();
-        console.log(`🧪 [PumpfunSniper] Using test token mint: ${tokenMint}`);
+        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs');
+        return null;
       }
-      
+
       return {
-        tokenMint: tokenMint,
+        tokenMint,
         bondingCurve: {
           virtualSolReserves: BigInt(1000000000),
           virtualTokenReserves: BigInt(1000000000000)
