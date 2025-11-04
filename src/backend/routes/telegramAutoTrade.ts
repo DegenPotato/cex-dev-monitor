@@ -165,6 +165,9 @@ router.post('/api/telegram/auto-trade/config', authService.requireSecureAuth(), 
  */
 router.get('/api/telegram/positions', authService.requireSecureAuth(), async (req: any, res: Response) => {
   try {
+    // Initialize WebSocket on first use
+    initializeWebSocket();
+    
     const userId = req.user!.id;
     const { status, limit = 100 } = req.query;
 
@@ -473,33 +476,39 @@ router.get('/api/telegram/analytics/source', authService.requireSecureAuth(), as
 
 /**
  * Subscribe to position updates via WebSocket
- * Initialize immediately to ensure all price updates are broadcast
+ * Initialize on first use to ensure env is loaded
  */
+let websocketInitialized = false;
 const initializeWebSocket = () => {
-  getAutoTrader().on('websocket_broadcast', (event: any) => {
-    // Broadcast to all connected WebSocket clients
-    try {
-      const { broadcast } = require('../websocket.js');
-      if (broadcast) {
-        broadcast(event);
-        
-        // Log important events for debugging
-        if (event.type === 'telegram_position_price_update') {
-          const data = event.data;
-          console.log(` [WebSocket] Broadcasting price update for position ${data.position_id}: ${data.current_price_sol?.toFixed(9) || 0} SOL`);
-        }
-      } else {
-        console.warn('[WebSocket] Broadcast function not available');
-      }
-    } catch (error) {
-      console.error('[WebSocket] Failed to broadcast:', error);
-    }
-  });
+  if (websocketInitialized) return;
+  websocketInitialized = true;
   
-  console.log('[WebSocket] TelegramAutoTrader broadcast listener initialized');
+  try {
+    getAutoTrader().on('websocket_broadcast', (event: any) => {
+      // Broadcast to all connected WebSocket clients
+      try {
+        const { broadcast } = require('../websocket.js');
+        if (broadcast) {
+          broadcast(event);
+          
+          // Log important events for debugging
+          if (event.type === 'telegram_position_price_update') {
+            const data = event.data;
+            console.log(` [WebSocket] Broadcasting price update for position ${data.position_id}: ${data.current_price_sol?.toFixed(9) || 0} SOL`);
+          }
+        } else {
+          console.warn('[WebSocket] Broadcast function not available');
+        }
+      } catch (error) {
+        console.error('[WebSocket] Failed to broadcast:', error);
+      }
+    });
+    
+    console.log('[WebSocket] TelegramAutoTrader broadcast listener initialized');
+  } catch (error) {
+    console.error('[WebSocket] Failed to initialize:', error);
+    // Don't crash, just skip WebSocket for now
+  }
 };
-
-// Initialize immediately when module loads
-initializeWebSocket();
 
 export default router;
