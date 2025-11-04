@@ -1523,7 +1523,7 @@ router.post('/api/test-lab/pumpfun-sniper/start', authService.requireSecureAuth(
 /**
  * Stop Pumpfun Sniper
  */
-router.post('/api/test-lab/pumpfun-sniper/stop', authService.requireSecureAuth(), async (req: any, res: Response) => {
+router.post('/api/test-lab/pumpfun-sniper/stop', authService.requireSecureAuth(), async (_req: any, res: Response) => {
   try {
     const { getPumpfunSniper } = await import('../services/PumpfunSniper.js');
     const sniper = getPumpfunSniper();
@@ -1548,7 +1548,7 @@ router.post('/api/test-lab/pumpfun-sniper/stop', authService.requireSecureAuth()
 /**
  * Get Pumpfun Sniper Status
  */
-router.get('/api/test-lab/pumpfun-sniper/status', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+router.get('/api/test-lab/pumpfun-sniper/status', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
   try {
     const { getPumpfunSniper } = await import('../services/PumpfunSniper.js');
     const sniper = getPumpfunSniper();
