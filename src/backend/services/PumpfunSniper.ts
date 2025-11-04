@@ -793,10 +793,16 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Execute LIVE buy
-      if (!(await this.waitForBondingCurveAccount(tokenMint))) {
-        throw new Error('Bonding curve PDA not found in time');
-      }
+      // Ensure bonding curve PDA becomes readable, but don't block the trade
+      this.waitForBondingCurveAccount(tokenMint, 15000)
+        .then(ready => {
+          if (!ready) {
+            console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not visible yet – continuing with log snapshot');
+          }
+        })
+        .catch(error => {
+          console.warn('⚠️ [PumpfunSniper] Bonding curve wait encountered error:', error?.message || error);
+        });
 
       const buyResult = await this.tradingEngine.buyToken({
         userId: this.config.userId,
