@@ -104,7 +104,7 @@ export class PumpfunSniper extends EventEmitter {
       try {
         const accountInfo = await this.directRpcRequest('getAccountInfo', [
           pdaAddress,
-          { encoding: 'base64', commitment: 'processed' }
+          { encoding: 'base64', commitment: 'confirmed' }
         ]);
         
         if (accountInfo?.value?.data) {
