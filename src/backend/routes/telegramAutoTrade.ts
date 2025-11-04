@@ -220,8 +220,12 @@ router.get('/api/telegram/positions', authService.requireSecureAuth(), async (re
       const currentPriceSOL = p.price_sol || 0;  // From token_market_data
       p.current_price = currentPriceSOL;
       
-      // Add USD reference prices
-      p.buy_price_usd_display = p.price_usd || 0;  // Current USD price for display
+      // Add ALL USD prices (from database and market data)
+      p.entry_price_usd = p.buy_price_usd_initial || 0;  // USD price at time of buy
+      p.current_price_usd = p.price_usd || p.current_price_usd || 0;  // Current USD price
+      p.peak_price_usd = p.peak_price_usd || 0;  // Session high USD
+      p.low_price_usd = p.low_price_usd || 0;  // Session low USD
+      p.unrealized_pnl_usd = p.unrealized_pnl_usd || 0;  // P&L in USD
       
       // Calculate P&L in SOL
       if (currentPriceSOL > 0 && actualTokens > 0) {
@@ -484,12 +488,12 @@ const initializeWebSocket = () => {
   websocketInitialized = true;
   
   try {
-    getAutoTrader().on('websocket_broadcast', (event: any) => {
+    getAutoTrader().on('websocket_broadcast', async (event: any) => {
       // Broadcast to all connected WebSocket clients
       try {
-        const { broadcast } = require('../websocket.js');
-        if (broadcast) {
-          broadcast(event);
+        const websocketModule = await import('../websocket.js');
+        if (websocketModule.broadcast) {
+          websocketModule.broadcast(event);
           
           // Log important events for debugging
           if (event.type === 'telegram_position_price_update') {

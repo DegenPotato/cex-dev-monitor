@@ -105,6 +105,16 @@ export const TelegramPositionsDashboard: React.FC = () => {
       });
       if (response.ok) {
         const data = await response.json();
+        console.log('📊 Positions received:', data.positions);
+        // Log first position's USD data
+        if (data.positions?.[0]) {
+          console.log('First position USD data:', {
+            entry_price_usd: data.positions[0].entry_price_usd,
+            current_price_usd: data.positions[0].current_price_usd,
+            peak_price_usd: data.positions[0].peak_price_usd,
+            low_price_usd: data.positions[0].low_price_usd
+          });
+        }
         setPositions(data.positions || []);
       }
     } catch (error) {
@@ -529,11 +539,9 @@ const PositionCard: React.FC<{
           <p className="text-sm font-bold text-white">
             {(position.avg_entry_price || 0).toFixed(9)} SOL
           </p>
-          {position.entry_price_usd && (
-            <p className="text-xs text-cyan-400">
-              ${(position.entry_price_usd || 0).toFixed(8)} USD
-            </p>
-          )}
+          <p className="text-xs text-cyan-400">
+            ${(position.entry_price_usd || 0).toFixed(8)} USD
+          </p>
           <p className="text-xs text-gray-500">
             {position.current_tokens ? `${position.current_tokens.toFixed(2)} tokens` : ''}
           </p>
@@ -558,11 +566,9 @@ const PositionCard: React.FC<{
               'No price data'
             }
           </p>
-          {position.current_price_usd && (
-            <p className="text-xs text-green-400">
-              ${(position.current_price_usd || 0).toFixed(8)} USD
-            </p>
-          )}
+          <p className="text-xs text-green-400">
+            ${(position.current_price_usd || 0).toFixed(8)} USD
+          </p>
           {(position.current_price || 0) > 0 && (position.avg_entry_price || 0) > 0 && (
             <p className="text-xs text-gray-500">
               {(((position.current_price || 0) / (position.avg_entry_price || 1) - 1) * 100).toFixed(2)}% from entry
@@ -716,11 +722,9 @@ const PositionDetailsModal: React.FC<{
                   <p className="text-white font-mono">
                     {(position.peak_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
-                  {position.peak_price_usd && (
-                    <p className="text-cyan-400 text-xs">
-                      ${position.peak_price_usd.toFixed(8)} USD
-                    </p>
-                  )}
+                  <p className="text-cyan-400 text-xs">
+                    ${(position.peak_price_usd || 0).toFixed(8)} USD
+                  </p>
                   {position.peak_roi_percent !== undefined && (
                     <p className="text-green-400 mt-1">
                       +{Math.abs(position.peak_roi_percent || 0).toFixed(2)}% from entry
@@ -732,11 +736,9 @@ const PositionDetailsModal: React.FC<{
                   <p className="text-white font-mono">
                     {(position.low_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
-                  {position.low_price_usd && (
-                    <p className="text-cyan-400 text-xs">
-                      ${position.low_price_usd.toFixed(8)} USD
-                    </p>
-                  )}
+                  <p className="text-cyan-400 text-xs">
+                    ${(position.low_price_usd || 0).toFixed(8)} USD
+                  </p>
                   {position.max_drawdown_percent !== undefined && (
                     <p className="text-red-400 mt-1">
                       -{Math.abs(position.max_drawdown_percent || 0).toFixed(2)}% from entry
