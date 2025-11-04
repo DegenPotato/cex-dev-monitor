@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pumpfun OHLC Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --fg: #e2e8f0;
+      --accent: #38bdf8;
+      --bad: #f87171;
+      --good: #34d399;
+    }
+    body {
+      margin: 0;
+      padding: 2rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: radial-gradient(circle at top left, rgba(56,189,248,0.15), transparent 45%), var(--bg);
+      color: var(--fg);
+    }
+    h1 {
+      margin-top: 0;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    #chart {
+      width: 100%;
+      height: 480px;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.6);
+    }
+    .status {
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding: 1rem 1.4rem;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .status span {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .status .dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status strong {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    code {
+      font-size: 0.9rem;
+      background: rgba(15, 23, 42, 0.75);
+      padding: 0.2rem 0.45rem;
+      border-radius: 0.4rem;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    a {
+      color: var(--accent);
+    }
+  </style>
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js" defer></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const WS_ENDPOINT = params.get('ws') || 'ws://localhost:4777';
+    const KEEP_SNAPSHOTS = Number(params.get('limit') || 180);
+
+    function setStatus(text, state = 'info') {
+      const dot = document.querySelector('.status .dot');
+      const message = document.querySelector('.status .message');
+      message.textContent = text;
+      if (state === 'ok') {
+        dot.style.background = getComputedStyle(document.documentElement).getPropertyValue('--good');
+      } else if (state === 'warn') {
+        dot.style.background = getComputedStyle(document.documentElement).getPropertyValue('--bad');
+      } else {
+        dot.style.background = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+      }
+    }
+
+    function initChart() {
+      const container = document.getElementById('chart');
+      const chart = LightweightCharts.createChart(container, {
+        layout: {
+          background: { type: 'solid', color: 'rgba(15, 23, 42, 0.4)' },
+          textColor: 'rgba(226, 232, 240, 0.9)'
+        },
+        grid: {
+          vertLines: { color: 'rgba(148, 163, 184, 0.15)' },
+          horzLines: { color: 'rgba(148, 163, 184, 0.15)' }
+        },
+        crosshair: {
+          mode: LightweightCharts.CrosshairMode.Normal,
+          vertLine: { color: 'rgba(56, 189, 248, 0.25)', labelBackgroundColor: 'rgba(56, 189, 248, 0.5)' },
+          horzLine: { color: 'rgba(56, 189, 248, 0.25)', labelBackgroundColor: 'rgba(56, 189, 248, 0.5)' }
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: true,
+          borderColor: 'rgba(148, 163, 184, 0.3)'
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(148, 163, 184, 0.3)'
+        }
+      });
+
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: 'rgba(52, 211, 153, 0.8)',
+        downColor: 'rgba(248, 113, 113, 0.8)',
+        borderVisible: false,
+        wickUpColor: 'rgba(52, 211, 153, 0.8)',
+        wickDownColor: 'rgba(248, 113, 113, 0.8)',
+        priceFormat: {
+          type: 'price',
+          precision: 12,
+          minMove: 1e-12
+        }
+      });
+
+      candleSeries.setData([]);
+
+      return { chart, candleSeries };
+    }
+
+    function candleFromPayload(payload) {
+      return {
+        time: Math.floor(payload.closeTime / 1000),
+        open: Number(payload.open),
+        high: Number(payload.high),
+        low: Number(payload.low),
+        close: Number(payload.close)
+      };
+    }
+
+    function boot() {
+      const { candleSeries } = initChart();
+      document.querySelector('.status code').textContent = WS_ENDPOINT;
+
+      const stored = [];
+      let latestTick = null;
+
+      function applySnapshot(payload) {
+        const candle = candleFromPayload(payload);
+        stored.push(candle);
+        while (stored.length > KEEP_SNAPSHOTS) stored.shift();
+        candleSeries.setData(stored);
+        setStatus(`Loaded ${stored.length} historical candles from stream snapshot`, 'info');
+      }
+
+      function applyUpdate(payload) {
+        const candle = candleFromPayload(payload);
+        if (payload.event === 'open') {
+          stored.push(candle);
+        } else if (payload.event === 'close') {
+          stored[stored.length - 1] = candle;
+        } else {
+          stored[stored.length - 1] = candle;
+        }
+        while (stored.length > KEEP_SNAPSHOTS) stored.shift();
+        candleSeries.setData(stored);
+        if (latestTick) {
+          document.querySelector('.status .current-price').textContent = latestTick.price.toFixed(10);
+        }
+        setStatus(`Last update: ${new Date(payload.closeTime).toLocaleTimeString()}`, 'ok');
+      }
+
+      function handleTick(payload) {
+        latestTick = payload;
+        const decimals = Number(payload.decimals ?? 6);
+        const precision = Math.min(Math.max(decimals, 2), 12);
+        const formattedPrice = Number(payload.price).toFixed(precision);
+        
+        const priceEl = document.querySelector('.status .current-price');
+        const decimalsEl = document.querySelector('.status .decimals');
+        const reservesEl = document.querySelector('.status .reserves');
+        const mintEl = document.querySelector('.status .mint-link');
+        const sigEl = document.querySelector('.status .sig-link');
+        
+        if (priceEl) priceEl.textContent = formattedPrice;
+        if (decimalsEl) decimalsEl.textContent = decimals;
+        if (reservesEl) reservesEl.textContent = `${payload.virtualSolReserves} / ${payload.virtualTokenReserves}`;
+        
+        if (payload.mint && mintEl) {
+          mintEl.href = `https://solscan.io/token/${payload.mint}`;
+          mintEl.textContent = payload.mint.substring(0, 8) + '...' + payload.mint.substring(payload.mint.length - 6);
+          mintEl.title = payload.mint;
+        }
+        
+        if (payload.signature && sigEl) {
+          sigEl.href = `https://solscan.io/tx/${payload.signature}`;
+          sigEl.textContent = payload.signature.substring(0, 8) + '...' + payload.signature.substring(payload.signature.length - 6);
+          sigEl.title = payload.signature;
+        }
+      }
+
+      let socket;
+      function connect() {
+        socket = new WebSocket(WS_ENDPOINT);
+        setStatus('Connecting to stream...', 'info');
+
+        socket.addEventListener('open', () => {
+          setStatus('Connected', 'ok');
+        });
+
+        socket.addEventListener('message', (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === 'tick') {
+              handleTick(payload);
+              return;
+            }
+            if (payload.type === 'candle') {
+              if (payload.event === 'snapshot') {
+                applySnapshot(payload);
+              } else {
+                applyUpdate(payload);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to handle payload', error);
+          }
+        });
+
+        socket.addEventListener('close', () => {
+          setStatus('Disconnected – retrying in 1.5s', 'warn');
+          setTimeout(connect, 1500);
+        });
+
+        socket.addEventListener('error', (error) => {
+          console.error('WebSocket error', error);
+          setStatus('Stream error', 'warn');
+          socket.close();
+        });
+      }
+
+      connect();
+    }
+
+    window.addEventListener('DOMContentLoaded', boot);
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>Live Pumpfun OHLC Monitor</h1>
+    <p>
+      This demo connects to the local <code>monitor-first-mint-ohlc.mjs</code> stream and renders
+      real-time candles using <a href="https://github.com/tradingview/lightweight-charts" target="_blank" rel="noreferrer">Lightweight Charts</a>.
+      Override the WebSocket endpoint with <code>?ws=ws://your-host:4777</code>.
+    </p>
+    <div id="chart"></div>
+    <div class="status">
+      <span><span class="dot"></span><span class="message">Waiting for connection…</span></span>
+      <span>WebSocket: <code>ws://localhost:4777</code></span>
+      <span>Token CA: <a class="mint-link" href="#" target="_blank" rel="noreferrer" style="color: var(--accent); text-decoration: none;">–</a></span>
+      <span>Mint TX: <a class="sig-link" href="#" target="_blank" rel="noreferrer" style="color: var(--accent); text-decoration: none;">–</a></span>
+      <span>Latest price: <strong class="current-price">–</strong> SOL/token</span>
+      <span>Token decimals: <span class="decimals">–</span></span>
+      <span>Virtual reserves: <span class="reserves">–</span></span>
+    </div>
+  </div>
+</body>
+</html>

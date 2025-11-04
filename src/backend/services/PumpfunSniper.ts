@@ -5,7 +5,6 @@
  */
 
 import { PublicKey, Logs, Connection } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { deriveBondingCurvePDA } from './PumpfunBuyLogic.js';
@@ -71,6 +70,7 @@ export class PumpfunSniper extends EventEmitter {
   private wsSubscriptionId: number | null = null;
   // Direct connection for on-chain data fetching
   private connection: Connection | null = null;
+  private rpcUrl: string = 'https://api.mainnet-beta.solana.com';
   private tradingEngine: any = null;
   private onChainMonitor: any = null;
   private positions: Map<string, SnipedPosition> = new Map();
@@ -81,7 +81,107 @@ export class PumpfunSniper extends EventEmitter {
 
   constructor() {
     super();
-    console.log('🎯 [PumpfunSniper] Initialized');
+    // Use RPC_URL from env if available
+    this.rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
+    console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
+  }
+
+  /**
+   * Direct RPC request with retry logic (from OHLC monitor)
+   * Bypasses rotator issues and handles 403/429 errors
+   */
+  private async directRpcRequest(method: string, params: any[], attempt = 1): Promise<any> {
+    const body = JSON.stringify({ 
+      jsonrpc: '2.0', 
+      id: `${method}-${Date.now()}-${Math.random()}`, 
+      method, 
+      params 
+    });
+
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'accept': 'application/json'
+        },
+        body
+      });
+
+      if (res.status === 429 || res.status === 403) {
+        if (attempt >= 5) {
+          throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        }
+        const backoff = Math.min(400 * Math.pow(2, attempt - 1), 3000);
+        await new Promise(resolve => setTimeout(resolve, backoff));
+        return this.directRpcRequest(method, params, attempt + 1);
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
+      }
+
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(`RPC ${method} error: ${JSON.stringify(data.error)}`);
+      }
+
+      return data.result;
+    } catch (error: any) {
+      if (attempt >= 5) {
+        throw error;
+      }
+      const wait = Math.min(250 * Math.pow(2, attempt - 1), 2000);
+      await new Promise(resolve => setTimeout(resolve, wait));
+      return this.directRpcRequest(method, params, attempt + 1);
+    }
+  }
+
+  /**
+   * Extract mint from transaction using postTokenBalances (from OHLC monitor)
+   * Most reliable method for Pumpfun mint detection
+   */
+  private async deriveMintFromTransaction(signature: string): Promise<string | null> {
+    if (!signature) return null;
+
+    try {
+      const tx = await this.directRpcRequest('getTransaction', [signature, {
+        commitment: 'confirmed',
+        encoding: 'json',
+        maxSupportedTransactionVersion: 0
+      }]);
+
+      if (!tx) return null;
+
+      const balances = tx?.meta?.postTokenBalances || [];
+      
+      // Prioritize mints ending in 'pump' (Pumpfun convention)
+      for (const balance of balances) {
+        const mint = balance?.mint;
+        if (mint && mint !== 'So11111111111111111111111111111111111111112') {
+          if (mint.endsWith('pump') && mint.length >= 32 && mint.length <= 44) {
+            console.log(`🎯 [PumpfunSniper] Found mint via postTokenBalances: ${mint}`);
+            return mint;
+          }
+        }
+      }
+
+      // Fallback: return first valid mint
+      for (const balance of balances) {
+        const mint = balance?.mint;
+        if (mint && mint !== 'So11111111111111111111111111111111111111112') {
+          if (mint.length >= 32 && mint.length <= 44) {
+            console.log(`🎯 [PumpfunSniper] Found mint via postTokenBalances (fallback): ${mint}`);
+            return mint;
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn('⚠️ [PumpfunSniper] Transaction lookup failed:', error.message);
+    }
+
+    return null;
   }
 
   private parseBondingCurveSnapshot(logEntry: string): {
@@ -121,42 +221,8 @@ export class PumpfunSniper extends EventEmitter {
     }
   }
 
-  private isValidMintAddress(address: string): boolean {
-    try {
-      new PublicKey(address);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async isUsableMintAddress(address: string): Promise<boolean> {
-    if (!this.isValidMintAddress(address)) {
-      return false;
-    }
-
-    if (!this.connection) {
-      return true; // fall back to structural check if connection unavailable
-    }
-
-    try {
-      const info = await this.connection.getAccountInfo(new PublicKey(address));
-      if (!info) {
-        return false;
-      }
-      // Pumpfun mints are SPL Token mint accounts: owned by Token Program with 82-byte data
-      return info.owner.equals(TOKEN_PROGRAM_ID) && info.data.length === 82;
-    } catch (error) {
-      console.warn('⚠️ [PumpfunSniper] Failed to fetch account info for candidate mint:', address, error);
-      return false;
-    }
-  }
 
   private async waitForBondingCurveAccount(tokenMint: string, timeoutMs = 5000): Promise<boolean> {
-    if (!this.connection) {
-      return false;
-    }
-
     try {
       const [bondingCurve] = deriveBondingCurvePDA(new PublicKey(tokenMint));
       const startTime = Date.now();
@@ -164,10 +230,20 @@ export class PumpfunSniper extends EventEmitter {
 
       while (Date.now() - startTime < timeoutMs) {
         attempt += 1;
-        const accountInfo = await this.connection.getAccountInfo(bondingCurve, 'processed');
-        if (accountInfo) {
-          console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${attempt} attempt(s) (${Date.now() - startTime}ms)`);
-          return true;
+        
+        // Use direct RPC request to avoid connection null issues
+        try {
+          const accountInfo = await this.directRpcRequest('getAccountInfo', [
+            bondingCurve.toBase58(),
+            { commitment: 'processed', encoding: 'base64' }
+          ]);
+          
+          if (accountInfo && accountInfo.value) {
+            console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${attempt} attempt(s) (${Date.now() - startTime}ms)`);
+            return true;
+          }
+        } catch (error: any) {
+          console.warn(`⚠️ [PumpfunSniper] Attempt ${attempt} failed:`, error.message);
         }
 
         const delayMs = Math.min(150 + attempt * 75, 600);
@@ -304,12 +380,12 @@ export class PumpfunSniper extends EventEmitter {
   private async initializeConnections(): Promise<void> {
     console.log(`🔄 [PumpfunSniper] Initializing connections...`);
 
-    // Create direct connection
+    // Create direct connection using configured RPC URL
     this.connection = new Connection(
-      'https://api.mainnet-beta.solana.com',
+      this.rpcUrl,
       { commitment: 'confirmed' }
     );
-    console.log(`✅ [PumpfunSniper] Connection ready`);
+    console.log(`✅ [PumpfunSniper] Connection ready: ${this.rpcUrl}`);
     console.log(`📡 [PumpfunSniper] Using dedicated RPC WebSocket endpoints`);
   }
 
@@ -586,91 +662,45 @@ export class PumpfunSniper extends EventEmitter {
         addr.startsWith('ComputeBudget111111111111111111111111111111')
       );
 
-      const tryAssignMint = async (candidate: string): Promise<boolean> => {
-        if (!candidate || isFilteredAddress(candidate)) return false;
-        if (!(await this.isUsableMintAddress(candidate))) return false;
-
-        tokenMint = candidate;
-        console.log(`🎯 [PumpfunSniper] Extracted token mint: ${tokenMint}`);
-        return true;
-      };
-
-      // Try to extract mint from logs - look in Program data logs first
+      // Strategy 1: Scan Program log lines for addresses ending in 'pump' (from OHLC monitor)
+      // This is the most reliable indicator of a Pumpfun mint
       for (const log of logs.logs) {
         if (tokenMint) break;
 
+        // Capture bonding curve snapshot if available
         if (curveSnapshot === null && log.includes('Program data:')) {
           const snapshot = this.parseBondingCurveSnapshot(log);
           if (snapshot) {
             curveSnapshot = snapshot;
             console.log('📊 [PumpfunSniper] Captured bonding curve snapshot from logs');
           }
-
-          const dataSection = log.substring(log.indexOf('Program data:') + 13);
-          const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
-          if (addressMatch) {
-            for (const candidate of addressMatch) {
-              if (await tryAssignMint(candidate)) break;
-            }
-          }
         }
 
-        if (!tokenMint) {
-          const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
-          if (addressMatch) {
-            for (const candidate of addressMatch) {
-              if (await tryAssignMint(candidate)) break;
+        // Look for mint addresses in Program log lines
+        if (log.includes('Program log:')) {
+          const matches = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
+          if (matches) {
+            for (const candidate of matches) {
+              if (candidate === 'So11111111111111111111111111111111111111112') continue;
+              if (isFilteredAddress(candidate)) continue;
+              
+              // Pumpfun mints always end with 'pump'
+              if (candidate.endsWith('pump') && candidate.length >= 32 && candidate.length <= 44) {
+                tokenMint = candidate;
+                console.log(`🎯 [PumpfunSniper] Found mint in Program log: ${tokenMint}`);
+                break;
+              }
             }
           }
         }
       }
 
+      // Strategy 2: Use proven transaction metadata lookup (from OHLC monitor)
       if (!tokenMint) {
-        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs, attempting transaction decode');
-
-        if (this.connection) {
-          try {
-            const tx = await this.connection.getTransaction(logs.signature, {
-              maxSupportedTransactionVersion: 0,
-              commitment: 'confirmed'
-            });
-
-            const postTokenBalances = tx?.meta?.postTokenBalances || [];
-            const mintFromBalances = postTokenBalances
-              .map(balance => balance.mint)
-              .find(mint => mint && !isFilteredAddress(mint));
-
-            if (mintFromBalances && await this.isUsableMintAddress(mintFromBalances)) {
-              tokenMint = mintFromBalances;
-              console.log(`🎯 [PumpfunSniper] Extracted token mint via transaction balances: ${tokenMint}`);
-            }
-
-            if (!tokenMint) {
-              const accountKeys = (() => {
-                const message: any = tx?.transaction?.message;
-                if (!message) return [];
-                if (typeof message.getAccountKeys === 'function') {
-                  const keys = message.getAccountKeys();
-                  return [...keys.staticAccountKeys, ...(keys.accountKeys || [])];
-                }
-                return message.accountKeys || [];
-              })();
-
-              for (const account of accountKeys) {
-                const accountStr = typeof account === 'string' ? account : account.toBase58();
-                if (isFilteredAddress(accountStr)) continue;
-                if (await this.isUsableMintAddress(accountStr)) {
-                  tokenMint = accountStr;
-                  console.log(`🎯 [PumpfunSniper] Extracted token mint via transaction accounts: ${tokenMint}`);
-                  break;
-                }
-              }
-            }
-          } catch (fallbackError) {
-            console.error('❌ [PumpfunSniper] Failed to decode transaction for mint:', fallbackError);
-          }
-        }
-
+        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs, using postTokenBalances fallback');
+        
+        tokenMint = await this.deriveMintFromTransaction(logs.signature);
+        
         if (!tokenMint) {
           console.warn('⚠️ [PumpfunSniper] No valid mint address found even after transaction decode');
           return null;
@@ -972,7 +1002,8 @@ export class PumpfunSniper extends EventEmitter {
     }
     
     this.wsSubscriptionId = null;
-    this.connection = null;
+    // Keep connection alive - we use directRpcRequest now which doesn't rely on this.connection
+    // this.connection = null;
     this.config = null;
     
     console.log(`🛑 [PumpfunSniper] Stopped. Sniped ${this.snipedTokens.size} tokens`);
