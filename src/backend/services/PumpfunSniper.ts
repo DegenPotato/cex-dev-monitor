@@ -455,19 +455,8 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Poll for bonding curve initialization (like test script)
-      console.log('⏳ [PumpfunSniper] Polling for bonding curve initialization...');
-      const pollStart = Date.now();
-      const initialized = await this.pollForCurveInitialization(bondingCurveAddress, 900);
-      
-      if (!initialized) {
-        console.log(`❌ [PumpfunSniper] Bonding curve not initialized after ${Date.now() - pollStart}ms`);
-        return;
-      }
-      
-      console.log(`✅ [PumpfunSniper] Bonding curve initialized in ${Date.now() - pollStart}ms`);
-
-      // Execute snipe
+      // Fire immediately - PumpPortal handles account state checks
+      console.log('⚡ [PumpfunSniper] Firing immediately (PumpPortal handles validation)');
       await this.executeSnipe(tokenMint, bondingCurveAddress);
 
     } catch (error: any) {
@@ -536,49 +525,7 @@ export class PumpfunSniper extends EventEmitter {
     }
   }
 
-  /**
-   * Poll for bonding curve initialization (replicate test logic)
-   */
-  private async pollForCurveInitialization(bondingCurve: PublicKey, maxTimeMs: number): Promise<boolean> {
-    const startTime = Date.now();
-    
-    while (Date.now() - startTime < maxTimeMs) {
-      try {
-        const info = await this.connection!.getAccountInfo(bondingCurve, 'processed');
-        
-        if (info && info.data.length >= 120) {
-          // Check discriminator
-          const discriminator = info.data.slice(0, 8).toString('hex');
-          if (discriminator !== '17b7f83760d8ac60') {
-            await new Promise(r => setTimeout(r, 25));
-            continue;
-          }
-          
-          // Check reserves are non-zero
-          const virtualTokenReserves = info.data.readBigUInt64LE(8);
-          const virtualSolReserves = info.data.readBigUInt64LE(16);
-          const realTokenReserves = info.data.readBigUInt64LE(24);
-          
-          if (virtualTokenReserves > 0n && virtualSolReserves > 0n && realTokenReserves > 0n) {
-            return true;
-          }
-        }
-      } catch (e) {
-        // Continue polling
-      }
-      
-      await new Promise(r => setTimeout(r, 25));
-    }
-    
-    return false;
-  }
-
-  /**
-   * Wait for creation transaction to be confirmed
-   */
-  // REMOVED: No longer waiting for confirmation - firing immediately for speed
-  // Jupiter is robust enough to handle timing, and we have retry logic
-  // private async waitForCreationTxConfirmed(signature: string, maxAttempts: number = 20): Promise<boolean> { ... }
+  // REMOVED: Polling logic no longer needed - PumpPortal handles account state validation
 
   /**
    * Execute the snipe - buy token and set up monitoring
@@ -616,12 +563,12 @@ export class PumpfunSniper extends EventEmitter {
         bondingCurveAddress: bondingCurveAddress?.toBase58()
       });
       
-      // If first attempt failed, wait 1000ms and retry
+      // If first attempt failed, wait 200ms and retry (PumpPortal is fast)
       if (!buyResult?.success) {
-        console.log('⚠️ [PumpfunSniper] First attempt failed, waiting 1000ms before retry...');
+        console.log('⚠️ [PumpfunSniper] First attempt failed, waiting 200ms before retry...');
         console.log(`   Error: ${buyResult?.error || 'Unknown'}`);
         
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         console.log('⚡ [PumpfunSniper] Attempting buy (attempt 2/2)...');
         buyResult = await this.tradingEngine.buyToken({
