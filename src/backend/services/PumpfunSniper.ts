@@ -76,6 +76,7 @@ export class PumpfunSniper extends EventEmitter {
   private positions: Map<string, SnipedPosition> = new Map();
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private reconnectAttempts: number = 0;
+  private snipeInProgress: boolean = false;
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private readonly RECONNECT_DELAY = 5000;
 
@@ -222,7 +223,11 @@ export class PumpfunSniper extends EventEmitter {
   }
 
 
-  private async waitForBondingCurveAccount(tokenMint: string, timeoutMs = 5000): Promise<boolean> {
+  private async waitForBondingCurveAccount(
+    tokenMint: string,
+    timeoutMs = 3000,
+    pollIntervalMs = 80
+  ): Promise<boolean> {
     try {
       const [bondingCurve] = deriveBondingCurvePDA(new PublicKey(tokenMint));
       const startTime = Date.now();
@@ -230,24 +235,26 @@ export class PumpfunSniper extends EventEmitter {
 
       while (Date.now() - startTime < timeoutMs) {
         attempt += 1;
-        
-        // Use direct RPC request to avoid connection null issues
+
         try {
           const accountInfo = await this.directRpcRequest('getAccountInfo', [
             bondingCurve.toBase58(),
             { commitment: 'processed', encoding: 'base64' }
           ]);
-          
+
           if (accountInfo && accountInfo.value) {
-            console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${attempt} attempt(s) (${Date.now() - startTime}ms)`);
+            console.log(
+              `✅ [PumpfunSniper] Bonding curve PDA visible after ${attempt} attempts (${Date.now() - startTime}ms)`
+            );
             return true;
           }
         } catch (error: any) {
-          console.warn(`⚠️ [PumpfunSniper] Attempt ${attempt} failed:`, error.message);
+          if (attempt === 1) {
+            console.log('⌛ [PumpfunSniper] Waiting for bonding curve PDA to materialize...');
+          }
         }
 
-        const delayMs = Math.min(150 + attempt * 75, 600);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
       }
 
       console.warn(`⚠️ [PumpfunSniper] Bonding curve PDA still unavailable after ${timeoutMs}ms`);
@@ -628,6 +635,11 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
+      if (this.snipeInProgress) {
+        console.log('⏳ [PumpfunSniper] Snipe already in progress – skipping this launch');
+        return;
+      }
+
       // Execute snipe
       await this.executeSnipe(tokenMint, bondingCurve);
 
@@ -789,20 +801,24 @@ export class PumpfunSniper extends EventEmitter {
 
     console.log(`🎯 [PumpfunSniper] SNIPING TOKEN: ${tokenMint}`);
     
+    if (this.snipeInProgress) {
+      console.log('⏳ [PumpfunSniper] Another snipe is already running');
+      return;
+    }
+
+    this.snipeInProgress = true;
+    
     try {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Ensure bonding curve PDA becomes readable, but don't block the trade
-      this.waitForBondingCurveAccount(tokenMint, 15000)
-        .then(ready => {
-          if (!ready) {
-            console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not visible yet – continuing with log snapshot');
-          }
-        })
-        .catch(error => {
-          console.warn('⚠️ [PumpfunSniper] Bonding curve wait encountered error:', error?.message || error);
-        });
+      // Wait for bonding curve PDA to become visible (fast polling)
+      const ready = await this.waitForBondingCurveAccount(tokenMint, 3000, 80);
+      if (!ready) {
+        console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not available fast enough, aborting snipe');
+        this.snipedTokens.delete(tokenMint);
+        return;
+      }
 
       const buyResult = await this.tradingEngine.buyToken({
         userId: this.config.userId,
@@ -899,6 +915,8 @@ export class PumpfunSniper extends EventEmitter {
     } catch (error: any) {
       console.error(`❌ [PumpfunSniper] Snipe error:`, error.message);
       this.snipedTokens.delete(tokenMint);
+    } finally {
+      this.snipeInProgress = false;
     }
   }
 
