@@ -777,14 +777,15 @@ export class PumpfunSniper extends EventEmitter {
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 3;
+      const maxAttempts = 5; // More attempts with better delays
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts}`);
-          await new Promise(resolve => setTimeout(resolve, 150 * attempt)); // 150ms, 300ms
+          const delay = 50 + (attempt - 1) * 300; // 200ms, 500ms, 800ms
+          console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
         
         buyResult = await this.tradingEngine.buyToken({
@@ -806,9 +807,13 @@ export class PumpfunSniper extends EventEmitter {
         });
         
         // Check for AccountNotInitialized error (0xbc4) - mint tx still processing
-        if (!buyResult.success && buyResult.error?.includes('0xbc4')) {
-          console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet, will retry...`);
-          continue;
+        if (!buyResult.success) {
+          // Check if error contains 0xbc4 in any form (string, message, logs, etc)
+          const errorStr = JSON.stringify(buyResult.error || '');
+          if (errorStr.includes('0xbc4') || errorStr.includes('AccountNotInitialized') || errorStr.includes('3012')) {
+            console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet, will retry...`);
+            continue;
+          }
         }
         
         // Other errors - don't retry
