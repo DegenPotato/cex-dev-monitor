@@ -610,7 +610,7 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe immediately - no waiting for block 0 entry
+      // Execute snipe with creation tx confirmation
       await this.executeSnipe(logs.signature, tokenMint, bondingCurve);
 
     } catch (error: any) {
@@ -775,6 +775,11 @@ export class PumpfunSniper extends EventEmitter {
   private async waitForCreationTxConfirmed(signature: string, maxAttempts: number = 20): Promise<boolean> {
     const startTime = Date.now();
     
+    if (!signature) {
+      console.error('❌ [PumpfunSniper] No signature provided!');
+      return false;
+    }
+    
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const tx = await this.directRpcRequest('getTransaction', [
@@ -787,7 +792,7 @@ export class PumpfunSniper extends EventEmitter {
           console.log(`✅ [PumpfunSniper] Creation tx confirmed after ${elapsed}ms`);
           return true;
         }
-      } catch (error) {
+      } catch (error: any) {
         // Ignore and retry
       }
       
