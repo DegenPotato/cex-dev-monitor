@@ -186,25 +186,12 @@ export class PumpfunSniper extends EventEmitter {
     if (!signature) return null;
 
     try {
-      let tx: any = null;
-      let attempt = 0;
-
-      while (!tx && attempt < 4) {
-        attempt += 1;
-
-        tx = await this.directRpcRequest('getTransaction', [signature, {
-          commitment: 'confirmed', // getTransaction doesn't support 'processed'
-          encoding: 'json',
-          maxSupportedTransactionVersion: 0
-        }]);
-
-        if (!tx) {
-          // Wait briefly before next try – processed data propagates within ~50ms
-          if (attempt < 4) {
-            await new Promise(resolve => setTimeout(resolve, 50 * attempt));
-          }
-        }
-      }
+      // Single fast fetch - transaction should be available immediately
+      const tx = await this.directRpcRequest('getTransaction', [signature, {
+        commitment: 'confirmed',
+        encoding: 'json',
+        maxSupportedTransactionVersion: 0
+      }]);
 
       if (!tx) return null;
 
@@ -690,8 +677,17 @@ export class PumpfunSniper extends EventEmitter {
         addr.startsWith('ComputeBudget111111111111111111111111111111')
       );
 
-      // Strategy 1: Scan Program log lines for addresses ending in 'pump' (from OHLC monitor)
+      // Strategy 1: Scan ALL log lines for addresses ending in 'pump' (from working script)
       // This is the most reliable indicator of a Pumpfun mint
+      
+      // DEBUG: Log first few entries to see structure
+      if (this.verboseLogging && logs.logs.length > 0) {
+        console.log(`🔍 [PumpfunSniper] Sample logs (first 3):`);
+        logs.logs.slice(0, 3).forEach((log: any, i: number) => {
+          console.log(`   [${i}] ${typeof log} ${log.substring ? log.substring(0, 100) : JSON.stringify(log)}`);
+        });
+      }
+      
       for (const log of logs.logs) {
         if (tokenMint) break;
 
@@ -704,20 +700,19 @@ export class PumpfunSniper extends EventEmitter {
           }
         }
 
-        // Look for mint addresses in Program log lines
-        if (log.includes('Program log:')) {
-          const matches = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
-          if (matches) {
-            for (const candidate of matches) {
-              if (candidate === 'So11111111111111111111111111111111111111112') continue;
-              if (isFilteredAddress(candidate)) continue;
-              
-              // Pumpfun mints always end with 'pump'
-              if (candidate.endsWith('pump') && candidate.length >= 32 && candidate.length <= 44) {
-                tokenMint = candidate;
-                console.log(`🎯 [PumpfunSniper] Found mint in Program log: ${tokenMint}`);
-                break;
-              }
+        // Look for mint addresses in ANY log line (not just "Program log:")
+        // Working script shows mints appear in various log formats
+        const matches = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
+        if (matches) {
+          for (const candidate of matches) {
+            if (candidate === 'So11111111111111111111111111111111111111112') continue;
+            if (isFilteredAddress(candidate)) continue;
+            
+            // Pumpfun mints always end with 'pump'
+            if (candidate.endsWith('pump') && candidate.length >= 32 && candidate.length <= 44) {
+              tokenMint = candidate;
+              console.log(`🎯 [PumpfunSniper] Found mint in logs: ${tokenMint}`);
+              break;
             }
           }
         }
