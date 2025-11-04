@@ -782,15 +782,22 @@ export class PumpfunSniper extends EventEmitter {
     
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const tx = await this.directRpcRequest('getTransaction', [
-          signature,
-          { commitment: 'confirmed', encoding: 'json', maxSupportedTransactionVersion: 0 }
+        // Use getSignatureStatuses to verify actual commitment level
+        const result = await this.directRpcRequest('getSignatureStatuses', [
+          [signature],
+          { searchTransactionHistory: true }
         ]);
         
-        if (tx) {
+        const status = result?.value?.[0];
+        if (status && status.confirmationStatus) {
           const elapsed = Date.now() - startTime;
-          console.log(`✅ [PumpfunSniper] Creation tx confirmed after ${elapsed}ms`);
-          return true;
+          console.log(`📊 [PumpfunSniper] Tx status: ${status.confirmationStatus} after ${elapsed}ms`);
+          
+          // Only accept 'confirmed' or 'finalized', not 'processed'
+          if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
+            console.log(`✅ [PumpfunSniper] Creation tx ${status.confirmationStatus} after ${elapsed}ms`);
+            return true;
+          }
         }
       } catch (error: any) {
         // Ignore and retry
