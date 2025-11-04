@@ -1462,7 +1462,8 @@ router.post('/api/test-lab/pumpfun-sniper/start', authService.requireSecureAuth(
       maxSnipes = 10,
       excludeGraduated = true,
       minLiquidity,
-      maxLiquidity
+      maxLiquidity,
+      priorityFee
     } = req.body;
     
     if (!walletId) {
@@ -1490,7 +1491,7 @@ router.post('/api/test-lab/pumpfun-sniper/start', authService.requireSecureAuth(
       walletId,
       userId,
       slippage: slippageBps,
-      priorityFee: priorityLevel === 'low' ? 0.0001 : priorityLevel === 'medium' ? 0.001 : priorityLevel === 'high' ? 0.01 : 0.05,
+      priorityFee: typeof priorityFee === 'number' ? priorityFee : priorityLevel === 'low' ? 0.00001 : priorityLevel === 'medium' ? 0.00005 : priorityLevel === 'high' ? 0.0002 : priorityLevel === 'ultra' ? 0.0005 : 0.001,
       skipTax,
       maxSnipes,
       excludeGraduated,

@@ -608,7 +608,7 @@ export class PumpfunSniper extends EventEmitter {
         tokenMint,
         amount: this.config.buyAmount,
         slippageBps: this.config.slippage || 1000, // Default 10% slippage for Pumpfun
-        priorityFee: this.config.priorityFee || 0.001, // Default 0.001 SOL priority
+        priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
         skipTax: this.config.skipTax || false
       });
 
@@ -731,7 +731,7 @@ export class PumpfunSniper extends EventEmitter {
           amount: 100, // Sell 100% on stop loss
           walletId: this.config.walletId || this.config.wallet,
           slippage: (this.config.slippage || 300) / 100,
-          priorityFee: this.config.priorityFee || 0.0001,
+          priorityFee: this.config.priorityFee ?? 0.0001,
           skipTax: this.config.skipTax || false,
           useDynamicPercentage: true // Dynamic based on current balance
         } as any]
@@ -757,7 +757,7 @@ export class PumpfunSniper extends EventEmitter {
             amount: tpAmounts[index], // Percentage to sell
             walletId: this.config?.walletId || this.config?.wallet,
             slippage: (this.config?.slippage || 300) / 100,
-            priorityFee: this.config?.priorityFee || 0.0001,
+            priorityFee: this.config?.priorityFee ?? 0.0001,
             skipTax: this.config?.skipTax || false,
             useDynamicPercentage: false // Fixed percentage of initial position
           } as any]

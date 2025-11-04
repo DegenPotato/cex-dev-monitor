@@ -178,8 +178,10 @@ export const TestLabTab: React.FC = () => {
   const [pumpfunStopLoss, setPumpfunStopLoss] = useState('-10');
   const [pumpfunTakeProfits, setPumpfunTakeProfits] = useState<string[]>(['20', '50', '100']);
   const [pumpfunTPAmounts, setPumpfunTPAmounts] = useState<string[]>(['33', '33', '34']); // Split equally by default
-  const [pumpfunSlippage, setPumpfunSlippage] = useState('500');
-  const [pumpfunPriority, setPumpfunPriority] = useState<'low' | 'medium' | 'high' | 'ultra'>('high');
+  const [pumpfunSlippagePercent, setPumpfunSlippagePercent] = useState('5');
+  const [pumpfunPriority, setPumpfunPriority] = useState<'low' | 'medium' | 'high' | 'ultra' | 'custom'>('high');
+  const [pumpfunCustomPriority, setPumpfunCustomPriority] = useState('0.002');
+  const [pumpfunSkipPlatformFee, setPumpfunSkipPlatformFee] = useState(false);
   const [pumpfunMaxSnipes, setPumpfunMaxSnipes] = useState('10');
   const [pumpfunExcludeGraduated, setPumpfunExcludeGraduated] = useState(true);
   const [pumpfunMinLiquidity, setPumpfunMinLiquidity] = useState('');
@@ -1868,32 +1870,60 @@ export const TestLabTab: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Slippage (bps)</label>
+                <label className="block text-sm text-gray-400 mb-2">Slippage (%)</label>
                 <input
                   type="number"
-                  value={pumpfunSlippage}
-                  onChange={(e) => setPumpfunSlippage(e.target.value)}
-                  min="100"
-                  max="5000"
-                  step="100"
+                  value={pumpfunSlippagePercent}
+                  onChange={(e) => setPumpfunSlippagePercent(e.target.value)}
+                  min="0.5"
+                  max="20"
+                  step="0.5"
                   className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
                 />
+                <p className="text-xs text-gray-500 mt-1">We convert to basis points automatically (e.g. 5% → 500 bps).</p>
               </div>
-              
+
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Priority</label>
+                <label className="block text-sm text-gray-400 mb-2">Priority Fee Preset</label>
                 <select
                   value={pumpfunPriority}
                   onChange={(e) => setPumpfunPriority(e.target.value as any)}
                   className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="ultra">Ultra</option>
+                  <option value="low">Low (0.00001 SOL)</option>
+                  <option value="medium">Medium (0.00005 SOL)</option>
+                  <option value="high">High (0.0002 SOL)</option>
+                  <option value="ultra">Ultra (0.0005 SOL)</option>
+                  <option value="custom">Custom</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">Bigger priority fees push the transaction higher in the queue.</p>
               </div>
+
+              {pumpfunPriority === 'custom' && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Custom Priority Fee (SOL)</label>
+                  <input
+                    type="number"
+                    value={pumpfunCustomPriority}
+                    onChange={(e) => setPumpfunCustomPriority(e.target.value)}
+                    min="0"
+                    step="0.0001"
+                    className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Enter the exact amount of SOL to spend on compute prioritization.</p>
+                </div>
+              )}
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pumpfunSkipPlatformFee}
+                onChange={(e) => setPumpfunSkipPlatformFee(e.target.checked)}
+                className="w-4 h-4 bg-gray-800 border-gray-600 rounded text-purple-600"
+              />
+              <span className="text-sm text-gray-300">Disable platform fee for this run</span>
+            </label>
           </div>
 
           {/* Exit Strategy */}
@@ -2078,8 +2108,10 @@ export const TestLabTab: React.FC = () => {
                         stopLoss: parseFloat(pumpfunStopLoss),
                         takeProfits: pumpfunTakeProfits.filter(tp => tp).map(tp => parseFloat(tp)),
                         takeProfitAmounts: pumpfunTPAmounts.map(a => parseFloat(a)),
-                        slippageBps: parseInt(pumpfunSlippage),
+                        slippageBps: Math.round(parseFloat(pumpfunSlippagePercent || '5') * 100),
                         priorityLevel: pumpfunPriority,
+                        priorityFee: pumpfunPriority === 'custom' ? parseFloat(pumpfunCustomPriority || '0') : undefined,
+                        skipTax: pumpfunSkipPlatformFee,
                         maxSnipes: parseInt(pumpfunMaxSnipes),
                         excludeGraduated: pumpfunExcludeGraduated,
                         minLiquidity: pumpfunMinLiquidity ? parseFloat(pumpfunMinLiquidity) : undefined,
