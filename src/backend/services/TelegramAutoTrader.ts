@@ -52,6 +52,7 @@ export class TelegramAutoTrader extends EventEmitter {
     
     // Subscribe to price updates
     this.priceMonitor.on('price_update', (data: any) => {
+      console.log(`\u2709 [AutoTrader] Received price update for ${data.tokenMint?.slice(0, 8) || 'unknown'}`);
       this.handlePriceUpdate(data).catch(console.error);
     });
   }

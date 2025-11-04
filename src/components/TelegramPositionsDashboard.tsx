@@ -524,18 +524,24 @@ const PositionCard: React.FC<{
             <DollarSign className="w-3 h-3" /> Entry
           </p>
           <p className="text-sm font-bold text-white">
-            {(position.avg_entry_price || 0) > 0.001 
-              ? `${(position.avg_entry_price || 0).toFixed(6)} SOL`
-              : `${((position.avg_entry_price || 0) * 1e9).toFixed(2)}e-9 SOL`
+            {(position.avg_entry_price || 0) > 0.000001 
+              ? `${(position.avg_entry_price || 0).toFixed(9)} SOL`
+              : `${(position.avg_entry_price || 0).toExponential(3)} SOL`
             }
           </p>
           {position.entry_price_usd && (
-            <p className="text-xs text-gray-500">
-              ${(position.entry_price_usd || 0).toFixed(8)} USD
+            <p className="text-xs text-cyan-400">
+              ${(position.entry_price_usd || 0) > 0.01 
+                ? (position.entry_price_usd || 0).toFixed(6) 
+                : (position.entry_price_usd || 0).toExponential(3)
+              } USD
             </p>
           )}
           <p className="text-xs text-gray-500">
             {position.current_tokens ? `${position.current_tokens.toFixed(2)} tokens` : ''}
+          </p>
+          <p className="text-xs text-gray-500">
+            Invested: {position.total_invested_sol.toFixed(4)} SOL
           </p>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
@@ -551,19 +557,22 @@ const PositionCard: React.FC<{
           </p>
           <p className="text-sm font-bold text-white">
             {(position.current_price || 0) > 0 ? (
-              (position.current_price || 0) > 0.001 
-                ? `${(position.current_price || 0).toFixed(6)} SOL`
-                : `${((position.current_price || 0) * 1e9).toFixed(2)}e-9 SOL`
+              (position.current_price || 0) > 0.000001 
+                ? `${(position.current_price || 0).toFixed(9)} SOL`
+                : `${(position.current_price || 0).toExponential(3)} SOL`
             ) : 'No price data'}
           </p>
           {position.current_price_usd && (
             <p className="text-xs text-green-400">
-              ${(position.current_price_usd || 0).toFixed(8)} USD
+              ${(position.current_price_usd || 0) > 0.01 
+                ? (position.current_price_usd || 0).toFixed(8) 
+                : (position.current_price_usd || 0).toExponential(3)
+              } USD
             </p>
           )}
           {(position.current_price || 0) > 0 && (position.avg_entry_price || 0) > 0 && (
             <p className="text-xs text-gray-500">
-              {(((position.current_price || 0) / (position.avg_entry_price || 1) - 1) * 100).toFixed(1)}% from entry
+              {(((position.current_price || 0) / (position.avg_entry_price || 1) - 1) * 100).toFixed(2)}% from entry
             </p>
           )}
         </div>
@@ -572,11 +581,16 @@ const PositionCard: React.FC<{
             {pnl >= 0 ? <ArrowUpCircle className="w-3 h-3" /> : <ArrowDownCircle className="w-3 h-3" />} P&L
           </p>
           <p className={`text-sm font-bold ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {pnl >= 0 ? '+' : ''}{pnl.toFixed(6)} SOL
+            {pnl >= 0 ? '+' : ''}{pnl.toFixed(9)} SOL
           </p>
-          <p className="text-xs text-gray-500">
-            ${(pnl * 175).toFixed(2)}
-          </p>
+          {position.unrealized_pnl_usd !== undefined && (
+            <p className="text-xs text-gray-500">
+              ${Math.abs(position.unrealized_pnl_usd) > 0.01 
+                ? position.unrealized_pnl_usd.toFixed(2) 
+                : position.unrealized_pnl_usd.toExponential(2)
+              } USD
+            </p>
+          )}
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
@@ -585,9 +599,14 @@ const PositionCard: React.FC<{
           <p className={`text-sm font-bold ${roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>
             {roi >= 0 ? '+' : ''}{roi.toFixed(2)}%
           </p>
-          {position.peak_roi_percent && (
-            <p className="text-xs text-gray-500">
-              Peak: {position.peak_roi_percent.toFixed(1)}%
+          {position.peak_roi_percent !== undefined && (
+            <p className="text-xs text-green-400">
+              High: +{Math.abs(position.peak_roi_percent || 0).toFixed(1)}%
+            </p>
+          )}
+          {position.max_drawdown_percent !== undefined && (
+            <p className="text-xs text-red-400">
+              Low: -{Math.abs(position.max_drawdown_percent || 0).toFixed(1)}%
             </p>
           )}
         </div>
@@ -694,6 +713,55 @@ const PositionDetailsModal: React.FC<{
               )}
             </div>
           </div>
+
+          {/* Session Stats Display */}
+          <div className="mt-4 p-3 bg-black/20 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-400">Session Statistics</span>
+                <span className="text-xs text-gray-500">Last update: {formatDistanceToNow(new Date(position.last_update || Date.now()))} ago</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-green-900/20 p-2 rounded">
+                  <p className="text-green-400 mb-1">Session High</p>
+                  <p className="text-white font-mono">
+                    {(position.peak_price || position.current_price || 0) > 0.000001 
+                      ? `${(position.peak_price || position.current_price || 0).toFixed(9)} SOL`
+                      : `${(position.peak_price || position.current_price || 0).toExponential(3)} SOL`
+                    }
+                  </p>
+                  {position.peak_roi_percent !== undefined && (
+                    <p className="text-green-400 mt-1">
+                      +{Math.abs(position.peak_roi_percent || 0).toFixed(2)}% from entry
+                    </p>
+                  )}
+                </div>
+                <div className="bg-red-900/20 p-2 rounded">
+                  <p className="text-red-400 mb-1">Session Low</p>
+                  <p className="text-white font-mono">
+                    {(position.low_price || position.current_price || 0) > 0.000001 
+                      ? `${(position.low_price || position.current_price || 0).toFixed(9)} SOL`
+                      : `${(position.low_price || position.current_price || 0).toExponential(3)} SOL`
+                    }
+                  </p>
+                  {position.max_drawdown_percent !== undefined && (
+                    <p className="text-red-400 mt-1">
+                      -{Math.abs(position.max_drawdown_percent || 0).toFixed(2)}% from entry
+                    </p>
+                  )}
+                </div>
+              </div>
+              {position.current_value_usd !== undefined && (
+                <div className="mt-2 p-2 bg-gray-900/30 rounded">
+                  <p className="text-gray-400 mb-1">Current Value</p>
+                  <p className="text-white font-bold">
+                    {(position.current_value_sol || 0).toFixed(6)} SOL
+                    <span className="text-cyan-400 ml-2">
+                      ${(position.current_value_usd || 0).toFixed(2)} USD
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
 
           {/* Trade Actions */}
           {position.status === 'open' && (

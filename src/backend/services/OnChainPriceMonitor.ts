@@ -61,15 +61,9 @@ export class OnChainPriceMonitor extends EventEmitter {
 
   constructor() {
     super();
-    // Only start polling in one worker to avoid rate limits in cluster mode
-    // PM2 sets instance_var to differentiate workers (0, 1, 2, etc)
-    const instanceId = process.env.NODE_APP_INSTANCE || '0';
-    if (instanceId === '0') {
-      console.log(`🎯 Starting price polling in primary worker (instance ${instanceId})`);
-      this.startBatchedPolling();
-    } else {
-      console.log(`⏸️ Skipping price polling in worker instance ${instanceId} (only primary polls)`);
-    }
+    // ALWAYS start polling - fuck the cluster mode restriction
+    console.log(`🎯 Starting price polling (instance ${process.env.NODE_APP_INSTANCE || 'single'})`);
+    this.startBatchedPolling();
   }
 
   /**
