@@ -35,7 +35,9 @@ interface Position {
   current_price_usd?: number;
   entry_price_usd?: number;
   peak_price?: number;
+  peak_price_usd?: number;
   low_price?: number;
+  low_price_usd?: number;
   realized_pnl_sol: number;
   unrealized_pnl_sol: number;
   unrealized_pnl_usd?: number;
@@ -158,15 +160,16 @@ export const TelegramPositionsDashboard: React.FC = () => {
         
         return {
           ...p,
-          // Prices
+          // Prices (SOL + USD)
           current_price: data.current_price_sol,
           current_price_usd: data.current_price_usd,
-          avg_entry_price: data.entry_price_sol,
           entry_price_usd: data.entry_price_usd,
           
-          // Session stats
+          // Session stats (SOL + USD)
           peak_price: data.session_high_sol,
+          peak_price_usd: data.session_high_usd,
           low_price: data.session_low_sol,
+          low_price_usd: data.session_low_usd,
           peak_roi_percent: data.highest_gain_percent,
           max_drawdown_percent: Math.abs(data.lowest_drop_percent || 0),
           
@@ -713,6 +716,11 @@ const PositionDetailsModal: React.FC<{
                   <p className="text-white font-mono">
                     {(position.peak_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
+                  {position.peak_price_usd && (
+                    <p className="text-cyan-400 text-xs">
+                      ${position.peak_price_usd.toFixed(8)} USD
+                    </p>
+                  )}
                   {position.peak_roi_percent !== undefined && (
                     <p className="text-green-400 mt-1">
                       +{Math.abs(position.peak_roi_percent || 0).toFixed(2)}% from entry
@@ -724,6 +732,11 @@ const PositionDetailsModal: React.FC<{
                   <p className="text-white font-mono">
                     {(position.low_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
+                  {position.low_price_usd && (
+                    <p className="text-cyan-400 text-xs">
+                      ${position.low_price_usd.toFixed(8)} USD
+                    </p>
+                  )}
                   {position.max_drawdown_percent !== undefined && (
                     <p className="text-red-400 mt-1">
                       -{Math.abs(position.max_drawdown_percent || 0).toFixed(2)}% from entry

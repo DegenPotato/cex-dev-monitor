@@ -490,38 +490,42 @@ export class TelegramAutoTrader extends EventEmitter {
   }
 
   /**
-   * Handle price updates
+   * Handle price updates - use data directly from OnChainPriceMonitor campaign
    */
-  private async handlePriceUpdate(data: any): Promise<void> {
-    // Data from OnChainPriceMonitor has: currentPrice (SOL), currentPriceUSD (USD), high, low, changePercent
+  private async handlePriceUpdate(campaign: any): Promise<void> {
     const positions = await queryAll(
       `SELECT * FROM telegram_trading_positions 
        WHERE token_mint = ? AND status = 'open'`,
-      [data.tokenMint]
+      [campaign.tokenMint]
     ) as any[];
     
     for (const position of positions) {
-      // Get entry prices
-      const avgEntryPriceSOL = position.buy_price_sol || position.buy_price_usd || 0;
-      const avgEntryPriceUSD = position.buy_price_usd_initial || (avgEntryPriceSOL * 200); // Estimate if not stored
+      // Get entry prices from position
+      const avgEntryPriceSOL = position.buy_price_sol || 0;
+      const avgEntryPriceUSD = position.buy_price_usd_initial || 0;
       
       const oldPriceSOL = position.current_price || avgEntryPriceSOL;
-      const newPriceSOL = data.currentPrice; // From OnChainPriceMonitor
-      const newPriceUSD = data.currentPriceUSD || 0;
       
-      // Track session highs/lows (like Test Lab)
-      const sessionHighSOL = Math.max(position.peak_price || avgEntryPriceSOL, newPriceSOL);
-      const sessionLowSOL = Math.min(position.low_price || avgEntryPriceSOL, newPriceSOL);
-      const highestGainPercent = ((sessionHighSOL - avgEntryPriceSOL) / avgEntryPriceSOL) * 100;
-      const lowestDropPercent = ((sessionLowSOL - avgEntryPriceSOL) / avgEntryPriceSOL) * 100;
+      // Use campaign data DIRECTLY (from OnChainPriceMonitor)
+      const newPriceSOL = campaign.currentPrice;
+      const newPriceUSD = campaign.currentPriceUSD;
+      const sessionHighSOL = campaign.high;
+      const sessionHighUSD = campaign.highUSD;
+      const sessionLowSOL = campaign.low;
+      const sessionLowUSD = campaign.lowUSD;
+      
+      // Calculate % gains/losses from entry (not campaign start)
+      const highestGainPercent = avgEntryPriceSOL > 0 ? ((sessionHighSOL - avgEntryPriceSOL) / avgEntryPriceSOL) * 100 : 0;
+      const lowestDropPercent = avgEntryPriceSOL > 0 ? ((sessionLowSOL - avgEntryPriceSOL) / avgEntryPriceSOL) * 100 : 0;
       
       // Calculate P&L in SOL and USD
       const currentTokens = position.current_tokens || position.tokens_bought || 0;
       const currentValueSOL = currentTokens * newPriceSOL;
       const currentValueUSD = currentTokens * newPriceUSD;
       const costBasisSOL = position.total_invested_sol || (currentTokens * avgEntryPriceSOL);
+      const costBasisUSD = avgEntryPriceUSD > 0 ? (currentTokens * avgEntryPriceUSD) : 0;
       const unrealizedPnlSOL = currentValueSOL - costBasisSOL;
-      const unrealizedPnlUSD = currentValueUSD - (costBasisSOL * 200); // Estimate USD P&L
+      const unrealizedPnlUSD = costBasisUSD > 0 ? (currentValueUSD - costBasisUSD) : 0;
       const totalPnlSOL = (position.realized_pnl_sol || 0) + unrealizedPnlSOL;
       const roi = costBasisSOL > 0 ? (totalPnlSOL / costBasisSOL) * 100 : 0;
       
@@ -530,7 +534,9 @@ export class TelegramAutoTrader extends EventEmitter {
         current_price: newPriceSOL,
         current_price_usd: newPriceUSD,
         peak_price: sessionHighSOL,
+        peak_price_usd: sessionHighUSD,
         low_price: sessionLowSOL,
+        low_price_usd: sessionLowUSD,
         peak_roi_percent: highestGainPercent,
         max_drawdown_percent: Math.abs(lowestDropPercent),
         unrealized_pnl_sol: unrealizedPnlSOL,
@@ -539,29 +545,31 @@ export class TelegramAutoTrader extends EventEmitter {
         roi_percent: roi
       });
       
-      // Broadcast comprehensive update (like Test Lab)
+      // Broadcast comprehensive update (EXACT same structure as Test Lab)
       this.broadcast('telegram_position_price_update', {
         position_id: position.id,
         token_mint: position.token_mint,
-        token_symbol: position.token_symbol || data.tokenSymbol,
+        token_symbol: position.token_symbol || campaign.tokenSymbol,
         
-        // Current prices
+        // Current prices (SOL + USD)
         current_price_sol: newPriceSOL,
         current_price_usd: newPriceUSD,
         old_price_sol: oldPriceSOL,
         
-        // Entry prices
+        // Entry prices (SOL + USD)
         entry_price_sol: avgEntryPriceSOL,
         entry_price_usd: avgEntryPriceUSD,
         
-        // Session stats
+        // Session stats (SOL + USD for highs/lows)
         session_high_sol: sessionHighSOL,
+        session_high_usd: sessionHighUSD,
         session_low_sol: sessionLowSOL,
+        session_low_usd: sessionLowUSD,
         highest_gain_percent: highestGainPercent,
         lowest_drop_percent: lowestDropPercent,
         change_percent_from_entry: ((newPriceSOL - avgEntryPriceSOL) / avgEntryPriceSOL) * 100,
         
-        // P&L
+        // P&L (SOL + USD)
         unrealized_pnl_sol: unrealizedPnlSOL,
         unrealized_pnl_usd: unrealizedPnlUSD,
         total_pnl_sol: totalPnlSOL,
