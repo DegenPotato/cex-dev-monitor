@@ -144,7 +144,7 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
-  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test'>('manual');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramSelectedUserIds, setTelegramSelectedUserIds] = useState<string[]>([]);
@@ -612,7 +612,12 @@ export const TestLabTab: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/test-lab/campaign/start`, {
+      // Use different endpoint for telegram-autotrader (persistent DB tracking)
+      const endpoint = campaignSource === 'telegram-autotrader' 
+        ? '/api/test-lab/telegram-autotrader/start'
+        : '/api/test-lab/campaign/start';
+        
+      const response = await fetch(`${config.apiUrl}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -982,6 +987,17 @@ export const TestLabTab: React.FC = () => {
             >
               <div className="font-medium">GMGN Scraper</div>
               <div className="text-xs mt-1">Test indicator extraction</div>
+            </button>
+            <button
+              onClick={() => setCampaignSource('telegram-autotrader')}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'telegram-autotrader'
+                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">Telegram AutoTrader</div>
+              <div className="text-xs mt-1">Persistent position tracking</div>
             </button>
           </div>
         </div>
@@ -1403,6 +1419,60 @@ export const TestLabTab: React.FC = () => {
             >
               <Play className="w-4 h-4" />
               {!telegramMonitorAllUsers && telegramSelectedUserIds.length === 0 ? 'Select User(s) or Enable Monitor All' : loading ? 'Starting...' : 'Start Monitoring'}
+            </button>
+          </div>
+        </div>
+        )}
+
+        {/* Telegram AutoTrader Fields - Same as Manual for now */}
+        {campaignSource === 'telegram-autotrader' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
+            <input
+              type="text"
+              value={tokenMint}
+              onChange={(e) => setTokenMint(e.target.value)}
+              placeholder="Paste token CA..."
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Pool Selection</label>
+            {poolAddress ? (
+              <div className="flex gap-2">
+                <div className="flex-1 px-4 py-2 bg-green-900/20 border border-green-600/30 rounded-lg text-green-400 font-mono text-sm flex items-center justify-between">
+                  <span className="truncate">{poolAddress}</span>
+                  <X 
+                    className="w-4 h-4 cursor-pointer hover:text-red-400" 
+                    onClick={() => setPoolAddress('')}
+                  />
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  if (!tokenMint) {
+                    toast.error('Please enter token address first');
+                    return;
+                  }
+                  setShowPoolModal(true);
+                }}
+                disabled={!tokenMint}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 hover:border-cyan-500 rounded-lg text-gray-400 hover:text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {tokenMint ? 'Select Pool from Available Pools' : 'Enter token address first'}
+              </button>
+            )}
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={startCampaign}
+              disabled={loading || !tokenMint || !poolAddress}
+              className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              {!tokenMint ? 'Enter Token Address' : !poolAddress ? 'Select Pool First' : loading ? 'Starting...' : 'Start Campaign'}
             </button>
           </div>
         </div>

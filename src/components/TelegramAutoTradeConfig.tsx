@@ -1,13 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  TrendingUp, 
-  Shield, 
   Activity,
   Zap,
-  Settings,
-  Target,
-  ArrowDownCircle,
-  ArrowUpCircle,
   GitBranch
 } from 'lucide-react';
 import { config as appConfig } from '../config';
@@ -15,31 +9,8 @@ import { toast } from 'react-hot-toast';
 
 interface AutoTradeConfig {
   action_on_detection: string;
-  auto_buy_enabled: boolean;
-  auto_buy_amount_sol: number;
-  auto_buy_wallet_id: number | null;
-  auto_buy_slippage_bps: number;
-  auto_buy_priority_level: string;
-  auto_buy_jito_tip_sol: number;
-  auto_buy_skip_tax: boolean;
-  auto_sell_enabled: boolean;
-  auto_sell_slippage_bps: number;
-  stop_loss_percent: number;
-  take_profit_percent: number;
-  trailing_stop_enabled: boolean;
-  trailing_stop_percent: number;
-  auto_monitor_enabled: boolean;
-  monitor_duration_hours: number;
-  alert_price_changes?: string;
 }
 
-interface TradingWallet {
-  id: number;
-  wallet_name: string;
-  wallet_address: string;
-  is_default: boolean;
-  sol_balance: number;
-}
 
 interface Props {
   chatId: string;
@@ -54,58 +25,14 @@ export const TelegramAutoTradeConfig: React.FC<Props> = ({
   onSave,
   onCancel
 }) => {
-  // State for configuration
+  // State for configuration - simplified to just action selection
   const [config, setConfig] = useState<AutoTradeConfig>({
-    action_on_detection: currentConfig?.action_on_detection || 'forward_only',
-    auto_buy_enabled: currentConfig?.auto_buy_enabled || false,
-    auto_buy_amount_sol: currentConfig?.auto_buy_amount_sol || 0.1,
-    auto_buy_wallet_id: currentConfig?.auto_buy_wallet_id || null,
-    auto_buy_slippage_bps: currentConfig?.auto_buy_slippage_bps || 500,
-    auto_buy_priority_level: currentConfig?.auto_buy_priority_level || 'high',
-    auto_buy_jito_tip_sol: currentConfig?.auto_buy_jito_tip_sol || 0.001,
-    auto_buy_skip_tax: currentConfig?.auto_buy_skip_tax || false,
-    auto_sell_enabled: currentConfig?.auto_sell_enabled || false,
-    auto_sell_slippage_bps: currentConfig?.auto_sell_slippage_bps || 1000,
-    stop_loss_percent: currentConfig?.stop_loss_percent || -50,
-    take_profit_percent: currentConfig?.take_profit_percent || 100,
-    trailing_stop_enabled: currentConfig?.trailing_stop_enabled || false,
-    trailing_stop_percent: currentConfig?.trailing_stop_percent || 20,
-    auto_monitor_enabled: currentConfig?.auto_monitor_enabled || false,
-    monitor_duration_hours: currentConfig?.monitor_duration_hours || 24,
-    alert_price_changes: currentConfig?.alert_price_changes || '[-20, 50, 100]'
+    action_on_detection: currentConfig?.action_on_detection || 'forward_only'
   });
 
-  const [wallets, setWallets] = useState<TradingWallet[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch available wallets
-  useEffect(() => {
-    fetchWallets();
-  }, []);
-
-  const fetchWallets = async () => {
-    try {
-      const response = await fetch(`${appConfig.apiUrl}/api/trading/wallets`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWallets(data.wallets || []);
-        
-        // Auto-select default wallet if none selected
-        if (!config.auto_buy_wallet_id && data.wallets.length > 0) {
-          const defaultWallet = data.wallets.find((w: TradingWallet) => w.is_default) || data.wallets[0];
-          setConfig(prev => ({ ...prev, auto_buy_wallet_id: defaultWallet.id }));
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch wallets:', error);
-    }
-  };
-
   const handleSave = async () => {
-    // Validation
-    if (config.action_on_detection.includes('trade') && config.auto_buy_enabled && !config.auto_buy_wallet_id) {
       toast.error('Please select a wallet for trading');
       return;
     }
@@ -137,12 +64,8 @@ export const TelegramAutoTradeConfig: React.FC<Props> = ({
 
   const actionOptions = [
     { value: 'forward_only', label: 'Forward Only', icon: GitBranch, color: 'blue' },
-    { value: 'trade_only', label: 'Trade Only', icon: TrendingUp, color: 'green' },
-    { value: 'monitor_only', label: 'Monitor Only', icon: Activity, color: 'purple' },
-    { value: 'forward_and_trade', label: 'Forward + Trade', icon: Zap, color: 'yellow' },
-    { value: 'forward_and_monitor', label: 'Forward + Monitor', icon: Shield, color: 'cyan' },
-    { value: 'trade_and_monitor', label: 'Trade + Monitor', icon: Target, color: 'pink' },
-    { value: 'all', label: 'All Actions', icon: Settings, color: 'orange' }
+    { value: 'send_to_test_lab', label: 'Send to Test Lab', icon: Activity, color: 'cyan' },
+    { value: 'both', label: 'Forward + Test Lab', icon: Zap, color: 'green' }
   ];
 
   const priorityLevels = [
@@ -178,13 +101,9 @@ export const TelegramAutoTradeConfig: React.FC<Props> = ({
                   <div className="text-left">
                     <div className="font-medium text-white">{option.label}</div>
                     <div className="text-xs text-gray-400">
-                      {option.value === 'forward_only' && 'Traditional forwarding'}
-                      {option.value === 'trade_only' && 'Auto-buy without forward'}
-                      {option.value === 'monitor_only' && 'Track price only'}
-                      {option.value === 'forward_and_trade' && 'Forward + auto-buy'}
-                      {option.value === 'forward_and_monitor' && 'Forward + track'}
-                      {option.value === 'trade_and_monitor' && 'Buy + track price'}
-                      {option.value === 'all' && 'Forward, trade & monitor'}
+                      {option.value === 'forward_only' && 'Traditional message forwarding'}
+                      {option.value === 'send_to_test_lab' && 'Send to Test Lab for tracking'}
+                      {option.value === 'both' && 'Forward messages + Send to Test Lab'}
                     </div>
                   </div>
                 </div>
@@ -194,9 +113,7 @@ export const TelegramAutoTradeConfig: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Auto-Buy Configuration */}
-      {(config.action_on_detection.includes('trade') || config.action_on_detection === 'all') && (
-        <div className="border border-green-500/30 rounded-lg p-4 bg-green-500/5">
+      {/* Action Buttons */}
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-lg font-semibold text-green-300 flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />

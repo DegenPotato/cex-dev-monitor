@@ -9,7 +9,7 @@ import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { getDb, saveDatabase } from '../database/connection.js';
 import { getTradingEngine } from '../core/trade.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
-import { queryOne } from '../database/helpers.js';
+import { queryOne, execute } from '../database/helpers.js';
 
 // Lazy load trading engine
 let tradingEngine: ReturnType<typeof getTradingEngine> | null = null;
@@ -1313,6 +1313,50 @@ router.get('/api/test-lab/telegram-monitor/active', authService.requireSecureAut
     res.json({ success: true, monitors });
   } catch (error: any) {
     console.error('❌ Error getting monitors:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Start Telegram AutoTrader campaign (persistent DB tracking)
+ */
+router.post('/api/test-lab/telegram-autotrader/start', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint, poolAddress } = req.body;
+    const userId = (req as any).user.id;
+    
+    // Start regular campaign for price monitoring
+    const priceMonitor = getOnChainPriceMonitor();
+    const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
+    
+    // Create persistent position in database
+    const now = Math.floor(Date.now() / 1000);
+    const result = await execute(
+      `INSERT INTO telegram_trading_positions (
+        user_id, token_mint, pool_address,
+        buy_amount_sol, total_invested_sol,
+        tokens_bought, current_tokens,
+        status, is_manual, created_at, updated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, 0, 'open', 1, ?, ?)`,
+      [userId, tokenMint, poolAddress, now, now]
+    );
+    
+    const positionId = (result as any).lastInsertRowid;
+    
+    // Link position to campaign for updates
+    const { getTelegramAutoTrader } = await import('../services/TelegramAutoTrader.js');
+    getTelegramAutoTrader().linkPositionToCampaign(positionId, campaign.id);
+    
+    console.log(`🚀 [TelegramAutoTrader] Started persistent campaign ${campaign.id} for position ${positionId}`);
+    
+    res.json({ 
+      success: true, 
+      campaign,
+      positionId,
+      message: 'Telegram AutoTrader campaign started with DB persistence'
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting Telegram AutoTrader campaign:', error);
     res.status(500).json({ error: error.message });
   }
 });
