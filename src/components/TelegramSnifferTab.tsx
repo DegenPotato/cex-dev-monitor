@@ -3747,21 +3747,17 @@ export function TelegramSnifferTab() {
                     onChange={(e) => setConfigActionOnDetection(e.target.value)}
                     className="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
                   >
-                    <option value="forward_only">Forward Only (Default)</option>
-                    <option value="trade_only">Trade Only (No Forwarding)</option>
-                    <option value="monitor_only">Monitor Only (Track Price)</option>
-                    <option value="forward_and_trade">Forward + Trade</option>
-                    <option value="forward_and_monitor">Forward + Monitor</option>
-                    <option value="trade_and_monitor">Trade + Monitor</option>
-                    <option value="all">All Actions (Forward + Trade + Monitor)</option>
+                    <option value="forward_only">Forward Only</option>
+                    <option value="send_to_test_lab">Send to Test Lab</option>
+                    <option value="both">Both (Forward + Test Lab)</option>
                   </select>
                   <p className="text-xs text-gray-400 mt-2">
                     Choose what happens when a contract is detected
                   </p>
                 </div>
 
-                {/* Auto-Buy Configuration */}
-                {(configActionOnDetection?.includes('trade') || configActionOnDetection === 'all') && (
+                {/* Removed all auto-trading configuration sections */}
+                {false && (
                   <div className="space-y-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                     <h4 className="text-sm font-bold text-green-300">Auto-Buy Settings</h4>
                     
@@ -3846,8 +3842,8 @@ export function TelegramSnifferTab() {
                   </div>
                 )}
 
-                {/* Auto-Sell Configuration */}
-                {(configActionOnDetection?.includes('trade') || configActionOnDetection === 'all') && (
+                {/* Auto-Sell Configuration - Removed */}
+                {false && (
                   <div className="space-y-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg mt-4">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-bold text-red-300">Auto-Sell Settings</h4>
@@ -4163,8 +4159,8 @@ export function TelegramSnifferTab() {
                   </div>
                 )}
 
-                {/* Monitoring Configuration */}
-                {(configActionOnDetection?.includes('monitor') || configActionOnDetection === 'all') && (
+                {/* Monitoring Configuration - Removed */}
+                {false && (
                   <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg mt-4">
                     <h4 className="text-sm font-bold text-blue-300">Price Monitoring Settings</h4>
                     
@@ -4675,7 +4671,7 @@ export function TelegramSnifferTab() {
               <TelegramAutoTradeConfig
                 chatId={autoTradeChat.chatId}
                 currentConfig={autoTradeChat.autoTradeConfig}
-                onSave={async (newConfig) => {
+                onSave={async (newConfig: any) => {
                   // Save configuration
                   try {
                     const response = await fetch(`${config.apiUrl}/api/telegram/auto-trade/config`, {

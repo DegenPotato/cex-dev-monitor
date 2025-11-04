@@ -120,3 +120,5 @@ export const TelegramAutoTradeConfig: React.FC<Props> = ({
     </div>
   );
 };
+
+export default TelegramAutoTradeConfig;
