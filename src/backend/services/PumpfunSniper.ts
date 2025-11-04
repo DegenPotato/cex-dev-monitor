@@ -11,19 +11,6 @@ import WebSocket from 'ws';
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
-// Bond curve states
-interface BondingCurve {
-  tokenMint: PublicKey;
-  virtualSolReserves: bigint;
-  virtualTokenReserves: bigint;
-  realSolReserves: bigint;
-  realTokenReserves: bigint;
-  tokenTotalSupply: bigint;
-  complete: boolean;
-  bondingCurveAddress: PublicKey;
-  createdAt: number;
-}
-
 export type SnipeMode = 'single' | 'all' | 'one-at-a-time';
 
 export interface PumpfunSniperConfig {
@@ -91,143 +78,6 @@ export class PumpfunSniper extends EventEmitter {
   // These methods validated PDA state but didn't prevent 3012 errors
   // The program needs the creation TRANSACTION to be confirmed, not just PDA state
   // See waitForCreationTxConfirmed below for the correct approach
-
-
-  /**
-   * Direct RPC request with retry logic (from OHLC monitor)
-   * Bypasses rotator issues and handles 403/429 errors
-   */
-  private async directRpcRequest(method: string, params: any[], attempt = 1): Promise<any> {
-    const body = JSON.stringify({ 
-      jsonrpc: '2.0', 
-      id: `${method}-${Date.now()}-${Math.random()}`, 
-      method, 
-      params 
-    });
-
-    try {
-      const res = await fetch(this.rpcUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'accept': 'application/json'
-        },
-        body
-      });
-
-      if (res.status === 429 || res.status === 403) {
-        if (attempt >= 5) {
-          throw new Error(`HTTP ${res.status} ${res.statusText}`);
-        }
-        const backoff = Math.min(400 * Math.pow(2, attempt - 1), 3000);
-        await new Promise(resolve => setTimeout(resolve, backoff));
-        return this.directRpcRequest(method, params, attempt + 1);
-      }
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-      }
-
-      const data = await res.json();
-      if (data.error) {
-        throw new Error(`RPC ${method} error: ${JSON.stringify(data.error)}`);
-      }
-
-      return data.result;
-    } catch (error: any) {
-      if (attempt >= 5) {
-        throw error;
-      }
-      const wait = Math.min(250 * Math.pow(2, attempt - 1), 2000);
-      await new Promise(resolve => setTimeout(resolve, wait));
-      return this.directRpcRequest(method, params, attempt + 1);
-    }
-  }
-
-  /**
-   * Extract mint from transaction using postTokenBalances (from OHLC monitor)
-   * Most reliable method for Pumpfun mint detection
-   */
-  private async deriveMintFromTransaction(signature: string): Promise<string | null> {
-    if (!signature) return null;
-
-    try {
-      // Single fast fetch - transaction should be available immediately
-      const tx = await this.directRpcRequest('getTransaction', [signature, {
-        commitment: 'confirmed',
-        encoding: 'json',
-        maxSupportedTransactionVersion: 0
-      }]);
-
-      if (!tx) return null;
-
-      const balances = tx?.meta?.postTokenBalances || [];
-      
-      // Prioritize mints ending in 'pump' (Pumpfun convention)
-      for (const balance of balances) {
-        const mint = balance?.mint;
-        if (mint && mint !== 'So11111111111111111111111111111111111111112') {
-          if (mint.endsWith('pump') && mint.length >= 32 && mint.length <= 44) {
-            console.log(`🎯 [PumpfunSniper] Found mint via postTokenBalances: ${mint}`);
-            return mint;
-          }
-        }
-      }
-
-      // Fallback: return first valid mint
-      for (const balance of balances) {
-        const mint = balance?.mint;
-        if (mint && mint !== 'So11111111111111111111111111111111111111112') {
-          if (mint.length >= 32 && mint.length <= 44) {
-            console.log(`🎯 [PumpfunSniper] Found mint via postTokenBalances (fallback): ${mint}`);
-            return mint;
-          }
-        }
-      }
-    } catch (error: any) {
-      console.warn('⚠️ [PumpfunSniper] Transaction lookup failed:', error.message);
-    }
-
-    return null;
-  }
-
-  private parseBondingCurveSnapshot(logEntry: string): {
-    virtualTokenReserves: bigint;
-    virtualSolReserves: bigint;
-    realTokenReserves: bigint;
-    realSolReserves: bigint;
-    tokenTotalSupply: bigint;
-  } | null {
-    if (!logEntry.includes('Program data:')) return null;
-
-    try {
-      const base64 = logEntry.substring(logEntry.indexOf('Program data:') + 13).trim();
-      const buffer = Buffer.from(base64, 'base64');
-
-      if (buffer.length < 48) {
-        return null;
-      }
-
-      let offset = 8; // Skip discriminator
-      const readU64 = () => {
-        const value = buffer.readBigUInt64LE(offset);
-        offset += 8;
-        return value;
-      };
-
-      return {
-        virtualTokenReserves: readU64(),
-        virtualSolReserves: readU64(),
-        realTokenReserves: readU64(),
-        realSolReserves: readU64(),
-        tokenTotalSupply: readU64()
-      };
-    } catch (error) {
-      console.warn('⚠️ [PumpfunSniper] Failed to decode bonding curve snapshot:', (error as Error).message);
-      return null;
-    }
-  }
 
 
 
@@ -584,24 +434,19 @@ export class PumpfunSniper extends EventEmitter {
       console.log(`📄 [PumpfunSniper] Transaction: ${logs.signature}`);
       console.log(`📃 [PumpfunSniper] Log count: ${logs.logs.length}`);
       
-      // Parse transaction to get token details
-      const tokenDetails = await this.parseTokenCreation(logs);
+      // Parse transaction to get mint AND bonding curve address (like test script)
+      const result = await this.extractMintAndBondingCurve(logs.signature);
       
-      if (!tokenDetails) {
-        console.log(`⚠️ [PumpfunSniper] Could not parse token details from transaction`);
+      if (!result) {
+        console.log(`⚠️ [PumpfunSniper] Could not extract mint and bonding curve from transaction`);
         return;
       }
 
-      const { tokenMint, bondingCurve } = tokenDetails;
+      const { tokenMint, bondingCurveAddress } = result;
 
       // Check if already sniped
       if (this.snipedTokens.has(tokenMint)) {
         console.log(`⏭️ [PumpfunSniper] Token already sniped: ${tokenMint}`);
-        return;
-      }
-
-      // Apply filters
-      if (!(await this.passesFilters(bondingCurve))) {
         return;
       }
 
@@ -610,163 +455,122 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe immediately for speed
-      await this.executeSnipe(tokenMint);
+      // Poll for bonding curve initialization (like test script)
+      console.log('⏳ [PumpfunSniper] Polling for bonding curve initialization...');
+      const pollStart = Date.now();
+      const initialized = await this.pollForCurveInitialization(bondingCurveAddress, 900);
+      
+      if (!initialized) {
+        console.log(`❌ [PumpfunSniper] Bonding curve not initialized after ${Date.now() - pollStart}ms`);
+        return;
+      }
+      
+      console.log(`✅ [PumpfunSniper] Bonding curve initialized in ${Date.now() - pollStart}ms`);
+
+      // Execute snipe
+      await this.executeSnipe(tokenMint, bondingCurveAddress);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
     }
   }
 
+
   /**
-   * Parse token creation from logs
+   * Extract mint and bonding curve address from transaction (replicate test logic)
    */
-  private async parseTokenCreation(logs: any): Promise<{ tokenMint: string; bondingCurve: any } | null> {
+  private async extractMintAndBondingCurve(signature: string): Promise<{ tokenMint: string; bondingCurveAddress: PublicKey } | null> {
     try {
-      // Look for mint addresses in the logs
-      // Pumpfun typically logs the mint address when creating a new token
-      let tokenMint: string | null = null;
-      let curveSnapshot: {
-        virtualTokenReserves: bigint;
-        virtualSolReserves: bigint;
-        realTokenReserves: bigint;
-        realSolReserves: bigint;
-        tokenTotalSupply: bigint;
-      } | null = null;
-
-      const isFilteredAddress = (addr: string) => (
-        addr === PUMPFUN_PROGRAM_ID.toString() ||
-        addr === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' ||
-        addr === 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s' ||
-        addr.startsWith('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') ||
-        addr.startsWith('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') ||
-        addr.startsWith('11111111111111111111111111111111') ||
-        addr.startsWith('ComputeBudget111111111111111111111111111111')
-      );
-
-      // Strategy 1: Scan ALL log lines for addresses ending in 'pump' (from working script)
-      // This is the most reliable indicator of a Pumpfun mint
-      
-      // DEBUG: Log first few entries to see structure
-      if (this.verboseLogging && logs.logs.length > 0) {
-        console.log(`🔍 [PumpfunSniper] Sample logs (first 3):`);
-        logs.logs.slice(0, 3).forEach((log: any, i: number) => {
-          console.log(`   [${i}] ${typeof log} ${log.substring ? log.substring(0, 100) : JSON.stringify(log)}`);
+      // Get transaction with confirmed commitment
+      let tx = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        tx = await this.connection!.getTransaction(signature, {
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: 0
         });
+        if (tx) break;
+        await new Promise(r => setTimeout(r, 50));
       }
       
-      for (const log of logs.logs) {
-        if (tokenMint) break;
-
-        // Capture bonding curve snapshot if available
-        if (curveSnapshot === null && log.includes('Program data:')) {
-          const snapshot = this.parseBondingCurveSnapshot(log);
-          if (snapshot) {
-            curveSnapshot = snapshot;
-            console.log('📊 [PumpfunSniper] Captured bonding curve snapshot from logs');
+      if (!tx) return null;
+      
+      // Extract mint from postTokenBalances (most reliable)
+      let tokenMint: string | null = null;
+      if (tx.meta?.postTokenBalances) {
+        for (const balance of tx.meta.postTokenBalances) {
+          const mint = balance.mint;
+          if (mint && mint !== 'So11111111111111111111111111111111111111112' && mint.endsWith('pump')) {
+            tokenMint = mint;
+            break;
           }
         }
-
-        // Look for mint addresses in ANY log line (not just "Program log:")
-        // Working script shows mints appear in various log formats
-        const matches = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
-        if (matches) {
-          for (const candidate of matches) {
-            if (candidate === 'So11111111111111111111111111111111111111112') continue;
-            if (isFilteredAddress(candidate)) continue;
-            
-            // Pumpfun mints always end with 'pump'
-            if (candidate.endsWith('pump') && candidate.length >= 32 && candidate.length <= 44) {
-              tokenMint = candidate;
-              console.log(`🎯 [PumpfunSniper] Found mint in logs: ${tokenMint}`);
-              break;
+      }
+      
+      if (!tokenMint) return null;
+      
+      // Find bonding curve in transaction accounts (use staticAccountKeys like test script)
+      const accountKeys = tx.transaction.message.staticAccountKeys || [];
+      if (accountKeys.length === 0) return null;
+      
+      for (const accKey of accountKeys) {
+        try {
+          const info = await this.connection!.getAccountInfo(accKey, 'processed');
+          if (info && info.owner.equals(PUMPFUN_PROGRAM_ID) && info.data.length >= 120) {
+            const discriminator = info.data.slice(0, 8).toString('hex');
+            if (discriminator === '17b7f83760d8ac60') {
+              return { 
+                tokenMint, 
+                bondingCurveAddress: accKey 
+              };
             }
           }
+        } catch (e) {
+          // Skip
         }
       }
-
-      // Strategy 2: Use proven transaction metadata lookup (from OHLC monitor)
-      if (!tokenMint) {
-        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs, using postTokenBalances fallback');
-        
-        tokenMint = await this.deriveMintFromTransaction(logs.signature);
-        
-        if (!tokenMint) {
-          console.warn('⚠️ [PumpfunSniper] No valid mint address found even after transaction decode');
-          return null;
-        }
-      }
-
-      const bondingCurveData = curveSnapshot || {
-        virtualTokenReserves: BigInt(0),
-        virtualSolReserves: BigInt(0),
-        realTokenReserves: BigInt(0),
-        realSolReserves: BigInt(0),
-        tokenTotalSupply: BigInt(0)
-      };
-
-      return {
-        tokenMint,
-        bondingCurve: {
-          virtualSolReserves: bondingCurveData.virtualSolReserves,
-          virtualTokenReserves: bondingCurveData.virtualTokenReserves,
-          realSolReserves: bondingCurveData.realSolReserves,
-          realTokenReserves: bondingCurveData.realTokenReserves,
-          tokenTotalSupply: bondingCurveData.tokenTotalSupply,
-          complete: false
-        }
-      };
+      
+      return null;
     } catch (error) {
-      console.error('❌ [PumpfunSniper] Error parsing token creation:', error);
+      console.error('❌ [PumpfunSniper] Error extracting mint and bonding curve:', error);
       return null;
     }
   }
 
   /**
-   * Check if token passes configured filters
+   * Poll for bonding curve initialization (replicate test logic)
    */
-  private async passesFilters(bondingCurve: BondingCurve): Promise<boolean> {
-    if (!this.config) return false;
-
-    // Check if graduated
-    if (this.config.excludeGraduated && bondingCurve.complete) {
-      console.log(`⏭️ [PumpfunSniper] Skipping graduated token`);
-      return false;
-    }
-
-    // Check liquidity limits
-    const liquiditySol = Number(bondingCurve.realSolReserves) / 1e9;
+  private async pollForCurveInitialization(bondingCurve: PublicKey, maxTimeMs: number): Promise<boolean> {
+    const startTime = Date.now();
     
-    if (this.config.minLiquidity && liquiditySol < this.config.minLiquidity) {
-      console.log(`⏭️ [PumpfunSniper] Liquidity too low: ${liquiditySol.toFixed(2)} SOL`);
-      return false;
-    }
-
-    if (this.config.maxLiquidity && liquiditySol > this.config.maxLiquidity) {
-      console.log(`⏭️ [PumpfunSniper] Liquidity too high: ${liquiditySol.toFixed(2)} SOL`);
-      return false;
-    }
-
-    // Check max snipes for 'all' mode
-    if (this.config.mode === 'all' && this.config.maxSnipes) {
-      if (this.snipedTokens.size >= this.config.maxSnipes) {
-        console.log(`🛑 [PumpfunSniper] Max snipes reached (${this.config.maxSnipes})`);
-        await this.stopSniping();
-        return false;
+    while (Date.now() - startTime < maxTimeMs) {
+      try {
+        const info = await this.connection!.getAccountInfo(bondingCurve, 'processed');
+        
+        if (info && info.data.length >= 120) {
+          // Check discriminator
+          const discriminator = info.data.slice(0, 8).toString('hex');
+          if (discriminator !== '17b7f83760d8ac60') {
+            await new Promise(r => setTimeout(r, 25));
+            continue;
+          }
+          
+          // Check reserves are non-zero
+          const virtualTokenReserves = info.data.readBigUInt64LE(8);
+          const virtualSolReserves = info.data.readBigUInt64LE(16);
+          const realTokenReserves = info.data.readBigUInt64LE(24);
+          
+          if (virtualTokenReserves > 0n && virtualSolReserves > 0n && realTokenReserves > 0n) {
+            return true;
+          }
+        }
+      } catch (e) {
+        // Continue polling
       }
+      
+      await new Promise(r => setTimeout(r, 25));
     }
-
-    // Check active positions for 'one-at-a-time' mode
-    if (this.config.mode === 'one-at-a-time') {
-      const activePositions = Array.from(this.positions.values()).filter(p => !p.closed);
-      if (activePositions.length > 0) {
-        console.log(`⏸️ [PumpfunSniper] One-at-a-time mode: waiting for active position to close`);
-        console.log(`   Active position: ${activePositions[0].tokenSymbol || activePositions[0].tokenMint}`);
-        return false;
-      }
-    }
-
-    return true;
+    
+    return false;
   }
 
   /**
@@ -779,7 +583,7 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(tokenMint: string): Promise<void> {
+  private async executeSnipe(tokenMint: string, bondingCurveAddress?: PublicKey): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -808,7 +612,8 @@ export class PumpfunSniper extends EventEmitter {
         amount: this.config.buyAmount,
         slippageBps: this.config.slippage || 1000,
         priorityFee: this.config.priorityFee ?? 0.001,
-        skipTax: this.config.skipTax || false
+        skipTax: this.config.skipTax || false,
+        bondingCurveAddress: bondingCurveAddress?.toBase58()
       });
       
       // If first attempt failed, wait 1000ms and retry

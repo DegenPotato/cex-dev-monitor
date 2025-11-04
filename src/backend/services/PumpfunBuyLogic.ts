@@ -205,7 +205,7 @@ export async function buildPumpfunBuyInstruction(
     wallet.publicKey
   );
   
-  // Fetch bonding curve data
+  // Fetch bonding curve data (PumpfunSniper already polled for initialization)
   const curveData = providedCurve || await fetchBondingCurveData(connection, bondingCurve);
   if (!curveData) {
     throw new Error('Failed to fetch bonding curve data');
