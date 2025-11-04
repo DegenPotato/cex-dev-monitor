@@ -959,12 +959,11 @@ export class PumpfunSniper extends EventEmitter {
       }
       
       console.log('⚡ [PumpfunSniper] Executing buy');
-      console.log(`🎯 [PumpfunSniper] Using bonding curve: ${bondingCurveAddress}`);
-      if (associatedBondingCurveAddress) {
-        console.log(`🎯 [PumpfunSniper] Using associated bonding curve: ${associatedBondingCurveAddress}`);
-      }
+      console.log(`🎯 [PumpfunSniper] Using extracted bonding curve: ${bondingCurveAddress}`);
+      console.log(`⚠️ [PumpfunSniper] NOT using extracted associated bonding curve - will derive from bonding curve + mint`);
       
-      // Single attempt - pass the extracted bonding curve addresses
+      // Single attempt - ONLY pass bonding curve PDA, let it derive the associated bonding curve
+      // There can be multiple token accounts in the tx, we need the correct one for THIS bonding curve
       const buyResult = await this.tradingEngine.buyToken({
         connection: this.connection, // Use same connection for consistency
         userId: this.config.userId,
@@ -975,7 +974,7 @@ export class PumpfunSniper extends EventEmitter {
         priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
         skipTax: this.config.skipTax || false,
         bondingCurveAddress, // CRITICAL: Pass the extracted bonding curve PDA!
-        associatedBondingCurveAddress, // CRITICAL: Pass the extracted associated bonding curve!
+        // DON'T pass associatedBondingCurveAddress - let it derive the correct one
         curveData: curveSnapshot ? {
           virtualTokenReserves: curveSnapshot.virtualTokenReserves,
           virtualSolReserves: curveSnapshot.virtualSolReserves,
