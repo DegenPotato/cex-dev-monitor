@@ -2,9 +2,10 @@
  * Trading Engine - Handles real token trading on Solana
  */
 
-import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { queryAll } from '../database/helpers.js';
 import { decrypt } from '../utils/encryption.js';
+import { executePumpfunBuy } from './PumpfunBuyLogic.js';
 
 export interface TradeParams {
   userId?: number;
@@ -67,56 +68,23 @@ export class TradingEngine {
 
       console.log(`💳 [TradingEngine] Wallet balance: ${balanceSOL.toFixed(4)} SOL`);
 
-      // TODO: Implement actual Pumpfun buy transaction
-      // This requires:
-      // 1. Deriving the bonding curve PDA
-      // 2. Getting the current price from the bonding curve
-      // 3. Building the buy instruction for Pumpfun program
-      // 4. Adding priority fee if specified
-      // 5. Signing and sending the transaction
-
-      // For now, create a simple SOL transfer as a test
-      const transaction = new Transaction();
-      
-      // Add priority fee if specified
-      if (params.priorityFee) {
-        // TODO: Add compute budget instruction
-      }
-
-      // For testing: Just transfer 0.001 SOL to a burn address
-      const testTransfer = SystemProgram.transfer({
-        fromPubkey: wallet.publicKey,
-        toPubkey: new PublicKey('11111111111111111111111111111111'), // System program (effectively burns)
-        lamports: 0.001 * LAMPORTS_PER_SOL
+      // Execute Pumpfun buy
+      const result = await executePumpfunBuy({
+        connection: this.connection,
+        wallet,
+        tokenMint: new PublicKey(params.tokenMint),
+        amountSol: params.amount,
+        slippageBps: params.slippageBps || 1000, // Default 10% slippage
+        priorityFee: params.priorityFee
       });
       
-      transaction.add(testTransfer);
-      
-      // Get recent blockhash
-      const { blockhash } = await this.connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = wallet.publicKey;
-      
-      // Sign and send
-      transaction.sign(wallet);
-      
-      const signature = await this.connection.sendRawTransaction(
-        transaction.serialize(),
-        { skipPreflight: false }
-      );
-      
-      console.log(`✅ [TradingEngine] Transaction sent: ${signature}`);
-      
-      // Wait for confirmation
-      await this.connection.confirmTransaction(signature, 'confirmed');
-      
-      console.log(`✅ [TradingEngine] Transaction confirmed!`);
-      console.log(`🔗 View on Solscan: https://solscan.io/tx/${signature}`);
+      console.log(`✅ [TradingEngine] Buy successful!`);
+      console.log(`🔗 View on Solscan: https://solscan.io/tx/${result.signature}`);
       
       return {
         success: true,
-        signature,
-        tokenAmount: params.amount * 1000000 // Estimated tokens (placeholder)
+        signature: result.signature,
+        tokenAmount: parseFloat(result.tokensReceived) || params.amount * 1000000
       };
       
     } catch (error: any) {
@@ -161,9 +129,19 @@ export class TradingEngine {
       
       // Decrypt private key
       const privateKeyString = decrypt(wallet.private_key);
-      const privateKeyBytes = Uint8Array.from(
-        privateKeyString.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
-      );
+      
+      // Handle different private key formats
+      let privateKeyBytes: Uint8Array;
+      
+      try {
+        // Try parsing as JSON array first (common format)
+        privateKeyBytes = Uint8Array.from(JSON.parse(privateKeyString));
+      } catch {
+        // Fallback to hex string format
+        privateKeyBytes = Uint8Array.from(
+          privateKeyString.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
+        );
+      }
       
       // Create keypair
       return Keypair.fromSecretKey(privateKeyBytes);
