@@ -162,6 +162,16 @@ export const TestLabTab: React.FC = () => {
   const [telegramOnlyBuyNew, setTelegramOnlyBuyNew] = useState<boolean>(true);
   const [activeTelegramMonitors, setActiveTelegramMonitors] = useState<any[]>([]);
   
+  // Telegram AutoTrader specific states
+  const [autoTraderEnabled, setAutoTraderEnabled] = useState(false);
+  const [telegramAction, setTelegramAction] = useState<'monitor' | 'buy_monitor'>('monitor');
+  const [buyAmount, setBuyAmount] = useState('0.1');
+  const [buyTiming, setBuyTiming] = useState<'instant' | 'wait_dip' | 'wait_pump'>('instant');
+  const [priceChangeThreshold, setPriceChangeThreshold] = useState('5');
+  const [takeProfit, setTakeProfit] = useState('20');
+  const [stopLoss, setStopLoss] = useState('-10');
+  const [activeTelegramPositions, setActiveTelegramPositions] = useState<any[]>([]);
+  
   // Use existing trading store for wallets
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
@@ -229,6 +239,26 @@ export const TestLabTab: React.FC = () => {
   useEffect(() => {
     if (campaignSource === 'telegram') {
       fetchActiveTelegramMonitors();
+    }
+  }, [campaignSource]);
+
+  // Fetch active Telegram AutoTrader positions
+  useEffect(() => {
+    if (campaignSource === 'telegram-autotrader') {
+      const fetchPositions = async () => {
+        try {
+          const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-autotrader/positions`, {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setActiveTelegramPositions(data.positions || []);
+          }
+        } catch (error) {
+          console.error('Failed to fetch positions:', error);
+        }
+      };
+      fetchPositions();
     }
   }, [campaignSource]);
 
@@ -816,6 +846,42 @@ export const TestLabTab: React.FC = () => {
       toast.error(`Failed to start monitoring: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Save Telegram AutoTrader configuration
+  const saveTelegramAutoTraderConfig = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/test-lab/telegram-autotrader/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          enabled: autoTraderEnabled,
+          action: telegramAction,
+          buyAmount: parseFloat(buyAmount),
+          buyTiming,
+          priceChangeThreshold: buyTiming !== 'instant' ? parseFloat(priceChangeThreshold) : null,
+          takeProfit: telegramAction === 'buy_monitor' ? parseFloat(takeProfit) : null,
+          stopLoss: telegramAction === 'buy_monitor' ? parseFloat(stopLoss) : null
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('Telegram AutoTrader configuration saved!');
+        
+        // If enabled, start listening for Telegram contract addresses
+        if (autoTraderEnabled) {
+          toast.success('AutoTrader is now active and waiting for contracts from Telegram');
+        }
+      } else {
+        toast.error(data.error || 'Failed to save configuration');
+      }
+    } catch (error: any) {
+      console.error('Failed to save configuration:', error);
+      toast.error('Failed to save configuration');
     }
   };
 
@@ -1424,57 +1490,160 @@ export const TestLabTab: React.FC = () => {
         </div>
         )}
 
-        {/* Telegram AutoTrader Fields - Same as Manual for now */}
+        {/* Telegram AutoTrader Configuration */}
         {campaignSource === 'telegram-autotrader' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
-            <input
-              type="text"
-              value={tokenMint}
-              onChange={(e) => setTokenMint(e.target.value)}
-              placeholder="Paste token CA..."
-              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Pool Selection</label>
-            {poolAddress ? (
-              <div className="flex gap-2">
-                <div className="flex-1 px-4 py-2 bg-green-900/20 border border-green-600/30 rounded-lg text-green-400 font-mono text-sm flex items-center justify-between">
-                  <span className="truncate">{poolAddress}</span>
-                  <X 
-                    className="w-4 h-4 cursor-pointer hover:text-red-400" 
-                    onClick={() => setPoolAddress('')}
-                  />
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  if (!tokenMint) {
-                    toast.error('Please enter token address first');
-                    return;
-                  }
-                  setShowPoolModal(true);
-                }}
-                disabled={!tokenMint}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 hover:border-cyan-500 rounded-lg text-gray-400 hover:text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {tokenMint ? 'Select Pool from Available Pools' : 'Enter token address first'}
-              </button>
-            )}
-          </div>
-          <div className="flex items-end">
+        <div className="space-y-4">
+          {/* Auto-Trader Toggle */}
+          <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-700">
+            <div>
+              <h3 className="text-white font-medium">Telegram Auto-Trader</h3>
+              <p className="text-sm text-gray-400 mt-1">Automatically process contract addresses from Telegram</p>
+            </div>
             <button
-              onClick={startCampaign}
-              disabled={loading || !tokenMint || !poolAddress}
-              className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+              onClick={() => setAutoTraderEnabled(!autoTraderEnabled)}
+              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                autoTraderEnabled ? 'bg-cyan-600' : 'bg-gray-600'
+              }`}
             >
-              <Play className="w-4 h-4" />
-              {!tokenMint ? 'Enter Token Address' : !poolAddress ? 'Select Pool First' : loading ? 'Starting...' : 'Start Campaign'}
+              <span
+                className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                  autoTraderEnabled ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
             </button>
           </div>
+
+          {/* Configuration Options */}
+          {autoTraderEnabled && (
+            <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+              {/* Action on New CA */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Action on New Contract</label>
+                <select
+                  value={telegramAction}
+                  onChange={(e) => setTelegramAction(e.target.value as 'monitor' | 'buy_monitor')}
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="monitor">Monitor Only</option>
+                  <option value="buy_monitor">Buy + Monitor</option>
+                </select>
+              </div>
+
+              {/* Buy Configuration */}
+              {telegramAction === 'buy_monitor' && (
+                <div className="space-y-4 p-4 bg-green-900/20 rounded-lg border border-green-600/30">
+                  <h4 className="text-green-400 font-medium">Buy Configuration</h4>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Buy Amount (SOL)</label>
+                      <input
+                        type="number"
+                        value={buyAmount}
+                        onChange={(e) => setBuyAmount(e.target.value)}
+                        step="0.01"
+                        min="0.01"
+                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Buy Timing</label>
+                      <select
+                        value={buyTiming}
+                        onChange={(e) => setBuyTiming(e.target.value as 'instant' | 'wait_dip' | 'wait_pump')}
+                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                      >
+                        <option value="instant">Instant Buy</option>
+                        <option value="wait_dip">Wait for Dip</option>
+                        <option value="wait_pump">Wait for Pump</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Price Change Threshold */}
+                  {buyTiming !== 'instant' && (
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Wait for {buyTiming === 'wait_dip' ? 'Dip' : 'Pump'} (%)
+                      </label>
+                      <input
+                        type="number"
+                        value={priceChangeThreshold}
+                        onChange={(e) => setPriceChangeThreshold(e.target.value)}
+                        step="1"
+                        min="1"
+                        placeholder={buyTiming === 'wait_dip' ? '-5' : '5'}
+                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                      />
+                    </div>
+                  )}
+
+                  {/* Exit Strategy */}
+                  <div className="space-y-3">
+                    <h5 className="text-sm text-gray-300">Exit Strategy</h5>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">Take Profit (%)</label>
+                        <input
+                          type="number"
+                          value={takeProfit}
+                          onChange={(e) => setTakeProfit(e.target.value)}
+                          step="5"
+                          min="5"
+                          placeholder="20"
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">Stop Loss (%)</label>
+                        <input
+                          type="number"
+                          value={stopLoss}
+                          onChange={(e) => setStopLoss(e.target.value)}
+                          step="5"
+                          max="-5"
+                          placeholder="-10"
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Save Configuration Button */}
+              <button
+                onClick={() => saveTelegramAutoTraderConfig()}
+                className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors"
+              >
+                Save Configuration
+              </button>
+            </div>
+          )}
+
+          {/* Active Telegram Monitors */}
+          {autoTraderEnabled && activeTelegramPositions.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm text-gray-400">Active Telegram Positions</h3>
+              <div className="bg-gray-900 rounded-lg border border-gray-700 p-3">
+                {activeTelegramPositions.map((position) => (
+                  <div key={position.id} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                    <div>
+                      <span className="text-white font-mono text-sm">{position.token_address.slice(0,8)}...</span>
+                      <span className="text-gray-400 text-xs ml-2">{position.status}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white text-sm">${position.current_value?.toFixed(2)}</div>
+                      <div className={`text-xs ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {position.pnl >= 0 ? '+' : ''}{position.pnl?.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         )}
 

@@ -9,7 +9,7 @@ import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { getDb, saveDatabase } from '../database/connection.js';
 import { getTradingEngine } from '../core/trade.js';
 import { telegramClientService } from '../services/TelegramClientService.js';
-import { queryOne, execute } from '../database/helpers.js';
+import { queryOne, queryAll, execute } from '../database/helpers.js';
 
 // Lazy load trading engine
 let tradingEngine: ReturnType<typeof getTradingEngine> | null = null;
@@ -1357,6 +1357,88 @@ router.post('/api/test-lab/telegram-autotrader/start', authService.requireSecure
     });
   } catch (error: any) {
     console.error('❌ Error starting Telegram AutoTrader campaign:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Save Telegram AutoTrader configuration
+ */
+router.post('/api/test-lab/telegram-autotrader/config', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const config = req.body;
+    
+    // Save configuration to database
+    await execute(`
+      INSERT OR REPLACE INTO telegram_autotrader_config (
+        user_id, enabled, action, buy_amount, buy_timing, 
+        price_change_threshold, take_profit, stop_loss, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [
+      userId,
+      config.enabled ? 1 : 0,
+      config.action,
+      config.buyAmount,
+      config.buyTiming,
+      config.priceChangeThreshold,
+      config.takeProfit,
+      config.stopLoss
+    ]);
+
+    // If enabled, ensure WebSocket listener is active for contract addresses
+    if (config.enabled) {
+      // This will be handled by the WebSocket service listening for telegram_contract_detected events
+      console.log('✅ Telegram AutoTrader enabled and listening for contracts');
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to save config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get active Telegram AutoTrader positions
+ */
+router.get('/api/test-lab/telegram-autotrader/positions', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    
+    // Fetch active positions from database
+    const positions = await queryAll(`
+      SELECT 
+        id,
+        token_address,
+        token_symbol,
+        status,
+        entry_price,
+        current_price,
+        position_size_sol,
+        position_size_tokens,
+        unrealized_pnl,
+        realized_pnl,
+        created_at,
+        CASE 
+          WHEN current_price > 0 AND entry_price > 0 
+          THEN ((current_price - entry_price) / entry_price) * 100
+          ELSE 0 
+        END as pnl,
+        CASE 
+          WHEN position_size_sol > 0 
+          THEN position_size_sol * (1 + unrealized_pnl / 100)
+          ELSE 0 
+        END as current_value
+      FROM telegram_trading_positions
+      WHERE user_id = ? AND status IN ('monitoring', 'active')
+      ORDER BY created_at DESC
+      LIMIT 20
+    `, [userId]);
+
+    res.json({ success: true, positions });
+  } catch (error: any) {
+    console.error('Failed to fetch positions:', error);
     res.status(500).json({ error: error.message });
   }
 });
