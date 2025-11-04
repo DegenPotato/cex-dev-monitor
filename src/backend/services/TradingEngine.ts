@@ -2,10 +2,11 @@
  * Trading Engine - Handles real token trading on Solana
  */
 
-import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { queryOne } from '../database/helpers.js';
 import { walletStorageServiceCompat } from './WalletStorageServiceCompat.js';
-import { executePumpfunBuy } from './PumpfunBuyLogic.js';
+import { PumpSdk } from '@pump-fun/pump-sdk';
+import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 
 export interface TradeParams {
   connection?: Connection; // Optional - use specific connection for consistency
@@ -83,34 +84,82 @@ export class TradingEngine {
 
       console.log(`💳 [TradingEngine] Wallet balance: ${balanceSOL.toFixed(4)} SOL`);
 
-      // Execute Pumpfun buy
-      const result = await executePumpfunBuy({
-        connection, // Use the same connection for consistency
-        wallet,
-        tokenMint: new PublicKey(params.tokenMint),
-        amountSol: params.amount,
-        slippageBps: params.slippageBps || 1000, // Default 10% slippage
-        priorityFee: params.priorityFee,
-        bondingCurveAddress: params.bondingCurveAddress ? new PublicKey(params.bondingCurveAddress) : undefined,
-        associatedBondingCurveAddress: params.associatedBondingCurveAddress ? new PublicKey(params.associatedBondingCurveAddress) : undefined,
-        curveData: (params.curveData && params.curveData.creator) ? {
-          virtualTokenReserves: params.curveData.virtualTokenReserves || 0n,
-          virtualSolReserves: params.curveData.virtualSolReserves || 0n,
-          realTokenReserves: params.curveData.realTokenReserves || 0n,
-          realSolReserves: params.curveData.realSolReserves || 0n,
-          tokenTotalSupply: params.curveData.tokenTotalSupply || 0n,
-          complete: params.curveData.complete ?? false,
-          creator: params.curveData.creator
-        } : undefined
+      // Initialize Pump SDK
+      const anchorWallet = new Wallet(wallet);
+      const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' });
+      const sdk = new PumpSdk(provider);
+      
+      const tokenMint = new PublicKey(params.tokenMint);
+      const solAmountLamports = BigInt(Math.floor(params.amount * LAMPORTS_PER_SOL));
+      const slippageBps = params.slippageBps || 1000;
+      
+      console.log(`💰 [SDK] Buying ${params.amount} SOL worth`);
+      console.log(`📉 [SDK] Slippage: ${slippageBps / 100}%`);
+      
+      // Build buy instructions using official SDK
+      const instructions = await sdk.buyInstructions(
+        tokenMint,
+        solAmountLamports,
+        slippageBps,
+        solAmountLamports // maxSolCost = amount
+      );
+      
+      console.log(`✅ [SDK] Generated ${instructions.length} instructions`);
+      
+      // Create transaction
+      const transaction = new Transaction();
+      
+      // Add priority fee if specified
+      if (params.priorityFee && params.priorityFee > 0) {
+        const computeUnitLimit = 400000;
+        transaction.add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit })
+        );
+        
+        const microLamportsPerComputeUnit = Math.floor(
+          (params.priorityFee * LAMPORTS_PER_SOL * 1000000) / computeUnitLimit
+        );
+        
+        transaction.add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: microLamportsPerComputeUnit })
+        );
+        
+        console.log(`⚡ Priority: ${microLamportsPerComputeUnit} µLamports/CU`);
+      }
+      
+      // Add SDK instructions
+      instructions.forEach(ix => transaction.add(ix));
+      
+      // Set blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = wallet.publicKey;
+      
+      // Sign and send
+      transaction.sign(wallet);
+      
+      console.log(`📤 [SDK] Sending transaction...`);
+      const signature = await connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: true,
+        maxRetries: 3
       });
       
+      console.log(`📤 Transaction sent: ${signature}`);
+      
+      // Confirm
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+      
       console.log(`✅ [TradingEngine] Buy successful!`);
-      console.log(`🔗 View on Solscan: https://solscan.io/tx/${result.signature}`);
+      console.log(`🔗 View on Solscan: https://solscan.io/tx/${signature}`);
       
       return {
         success: true,
-        signature: result.signature,
-        tokenAmount: parseFloat(result.tokensReceived) || params.amount * 1000000
+        signature,
+        tokenAmount: params.amount * 2000000000 // Rough estimate
       };
       
     } catch (error: any) {
