@@ -78,12 +78,60 @@ export class PumpfunSniper extends EventEmitter {
   private snipeInProgress: boolean = false;
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private readonly RECONNECT_DELAY = 5000;
+  private readonly verboseLogging: boolean = (process.env.PUMPFUN_SNIPE_VERBOSE ?? '').toLowerCase() === 'true';
 
   constructor() {
     super();
     // Use RPC_URL from env if available
     this.rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
+  }
+
+  /**
+   * Poll signature status until it reaches confirmed/finalized or times out
+   */
+  private async waitForSignatureConfirmation(
+    signature: string,
+    timeoutMs = 4000,
+    pollIntervalMs = 120
+  ): Promise<boolean> {
+    const start = Date.now();
+    let attempt = 0;
+
+    while (Date.now() - start < timeoutMs) {
+      attempt += 1;
+
+      try {
+        const statusResult = await this.directRpcRequest('getSignatureStatuses', [[signature]]);
+        const status = statusResult?.value?.[0];
+
+        if (status?.err) {
+          console.warn('⚠️ [PumpfunSniper] Creation transaction errored while waiting for confirmation');
+          return false;
+        }
+
+        if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
+          return true;
+        }
+
+        // Older nodes might not set confirmationStatus but will clear confirmations field
+        if (status && status.confirmations === null) {
+          return true;
+        }
+
+        if (attempt === 1 || attempt % 10 === 0) {
+          console.log(`⌛ [PumpfunSniper] Waiting for creation tx confirmation (attempt ${attempt})`);
+        }
+      } catch (error: any) {
+        if (attempt === 1 || attempt % 10 === 0) {
+          console.warn(`⚠️ [PumpfunSniper] Signature status check failed: ${error.message}`);
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    return false;
   }
 
   /**
@@ -470,8 +518,8 @@ export class PumpfunSniper extends EventEmitter {
     try {
       const message = JSON.parse(data.toString());
       
-      // Debug: Log all messages
-      if (message.method) {
+      // Debug: Log all messages (optional)
+      if (this.verboseLogging && message.method) {
         console.log(`🔍 [PumpfunSniper] Received method: ${message.method}`);
       }
       
@@ -489,7 +537,9 @@ export class PumpfunSniper extends EventEmitter {
       // Handle log notifications
       if (message.method === 'logsNotification' && message.params) {
         const logs: Logs = message.params.result.value;
-        console.log(`📦 [PumpfunSniper] Received logs for signature: ${logs.signature}`);
+        if (this.verboseLogging) {
+          console.log(`📦 [PumpfunSniper] Received logs for signature: ${logs.signature}`);
+        }
         this.handleProgramLogs(logs);
       }
     } catch (error) {
@@ -521,8 +571,10 @@ export class PumpfunSniper extends EventEmitter {
    */
   private async handleProgramLogs(logs: Logs): Promise<void> {
     try {
-      // Debug: Log all program logs
-      console.log(`📝 [PumpfunSniper] Processing ${logs.logs.length} log entries`);
+      // Debug: Log all program logs (optional)
+      if (this.verboseLogging) {
+        console.log(`📝 [PumpfunSniper] Processing ${logs.logs.length} log entries`);
+      }
       
       // Check if this is a Pumpfun transaction
       const isPumpfun = logs.logs.some(log => 
@@ -598,8 +650,8 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe immediately
-      await this.executeSnipe(tokenMint, bondingCurve);
+      // Execute snipe immediately (creation tx signature included for confirmation wait)
+      await this.executeSnipe(tokenMint, bondingCurve, logs.signature);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -752,7 +804,7 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
+  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>, creationTxSignature?: string): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -770,6 +822,16 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
+      // Wait for the creation transaction to reach confirmed status (best-effort)
+      if (creationTxSignature) {
+        const creationConfirmed = await this.waitForSignatureConfirmation(creationTxSignature, 4000, 120);
+        if (!creationConfirmed) {
+          console.warn('⚠️ [PumpfunSniper] Creation transaction not confirmed within 4s – proceeding with retries');
+        } else {
+          console.log('✅ [PumpfunSniper] Creation transaction confirmed');
+        }
+      }
+
       // Execute buy immediately with retry logic
       // The PDA address is derived instantly, we don't need to wait for getAccountInfo
       // If the mint tx hasn't finished, the buy will fail and we retry
@@ -783,7 +845,7 @@ export class PumpfunSniper extends EventEmitter {
         attempt++;
         
         if (attempt > 1) {
-          const delay = 50 + (attempt - 1) * 300; // 200ms, 500ms, 800ms
+          const delay = 80 + (attempt - 1) * 320; // 80ms, 400ms, 720ms, 1040ms, 1360ms
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -811,7 +873,7 @@ export class PumpfunSniper extends EventEmitter {
           // Check if error contains 0xbc4 in any form (string, message, logs, etc)
           const errorStr = JSON.stringify(buyResult.error || '');
           if (errorStr.includes('0xbc4') || errorStr.includes('AccountNotInitialized') || errorStr.includes('3012')) {
-            console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet, will retry...`);
+            console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet (attempt ${attempt}), will retry...`);
             continue;
           }
         }
