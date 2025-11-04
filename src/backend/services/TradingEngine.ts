@@ -16,7 +16,8 @@ export interface TradeParams {
   slippageBps?: number;
   priorityFee?: number;
   skipTax?: boolean;
-  bondingCurveAddress?: string; // Optional - use extracted bonding curve address
+  bondingCurveAddress?: string; // Optional - use extracted bonding curve PDA
+  associatedBondingCurveAddress?: string; // Optional - use extracted associated bonding curve
   curveData?: {
     virtualTokenReserves?: bigint;
     virtualSolReserves?: bigint;
@@ -89,7 +90,8 @@ export class TradingEngine {
         amountSol: params.amount,
         slippageBps: params.slippageBps || 1000, // Default 10% slippage
         priorityFee: params.priorityFee,
-        bondingCurveAddress: params.bondingCurveAddress ? new PublicKey(params.bondingCurveAddress) : undefined, // Use extracted address
+        bondingCurveAddress: params.bondingCurveAddress ? new PublicKey(params.bondingCurveAddress) : undefined,
+        associatedBondingCurveAddress: params.associatedBondingCurveAddress ? new PublicKey(params.associatedBondingCurveAddress) : undefined,
         curveData: params.curveData ? {
           virtualTokenReserves: params.curveData.virtualTokenReserves || 0n,
           virtualSolReserves: params.curveData.virtualSolReserves || 0n,

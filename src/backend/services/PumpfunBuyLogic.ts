@@ -40,7 +40,8 @@ export interface PumpfunBuyParams {
   amountSol: number; // Amount in SOL to spend
   slippageBps: number; // Slippage in basis points (100 = 1%)
   priorityFee?: number; // Priority fee in SOL
-  bondingCurveAddress?: PublicKey; // Optional - use extracted bonding curve address instead of deriving
+  bondingCurveAddress?: PublicKey; // Optional - use extracted bonding curve PDA
+  associatedBondingCurveAddress?: PublicKey; // Optional - use extracted associated bonding curve
   curveData?: BondingCurveData | null; // Optional bonding curve snapshot
 }
 
@@ -172,7 +173,7 @@ export function calculateBuyAmount(
 export async function buildPumpfunBuyInstruction(
   params: PumpfunBuyParams
 ): Promise<Transaction> {
-  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee, bondingCurveAddress, curveData: providedCurve } = params;
+  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee, bondingCurveAddress, associatedBondingCurveAddress, curveData: providedCurve } = params;
   
   // Use provided bonding curve address OR derive it
   let bondingCurve: PublicKey;
@@ -183,11 +184,20 @@ export async function buildPumpfunBuyInstruction(
     [bondingCurve] = deriveBondingCurvePDA(tokenMint);
     console.log(`🧮 [PumpfunBuy] Derived bonding curve PDA: ${bondingCurve.toBase58()}`);
   }
-  const associatedBondingCurve = await getAssociatedTokenAddress(
-    tokenMint,
-    bondingCurve,
-    true // Allow owner off curve
-  );
+  
+  // Use provided associated bonding curve OR derive it
+  let associatedBondingCurve: PublicKey;
+  if (associatedBondingCurveAddress) {
+    associatedBondingCurve = associatedBondingCurveAddress;
+    console.log(`✅ [PumpfunBuy] Using extracted associated bonding curve: ${associatedBondingCurve.toBase58()}`);
+  } else {
+    associatedBondingCurve = await getAssociatedTokenAddress(
+      tokenMint,
+      bondingCurve,
+      true // Allow owner off curve
+    );
+    console.log(`🧮 [PumpfunBuy] Derived associated bonding curve: ${associatedBondingCurve.toBase58()}`);
+  }
   
   // Get user's associated token account
   const userAta = await getAssociatedTokenAddress(

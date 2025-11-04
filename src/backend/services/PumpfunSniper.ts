@@ -878,8 +878,9 @@ export class PumpfunSniper extends EventEmitter {
         });
       }
       
-      // Find bonding curve account
+      // Find bonding curve PDA and its associated token account
       let bondingCurveAddress: string | null = null;
+      let associatedBondingCurveAddress: string | null = null;
       
       for (const address of accounts) {
         try {
@@ -889,18 +890,27 @@ export class PumpfunSniper extends EventEmitter {
           
           if (!info || !info.data) continue;
           
-          // Check if owned by Pumpfun
-          if (info.owner.toBase58() !== PUMPFUN_PROGRAM_ID) continue;
+          // Check if owned by Pumpfun (bonding curve PDA)
+          if (info.owner.toBase58() === PUMPFUN_PROGRAM_ID) {
+            if (info.data.length < 8) continue;
+            const discriminator = info.data.slice(0, 8);
+            
+            if (discriminator.equals(BONDING_CURVE_DISCRIMINATOR) && info.data.length === 150) {
+              bondingCurveAddress = address;
+              const elapsed = Date.now() - extractStart;
+              console.log(`✅ [PumpfunSniper] Bonding curve PDA found in ${elapsed}ms: ${address.slice(0, 8)}...`);
+            }
+          }
           
-          // Check discriminator
-          if (info.data.length < 8) continue;
-          const discriminator = info.data.slice(0, 8);
-          
-          if (discriminator.equals(BONDING_CURVE_DISCRIMINATOR) && info.data.length === 150) {
-            bondingCurveAddress = address;
-            const elapsed = Date.now() - extractStart;
-            console.log(`✅ [PumpfunSniper] Bonding curve found in ${elapsed}ms: ${address.slice(0, 8)}...`);
-            break;
+          // Check if it's a token account (for associated bonding curve)
+          // Token accounts are owned by Token Program and typically 165 bytes
+          if (info.owner.toBase58() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && info.data.length === 165) {
+            // This might be the associated bonding curve or user ATA
+            // We'll use this if we found the bonding curve PDA
+            if (bondingCurveAddress) {
+              associatedBondingCurveAddress = address;
+              console.log(`✅ [PumpfunSniper] Associated bonding curve found: ${address.slice(0, 8)}...`);
+            }
           }
         } catch (error: any) {
           // Skip invalid accounts
@@ -908,14 +918,53 @@ export class PumpfunSniper extends EventEmitter {
       }
       
       if (!bondingCurveAddress) {
-        console.error('❌ [PumpfunSniper] Bonding curve not found in transaction');
+        console.error('❌ [PumpfunSniper] Bonding curve PDA not found in transaction');
+        return;
+      }
+      
+      // CRITICAL: Poll until bonding curve is FULLY INITIALIZED (not just exists)
+      // The account exists but data might still be zeros - we need to wait for initialization
+      console.log('⏳ [PumpfunSniper] Polling for bonding curve initialization...');
+      const bondingCurvePubkey = new PublicKey(bondingCurveAddress);
+      let curveInitialized = false;
+      const maxPolls = 20; // 1 second max
+      
+      for (let poll = 0; poll < maxPolls; poll++) {
+        try {
+          // @ts-ignore
+          const info = await this.connection!.getAccountInfo(bondingCurvePubkey, { commitment: 'confirmed' } as any);
+          
+          if (info && info.data && info.data.length === 150) {
+            // Check if data after discriminator (byte 8+) has nonzero values
+            const dataAfterDiscriminator = info.data.slice(8);
+            const hasInitializedData = !dataAfterDiscriminator.every((b: number) => b === 0);
+            
+            if (hasInitializedData) {
+              curveInitialized = true;
+              const elapsed = poll * 50;
+              console.log(`✅ [PumpfunSniper] Bonding curve initialized after ${elapsed}ms polling`);
+              break;
+            }
+          }
+        } catch (error: any) {
+          // Continue polling
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (!curveInitialized) {
+        console.error('❌ [PumpfunSniper] Bonding curve not initialized after 1s, aborting');
         return;
       }
       
       console.log('⚡ [PumpfunSniper] Executing buy');
       console.log(`🎯 [PumpfunSniper] Using bonding curve: ${bondingCurveAddress}`);
+      if (associatedBondingCurveAddress) {
+        console.log(`🎯 [PumpfunSniper] Using associated bonding curve: ${associatedBondingCurveAddress}`);
+      }
       
-      // Single attempt - pass the extracted bonding curve address
+      // Single attempt - pass the extracted bonding curve addresses
       const buyResult = await this.tradingEngine.buyToken({
         connection: this.connection, // Use same connection for consistency
         userId: this.config.userId,
@@ -925,7 +974,8 @@ export class PumpfunSniper extends EventEmitter {
         slippageBps: this.config.slippage || 1000, // Default 10% slippage for Pumpfun
         priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
         skipTax: this.config.skipTax || false,
-        bondingCurveAddress, // CRITICAL: Pass the extracted bonding curve address!
+        bondingCurveAddress, // CRITICAL: Pass the extracted bonding curve PDA!
+        associatedBondingCurveAddress, // CRITICAL: Pass the extracted associated bonding curve!
         curveData: curveSnapshot ? {
           virtualTokenReserves: curveSnapshot.virtualTokenReserves,
           virtualSolReserves: curveSnapshot.virtualSolReserves,
