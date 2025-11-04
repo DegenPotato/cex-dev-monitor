@@ -269,14 +269,13 @@ export class PumpfunSniper extends EventEmitter {
       // Set up event handlers after successful connection
       this.ws = this.ws!;
 
-      this.ws.on('open', () => {
-        console.log('🔌 [PumpfunSniper] WebSocket connected');
-        this.subscribeToLogs();
-        this.reconnectAttempts = 0;
-        
-        // Start price update interval
-        this.startPriceUpdateInterval();
-      });
+      // Subscribe immediately after connection (don't wait for 'open' event - it already fired!)
+      console.log('🔌 [PumpfunSniper] WebSocket connected');
+      this.subscribeToLogs();
+      this.reconnectAttempts = 0;
+      
+      // Start price update interval
+      this.startPriceUpdateInterval();
 
       this.ws.on('message', (data) => {
         this.handleWebSocketMessage(data);
