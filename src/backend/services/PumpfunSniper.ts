@@ -155,7 +155,7 @@ export class PumpfunSniper extends EventEmitter {
         attempt += 1;
 
         tx = await this.directRpcRequest('getTransaction', [signature, {
-          commitment: 'processed',
+          commitment: 'confirmed', // getTransaction doesn't support 'processed'
           encoding: 'json',
           maxSupportedTransactionVersion: 0
         }]);
