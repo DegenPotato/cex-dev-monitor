@@ -7,7 +7,6 @@
 import { PublicKey, Logs, Connection } from '@solana/web3.js';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import { deriveBondingCurvePDA as derivePDA } from './PumpfunBuyLogic.js';
 
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -88,42 +87,6 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
   }
 
-  /**
-   * Derive bonding curve PDA address from token mint
-   */
-  private deriveBondingCurvePDA(tokenMint: string): string {
-    const [pda] = derivePDA(new PublicKey(tokenMint));
-    return pda.toBase58();
-  }
-
-  /**
-   * Wait for bonding curve PDA to exist using processed commitment
-   * Much faster than waiting for confirmations - typically 100-200ms
-   */
-  private async waitForBondingCurvePDA(bondingCurvePDA: string): Promise<boolean> {
-    const maxAttempts = 20; // ~2 seconds total
-    
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const accountInfo = await this.directRpcRequest('getAccountInfo', [
-          bondingCurvePDA,
-          { commitment: 'processed', encoding: 'base64' }
-        ]);
-        
-        if (accountInfo?.value) {
-          console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${i + 1} attempts (~${(i + 1) * 100}ms)`);
-          return true;
-        }
-      } catch (error: any) {
-        // Ignore errors, keep polling
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not found after 2s');
-    return false;
-  }
 
 
   /**
@@ -823,29 +786,21 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for bonding curve PDA to exist (processed commitment = fastest)
-      // This is much faster and more reliable than retry-on-error approach
-      const bondingCurvePDA = this.deriveBondingCurvePDA(tokenMint);
-      const pdaReady = await this.waitForBondingCurvePDA(bondingCurvePDA);
-      
-      if (!pdaReady) {
-        console.error('❌ [PumpfunSniper] Bonding curve PDA never appeared, aborting snipe');
-        return;
-      }
-
-      // Execute buy - PDA is confirmed to exist
-      console.log('⚡ [PumpfunSniper] Executing buy (PDA verified)');
+      // Derive PDA instantly and fire buy immediately
+      // Test shows: PDA derivation = 0ms, but getAccountInfo times out for 6+ seconds
+      // Solana checks account existence during tx processing - no need to poll!
+      console.log('⚡ [PumpfunSniper] Executing buy with instant PDA derivation (block 0 mode)');
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 3; // Fewer retries needed since PDA is verified
+      const maxAttempts = 6; // Multiple fast retries to catch PDA initialization
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          // Light retries for network issues only
-          const delay = 100;
+          // Fast retries: 0ms, 50ms, 100ms, 150ms, 200ms, 250ms (total <1s)
+          const delay = (attempt - 1) * 50;
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -869,10 +824,18 @@ export class PumpfunSniper extends EventEmitter {
         } : undefined
         });
         
-        // If failed, check if worth retrying (network issues only)
+        // If failed, check if we should retry
         if (!buyResult.success) {
+          const errorStr = JSON.stringify(buyResult.error || '');
+          const is0xbc4 = errorStr.includes('0xbc4') || errorStr.includes('AccountNotInitialized') || errorStr.includes('3012');
+          
+          if (is0xbc4) {
+            console.log(`⏳ [PumpfunSniper] Account not initialized yet (attempt ${attempt}), retrying...`);
+            continue;
+          }
+          
+          // Other errors - log and retry in case it's transient
           console.warn(`⚠️ [PumpfunSniper] Buy failed (attempt ${attempt}): ${buyResult.error}`);
-          // Retry for network/transient errors only
           continue;
         }
       }
