@@ -843,158 +843,18 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
-      // Extract bonding curve from creation transaction
-      // Don't derive - extract the actual account that was created
-      console.log('⏳ [PumpfunSniper] Extracting bonding curve from transaction...');
+      // Simple strategy: Try immediately, retry once after 1000ms if failed
+      console.log('⚡ [PumpfunSniper] Attempting buy (attempt 1/2)...');
       
-      const extractStart = Date.now();
-      const BONDING_CURVE_DISCRIMINATOR = Buffer.from('17b7f83760d8ac60', 'hex');
-      const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-      
-      // Get full transaction with all account keys
-      const tx = await this.directRpcRequest('getTransaction', [
-        signature,
-        { 
-          encoding: 'jsonParsed', 
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0 
-        }
-      ]);
-      
-      if (!tx) {
-        console.error('❌ [PumpfunSniper] Could not fetch creation transaction');
-        return;
-      }
-      
-      // Extract all account addresses
-      const accounts: string[] = [];
-      if (tx.transaction?.message?.accountKeys) {
-        tx.transaction.message.accountKeys.forEach((key: any) => {
-          if (typeof key === 'string') {
-            accounts.push(key);
-          } else if (key?.pubkey) {
-            accounts.push(key.pubkey);
-          }
-        });
-      }
-      
-      // Find bonding curve PDA only - associated token account will be derived
-      let bondingCurveAddress: string | null = null;
-      
-      for (const address of accounts) {
-        try {
-          const pubkey = new PublicKey(address);
-          // @ts-ignore - connection is already checked to be non-null
-          const info = await this.connection!.getAccountInfo(pubkey, { commitment: 'confirmed' } as any);
-          
-          if (!info || !info.data) continue;
-          
-          // Check if owned by Pumpfun (bonding curve PDA)
-          if (info.owner.toBase58() === PUMPFUN_PROGRAM_ID) {
-            if (info.data.length < 8) continue;
-            const discriminator = info.data.slice(0, 8);
-            
-            if (discriminator.equals(BONDING_CURVE_DISCRIMINATOR) && info.data.length === 150) {
-              bondingCurveAddress = address;
-              const elapsed = Date.now() - extractStart;
-              console.log(`✅ [PumpfunSniper] Bonding curve PDA found in ${elapsed}ms: ${address.slice(0, 8)}...`);
-              break; // Found it, stop searching
-            }
-          }
-        } catch (error: any) {
-          // Skip invalid accounts
-        }
-      }
-      
-      if (!bondingCurveAddress) {
-        console.error('❌ [PumpfunSniper] Bonding curve PDA not found in transaction');
-        return;
-      }
-      
-      // CRITICAL: Poll until bonding curve is FULLY INITIALIZED (not just exists)
-      // The account exists but data might still be zeros - we need to wait for initialization
-      console.log('⏳ [PumpfunSniper] Polling for bonding curve initialization...');
-      const bondingCurvePubkey = new PublicKey(bondingCurveAddress);
-      let curveInitialized = false;
-      const maxPolls = 20; // 1 second max
-      
-      for (let poll = 0; poll < maxPolls; poll++) {
-        try {
-          // @ts-ignore
-          const info = await this.connection!.getAccountInfo(bondingCurvePubkey, { commitment: 'confirmed' } as any);
-          
-          if (info && info.data && info.data.length === 150) {
-            // Check if data after discriminator (byte 8+) has nonzero values
-            const dataAfterDiscriminator = info.data.slice(8);
-            const hasInitializedData = !dataAfterDiscriminator.every((b: number) => b === 0);
-            
-            if (hasInitializedData) {
-              curveInitialized = true;
-              const elapsed = poll * 50;
-              console.log(`✅ [PumpfunSniper] Bonding curve initialized after ${elapsed}ms polling`);
-              break;
-            }
-          }
-        } catch (error: any) {
-          // Continue polling
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-      if (!curveInitialized) {
-        console.error('❌ [PumpfunSniper] Bonding curve not initialized after 1s, aborting');
-        return;
-      }
-      
-      // CRITICAL: Also check that the associated bonding curve (token account) exists
-      console.log('⏳ [PumpfunSniper] Verifying associated bonding curve exists...');
-      const { getAssociatedTokenAddress } = await import('@solana/spl-token');
-      const associatedBondingCurve = await getAssociatedTokenAddress(
-        new PublicKey(tokenMint),
-        bondingCurvePubkey,
-        true // Allow owner off curve
-      );
-      
-      let ataExists = false;
-      for (let poll = 0; poll < 10; poll++) {
-        try {
-          // @ts-ignore
-          const ataInfo = await this.connection!.getAccountInfo(associatedBondingCurve, { commitment: 'confirmed' } as any);
-          if (ataInfo && ataInfo.data && ataInfo.data.length === 165) {
-            ataExists = true;
-            const elapsed = poll * 50;
-            console.log(`✅ [PumpfunSniper] Associated bonding curve exists after ${elapsed}ms`);
-            break;
-          }
-        } catch (error: any) {
-          // Continue
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-      if (!ataExists) {
-        console.error('❌ [PumpfunSniper] Associated bonding curve not found after 500ms, aborting');
-        return;
-      }
-      
-      console.log('⚡ [PumpfunSniper] Executing buy');
-      console.log(`🎯 [PumpfunSniper] Using extracted bonding curve: ${bondingCurveAddress}`);
-      console.log(`🎯 [PumpfunSniper] Using verified associated bonding curve: ${associatedBondingCurve.toBase58()}`);
-      
-      // Single attempt - ONLY pass bonding curve PDA, let it derive the associated bonding curve
-      // There can be multiple token accounts in the tx, we need the correct one for THIS bonding curve
-      const buyResult = await this.tradingEngine.buyToken({
-        connection: this.connection, // Use same connection for consistency
+      let buyResult = await this.tradingEngine.buyToken({
+        connection: this.connection,
         userId: this.config.userId,
         walletAddress: this.config.wallet,
         tokenMint,
         amount: this.config.buyAmount,
-        slippageBps: this.config.slippage || 1000, // Default 10% slippage for Pumpfun
-        priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
+        slippageBps: this.config.slippage || 1000,
+        priorityFee: this.config.priorityFee ?? 0.001,
         skipTax: this.config.skipTax || false,
-        bondingCurveAddress, // CRITICAL: Pass the extracted bonding curve PDA!
-        // DON'T pass associatedBondingCurveAddress - let it derive the correct one
         curveData: curveSnapshot ? {
           virtualTokenReserves: curveSnapshot.virtualTokenReserves,
           virtualSolReserves: curveSnapshot.virtualSolReserves,
@@ -1004,6 +864,34 @@ export class PumpfunSniper extends EventEmitter {
           complete: curveSnapshot.complete ?? false
         } : undefined
       });
+      
+      // If first attempt failed, wait 1000ms and retry
+      if (!buyResult?.success) {
+        console.log('⚠️ [PumpfunSniper] First attempt failed, waiting 1000ms before retry...');
+        console.log(`   Error: ${buyResult?.error || 'Unknown'}`);
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        console.log('⚡ [PumpfunSniper] Attempting buy (attempt 2/2)...');
+        buyResult = await this.tradingEngine.buyToken({
+          connection: this.connection,
+          userId: this.config.userId,
+          walletAddress: this.config.wallet,
+          tokenMint,
+          amount: this.config.buyAmount,
+          slippageBps: this.config.slippage || 1000,
+          priorityFee: this.config.priorityFee ?? 0.001,
+          skipTax: this.config.skipTax || false,
+          curveData: curveSnapshot ? {
+            virtualTokenReserves: curveSnapshot.virtualTokenReserves,
+            virtualSolReserves: curveSnapshot.virtualSolReserves,
+            realTokenReserves: curveSnapshot.realTokenReserves,
+            realSolReserves: curveSnapshot.realSolReserves,
+            tokenTotalSupply: curveSnapshot.tokenTotalSupply,
+            complete: curveSnapshot.complete ?? false
+          } : undefined
+        });
+      }
 
       if (!buyResult?.success) {
         console.error(`❌ [PumpfunSniper] Buy failed:`, buyResult.error);
