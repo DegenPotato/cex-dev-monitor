@@ -7,7 +7,6 @@
 import { PublicKey, Logs, Connection } from '@solana/web3.js';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import { deriveBondingCurvePDA } from './PumpfunBuyLogic.js';
 
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -223,53 +222,6 @@ export class PumpfunSniper extends EventEmitter {
   }
 
 
-  private async waitForBondingCurveAccount(
-    tokenMint: string,
-    timeoutMs = 3000,
-    pollIntervalMs = 80
-  ): Promise<boolean> {
-    try {
-      const [bondingCurve] = deriveBondingCurvePDA(new PublicKey(tokenMint));
-      const startTime = Date.now();
-      let attempt = 0;
-
-      while (Date.now() - startTime < timeoutMs) {
-        attempt += 1;
-
-        try {
-          const accountInfo = await this.directRpcRequest('getAccountInfo', [
-            bondingCurve.toBase58(),
-            { commitment: 'processed', encoding: 'base64' }
-          ]);
-
-          // directRpcRequest returns data.result, which for getAccountInfo is { context, value }
-          // value is null if account doesn't exist, or an object with data/owner/etc if it does
-          if (accountInfo?.value) {
-            console.log(
-              `✅ [PumpfunSniper] Bonding curve PDA visible after ${attempt} attempts (${Date.now() - startTime}ms)`
-            );
-            return true;
-          }
-          
-          if (attempt === 1 || attempt % 10 === 0) {
-            console.log(`⌛ [PumpfunSniper] PDA check ${attempt}: value=${accountInfo?.value ? 'exists' : 'null'}`);
-          }
-        } catch (error: any) {
-          if (attempt === 1 || attempt % 10 === 0) {
-            console.warn(`⚠️ [PumpfunSniper] PDA check ${attempt} error:`, error.message);
-          }
-        }
-
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-      }
-
-      console.warn(`⚠️ [PumpfunSniper] Bonding curve PDA still unavailable after ${timeoutMs}ms`);
-      return false;
-    } catch (error) {
-      console.error('❌ [PumpfunSniper] Error while waiting for bonding curve PDA:', error);
-      return false;
-    }
-  }
 
   /**
    * Get trading engine instance
@@ -646,7 +598,7 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe
+      // Execute snipe immediately
       await this.executeSnipe(tokenMint, bondingCurve);
 
     } catch (error: any) {
@@ -818,15 +770,24 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for bonding curve PDA to become visible (fast polling)
-      const ready = await this.waitForBondingCurveAccount(tokenMint, 3000, 80);
-      if (!ready) {
-        console.warn('⚠️ [PumpfunSniper] Bonding curve PDA not available fast enough, aborting snipe');
-        this.snipedTokens.delete(tokenMint);
-        return;
-      }
-
-      const buyResult = await this.tradingEngine.buyToken({
+      // Execute buy immediately with retry logic
+      // The PDA address is derived instantly, we don't need to wait for getAccountInfo
+      // If the mint tx hasn't finished, the buy will fail and we retry
+      console.log('⚡ [PumpfunSniper] Executing buy with automatic retry on initialization race');
+      
+      let buyResult = null;
+      let attempt = 0;
+      const maxAttempts = 3;
+      
+      while (attempt < maxAttempts && !buyResult?.success) {
+        attempt++;
+        
+        if (attempt > 1) {
+          console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts}`);
+          await new Promise(resolve => setTimeout(resolve, 150 * attempt)); // 150ms, 300ms
+        }
+        
+        buyResult = await this.tradingEngine.buyToken({
         userId: this.config.userId,
         walletAddress: this.config.wallet,
         tokenMint,
@@ -842,9 +803,21 @@ export class PumpfunSniper extends EventEmitter {
           tokenTotalSupply: curveSnapshot.tokenTotalSupply,
           complete: curveSnapshot.complete ?? false
         } : undefined
-      });
+        });
+        
+        // Check for AccountNotInitialized error (0xbc4) - mint tx still processing
+        if (!buyResult.success && buyResult.error?.includes('0xbc4')) {
+          console.log(`⏳ [PumpfunSniper] Bonding curve not initialized yet, will retry...`);
+          continue;
+        }
+        
+        // Other errors - don't retry
+        if (!buyResult.success) {
+          break;
+        }
+      }
 
-      if (!buyResult.success) {
+      if (!buyResult?.success) {
         console.error(`❌ [PumpfunSniper] Buy failed:`, buyResult.error);
         this.snipedTokens.delete(tokenMint); // Remove from sniped on failure
         
