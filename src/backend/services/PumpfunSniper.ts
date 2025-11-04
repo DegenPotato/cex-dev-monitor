@@ -847,7 +847,12 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
-      console.log('⚡ [PumpfunSniper] PDA confirmed, executing buy');
+      // PDA exists but may not be fully initialized yet
+      // Add small delay to ensure program state is ready (avoiding 3012 error)
+      console.log('⏳ [PumpfunSniper] PDA found, waiting for full initialization...');
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      console.log('⚡ [PumpfunSniper] PDA fully initialized, executing buy');
       
       let buyResult = null;
       let attempt = 0;

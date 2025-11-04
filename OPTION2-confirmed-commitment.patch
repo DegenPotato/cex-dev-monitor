@@ -1,0 +1,19 @@
+// If Option 1 (150ms delay) still gives 3012 errors, apply this patch:
+// Use 'confirmed' commitment instead of 'processed' for PDA polling
+
+In PumpfunSniper.ts line 104-107:
+
+OLD:
+const accountInfo = await this.directRpcRequest('getAccountInfo', [
+  pdaAddress,
+  { encoding: 'base64', commitment: 'processed' }
+]);
+
+NEW:
+const accountInfo = await this.directRpcRequest('getAccountInfo', [
+  pdaAddress,
+  { encoding: 'base64', commitment: 'confirmed' }  // Changed to confirmed
+]);
+
+This will take 400-800ms instead of 50-60ms, but guarantees full initialization.
+Total timeline: ~400-800ms → Block 2-3 (still competitive)
