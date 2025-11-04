@@ -359,33 +359,47 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Look for any relevant instruction (be more permissive)
-      const hasRelevantInstruction = logs.logs.some(log => {
-        const lowerLog = log.toLowerCase();
-        return lowerLog.includes('create') || 
-               lowerLog.includes('initialize') ||
-               lowerLog.includes('mint') ||
-               lowerLog.includes('curve') ||
-               lowerLog.includes('bond') ||
-               lowerLog.includes('invoke') ||
-               lowerLog.includes('instruction');
-      });
-
-      if (!hasRelevantInstruction) {
-        console.log(`⏭️ [PumpfunSniper] No relevant instruction found`);
+      // Check instruction type - we only want new token creation, not buy/sell
+      const isBuyOrSell = logs.logs.some(log => 
+        log.includes('Instruction: Buy') || 
+        log.includes('Instruction: Sell') ||
+        log.includes('Instruction: ExtendAccount')
+      );
+      
+      if (isBuyOrSell) {
+        // This is a trade on an existing token, not a new launch
         return;
       }
 
-      console.log(`🎆 [PumpfunSniper] POTENTIAL NEW TOKEN DETECTED!`);
-      console.log(`📄 [PumpfunSniper] Transaction signature: ${logs.signature}`);
-      console.log(`📃 [PumpfunSniper] Relevant logs:`);
-      logs.logs.forEach((log, index) => {
-        if (log.toLowerCase().includes('create') || 
-            log.toLowerCase().includes('mint') || 
-            log.toLowerCase().includes('program 6ef8')) {
-          console.log(`  ${index}: ${log}`);
-        }
+      // Look for actual token creation patterns
+      // Pumpfun uses specific instructions for creating new bonding curves
+      const hasCreationPattern = logs.logs.some(log => {
+        const lowerLog = log.toLowerCase();
+        // Look for patterns that indicate NEW token creation
+        return (lowerLog.includes('create') && !log.includes('AToken')) || // Create but not AToken
+               lowerLog.includes('initialize bonding') ||
+               lowerLog.includes('new bonding curve') ||
+               lowerLog.includes('deploy') ||
+               (lowerLog.includes('instruction:') && !lowerLog.includes('buy') && !lowerLog.includes('sell'));
       });
+
+      if (!hasCreationPattern) {
+        // Check if this might be a creation based on log count and structure
+        // New token creations typically have more complex log patterns
+        const hasComplexStructure = logs.logs.length > 30 && 
+                                    !isBuyOrSell && 
+                                    logs.logs.filter(log => log.includes('Program 6EF8')).length > 2;
+        
+        if (!hasComplexStructure) {
+          return;
+        }
+        
+        console.log(`🔍 [PumpfunSniper] Complex transaction detected, analyzing further...`);
+      }
+
+      console.log(`🎆 [PumpfunSniper] NEW TOKEN LAUNCH DETECTED!`);
+      console.log(`📄 [PumpfunSniper] Transaction: ${logs.signature}`);
+      console.log(`📃 [PumpfunSniper] Log count: ${logs.logs.length}`);
       
       // Parse transaction to get token details
       const tokenDetails = await this.parseTokenCreation(logs);
@@ -425,21 +439,39 @@ export class PumpfunSniper extends EventEmitter {
       // Pumpfun typically logs the mint address when creating a new token
       let tokenMint: string | null = null;
       
-      // Try to extract mint from logs
+      // Try to extract mint from logs - look in Program data logs first
       for (const log of logs.logs) {
-        // Look for base58 encoded addresses (44 characters)
-        const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{44}/g);
-        if (addressMatch) {
-          // Filter out the Pumpfun program ID itself
-          const potentialMints = addressMatch.filter((addr: string) => 
-            addr !== PUMPFUN_PROGRAM_ID.toString() &&
-            addr !== '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P'
-          );
-          
-          if (potentialMints.length > 0) {
-            tokenMint = potentialMints[0]; // Take the first non-program address
-            console.log(`🎯 [PumpfunSniper] Extracted potential token mint: ${tokenMint}`);
+        // Program data logs often contain the token mint
+        if (log.includes('Program data:')) {
+          // Extract base58 addresses from data
+          const dataSection = log.substring(log.indexOf('Program data:') + 13);
+          const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{44}/g);
+          if (addressMatch && addressMatch.length > 0) {
+            tokenMint = addressMatch[0];
+            console.log(`🎯 [PumpfunSniper] Extracted token mint from data: ${tokenMint}`);
             break;
+          }
+        }
+        
+        // Fallback: Look for any base58 addresses
+        if (!tokenMint) {
+          const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{44}/g);
+          if (addressMatch) {
+            // Filter out known program IDs
+            const potentialMints = addressMatch.filter((addr: string) => 
+              addr !== PUMPFUN_PROGRAM_ID.toString() &&
+              addr !== '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' &&
+              !addr.startsWith('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') &&
+              !addr.startsWith('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') &&
+              !addr.startsWith('11111111111111111111111111111111') &&
+              !addr.startsWith('ComputeBudget111111111111111111111111111111')
+            );
+            
+            if (potentialMints.length > 0) {
+              tokenMint = potentialMints[0];
+              console.log(`🎯 [PumpfunSniper] Extracted potential token mint: ${tokenMint}`);
+              break;
+            }
           }
         }
       }
@@ -459,54 +491,6 @@ export class PumpfunSniper extends EventEmitter {
       };
     } catch (error) {
       console.error('❌ [PumpfunSniper] Error parsing token creation:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch bonding curve data from chain
-   */
-  private async fetchBondingCurveData(tokenMint: string): Promise<BondingCurve | null> {
-    if (!this.proxiedConnection) {
-      return null;
-    }
-
-    try {
-      // Use proxied connection with RPC rotation
-      return await this.proxiedConnection.withProxy(async (connection) => {
-        // Derive bonding curve PDA (simplified - you need actual derivation logic)
-        const [bondingCurvePDA] = PublicKey.findProgramAddressSync(
-          [
-            Buffer.from('bonding_curve'),
-            new PublicKey(tokenMint).toBuffer()
-          ],
-          PUMPFUN_PROGRAM_ID
-        );
-
-        // Fetch account data
-        const accountInfo = await connection.getAccountInfo(bondingCurvePDA);
-        
-        if (!accountInfo) {
-          return null;
-        }
-
-        // Parse bonding curve data (simplified structure)
-        // In production, use proper borsh schema
-        return {
-          tokenMint: new PublicKey(tokenMint),
-          virtualSolReserves: BigInt(1000000000), // 1 SOL in lamports
-          virtualTokenReserves: BigInt(1000000000000), // Example
-          realSolReserves: BigInt(0),
-          realTokenReserves: BigInt(0),
-          tokenTotalSupply: BigInt(1000000000000),
-          complete: false,
-          bondingCurveAddress: bondingCurvePDA,
-          createdAt: Date.now()
-        };
-      });
-
-    } catch (error: any) {
-      console.error('❌ [PumpfunSniper] Error fetching bonding curve:', error.message);
       return null;
     }
   }
