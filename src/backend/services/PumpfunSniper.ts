@@ -8,6 +8,7 @@ import { PublicKey, Logs, Connection } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
+import { deriveBondingCurvePDA } from './PumpfunBuyLogic.js';
 
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -147,6 +148,36 @@ export class PumpfunSniper extends EventEmitter {
       return info.owner.equals(TOKEN_PROGRAM_ID) && info.data.length === 82;
     } catch (error) {
       console.warn('⚠️ [PumpfunSniper] Failed to fetch account info for candidate mint:', address, error);
+      return false;
+    }
+  }
+
+  private async waitForBondingCurveAccount(tokenMint: string, timeoutMs = 5000): Promise<boolean> {
+    if (!this.connection) {
+      return false;
+    }
+
+    try {
+      const [bondingCurve] = deriveBondingCurvePDA(new PublicKey(tokenMint));
+      const startTime = Date.now();
+      let attempt = 0;
+
+      while (Date.now() - startTime < timeoutMs) {
+        attempt += 1;
+        const accountInfo = await this.connection.getAccountInfo(bondingCurve, 'processed');
+        if (accountInfo) {
+          console.log(`✅ [PumpfunSniper] Bonding curve PDA ready after ${attempt} attempt(s) (${Date.now() - startTime}ms)`);
+          return true;
+        }
+
+        const delayMs = Math.min(150 + attempt * 75, 600);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      console.warn(`⚠️ [PumpfunSniper] Bonding curve PDA still unavailable after ${timeoutMs}ms`);
+      return false;
+    } catch (error) {
+      console.error('❌ [PumpfunSniper] Error while waiting for bonding curve PDA:', error);
       return false;
     }
   }
@@ -733,6 +764,10 @@ export class PumpfunSniper extends EventEmitter {
       this.snipedTokens.add(tokenMint);
 
       // Execute LIVE buy
+      if (!(await this.waitForBondingCurveAccount(tokenMint))) {
+        throw new Error('Bonding curve PDA not found in time');
+      }
+
       const buyResult = await this.tradingEngine.buyToken({
         userId: this.config.userId,
         walletAddress: this.config.wallet,
