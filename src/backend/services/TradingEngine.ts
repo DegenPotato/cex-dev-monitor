@@ -3,8 +3,8 @@
  */
 
 import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { queryAll } from '../database/helpers.js';
-import { decrypt } from '../utils/encryption.js';
+import { queryOne } from '../database/helpers.js';
+import { walletStorageServiceCompat } from './WalletStorageServiceCompat.js';
 import { executePumpfunBuy } from './PumpfunBuyLogic.js';
 
 export interface TradeParams {
@@ -114,38 +114,28 @@ export class TradingEngine {
    */
   private async getWalletKeypair(walletAddress: string): Promise<Keypair | null> {
     try {
-      // Query wallet from database
-      const wallets = await queryAll<any>(
-        `SELECT * FROM trading_wallets WHERE public_key = ? AND is_deleted = 0 LIMIT 1`,
+      // Find wallet record and owner
+      const wallet = await queryOne<{
+        id: number;
+        user_id: number;
+      }>(
+        `SELECT id, user_id FROM trading_wallets WHERE public_key = ? AND is_deleted = 0 LIMIT 1`,
         [walletAddress]
       );
-      
-      if (wallets.length === 0) {
+
+      if (!wallet) {
         console.error('❌ [TradingEngine] Wallet not found:', walletAddress);
         return null;
       }
-      
-      const wallet = wallets[0];
-      
-      // Decrypt private key
-      const privateKeyString = decrypt(wallet.private_key);
-      
-      // Handle different private key formats
-      let privateKeyBytes: Uint8Array;
-      
+
       try {
-        // Try parsing as JSON array first (common format)
-        privateKeyBytes = Uint8Array.from(JSON.parse(privateKeyString));
-      } catch {
-        // Fallback to hex string format
-        privateKeyBytes = Uint8Array.from(
-          privateKeyString.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
-        );
+        // Decrypt using the same service as Fetcher (supports both schemas)
+        const keypair = await walletStorageServiceCompat.getWalletKeypair(wallet.id, wallet.user_id);
+        return keypair;
+      } catch (error: any) {
+        console.error('❌ [TradingEngine] Wallet decryption failed:', error.message || error);
+        return null;
       }
-      
-      // Create keypair
-      return Keypair.fromSecretKey(privateKeyBytes);
-      
     } catch (error: any) {
       console.error('❌ [TradingEngine] Failed to get wallet:', error);
       return null;
