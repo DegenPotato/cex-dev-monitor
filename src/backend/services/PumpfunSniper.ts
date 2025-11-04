@@ -87,100 +87,10 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
   }
 
-  /**
-   * Wait for bonding curve PDA to be PROPERLY initialized
-   * Uses 'confirmed' commitment to avoid fork/slot mismatch with tx execution
-   * 
-   * Checks (in order):
-   * 1. Owner == Pumpfun Program
-   * 2. Discriminator == 17b7f83760d8ac60 (Anchor account type)
-   * 3. Data length >= 120 bytes
-   * 
-   * Tests show: ~300-500ms with confirmed (vs ~104-132ms with processed)
-   * Critical: Must use same commitment level as tx execution to avoid 3012!
-   */
-  private async waitForPDAInitialized(pdaAddress: string, maxAttempts: number = 15): Promise<boolean> {
-    const startTime = Date.now();
-    const EXPECTED_CURVE_SIZE = 120;
-    const EXPECTED_DISCRIMINATOR = Buffer.from('17b7f83760d8ac60', 'hex'); // From live test
-    const PUMPFUN_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-    let attempts = 0;
-    
-    while (attempts < maxAttempts) {
-      attempts++;
-      
-      try {
-        const accountInfo = await this.directRpcRequest('getAccountInfo', [
-          pdaAddress,
-          { encoding: 'base64', commitment: 'confirmed' } // Use confirmed to match tx execution slot
-        ]);
-        
-        if (!accountInfo?.value) {
-          continue; // Account doesn't exist yet
-        }
-        
-        // 1. Owner check - must be Pumpfun program
-        if (accountInfo.value.owner !== PUMPFUN_PROGRAM) {
-          if (this.verboseLogging) {
-            console.log(`   [PumpfunSniper] PDA wrong owner: ${accountInfo.value.owner}`);
-          }
-          continue;
-        }
-        
-        // 2. Data must exist
-        if (!accountInfo.value.data || !accountInfo.value.data[0]) {
-          continue;
-        }
-        
-        const decoded = Buffer.from(accountInfo.value.data[0], 'base64');
-        
-        // 3. Length check
-        if (decoded.length < EXPECTED_CURVE_SIZE) {
-          if (this.verboseLogging) {
-            console.log(`   [PumpfunSniper] PDA data too small: ${decoded.length} bytes`);
-          }
-          continue;
-        }
-        
-        // 4. Discriminator check (first 8 bytes = Anchor account type)
-        const discriminator = decoded.slice(0, 8);
-        if (!discriminator.equals(EXPECTED_DISCRIMINATOR)) {
-          if (this.verboseLogging) {
-            console.log(`   [PumpfunSniper] PDA wrong discriminator: ${discriminator.toString('hex')}`);
-          }
-          continue;
-        }
-        
-        // ALL CHECKS PASSED - PDA is properly initialized!
-        const elapsed = Date.now() - startTime;
-        console.log(`✅ [PumpfunSniper] PDA properly initialized after ${elapsed}ms (${decoded.length} bytes, disc: ${discriminator.toString('hex')})`);
-        return true;
-        
-      } catch (error) {
-        // Ignore and retry
-      }
-      
-      // Poll every 50ms (targeting ~110-120ms window from tests)
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    const elapsed = Date.now() - startTime;
-    console.warn(`⚠️ [PumpfunSniper] PDA not properly initialized after ${elapsed}ms`);
-    return false;
-  }
-
-  /**
-   * Derive bonding curve PDA address from token mint
-   */
-  private deriveBondingCurvePDA(tokenMint: string): string {
-    const mint = new PublicKey(tokenMint);
-    const program = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
-    const [pda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('bonding-curve'), mint.toBuffer()],
-      program
-    );
-    return pda.toBase58();
-  }
+  // Removed waitForPDAInitialized and deriveBondingCurvePDA
+  // These methods validated PDA state but didn't prevent 3012 errors
+  // The program needs the creation TRANSACTION to be confirmed, not just PDA state
+  // See waitForCreationTxConfirmed below for the correct approach
 
 
   /**
@@ -701,7 +611,7 @@ export class PumpfunSniper extends EventEmitter {
       }
 
       // Execute snipe immediately - no waiting for block 0 entry
-      await this.executeSnipe(tokenMint, bondingCurve);
+      await this.executeSnipe(logs.signature, tokenMint, bondingCurve);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -860,9 +770,39 @@ export class PumpfunSniper extends EventEmitter {
   }
 
   /**
+   * Wait for creation transaction to be confirmed
+   */
+  private async waitForCreationTxConfirmed(signature: string, maxAttempts: number = 20): Promise<boolean> {
+    const startTime = Date.now();
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const tx = await this.directRpcRequest('getTransaction', [
+          signature,
+          { commitment: 'confirmed', encoding: 'json', maxSupportedTransactionVersion: 0 }
+        ]);
+        
+        if (tx) {
+          const elapsed = Date.now() - startTime;
+          console.log(`✅ [PumpfunSniper] Creation tx confirmed after ${elapsed}ms`);
+          return true;
+        }
+      } catch (error) {
+        // Ignore and retry
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    const elapsed = Date.now() - startTime;
+    console.warn(`⚠️ [PumpfunSniper] Creation tx not confirmed after ${elapsed}ms`);
+    return false;
+  }
+
+  /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
+  private async executeSnipe(signature: string, tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -880,19 +820,18 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for PDA to be properly initialized with 'confirmed' commitment
-      // CRITICAL: Must use 'confirmed' to avoid fork mismatch (processed caused 3012 errors)
-      // Tests show: ~300-500ms but guarantees same slot as tx execution
-      const pdaAddress = this.deriveBondingCurvePDA(tokenMint);
-      console.log(`⏳ [PumpfunSniper] Waiting for PDA initialization: ${pdaAddress}`);
+      // Wait for CREATION TRANSACTION to be confirmed
+      // CRITICAL: PDA validation passes but program still sees uninitialized
+      // Must wait for the tx itself to be confirmed, not just query PDA state!
+      console.log(`⏳ [PumpfunSniper] Waiting for creation tx to be confirmed...`);
       
-      const pdaInitialized = await this.waitForPDAInitialized(pdaAddress);
-      if (!pdaInitialized) {
-        console.error('❌ [PumpfunSniper] PDA not initialized, aborting');
+      const txConfirmed = await this.waitForCreationTxConfirmed(signature);
+      if (!txConfirmed) {
+        console.error('❌ [PumpfunSniper] Creation tx not confirmed, aborting');
         return;
       }
       
-      console.log('⚡ [PumpfunSniper] PDA fully initialized, executing buy');
+      console.log('⚡ [PumpfunSniper] Creation tx confirmed, executing buy');
       
       let buyResult = null;
       let attempt = 0;
