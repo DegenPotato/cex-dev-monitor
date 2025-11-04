@@ -5,6 +5,7 @@
  */
 
 import { PublicKey, Logs, Connection } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 
@@ -84,11 +85,31 @@ export class PumpfunSniper extends EventEmitter {
 
   private isValidMintAddress(address: string): boolean {
     try {
-      // Validates base58 length and curve by attempting to construct a PublicKey
-      // If the constructor throws, the address is not a valid Solana public key
       new PublicKey(address);
       return true;
     } catch {
+      return false;
+    }
+  }
+
+  private async isUsableMintAddress(address: string): Promise<boolean> {
+    if (!this.isValidMintAddress(address)) {
+      return false;
+    }
+
+    if (!this.connection) {
+      return true; // fall back to structural check if connection unavailable
+    }
+
+    try {
+      const info = await this.connection.getAccountInfo(new PublicKey(address));
+      if (!info) {
+        return false;
+      }
+      // Pumpfun mints are SPL Token mint accounts: owned by Token Program with 82-byte data
+      return info.owner.equals(TOKEN_PROGRAM_ID) && info.data.length === 82;
+    } catch (error) {
+      console.warn('⚠️ [PumpfunSniper] Failed to fetch account info for candidate mint:', address, error);
       return false;
     }
   }
@@ -483,15 +504,16 @@ export class PumpfunSniper extends EventEmitter {
       const isFilteredAddress = (addr: string) => (
         addr === PUMPFUN_PROGRAM_ID.toString() ||
         addr === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P' ||
+        addr === 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s' ||
         addr.startsWith('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') ||
         addr.startsWith('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') ||
         addr.startsWith('11111111111111111111111111111111') ||
         addr.startsWith('ComputeBudget111111111111111111111111111111')
       );
 
-      const tryAssignMint = (candidate: string): boolean => {
+      const tryAssignMint = async (candidate: string): Promise<boolean> => {
         if (!candidate || isFilteredAddress(candidate)) return false;
-        if (!this.isValidMintAddress(candidate)) return false;
+        if (!(await this.isUsableMintAddress(candidate))) return false;
 
         tokenMint = candidate;
         console.log(`🎯 [PumpfunSniper] Extracted token mint: ${tokenMint}`);
@@ -507,7 +529,7 @@ export class PumpfunSniper extends EventEmitter {
           const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
           if (addressMatch) {
             for (const candidate of addressMatch) {
-              if (tryAssignMint(candidate)) break;
+              if (await tryAssignMint(candidate)) break;
             }
           }
         }
@@ -516,7 +538,7 @@ export class PumpfunSniper extends EventEmitter {
           const addressMatch = log.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
           if (addressMatch) {
             for (const candidate of addressMatch) {
-              if (tryAssignMint(candidate)) break;
+              if (await tryAssignMint(candidate)) break;
             }
           }
         }
