@@ -878,9 +878,8 @@ export class PumpfunSniper extends EventEmitter {
         });
       }
       
-      // Find bonding curve PDA and its associated token account
+      // Find bonding curve PDA only - associated token account will be derived
       let bondingCurveAddress: string | null = null;
-      let associatedBondingCurveAddress: string | null = null;
       
       for (const address of accounts) {
         try {
@@ -899,17 +898,7 @@ export class PumpfunSniper extends EventEmitter {
               bondingCurveAddress = address;
               const elapsed = Date.now() - extractStart;
               console.log(`✅ [PumpfunSniper] Bonding curve PDA found in ${elapsed}ms: ${address.slice(0, 8)}...`);
-            }
-          }
-          
-          // Check if it's a token account (for associated bonding curve)
-          // Token accounts are owned by Token Program and typically 165 bytes
-          if (info.owner.toBase58() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && info.data.length === 165) {
-            // This might be the associated bonding curve or user ATA
-            // We'll use this if we found the bonding curve PDA
-            if (bondingCurveAddress) {
-              associatedBondingCurveAddress = address;
-              console.log(`✅ [PumpfunSniper] Associated bonding curve found: ${address.slice(0, 8)}...`);
+              break; // Found it, stop searching
             }
           }
         } catch (error: any) {
