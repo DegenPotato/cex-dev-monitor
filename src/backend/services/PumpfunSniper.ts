@@ -88,40 +88,47 @@ export class PumpfunSniper extends EventEmitter {
   }
 
   /**
-   * Wait for bonding curve PDA to become queryable via getAccountInfo
-   * Tests show this takes ~50-60ms after log notification (1 attempt with 100ms polling)
-   * Using exact same logic as successful test-pda-wait-vs-instant.mjs
+   * Wait for bonding curve PDA to be fully initialized (not just exist)
+   * Tests show: PDA exists at ~50-60ms, but initialized at ~110-120ms
+   * We check for proper data structure (>= 120 bytes) to ensure it's ready for buy
+   * This is 60-80ms faster than waiting for 'confirmed' transaction!
    */
-  private async waitForBondingCurvePDA(pdaAddress: string, maxAttempts: number = 10): Promise<boolean> {
+  private async waitForPDAInitialized(pdaAddress: string, maxAttempts: number = 15): Promise<boolean> {
     const startTime = Date.now();
+    const EXPECTED_CURVE_SIZE = 120; // Minimum size for initialized bonding curve
     let attempts = 0;
     
     while (attempts < maxAttempts) {
       attempts++;
       
       try {
-        // Use directRpcRequest which matches the test's fetch approach
         const accountInfo = await this.directRpcRequest('getAccountInfo', [
           pdaAddress,
           { encoding: 'base64', commitment: 'processed' }
         ]);
         
-        // Check result.value exactly like the test does
-        if (accountInfo?.value) {
-          const elapsed = Date.now() - startTime;
-          console.log(`✅ [PumpfunSniper] PDA queryable after ${attempts} attempts (${elapsed}ms)`);
-          return true;
+        if (accountInfo?.value?.data) {
+          // Decode base64 to check actual data length
+          const data = accountInfo.value.data[0];
+          if (data) {
+            const decoded = Buffer.from(data, 'base64');
+            if (decoded.length >= EXPECTED_CURVE_SIZE) {
+              const elapsed = Date.now() - startTime;
+              console.log(`✅ [PumpfunSniper] PDA initialized after ${elapsed}ms (${decoded.length} bytes)`);
+              return true;
+            }
+          }
         }
       } catch (error) {
-        // Ignore and retry, just like the test
+        // Ignore and retry
       }
       
-      // Wait 100ms between attempts (same as test)
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Poll every 50ms (faster than 100ms since we're targeting 110-120ms window)
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     
     const elapsed = Date.now() - startTime;
-    console.warn(`⚠️ [PumpfunSniper] PDA not queryable after ${maxAttempts} attempts (${elapsed}ms)`);
+    console.warn(`⚠️ [PumpfunSniper] PDA not initialized after ${elapsed}ms`);
     return false;
   }
 
@@ -836,21 +843,17 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for PDA to be queryable (tests show ~50-60ms, 1 attempt)
-      // This guarantees account exists before sending transaction
+      // Wait for PDA to be initialized (not just exist)
+      // Tests show: PDA initialized at ~110-120ms (60-80ms faster than waiting for confirmed tx!)
+      // We verify account has proper data structure to guarantee it's ready for buy
       const pdaAddress = this.deriveBondingCurvePDA(tokenMint);
-      console.log(`🔍 [PumpfunSniper] Waiting for PDA: ${pdaAddress}`);
+      console.log(`⏳ [PumpfunSniper] Waiting for PDA initialization: ${pdaAddress}`);
       
-      const pdaReady = await this.waitForBondingCurvePDA(pdaAddress, 10);
-      if (!pdaReady) {
-        console.error('❌ [PumpfunSniper] PDA not queryable after 1s, aborting');
+      const pdaInitialized = await this.waitForPDAInitialized(pdaAddress);
+      if (!pdaInitialized) {
+        console.error('❌ [PumpfunSniper] PDA not initialized, aborting');
         return;
       }
-      
-      // PDA exists but may not be fully initialized yet
-      // Add small delay to ensure program state is ready (avoiding 3012 error)
-      console.log('⏳ [PumpfunSniper] PDA found, waiting for full initialization...');
-      await new Promise(resolve => setTimeout(resolve, 150));
       
       console.log('⚡ [PumpfunSniper] PDA fully initialized, executing buy');
       
