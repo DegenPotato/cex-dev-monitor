@@ -148,11 +148,25 @@ export class PumpfunSniper extends EventEmitter {
     if (!signature) return null;
 
     try {
-      const tx = await this.directRpcRequest('getTransaction', [signature, {
-        commitment: 'confirmed',
-        encoding: 'json',
-        maxSupportedTransactionVersion: 0
-      }]);
+      let tx: any = null;
+      let attempt = 0;
+
+      while (!tx && attempt < 4) {
+        attempt += 1;
+
+        tx = await this.directRpcRequest('getTransaction', [signature, {
+          commitment: 'processed',
+          encoding: 'json',
+          maxSupportedTransactionVersion: 0
+        }]);
+
+        if (!tx) {
+          // Wait briefly before next try – processed data propagates within ~50ms
+          if (attempt < 4) {
+            await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+          }
+        }
+      }
 
       if (!tx) return null;
 
