@@ -167,16 +167,33 @@ export class TelegramAutoTrader extends EventEmitter {
         ? (solSpent / tokensReceived)  // SOL spent / tokens received
         : 0;
       
+      // Fetch current USD price from Jupiter
+      let buyPriceUSD = 0;
+      try {
+        const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${tokenMint},So11111111111111111111111111111111111111112`;
+        const priceResponse = await fetch(priceUrl);
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          const tokenData = priceData[tokenMint];
+          if (tokenData?.usdPrice) {
+            buyPriceUSD = parseFloat(tokenData.usdPrice);
+          }
+        }
+      } catch (error) {
+        console.error(`⚠️ [AutoTrader] Failed to fetch USD price:`, error);
+      }
+      
       console.log(`💰 [AutoTrader] Trade executed:`);
       console.log(`   SOL spent: ${solSpent}`);
       console.log(`   Tokens received: ${tokensReceived}`);
-      console.log(`   Price per token: ${buyPriceInSol} SOL`);
+      console.log(`   Price per token: ${buyPriceInSol} SOL ($${buyPriceUSD} USD)`);
       
       const positionId = await this.createPosition({
         userId: wallet.user_id,
         walletId: config.auto_buy_wallet_id,
         tokenMint,
         buyAmount: solSpent,
+        buyPriceUSD,
         buySignature: result.signature,
         tokensBought: tokensReceived,  // Tokens received from trade
         buyPriceSol: buyPriceInSol,  // Price per token in SOL
@@ -217,14 +234,17 @@ export class TelegramAutoTrader extends EventEmitter {
       `INSERT INTO telegram_trading_positions (
         user_id, wallet_id, token_mint, 
         buy_amount_sol, total_invested_sol,
-        buy_signature, buy_price_usd, buy_price_sol,
+        buy_signature, buy_price_usd, buy_price_sol, buy_price_usd_initial,
         tokens_bought, current_tokens,
+        current_price, current_price_usd,
+        peak_price, peak_price_usd,
+        low_price, low_price_usd,
         source_chat_id, source_chat_name,
         source_message_id, source_sender_id,
         source_sender_username, detection_type,
         status, detected_at, first_buy_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
       [
         data.userId,
         data.walletId,
@@ -234,8 +254,15 @@ export class TelegramAutoTrader extends EventEmitter {
         data.buySignature,
         data.buyPriceSol || 0,  // buy_price_usd (legacy column, stores SOL)
         data.buyPriceSol || 0,  // buy_price_sol (new correct column)
+        data.buyPriceUSD || 0,  // buy_price_usd_initial (ACTUAL USD PRICE)
         data.tokensBought || 0,
         data.tokensBought || 0, // current_tokens starts same as bought
+        data.buyPriceSol || 0,  // Initialize current_price to entry price
+        data.buyPriceUSD || 0,  // Initialize current_price_usd to entry USD
+        data.buyPriceSol || 0,  // Initialize peak to entry
+        data.buyPriceUSD || 0,  // Initialize peak_usd to entry USD
+        data.buyPriceSol || 0,  // Initialize low to entry
+        data.buyPriceUSD || 0,  // Initialize low_usd to entry USD
         data.context.chatId,
         data.context.chatName,
         data.context.messageId || 0,
