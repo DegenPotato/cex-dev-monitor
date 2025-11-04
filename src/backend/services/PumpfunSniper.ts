@@ -843,28 +843,79 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
-      // Additional safety delay to ensure PDA is fully initialized
-      // Even after tx confirmation, program state needs time to propagate
-      console.log('⏳ [PumpfunSniper] Tx confirmed, waiting 500ms for PDA initialization...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Extract bonding curve from creation transaction
+      // Don't derive - extract the actual account that was created
+      console.log('⏳ [PumpfunSniper] Extracting bonding curve from transaction...');
+      
+      const extractStart = Date.now();
+      const BONDING_CURVE_DISCRIMINATOR = Buffer.from('17b7f83760d8ac60', 'hex');
+      const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+      
+      // Get full transaction with all account keys
+      const tx = await this.directRpcRequest('getTransaction', [
+        signature,
+        { 
+          encoding: 'jsonParsed', 
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: 0 
+        }
+      ]);
+      
+      if (!tx) {
+        console.error('❌ [PumpfunSniper] Could not fetch creation transaction');
+        return;
+      }
+      
+      // Extract all account addresses
+      const accounts: string[] = [];
+      if (tx.transaction?.message?.accountKeys) {
+        tx.transaction.message.accountKeys.forEach((key: any) => {
+          if (typeof key === 'string') {
+            accounts.push(key);
+          } else if (key?.pubkey) {
+            accounts.push(key.pubkey);
+          }
+        });
+      }
+      
+      // Find bonding curve account
+      let bondingCurveAddress: string | null = null;
+      
+      for (const address of accounts) {
+        try {
+          const pubkey = new PublicKey(address);
+          // @ts-ignore - connection is already checked to be non-null
+          const info = await this.connection!.getAccountInfo(pubkey, { commitment: 'confirmed' } as any);
+          
+          if (!info || !info.data) continue;
+          
+          // Check if owned by Pumpfun
+          if (info.owner.toBase58() !== PUMPFUN_PROGRAM_ID) continue;
+          
+          // Check discriminator
+          if (info.data.length < 8) continue;
+          const discriminator = info.data.slice(0, 8);
+          
+          if (discriminator.equals(BONDING_CURVE_DISCRIMINATOR) && info.data.length === 150) {
+            bondingCurveAddress = address;
+            const elapsed = Date.now() - extractStart;
+            console.log(`✅ [PumpfunSniper] Bonding curve found in ${elapsed}ms: ${address.slice(0, 8)}...`);
+            break;
+          }
+        } catch (error: any) {
+          // Skip invalid accounts
+        }
+      }
+      
+      if (!bondingCurveAddress) {
+        console.error('❌ [PumpfunSniper] Bonding curve not found in transaction');
+        return;
+      }
       
       console.log('⚡ [PumpfunSniper] Executing buy');
       
-      let buyResult = null;
-      let attempt = 0;
-      const maxAttempts = 2; // Minimal retries - 500ms wait should be sufficient
-      
-      while (attempt < maxAttempts && !buyResult?.success) {
-        attempt++;
-        
-        if (attempt > 1) {
-          // Longer retry delay - if 500ms wasn't enough, wait more
-          const delay = 250;
-          console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        
-        buyResult = await this.tradingEngine.buyToken({
+      // Single attempt - if 1000ms isn't enough, retries won't help
+      const buyResult = await this.tradingEngine.buyToken({
         connection: this.connection, // Use same connection for consistency
         userId: this.config.userId,
         walletAddress: this.config.wallet,
@@ -881,14 +932,7 @@ export class PumpfunSniper extends EventEmitter {
           tokenTotalSupply: curveSnapshot.tokenTotalSupply,
           complete: curveSnapshot.complete ?? false
         } : undefined
-        });
-        
-        // If failed, retry for network/transient issues (PDA confirmed to exist)
-        if (!buyResult.success) {
-          console.warn(`⚠️ [PumpfunSniper] Buy failed (attempt ${attempt}): ${buyResult.error}`);
-          continue;
-        }
-      }
+      });
 
       if (!buyResult?.success) {
         console.error(`❌ [PumpfunSniper] Buy failed:`, buyResult.error);
