@@ -15,6 +15,14 @@ export interface TradeParams {
   slippageBps?: number;
   priorityFee?: number;
   skipTax?: boolean;
+  curveData?: {
+    virtualTokenReserves?: bigint;
+    virtualSolReserves?: bigint;
+    realTokenReserves?: bigint;
+    realSolReserves?: bigint;
+    tokenTotalSupply?: bigint;
+    complete?: boolean;
+  };
 }
 
 export interface TradeResult {
@@ -75,7 +83,15 @@ export class TradingEngine {
         tokenMint: new PublicKey(params.tokenMint),
         amountSol: params.amount,
         slippageBps: params.slippageBps || 1000, // Default 10% slippage
-        priorityFee: params.priorityFee
+        priorityFee: params.priorityFee,
+        curveData: params.curveData ? {
+          virtualTokenReserves: params.curveData.virtualTokenReserves || 0n,
+          virtualSolReserves: params.curveData.virtualSolReserves || 0n,
+          realTokenReserves: params.curveData.realTokenReserves || 0n,
+          realSolReserves: params.curveData.realSolReserves || 0n,
+          tokenTotalSupply: params.curveData.tokenTotalSupply || 0n,
+          complete: params.curveData.complete ?? false
+        } : undefined
       });
       
       console.log(`✅ [TradingEngine] Buy successful!`);

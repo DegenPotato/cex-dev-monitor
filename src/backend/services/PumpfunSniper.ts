@@ -522,7 +522,7 @@ export class PumpfunSniper extends EventEmitter {
       }
 
       // Execute snipe
-      await this.executeSnipe(tokenMint);
+      await this.executeSnipe(tokenMint, bondingCurve);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -721,7 +721,7 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(tokenMint: string): Promise<void> {
+  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -740,7 +740,15 @@ export class PumpfunSniper extends EventEmitter {
         amount: this.config.buyAmount,
         slippageBps: this.config.slippage || 1000, // Default 10% slippage for Pumpfun
         priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
-        skipTax: this.config.skipTax || false
+        skipTax: this.config.skipTax || false,
+        curveData: curveSnapshot ? {
+          virtualTokenReserves: curveSnapshot.virtualTokenReserves,
+          virtualSolReserves: curveSnapshot.virtualSolReserves,
+          realTokenReserves: curveSnapshot.realTokenReserves,
+          realSolReserves: curveSnapshot.realSolReserves,
+          tokenTotalSupply: curveSnapshot.tokenTotalSupply,
+          complete: curveSnapshot.complete ?? false
+        } : undefined
       });
 
       if (!buyResult.success) {

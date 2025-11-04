@@ -40,6 +40,7 @@ export interface PumpfunBuyParams {
   amountSol: number; // Amount in SOL to spend
   slippageBps: number; // Slippage in basis points (100 = 1%)
   priorityFee?: number; // Priority fee in SOL
+  curveData?: BondingCurveData | null; // Optional bonding curve snapshot
 }
 
 export interface BondingCurveData {
@@ -170,7 +171,7 @@ export function calculateBuyAmount(
 export async function buildPumpfunBuyInstruction(
   params: PumpfunBuyParams
 ): Promise<Transaction> {
-  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee } = params;
+  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee, curveData: providedCurve } = params;
   
   // Derive PDAs
   const [bondingCurve] = deriveBondingCurvePDA(tokenMint);
@@ -188,7 +189,7 @@ export async function buildPumpfunBuyInstruction(
   );
   
   // Fetch bonding curve data
-  const curveData = await fetchBondingCurveData(connection, bondingCurve);
+  const curveData = providedCurve || await fetchBondingCurveData(connection, bondingCurve);
   if (!curveData) {
     throw new Error('Failed to fetch bonding curve data');
   }
