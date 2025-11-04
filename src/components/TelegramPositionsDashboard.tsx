@@ -524,17 +524,11 @@ const PositionCard: React.FC<{
             <DollarSign className="w-3 h-3" /> Entry
           </p>
           <p className="text-sm font-bold text-white">
-            {(position.avg_entry_price || 0) > 0.000001 
-              ? `${(position.avg_entry_price || 0).toFixed(9)} SOL`
-              : `${(position.avg_entry_price || 0).toExponential(3)} SOL`
-            }
+            {(position.avg_entry_price || 0).toFixed(9)} SOL
           </p>
           {position.entry_price_usd && (
             <p className="text-xs text-cyan-400">
-              ${(position.entry_price_usd || 0) > 0.01 
-                ? (position.entry_price_usd || 0).toFixed(6) 
-                : (position.entry_price_usd || 0).toExponential(3)
-              } USD
+              ${(position.entry_price_usd || 0).toFixed(8)} USD
             </p>
           )}
           <p className="text-xs text-gray-500">
@@ -556,18 +550,14 @@ const PositionCard: React.FC<{
             )}
           </p>
           <p className="text-sm font-bold text-white">
-            {(position.current_price || 0) > 0 ? (
-              (position.current_price || 0) > 0.000001 
-                ? `${(position.current_price || 0).toFixed(9)} SOL`
-                : `${(position.current_price || 0).toExponential(3)} SOL`
-            ) : 'No price data'}
+            {(position.current_price || 0) > 0 ? 
+              `${(position.current_price || 0).toFixed(9)} SOL` : 
+              'No price data'
+            }
           </p>
           {position.current_price_usd && (
             <p className="text-xs text-green-400">
-              ${(position.current_price_usd || 0) > 0.01 
-                ? (position.current_price_usd || 0).toFixed(8) 
-                : (position.current_price_usd || 0).toExponential(3)
-              } USD
+              ${(position.current_price_usd || 0).toFixed(8)} USD
             </p>
           )}
           {(position.current_price || 0) > 0 && (position.avg_entry_price || 0) > 0 && (
@@ -585,10 +575,7 @@ const PositionCard: React.FC<{
           </p>
           {position.unrealized_pnl_usd !== undefined && (
             <p className="text-xs text-gray-500">
-              ${Math.abs(position.unrealized_pnl_usd) > 0.01 
-                ? position.unrealized_pnl_usd.toFixed(2) 
-                : position.unrealized_pnl_usd.toExponential(2)
-              } USD
+              ${position.unrealized_pnl_usd.toFixed(4)} USD
             </p>
           )}
         </div>
@@ -724,10 +711,7 @@ const PositionDetailsModal: React.FC<{
                 <div className="bg-green-900/20 p-2 rounded">
                   <p className="text-green-400 mb-1">Session High</p>
                   <p className="text-white font-mono">
-                    {(position.peak_price || position.current_price || 0) > 0.000001 
-                      ? `${(position.peak_price || position.current_price || 0).toFixed(9)} SOL`
-                      : `${(position.peak_price || position.current_price || 0).toExponential(3)} SOL`
-                    }
+                    {(position.peak_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
                   {position.peak_roi_percent !== undefined && (
                     <p className="text-green-400 mt-1">
@@ -738,10 +722,7 @@ const PositionDetailsModal: React.FC<{
                 <div className="bg-red-900/20 p-2 rounded">
                   <p className="text-red-400 mb-1">Session Low</p>
                   <p className="text-white font-mono">
-                    {(position.low_price || position.current_price || 0) > 0.000001 
-                      ? `${(position.low_price || position.current_price || 0).toFixed(9)} SOL`
-                      : `${(position.low_price || position.current_price || 0).toExponential(3)} SOL`
-                    }
+                    {(position.low_price || position.current_price || 0).toFixed(9)} SOL
                   </p>
                   {position.max_drawdown_percent !== undefined && (
                     <p className="text-red-400 mt-1">
