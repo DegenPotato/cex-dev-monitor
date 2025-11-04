@@ -123,13 +123,13 @@ export class PumpfunSniper extends EventEmitter {
     );
 
     // Get next server for WebSocket
-    const wsServer = await globalRPCServerRotator.getNextServer();
-    const wsUrl = wsServer.replace('https://', 'wss://').replace('http://', 'ws://');
+    const httpServer = await globalRPCServerRotator.getNextServer();
+    const wsUrl = httpServer.replace('https://', 'wss://').replace('http://', 'ws://');
     
     console.log(`📡 [PumpfunSniper] Connecting to WebSocket: ${wsUrl.split('.')[0]}...`);
     
-    // Create WebSocket connection
-    this.connection = new Connection(wsUrl, {
+    // Create WebSocket connection (HTTP endpoint + WS endpoint)
+    this.connection = new Connection(httpServer, {
       commitment: 'confirmed',
       wsEndpoint: wsUrl
     });
