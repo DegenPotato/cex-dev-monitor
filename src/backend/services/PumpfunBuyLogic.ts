@@ -18,8 +18,6 @@ import {
   createAssociatedTokenAccountInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID
 } from '@solana/spl-token';
-import BN from 'bn.js';
-
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -33,7 +31,7 @@ const PUMPFUN_FEE_RECIPIENT = new PublicKey('CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7Abicf
 const PUMPFUN_EVENT_AUTHORITY = new PublicKey('Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1');
 
 // Constants
-const FEE_BASIS_POINTS = new BN(100); // 1% fee
+const FEE_BASIS_POINTS = 100n; // 1% fee
 
 export interface PumpfunBuyParams {
   connection: Connection;
@@ -45,11 +43,11 @@ export interface PumpfunBuyParams {
 }
 
 export interface BondingCurveData {
-  virtualTokenReserves: BN;
-  virtualSolReserves: BN;
-  realTokenReserves: BN;
-  realSolReserves: BN;
-  tokenTotalSupply: BN;
+  virtualTokenReserves: bigint;
+  virtualSolReserves: bigint;
+  realTokenReserves: bigint;
+  realSolReserves: bigint;
+  tokenTotalSupply: bigint;
   complete: boolean;
 }
 
@@ -84,23 +82,23 @@ export async function fetchBondingCurveData(
     let offset = 8;
     
     // Read virtual token reserves (8 bytes)
-    const virtualTokenReserves = new BN(data.slice(offset, offset + 8), 'le');
+    const virtualTokenReserves = data.readBigUInt64LE(offset);
     offset += 8;
     
     // Read virtual SOL reserves (8 bytes)
-    const virtualSolReserves = new BN(data.slice(offset, offset + 8), 'le');
+    const virtualSolReserves = data.readBigUInt64LE(offset);
     offset += 8;
     
     // Read real token reserves (8 bytes)
-    const realTokenReserves = new BN(data.slice(offset, offset + 8), 'le');
+    const realTokenReserves = data.readBigUInt64LE(offset);
     offset += 8;
     
     // Read real SOL reserves (8 bytes)
-    const realSolReserves = new BN(data.slice(offset, offset + 8), 'le');
+    const realSolReserves = data.readBigUInt64LE(offset);
     offset += 8;
     
     // Read token total supply (8 bytes)
-    const tokenTotalSupply = new BN(data.slice(offset, offset + 8), 'le');
+    const tokenTotalSupply = data.readBigUInt64LE(offset);
     offset += 8;
     
     // Read complete flag (1 byte)
@@ -124,19 +122,19 @@ export async function fetchBondingCurveData(
  * Calculate buy amount using constant product formula
  */
 export function calculateBuyAmount(
-  solAmount: BN,
-  virtualSolReserves: BN,
-  virtualTokenReserves: BN
-): BN {
+  solAmount: bigint,
+  virtualSolReserves: bigint,
+  virtualTokenReserves: bigint
+): bigint {
   // Apply fee (1%)
-  const solAmountAfterFee = solAmount.mul(new BN(10000).sub(FEE_BASIS_POINTS)).div(new BN(10000));
+  const solAmountAfterFee = (solAmount * (10000n - FEE_BASIS_POINTS)) / 10000n;
   
   // Calculate using constant product formula: x * y = k
   // New token amount = virtualTokenReserves - (k / (virtualSolReserves + solAmountAfterFee))
-  const k = virtualSolReserves.mul(virtualTokenReserves);
-  const newSolReserves = virtualSolReserves.add(solAmountAfterFee);
-  const newTokenReserves = k.div(newSolReserves);
-  const tokensToBuy = virtualTokenReserves.sub(newTokenReserves);
+  const k = virtualSolReserves * virtualTokenReserves;
+  const newSolReserves = virtualSolReserves + solAmountAfterFee;
+  const newTokenReserves = k / newSolReserves;
+  const tokensToBuy = virtualTokenReserves - newTokenReserves;
   
   return tokensToBuy;
 }
@@ -174,7 +172,7 @@ export async function buildPumpfunBuyInstruction(
   }
   
   // Calculate expected tokens
-  const solAmountLamports = new BN(amountSol * LAMPORTS_PER_SOL);
+  const solAmountLamports = BigInt(Math.floor(amountSol * LAMPORTS_PER_SOL));
   const expectedTokens = calculateBuyAmount(
     solAmountLamports,
     curveData.virtualSolReserves,
@@ -182,7 +180,7 @@ export async function buildPumpfunBuyInstruction(
   );
   
   // Apply slippage
-  const minTokensOut = expectedTokens.mul(new BN(10000 - slippageBps)).div(new BN(10000));
+  const minTokensOut = (expectedTokens * BigInt(10000 - slippageBps)) / 10000n;
   
   console.log(`💰 Buying with ${amountSol} SOL`);
   console.log(`📊 Expected tokens: ${expectedTokens.toString()}`);
@@ -224,10 +222,10 @@ export async function buildPumpfunBuyInstruction(
   instructionData.writeUInt8(0xea, 7);
   
   // Amount (8 bytes)
-  instructionData.writeBigUInt64LE(BigInt(solAmountLamports.toString()), 8);
+  instructionData.writeBigUInt64LE(solAmountLamports, 8);
   
   // Max sol cost (8 bytes) - same as amount for simplicity
-  instructionData.writeBigUInt64LE(BigInt(solAmountLamports.toString()), 16);
+  instructionData.writeBigUInt64LE(solAmountLamports, 16);
   
   // Create buy instruction
   const buyInstruction = new TransactionInstruction({
