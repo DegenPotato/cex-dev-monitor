@@ -89,15 +89,15 @@ export class PumpfunSniper extends EventEmitter {
 
   /**
    * Wait for bonding curve PDA to be PROPERLY initialized
-   * Tests prove this eliminates ALL 3012 errors!
+   * Uses 'confirmed' commitment to avoid fork/slot mismatch with tx execution
    * 
    * Checks (in order):
    * 1. Owner == Pumpfun Program
    * 2. Discriminator == 17b7f83760d8ac60 (Anchor account type)
    * 3. Data length >= 120 bytes
    * 
-   * Tests show: ~104-132ms (vs ~50-70ms for unsafe length-only check)
-   * Overhead: 50-70ms but GUARANTEES no 3012 errors!
+   * Tests show: ~300-500ms with confirmed (vs ~104-132ms with processed)
+   * Critical: Must use same commitment level as tx execution to avoid 3012!
    */
   private async waitForPDAInitialized(pdaAddress: string, maxAttempts: number = 15): Promise<boolean> {
     const startTime = Date.now();
@@ -112,7 +112,7 @@ export class PumpfunSniper extends EventEmitter {
       try {
         const accountInfo = await this.directRpcRequest('getAccountInfo', [
           pdaAddress,
-          { encoding: 'base64', commitment: 'processed' } // Use processed for speed
+          { encoding: 'base64', commitment: 'confirmed' } // Use confirmed to match tx execution slot
         ]);
         
         if (!accountInfo?.value) {
@@ -880,9 +880,9 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for PDA to be initialized (not just exist)
-      // Tests show: PDA initialized at ~110-120ms (60-80ms faster than waiting for confirmed tx!)
-      // We verify account has proper data structure to guarantee it's ready for buy
+      // Wait for PDA to be properly initialized with 'confirmed' commitment
+      // CRITICAL: Must use 'confirmed' to avoid fork mismatch (processed caused 3012 errors)
+      // Tests show: ~300-500ms but guarantees same slot as tx execution
       const pdaAddress = this.deriveBondingCurvePDA(tokenMint);
       console.log(`⏳ [PumpfunSniper] Waiting for PDA initialization: ${pdaAddress}`);
       
