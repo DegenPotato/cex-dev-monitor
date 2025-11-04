@@ -836,7 +836,12 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
-      console.log('⚡ [PumpfunSniper] Creation tx confirmed, executing buy');
+      // Additional safety delay to ensure PDA is fully initialized
+      // Even after tx confirmation, program state needs time to propagate
+      console.log('⏳ [PumpfunSniper] Tx confirmed, waiting 200ms for PDA initialization...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      console.log('⚡ [PumpfunSniper] Executing buy');
       
       let buyResult = null;
       let attempt = 0;
