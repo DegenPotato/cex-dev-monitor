@@ -2,11 +2,9 @@
  * Trading Engine - Handles real token trading on Solana
  */
 
-import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
 import { queryOne } from '../database/helpers.js';
 import { walletStorageServiceCompat } from './WalletStorageServiceCompat.js';
-import { PumpSdk } from '@pump-fun/pump-sdk';
-import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 
 export interface TradeParams {
   connection?: Connection; // Optional - use specific connection for consistency
@@ -84,65 +82,42 @@ export class TradingEngine {
 
       console.log(`💳 [TradingEngine] Wallet balance: ${balanceSOL.toFixed(4)} SOL`);
 
-      // Initialize Pump SDK
-      const anchorWallet = new Wallet(wallet);
-      const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' });
-      const sdk = new PumpSdk(provider);
-      
-      const tokenMint = new PublicKey(params.tokenMint);
-      const solAmountLamports = BigInt(Math.floor(params.amount * LAMPORTS_PER_SOL));
       const slippageBps = params.slippageBps || 1000;
       
-      console.log(`💰 [SDK] Buying ${params.amount} SOL worth`);
-      console.log(`📉 [SDK] Slippage: ${slippageBps / 100}%`);
+      console.log(`💰 [PumpPortal] Buying ${params.amount} SOL worth`);
+      console.log(`📉 [PumpPortal] Slippage: ${slippageBps / 100}%`);
       
-      // Build buy instructions using official SDK
-      const instructions = await sdk.buyInstructions(
-        tokenMint,
-        solAmountLamports,
-        slippageBps,
-        solAmountLamports // maxSolCost = amount
-      );
+      // Use PumpPortal API to generate transaction
+      const response = await fetch('https://pumpportal.fun/api/trade-local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: wallet.publicKey.toBase58(),
+          action: 'buy',
+          mint: params.tokenMint,
+          denominatedInSol: 'true',
+          amount: params.amount,
+          slippage: slippageBps / 100, // Convert bps to percent
+          priorityFee: params.priorityFee || 0.00001,
+          pool: 'pump'
+        })
+      });
       
-      console.log(`✅ [SDK] Generated ${instructions.length} instructions`);
-      
-      // Create transaction
-      const transaction = new Transaction();
-      
-      // Add priority fee if specified
-      if (params.priorityFee && params.priorityFee > 0) {
-        const computeUnitLimit = 400000;
-        transaction.add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnitLimit })
-        );
-        
-        const microLamportsPerComputeUnit = Math.floor(
-          (params.priorityFee * LAMPORTS_PER_SOL * 1000000) / computeUnitLimit
-        );
-        
-        transaction.add(
-          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: microLamportsPerComputeUnit })
-        );
-        
-        console.log(`⚡ Priority: ${microLamportsPerComputeUnit} µLamports/CU`);
+      if (response.status !== 200) {
+        const errorText = await response.text();
+        throw new Error(`PumpPortal API error: ${response.statusText} - ${errorText}`);
       }
       
-      // Add SDK instructions
-      instructions.forEach(ix => transaction.add(ix));
+      console.log(`✅ [PumpPortal] Transaction generated`);
       
-      // Set blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = wallet.publicKey;
+      // Deserialize and sign transaction
+      const data = await response.arrayBuffer();
+      const tx = VersionedTransaction.deserialize(new Uint8Array(data));
+      tx.sign([wallet]);
       
-      // Sign and send
-      transaction.sign(wallet);
-      
-      console.log(`📤 [SDK] Sending transaction...`);
-      const signature = await connection.sendRawTransaction(transaction.serialize(), {
-        skipPreflight: true,
-        maxRetries: 3
-      });
+      // Send transaction
+      console.log(`📤 [PumpPortal] Sending transaction...`);
+      const signature = await connection.sendTransaction(tx);
       
       console.log(`📤 Transaction sent: ${signature}`);
       
