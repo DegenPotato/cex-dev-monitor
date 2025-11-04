@@ -610,8 +610,8 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe with creation tx confirmation
-      await this.executeSnipe(logs.signature, tokenMint);
+      // Execute snipe immediately for speed
+      await this.executeSnipe(tokenMint);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -772,49 +772,14 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Wait for creation transaction to be confirmed
    */
-  private async waitForCreationTxConfirmed(signature: string, maxAttempts: number = 20): Promise<boolean> {
-    const startTime = Date.now();
-    
-    if (!signature) {
-      console.error('❌ [PumpfunSniper] No signature provided!');
-      return false;
-    }
-    
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        // Use getSignatureStatuses to verify actual commitment level
-        const result = await this.directRpcRequest('getSignatureStatuses', [
-          [signature],
-          { searchTransactionHistory: true }
-        ]);
-        
-        const status = result?.value?.[0];
-        if (status && status.confirmationStatus) {
-          const elapsed = Date.now() - startTime;
-          console.log(`📊 [PumpfunSniper] Tx status: ${status.confirmationStatus} after ${elapsed}ms`);
-          
-          // Only accept 'confirmed' or 'finalized', not 'processed'
-          if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
-            console.log(`✅ [PumpfunSniper] Creation tx ${status.confirmationStatus} after ${elapsed}ms`);
-            return true;
-          }
-        }
-      } catch (error: any) {
-        // Ignore and retry
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    const elapsed = Date.now() - startTime;
-    console.warn(`⚠️ [PumpfunSniper] Creation tx not confirmed after ${elapsed}ms`);
-    return false;
-  }
+  // REMOVED: No longer waiting for confirmation - firing immediately for speed
+  // Jupiter is robust enough to handle timing, and we have retry logic
+  // private async waitForCreationTxConfirmed(signature: string, maxAttempts: number = 20): Promise<boolean> { ... }
 
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(signature: string, tokenMint: string): Promise<void> {
+  private async executeSnipe(tokenMint: string): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -832,40 +797,17 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for CREATION TRANSACTION to be confirmed
-      // CRITICAL: PDA validation passes but program still sees uninitialized
-      // Must wait for the tx itself to be confirmed, not just query PDA state!
-      console.log(`⏳ [PumpfunSniper] Waiting for creation tx to be confirmed...`);
+      // Simple and fast: Fire immediately with retry
+      console.log('⚡ [PumpfunSniper] Attempting buy (attempt 1/2)...');
       
-      const txConfirmed = await this.waitForCreationTxConfirmed(signature);
-      if (!txConfirmed) {
-        console.error('❌ [PumpfunSniper] Creation tx not confirmed, aborting');
-        return;
-      }
-      
-      // Use Jupiter API (same as fetcher trading bot) - handles all Pumpfun complexity
-      console.log('⚡ [PumpfunSniper] Attempting buy via Jupiter (attempt 1/2)...');
-      
-      // Import the Jupiter-based trading engine
-      const { getTradingEngine } = await import('../core/trade.js');
-      const jupiterEngine = getTradingEngine();
-      
-      // Get wallet from config
-      const { queryOne } = await import('../database/helpers.js');
-      const wallet = await queryOne('SELECT user_id FROM trading_wallets WHERE public_key = ?', [this.config.wallet]) as any;
-      
-      if (!wallet || !wallet.user_id) {
-        console.error('❌ [PumpfunSniper] Wallet not found in database');
-        return;
-      }
-      
-      let buyResult = await jupiterEngine.buyToken({
-        userId: wallet.user_id,
+      let buyResult = await this.tradingEngine.buyToken({
+        connection: this.connection,
+        userId: this.config.userId,
         walletAddress: this.config.wallet,
         tokenMint,
         amount: this.config.buyAmount,
         slippageBps: this.config.slippage || 1000,
-        priorityLevel: 'high',
+        priorityFee: this.config.priorityFee ?? 0.001,
         skipTax: this.config.skipTax || false
       });
       
@@ -876,14 +818,15 @@ export class PumpfunSniper extends EventEmitter {
         
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        console.log('⚡ [PumpfunSniper] Attempting buy via Jupiter (attempt 2/2)...');
-        buyResult = await jupiterEngine.buyToken({
-          userId: wallet.user_id,
+        console.log('⚡ [PumpfunSniper] Attempting buy (attempt 2/2)...');
+        buyResult = await this.tradingEngine.buyToken({
+          connection: this.connection,
+          userId: this.config.userId,
           walletAddress: this.config.wallet,
           tokenMint,
           amount: this.config.buyAmount,
           slippageBps: this.config.slippage || 1000,
-          priorityLevel: 'high',
+          priorityFee: this.config.priorityFee ?? 0.001,
           skipTax: this.config.skipTax || false
         });
       }
@@ -907,7 +850,7 @@ export class PumpfunSniper extends EventEmitter {
       console.log(`🔗 Solscan: https://solscan.io/tx/${buyResult.signature}`);
       
       // Track position
-      const tokensBought = buyResult.amountOut || 0;
+      const tokensBought = buyResult.tokenAmount || 0;
       const pricePerToken = this.config.buyAmount / tokensBought;
       
       // Track position in test lab for monitoring
