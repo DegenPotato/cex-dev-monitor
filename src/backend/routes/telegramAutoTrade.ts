@@ -5,6 +5,7 @@
 
 import { Router, Response } from 'express';
 import { getTelegramAutoTrader } from '../services/TelegramAutoTrader.js';
+import { getOnChainPriceMonitor } from '../services/OnChainPriceMonitor.js';
 import { queryOne, queryAll, execute } from '../database/helpers.js';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 
@@ -156,6 +157,50 @@ router.post('/api/telegram/auto-trade/config', authService.requireSecureAuth(), 
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error saving auto-trade config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Create manual position for monitoring (like Test Lab)
+ */
+router.post('/api/telegram/positions/manual', authService.requireSecureAuth(), async (req: any, res: Response) => {
+  try {
+    const { tokenMint, poolAddress } = req.body;
+    const userId = req.user!.id;
+    
+    if (!tokenMint || !poolAddress) {
+      return res.status(400).json({ error: 'Token mint and pool address required' });
+    }
+    
+    // Create a manual position in database
+    const now = Math.floor(Date.now() / 1000);
+    const result = await execute(
+      `INSERT INTO telegram_trading_positions (
+        user_id, token_mint, pool_address,
+        buy_amount_sol, total_invested_sol,
+        tokens_bought, current_tokens,
+        status, is_manual, created_at, updated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, 0, 'open', 1, ?, ?)`,
+      [userId, tokenMint, poolAddress, now, now]
+    );
+    const positionId = (result as any).lastInsertRowid;
+    
+    // Start monitoring campaign
+    const priceMonitor = getOnChainPriceMonitor();
+    const campaign = await priceMonitor.startCampaign(tokenMint, poolAddress);
+    
+    // Link position to campaign
+    getAutoTrader().linkPositionToCampaign(positionId, campaign.id);
+    
+    res.json({ 
+      success: true, 
+      positionId,
+      campaignId: campaign.id,
+      message: 'Manual monitoring started' 
+    });
+  } catch (error: any) {
+    console.error('Error creating manual position:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -491,20 +536,17 @@ const initializeWebSocket = () => {
     getAutoTrader().on('websocket_broadcast', async (event: any) => {
       // Broadcast to all connected WebSocket clients
       try {
-        const websocketModule = await import('../websocket.js');
-        if (websocketModule.broadcast) {
-          websocketModule.broadcast(event);
+        // Import broadcast from priceTest which already handles WebSocket
+        const { broadcastTestLabUpdate } = await import('./priceTest.js');
+        broadcastTestLabUpdate(event);
           
-          // Log important events for debugging
-          if (event.type === 'telegram_position_price_update') {
-            const data = event.data;
-            console.log(` [WebSocket] Broadcasting price update for position ${data.position_id}: ${data.current_price_sol?.toFixed(9) || 0} SOL`);
-          }
-        } else {
-          console.warn('[WebSocket] Broadcast function not available');
+        // Log important events for debugging
+        if (event.type === 'telegram_position_price_update') {
+          const data = event.data;
+          console.log(`📡 [WebSocket] Broadcasting price update for position ${data.position_id}: ${data.current_price_sol?.toFixed(9) || 0} SOL`);
         }
       } catch (error) {
-        console.error('[WebSocket] Failed to broadcast:', error);
+        console.error('❌ [WebSocket] Failed to broadcast:', error);
       }
     });
     

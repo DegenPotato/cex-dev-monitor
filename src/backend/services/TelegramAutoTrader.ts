@@ -699,6 +699,14 @@ export class TelegramAutoTrader extends EventEmitter {
   private broadcast(event: string, data: any): void {
     this.emit('websocket_broadcast', { type: event, data });
   }
+  
+  /**
+   * Link an existing position to a campaign (for manual positions)
+   */
+  linkPositionToCampaign(positionId: number, campaignId: string): void {
+    this.positionCampaigns.set(positionId, campaignId);
+    console.log(`🔗 [AutoTrader] Position ${positionId} linked to campaign ${campaignId}`);
+  }
 }
 
 // Singleton export
