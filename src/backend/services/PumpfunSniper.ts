@@ -4,10 +4,9 @@
  * Integrates with RPC Server Rotator for distributed connections
  */
 
-import { PublicKey, Logs } from '@solana/web3.js';
+import { PublicKey, Logs, Connection } from '@solana/web3.js';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -57,6 +56,7 @@ export interface SnipedPosition {
   profitPercent: number;
   stopLossHit: boolean;
   takeProfitHit: boolean;
+  closed: boolean;
   timestamp: number;
   txSignature?: string;
 }
@@ -67,8 +67,8 @@ export class PumpfunSniper extends EventEmitter {
   private snipedTokens: Set<string> = new Set();
   private ws: WebSocket | null = null;
   private wsSubscriptionId: number | null = null;
-  // Proxied connection for on-chain data fetching and trading
-  private proxiedConnection: ProxiedSolanaConnection | null = null;
+  // Direct connection for on-chain data fetching
+  private connection: Connection | null = null;
   private tradingEngine: any = null;
   private onChainMonitor: any = null;
   private positions: Map<string, SnipedPosition> = new Map();
@@ -104,8 +104,8 @@ export class PumpfunSniper extends EventEmitter {
             wallet: params.walletAddress
           });
           
-          // Use proxied connection for actual trade
-          if (this.proxiedConnection) {
+          // Use connection for actual trade
+          if (this.connection) {
             try {
               // TODO: Implement actual Pumpfun buy transaction
               // This would involve creating and signing a transaction
@@ -204,14 +204,12 @@ export class PumpfunSniper extends EventEmitter {
   private async initializeConnections(): Promise<void> {
     console.log(`🔄 [PumpfunSniper] Initializing connections...`);
 
-    // Create proxied connection for HTTP requests (uses RPC rotator)
-    this.proxiedConnection = new ProxiedSolanaConnection(
-      'https://api.mainnet-beta.solana.com', // Will be overridden by rotator
-      { commitment: 'confirmed' },
-      undefined,
-      'PumpfunSniper'
+    // Create direct connection
+    this.connection = new Connection(
+      'https://api.mainnet-beta.solana.com',
+      { commitment: 'confirmed' }
     );
-    console.log(`✅ [PumpfunSniper] Proxied connection ready (20 servers, 10000 proxies)`);
+    console.log(`✅ [PumpfunSniper] Connection ready`);
     console.log(`📡 [PumpfunSniper] Using dedicated RPC WebSocket endpoints`);
   }
 
@@ -553,11 +551,21 @@ export class PumpfunSniper extends EventEmitter {
       return false;
     }
 
-    // Check max snipes
+    // Check max snipes for 'all' mode
     if (this.config.mode === 'all' && this.config.maxSnipes) {
       if (this.snipedTokens.size >= this.config.maxSnipes) {
         console.log(`🛑 [PumpfunSniper] Max snipes reached (${this.config.maxSnipes})`);
         await this.stopSniping();
+        return false;
+      }
+    }
+
+    // Check active positions for 'one-at-a-time' mode
+    if (this.config.mode === 'one-at-a-time') {
+      const activePositions = Array.from(this.positions.values()).filter(p => !p.closed);
+      if (activePositions.length > 0) {
+        console.log(`⏸️ [PumpfunSniper] One-at-a-time mode: waiting for active position to close`);
+        console.log(`   Active position: ${activePositions[0].tokenSymbol || activePositions[0].tokenMint}`);
         return false;
       }
     }
@@ -630,6 +638,7 @@ export class PumpfunSniper extends EventEmitter {
         profitPercent: 0,
         stopLossHit: false,
         takeProfitHit: false,
+        closed: false,
         timestamp: Date.now(),
         txSignature: buyResult.signature
       };
@@ -655,10 +664,12 @@ export class PumpfunSniper extends EventEmitter {
         }
       });
 
-      // If single mode, stop after successful snipe
+      // Handle mode-specific behavior after successful snipe
       if (this.config.mode === 'single') {
         console.log('🛑 [PumpfunSniper] Single snipe mode - stopping after success');
         await this.stopSniping();
+      } else if (this.config.mode === 'one-at-a-time') {
+        console.log('⏸️ [PumpfunSniper] One-at-a-time mode - will wait for position to close before next snipe');
       }
 
     } catch (error: any) {
@@ -773,7 +784,7 @@ export class PumpfunSniper extends EventEmitter {
     }
     
     this.wsSubscriptionId = null;
-    this.proxiedConnection = null;
+    this.connection = null;
     this.config = null;
     
     console.log(`🛑 [PumpfunSniper] Stopped. Sniped ${this.snipedTokens.size} tokens`);
