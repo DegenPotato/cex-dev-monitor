@@ -57,7 +57,7 @@ export interface BondingCurveData {
 export function deriveBondingCurvePDA(tokenMint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from('bonding-curve'),
+      Buffer.from('bonding_curve'),
       tokenMint.toBuffer()
     ],
     PUMPFUN_PROGRAM_ID
