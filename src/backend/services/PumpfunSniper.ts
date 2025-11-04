@@ -838,21 +838,21 @@ export class PumpfunSniper extends EventEmitter {
       
       // Additional safety delay to ensure PDA is fully initialized
       // Even after tx confirmation, program state needs time to propagate
-      console.log('⏳ [PumpfunSniper] Tx confirmed, waiting 200ms for PDA initialization...');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      console.log('⏳ [PumpfunSniper] Tx confirmed, waiting 500ms for PDA initialization...');
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       console.log('⚡ [PumpfunSniper] Executing buy');
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 3; // Fewer retries needed since PDA is confirmed queryable
+      const maxAttempts = 2; // Minimal retries - 500ms wait should be sufficient
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          // Light retries for network issues only (PDA already confirmed)
-          const delay = 100;
+          // Longer retry delay - if 500ms wasn't enough, wait more
+          const delay = 250;
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
