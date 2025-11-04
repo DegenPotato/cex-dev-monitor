@@ -242,15 +242,21 @@ export class PumpfunSniper extends EventEmitter {
             { commitment: 'processed', encoding: 'base64' }
           ]);
 
-          if (accountInfo && accountInfo.value) {
+          // directRpcRequest returns data.result, which for getAccountInfo is { context, value }
+          // value is null if account doesn't exist, or an object with data/owner/etc if it does
+          if (accountInfo?.value) {
             console.log(
               `✅ [PumpfunSniper] Bonding curve PDA visible after ${attempt} attempts (${Date.now() - startTime}ms)`
             );
             return true;
           }
+          
+          if (attempt === 1 || attempt % 10 === 0) {
+            console.log(`⌛ [PumpfunSniper] PDA check ${attempt}: value=${accountInfo?.value ? 'exists' : 'null'}`);
+          }
         } catch (error: any) {
-          if (attempt === 1) {
-            console.log('⌛ [PumpfunSniper] Waiting for bonding curve PDA to materialize...');
+          if (attempt === 1 || attempt % 10 === 0) {
+            console.warn(`⚠️ [PumpfunSniper] PDA check ${attempt} error:`, error.message);
           }
         }
 
