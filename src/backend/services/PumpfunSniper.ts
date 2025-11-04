@@ -947,9 +947,40 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
+      // CRITICAL: Also check that the associated bonding curve (token account) exists
+      console.log('⏳ [PumpfunSniper] Verifying associated bonding curve exists...');
+      const { getAssociatedTokenAddress } = await import('@solana/spl-token');
+      const associatedBondingCurve = await getAssociatedTokenAddress(
+        new PublicKey(tokenMint),
+        bondingCurvePubkey,
+        true // Allow owner off curve
+      );
+      
+      let ataExists = false;
+      for (let poll = 0; poll < 10; poll++) {
+        try {
+          // @ts-ignore
+          const ataInfo = await this.connection!.getAccountInfo(associatedBondingCurve, { commitment: 'confirmed' } as any);
+          if (ataInfo && ataInfo.data && ataInfo.data.length === 165) {
+            ataExists = true;
+            const elapsed = poll * 50;
+            console.log(`✅ [PumpfunSniper] Associated bonding curve exists after ${elapsed}ms`);
+            break;
+          }
+        } catch (error: any) {
+          // Continue
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      if (!ataExists) {
+        console.error('❌ [PumpfunSniper] Associated bonding curve not found after 500ms, aborting');
+        return;
+      }
+      
       console.log('⚡ [PumpfunSniper] Executing buy');
       console.log(`🎯 [PumpfunSniper] Using extracted bonding curve: ${bondingCurveAddress}`);
-      console.log(`⚠️ [PumpfunSniper] NOT using extracted associated bonding curve - will derive from bonding curve + mint`);
+      console.log(`🎯 [PumpfunSniper] Using verified associated bonding curve: ${associatedBondingCurve.toBase58()}`);
       
       // Single attempt - ONLY pass bonding curve PDA, let it derive the associated bonding curve
       // There can be multiple token accounts in the tx, we need the correct one for THIS bonding curve
