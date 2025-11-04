@@ -216,12 +216,30 @@ export async function buildPumpfunBuyInstruction(
   // Create transaction
   const transaction = new Transaction();
   
-  // Add priority fee if specified
+  // Add priority fee if specified (Jupiter-style)
   if (priorityFee && priorityFee > 0) {
-    const priorityFeeInstruction = ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: Math.floor(priorityFee * 1000000)
-    });
-    transaction.add(priorityFeeInstruction);
+    // Set compute unit limit (standard for Pumpfun transactions)
+    const computeUnitLimit = 400000;
+    transaction.add(
+      ComputeBudgetProgram.setComputeUnitLimit({
+        units: computeUnitLimit
+      })
+    );
+    
+    // Calculate price per compute unit
+    // priorityFee is in SOL, convert to micro-lamports per compute unit
+    // Formula: (priorityFee in SOL * LAMPORTS_PER_SOL * 1,000,000) / computeUnits
+    const microLamportsPerComputeUnit = Math.floor(
+      (priorityFee * LAMPORTS_PER_SOL * 1000000) / computeUnitLimit
+    );
+    
+    transaction.add(
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: microLamportsPerComputeUnit
+      })
+    );
+    
+    console.log(`⚡ Priority fee: ${priorityFee} SOL = ${microLamportsPerComputeUnit} µLamports/CU`);
   }
   
   // Create associated token account if needed
