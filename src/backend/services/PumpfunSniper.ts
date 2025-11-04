@@ -87,6 +87,56 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
   }
 
+  /**
+   * Wait for bonding curve PDA to become queryable via getAccountInfo
+   * Tests show this takes ~50-60ms after log notification (1 attempt with 100ms polling)
+   * Using exact same logic as successful test-pda-wait-vs-instant.mjs
+   */
+  private async waitForBondingCurvePDA(pdaAddress: string, maxAttempts: number = 10): Promise<boolean> {
+    const startTime = Date.now();
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      try {
+        // Use directRpcRequest which matches the test's fetch approach
+        const accountInfo = await this.directRpcRequest('getAccountInfo', [
+          pdaAddress,
+          { encoding: 'base64', commitment: 'processed' }
+        ]);
+        
+        // Check result.value exactly like the test does
+        if (accountInfo?.value) {
+          const elapsed = Date.now() - startTime;
+          console.log(`✅ [PumpfunSniper] PDA queryable after ${attempts} attempts (${elapsed}ms)`);
+          return true;
+        }
+      } catch (error) {
+        // Ignore and retry, just like the test
+      }
+      
+      // Wait 100ms between attempts (same as test)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    const elapsed = Date.now() - startTime;
+    console.warn(`⚠️ [PumpfunSniper] PDA not queryable after ${maxAttempts} attempts (${elapsed}ms)`);
+    return false;
+  }
+
+  /**
+   * Derive bonding curve PDA address from token mint
+   */
+  private deriveBondingCurvePDA(tokenMint: string): string {
+    const mint = new PublicKey(tokenMint);
+    const program = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from('bonding-curve'), mint.toBuffer()],
+      program
+    );
+    return pda.toBase58();
+  }
 
 
   /**
@@ -786,21 +836,29 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Derive PDA instantly and fire buy immediately
-      // Test shows: PDA derivation = 0ms, but getAccountInfo times out for 6+ seconds
-      // Solana checks account existence during tx processing - no need to poll!
-      console.log('⚡ [PumpfunSniper] Executing buy with instant PDA derivation (block 0 mode)');
+      // Wait for PDA to be queryable (tests show ~50-60ms, 1 attempt)
+      // This guarantees account exists before sending transaction
+      const pdaAddress = this.deriveBondingCurvePDA(tokenMint);
+      console.log(`🔍 [PumpfunSniper] Waiting for PDA: ${pdaAddress}`);
+      
+      const pdaReady = await this.waitForBondingCurvePDA(pdaAddress, 10);
+      if (!pdaReady) {
+        console.error('❌ [PumpfunSniper] PDA not queryable after 1s, aborting');
+        return;
+      }
+      
+      console.log('⚡ [PumpfunSniper] PDA confirmed, executing buy');
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 6; // Multiple fast retries to catch PDA initialization
+      const maxAttempts = 3; // Fewer retries needed since PDA is confirmed queryable
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          // Fast retries: 0ms, 50ms, 100ms, 150ms, 200ms, 250ms (total <1s)
-          const delay = (attempt - 1) * 50;
+          // Light retries for network issues only (PDA already confirmed)
+          const delay = 100;
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -824,17 +882,8 @@ export class PumpfunSniper extends EventEmitter {
         } : undefined
         });
         
-        // If failed, check if we should retry
+        // If failed, retry for network/transient issues (PDA confirmed to exist)
         if (!buyResult.success) {
-          const errorStr = JSON.stringify(buyResult.error || '');
-          const is0xbc4 = errorStr.includes('0xbc4') || errorStr.includes('AccountNotInitialized') || errorStr.includes('3012');
-          
-          if (is0xbc4) {
-            console.log(`⏳ [PumpfunSniper] Account not initialized yet (attempt ${attempt}), retrying...`);
-            continue;
-          }
-          
-          // Other errors - log and retry in case it's transient
           console.warn(`⚠️ [PumpfunSniper] Buy failed (attempt ${attempt}): ${buyResult.error}`);
           continue;
         }
