@@ -144,7 +144,7 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
-  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader'>('manual');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader' | 'pumpfun-sniper'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramSelectedUserIds, setTelegramSelectedUserIds] = useState<string[]>([]);
@@ -171,6 +171,22 @@ export const TestLabTab: React.FC = () => {
   const [takeProfit, setTakeProfit] = useState('20');
   const [stopLoss, setStopLoss] = useState('-10');
   const [activeTelegramPositions, setActiveTelegramPositions] = useState<any[]>([]);
+  
+  // Pumpfun Sniper states
+  const [pumpfunSnipeMode, setPumpfunSnipeMode] = useState<'single' | 'all'>('single');
+  const [pumpfunBuyAmount, setPumpfunBuyAmount] = useState('0.1');
+  const [pumpfunStopLoss, setPumpfunStopLoss] = useState('-10');
+  const [pumpfunTakeProfits, setPumpfunTakeProfits] = useState<string[]>(['20', '50', '100']);
+  const [pumpfunTPAmounts, setPumpfunTPAmounts] = useState<string[]>(['33', '33', '34']); // Split equally by default
+  const [pumpfunSlippage, setPumpfunSlippage] = useState('500');
+  const [pumpfunPriority, setPumpfunPriority] = useState<'low' | 'medium' | 'high' | 'ultra'>('high');
+  const [pumpfunMaxSnipes, setPumpfunMaxSnipes] = useState('10');
+  const [pumpfunExcludeGraduated, setPumpfunExcludeGraduated] = useState(true);
+  const [pumpfunMinLiquidity, setPumpfunMinLiquidity] = useState('');
+  const [pumpfunMaxLiquidity, setPumpfunMaxLiquidity] = useState('');
+  const [pumpfunSniperActive, setPumpfunSniperActive] = useState(false);
+  const [pumpfunSnipedTokens, setPumpfunSnipedTokens] = useState<string[]>([]);
+  const [selectedPumpfunWallet, setSelectedPumpfunWallet] = useState<number | null>(null);
   
   // Use existing trading store for wallets
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
@@ -1020,10 +1036,10 @@ export const TestLabTab: React.FC = () => {
         {/* Source Type Selector */}
         <div className="mb-4">
           <label className="block text-sm text-gray-400 mb-2">Campaign Source</label>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <button
               onClick={() => setCampaignSource('manual')}
-              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
                 campaignSource === 'manual'
                   ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
@@ -1034,7 +1050,7 @@ export const TestLabTab: React.FC = () => {
             </button>
             <button
               onClick={() => setCampaignSource('telegram')}
-              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
                 campaignSource === 'telegram'
                   ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
@@ -1045,7 +1061,7 @@ export const TestLabTab: React.FC = () => {
             </button>
             <button
               onClick={() => setCampaignSource('gmgn-test')}
-              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
                 campaignSource === 'gmgn-test'
                   ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
@@ -1056,7 +1072,7 @@ export const TestLabTab: React.FC = () => {
             </button>
             <button
               onClick={() => setCampaignSource('telegram-autotrader')}
-              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
                 campaignSource === 'telegram-autotrader'
                   ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400'
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
@@ -1064,6 +1080,17 @@ export const TestLabTab: React.FC = () => {
             >
               <div className="font-medium">Telegram AutoTrader</div>
               <div className="text-xs mt-1">Persistent position tracking</div>
+            </button>
+            <button
+              onClick={() => setCampaignSource('pumpfun-sniper')}
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'pumpfun-sniper'
+                  ? 'bg-purple-500/20 border-purple-500 text-purple-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">🎯 Pumpfun Sniper</div>
+              <div className="text-xs mt-1">Auto-snipe new launches</div>
             </button>
           </div>
         </div>
@@ -1765,6 +1792,356 @@ export const TestLabTab: React.FC = () => {
                     e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="200"%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" fill="%23666"%3EScreenshot unavailable%3C/text%3E%3C/svg%3E';
                   }}
                 />
+              </div>
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Pumpfun Sniper Fields */}
+        {campaignSource === 'pumpfun-sniper' && (
+        <div className="space-y-4">
+          {/* Wallet Selection */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Trading Wallet *</label>
+            <select
+              value={selectedPumpfunWallet || ''}
+              onChange={(e) => setSelectedPumpfunWallet(e.target.value ? parseInt(e.target.value) : null)}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+            >
+              <option value="">Select wallet...</option>
+              {tradingWallets.map((wallet: any) => (
+                <option key={wallet.id} value={wallet.id}>
+                  {wallet.name || wallet.publicKey?.substring(0, 8) || 'Wallet'} 
+                  {wallet.isDefault && ' (Default)'}
+                  {' - '}
+                  {wallet.balance?.toFixed(4) || '0.0000'} SOL
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Snipe Mode */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Snipe Mode</label>
+              <select
+                value={pumpfunSnipeMode}
+                onChange={(e) => setPumpfunSnipeMode(e.target.value as 'single' | 'all')}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+              >
+                <option value="single">Single Token (Stop after 1)</option>
+                <option value="all">Multi-Snipe (Continue sniping)</option>
+              </select>
+            </div>
+            
+            {pumpfunSnipeMode === 'all' && (
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Max Snipes</label>
+                <input
+                  type="number"
+                  value={pumpfunMaxSnipes}
+                  onChange={(e) => setPumpfunMaxSnipes(e.target.value)}
+                  min="1"
+                  max="100"
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Buy Configuration */}
+          <div className="p-4 bg-purple-900/20 border border-purple-600/30 rounded-lg space-y-4">
+            <h4 className="text-purple-400 font-medium">Buy Configuration</h4>
+            
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Buy Amount (SOL)</label>
+                <input
+                  type="number"
+                  value={pumpfunBuyAmount}
+                  onChange={(e) => setPumpfunBuyAmount(e.target.value)}
+                  step="0.01"
+                  min="0.01"
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Slippage (bps)</label>
+                <input
+                  type="number"
+                  value={pumpfunSlippage}
+                  onChange={(e) => setPumpfunSlippage(e.target.value)}
+                  min="100"
+                  max="5000"
+                  step="100"
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Priority</label>
+                <select
+                  value={pumpfunPriority}
+                  onChange={(e) => setPumpfunPriority(e.target.value as any)}
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="ultra">Ultra</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Exit Strategy */}
+          <div className="p-4 bg-gray-900/50 border border-gray-700 rounded-lg space-y-4">
+            <h4 className="text-gray-300 font-medium">Exit Strategy</h4>
+            
+            {/* Stop Loss */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Stop Loss (%)</label>
+              <input
+                type="number"
+                value={pumpfunStopLoss}
+                onChange={(e) => setPumpfunStopLoss(e.target.value)}
+                step="5"
+                max="-1"
+                placeholder="-10"
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1">Percentage loss from entry price (e.g., -10 for 10% stop loss)</p>
+            </div>
+            
+            {/* Take Profits */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Take Profits (%)</label>
+              <div className="space-y-2">
+                {pumpfunTakeProfits.map((tp, index) => (
+                  <div key={index} className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      value={tp}
+                      onChange={(e) => {
+                        const newTPs = [...pumpfunTakeProfits];
+                        newTPs[index] = e.target.value;
+                        setPumpfunTakeProfits(newTPs);
+                      }}
+                      min="5"
+                      placeholder={`TP ${index + 1}`}
+                      className="col-span-2 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                    />
+                    <input
+                      type="number"
+                      value={pumpfunTPAmounts[index]}
+                      onChange={(e) => {
+                        const newAmounts = [...pumpfunTPAmounts];
+                        newAmounts[index] = e.target.value;
+                        setPumpfunTPAmounts(newAmounts);
+                      }}
+                      min="1"
+                      max="100"
+                      placeholder="% to sell"
+                      className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (pumpfunTakeProfits.length < 5) {
+                        setPumpfunTakeProfits([...pumpfunTakeProfits, '']);
+                        setPumpfunTPAmounts([...pumpfunTPAmounts, '20']);
+                      }
+                    }}
+                    disabled={pumpfunTakeProfits.length >= 5}
+                    className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 text-white rounded text-sm"
+                  >
+                    <Plus className="w-4 h-4 inline" /> Add TP
+                  </button>
+                  {pumpfunTakeProfits.length > 1 && (
+                    <button
+                      onClick={() => {
+                        setPumpfunTakeProfits(pumpfunTakeProfits.slice(0, -1));
+                        setPumpfunTPAmounts(pumpfunTPAmounts.slice(0, -1));
+                      }}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+                    >
+                      <X className="w-4 h-4 inline" /> Remove Last
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Set multiple take profit levels. Each TP sells a percentage of your position.</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="p-4 bg-gray-900/50 border border-gray-700 rounded-lg space-y-4">
+            <h4 className="text-gray-300 font-medium">Filters</h4>
+            
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pumpfunExcludeGraduated}
+                  onChange={(e) => setPumpfunExcludeGraduated(e.target.checked)}
+                  className="w-4 h-4 bg-gray-800 border-gray-600 rounded text-purple-600"
+                />
+                <span className="text-sm text-gray-300">Skip graduated tokens (already on Raydium)</span>
+              </label>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Min Liquidity (SOL)</label>
+                  <input
+                    type="number"
+                    value={pumpfunMinLiquidity}
+                    onChange={(e) => setPumpfunMinLiquidity(e.target.value)}
+                    step="0.1"
+                    min="0"
+                    placeholder="Optional"
+                    className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Max Liquidity (SOL)</label>
+                  <input
+                    type="number"
+                    value={pumpfunMaxLiquidity}
+                    onChange={(e) => setPumpfunMaxLiquidity(e.target.value)}
+                    step="1"
+                    min="0"
+                    placeholder="Optional"
+                    className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+            <p className="text-sm text-purple-300">
+              <strong>🎯 Pumpfun Sniper:</strong> Monitors the Pumpfun program for new token launches in real-time via WebSocket. 
+              Automatically buys when a new bonding curve is created, with configurable stop loss and take profit levels.
+            </p>
+          </div>
+
+          {/* Start/Stop Button */}
+          <div className="flex justify-between items-center">
+            {pumpfunSniperActive && (
+              <div className="text-sm text-gray-400">
+                Sniped: <span className="text-purple-400 font-bold">{pumpfunSnipedTokens.length}</span> token(s)
+              </div>
+            )}
+            <button
+              onClick={async () => {
+                if (pumpfunSniperActive) {
+                  // Stop sniper
+                  setLoading(true);
+                  try {
+                    const response = await fetch(`${config.apiUrl}/api/test-lab/pumpfun-sniper/stop`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      setPumpfunSniperActive(false);
+                      setPumpfunSnipedTokens(data.tokens || []);
+                      toast.success(`Sniper stopped! Sniped ${data.totalSniped} tokens`);
+                    }
+                  } catch (error) {
+                    toast.error('Failed to stop sniper');
+                  } finally {
+                    setLoading(false);
+                  }
+                } else {
+                  // Start sniper
+                  if (!selectedPumpfunWallet) {
+                    toast.error('Please select a wallet');
+                    return;
+                  }
+                  
+                  setLoading(true);
+                  try {
+                    const response = await fetch(`${config.apiUrl}/api/test-lab/pumpfun-sniper/start`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        walletId: selectedPumpfunWallet,
+                        snipeMode: pumpfunSnipeMode,
+                        buyAmountSol: parseFloat(pumpfunBuyAmount),
+                        stopLoss: parseFloat(pumpfunStopLoss),
+                        takeProfits: pumpfunTakeProfits.filter(tp => tp).map(tp => parseFloat(tp)),
+                        takeProfitAmounts: pumpfunTPAmounts.map(a => parseFloat(a)),
+                        slippageBps: parseInt(pumpfunSlippage),
+                        priorityLevel: pumpfunPriority,
+                        maxSnipes: parseInt(pumpfunMaxSnipes),
+                        excludeGraduated: pumpfunExcludeGraduated,
+                        minLiquidity: pumpfunMinLiquidity ? parseFloat(pumpfunMinLiquidity) : undefined,
+                        maxLiquidity: pumpfunMaxLiquidity ? parseFloat(pumpfunMaxLiquidity) : undefined
+                      })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      setPumpfunSniperActive(true);
+                      setPumpfunSnipedTokens([]);
+                      toast.success('Pumpfun sniper activated! Monitoring for new launches...');
+                    } else {
+                      toast.error(data.error || 'Failed to start sniper');
+                    }
+                  } catch (error) {
+                    toast.error('Failed to start sniper');
+                  } finally {
+                    setLoading(false);
+                  }
+                }
+              }}
+              disabled={loading}
+              className={`px-6 py-2 ${
+                pumpfunSniperActive 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-purple-600 hover:bg-purple-700'
+              } disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors ml-auto`}
+            >
+              {pumpfunSniperActive ? (
+                <>
+                  <X className="w-4 h-4" />
+                  {loading ? 'Stopping...' : 'Stop Sniper'}
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  {loading ? 'Starting...' : 'Start Sniper'}
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Sniped Tokens Display */}
+          {pumpfunSnipedTokens.length > 0 && (
+            <div className="mt-4 p-4 bg-gray-900 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-400 mb-2">Sniped Tokens</h4>
+              <div className="space-y-2">
+                {pumpfunSnipedTokens.map((token) => (
+                  <div key={token} className="flex items-center justify-between p-2 bg-gray-800 rounded">
+                    <span className="font-mono text-purple-400 text-sm">{token.substring(0, 8)}...</span>
+                    <button
+                      onClick={() => copyAddress(token)}
+                      className="p-1 hover:bg-gray-700 rounded transition-colors"
+                    >
+                      {copiedAddress === token ? (
+                        <Check className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -1443,4 +1443,126 @@ router.get('/api/test-lab/telegram-autotrader/positions', authService.requireSec
   }
 });
 
+/**
+ * Start Pumpfun Sniper
+ */
+router.post('/api/test-lab/pumpfun-sniper/start', authService.requireSecureAuth(), async (req: any, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { 
+      walletId, 
+      snipeMode = 'single',
+      buyAmountSol = 0.1,
+      stopLoss = -10,
+      takeProfits = [20, 50, 100],
+      takeProfitAmounts,
+      slippageBps = 500,
+      priorityLevel = 'high',
+      skipTax = false,
+      maxSnipes = 10,
+      excludeGraduated = true,
+      minLiquidity,
+      maxLiquidity
+    } = req.body;
+    
+    if (!walletId) {
+      return res.status(400).json({ error: 'walletId required' });
+    }
+    
+    // Get wallet details
+    const wallet = await queryOne('SELECT public_key FROM trading_wallets WHERE id = ? AND user_id = ?', [walletId, userId]) as any;
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+    
+    // Get Pumpfun sniper instance
+    const { getPumpfunSniper } = await import('../services/PumpfunSniper.js');
+    const sniper = getPumpfunSniper();
+    
+    // Configure and start sniper
+    const config = {
+      userId,
+      walletId,
+      walletAddress: wallet.public_key,
+      enabled: true,
+      snipeMode,
+      buyAmountSol,
+      stopLoss,
+      takeProfits,
+      takeProfitAmounts,
+      slippageBps,
+      priorityLevel,
+      skipTax,
+      maxSnipes,
+      excludeGraduated,
+      minLiquidity,
+      maxLiquidity
+    };
+    
+    await sniper.startSniping(config);
+    
+    console.log(`🎯 [API] Pumpfun sniper started for user ${userId} in ${snipeMode} mode`);
+    
+    res.json({ 
+      success: true,
+      config: {
+        mode: snipeMode,
+        buyAmount: buyAmountSol,
+        wallet: wallet.public_key.substring(0, 8) + '...',
+        stopLoss,
+        takeProfits
+      },
+      message: `Pumpfun sniper started in ${snipeMode} mode`
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting Pumpfun sniper:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Stop Pumpfun Sniper
+ */
+router.post('/api/test-lab/pumpfun-sniper/stop', authService.requireSecureAuth(), async (req: any, res: Response) => {
+  try {
+    const { getPumpfunSniper } = await import('../services/PumpfunSniper.js');
+    const sniper = getPumpfunSniper();
+    
+    await sniper.stopSniping();
+    
+    const status = sniper.getStatus();
+    
+    console.log(`🛑 [API] Pumpfun sniper stopped. Sniped ${status.totalSniped} tokens`);
+    
+    res.json({ 
+      success: true,
+      totalSniped: status.totalSniped,
+      tokens: status.snipedTokens
+    });
+  } catch (error: any) {
+    console.error('❌ Error stopping Pumpfun sniper:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get Pumpfun Sniper Status
+ */
+router.get('/api/test-lab/pumpfun-sniper/status', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { getPumpfunSniper } = await import('../services/PumpfunSniper.js');
+    const sniper = getPumpfunSniper();
+    
+    const status = sniper.getStatus();
+    
+    res.json({ 
+      success: true,
+      status
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting Pumpfun sniper status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
