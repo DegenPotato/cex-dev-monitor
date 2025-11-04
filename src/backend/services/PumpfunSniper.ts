@@ -25,19 +25,21 @@ interface BondingCurve {
   createdAt: number;
 }
 
+export type SnipeMode = 'single' | 'all' | 'one-at-a-time';
+
 export interface PumpfunSniperConfig {
-  mode: 'single' | 'all';
-  buyAmount: number; // SOL amount
-  stopLoss: number; // Percentage
-  takeProfits: number[]; // Array of take profit percentages
-  takeProfitAmounts?: number[]; // Percentage of position to sell at each TP
+  userId: number;
   wallet: string;
-  walletId?: string; // ID for trading engine
-  userId?: number; // User ID for tracking
-  slippage?: number;
+  walletId?: string; // Wallet ID for selling
+  buyAmount: number; // SOL amount per snipe
+  slippage: number; // in bps (100 = 1%)
   priorityFee?: number;
   skipTax?: boolean;
-  maxSnipes?: number;
+  maxSnipes?: number; // Max total snipes (0 = unlimited)
+  mode?: SnipeMode; // 'single', 'all', or 'one-at-a-time'
+  stopLoss?: number; // Stop loss % (e.g. 50 = 50% loss)
+  takeProfits?: number[]; // Take profit % targets (e.g. [50, 100, 200])
+  takeProfitAmounts?: number[]; // Amount to sell at each take profit (0-100%)
   excludeGraduated?: boolean;
   minLiquidity?: number;
   maxLiquidity?: number;
@@ -395,43 +397,38 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Check instruction type - we only want new token creation, not buy/sell
-      const isBuyOrSell = logs.logs.some(log => 
-        log.includes('Instruction: Buy') || 
-        log.includes('Instruction: Sell') ||
-        log.includes('Instruction: ExtendAccount')
+      // NEW TOKEN DETECTION PATTERN (verified from real transaction analysis):
+      // Exact pattern from actual token launches:
+      // 1. Pumpfun "Instruction: Create" (creates the token)
+      // 2. "Instruction: MintTo" (mints the initial supply)
+      // 3. "Instruction: Buy" (first buy after creation)
+      
+      const hasPumpfunCreate = logs.logs.some(log => 
+        log.includes('Program log: Instruction: Create') &&
+        !log.includes('Metadata') // Exclude metadata create
       );
       
-      if (isBuyOrSell) {
-        // This is a trade on an existing token, not a new launch
+      const hasMintTo = logs.logs.some(log => 
+        log.includes('Instruction: MintTo')
+      );
+      
+      const hasBuyInstruction = logs.logs.some(log => 
+        log.includes('Instruction: Buy')
+      );
+      
+      // NEW TOKEN = Pumpfun Create + MintTo + Buy
+      const isNewToken = hasPumpfunCreate && hasMintTo && hasBuyInstruction;
+      
+      if (!isNewToken) {
+        // This is either a regular buy/sell or not a token launch
         return;
       }
-
-      // Look for actual token creation patterns
-      // Pumpfun uses specific instructions for creating new bonding curves
-      const hasCreationPattern = logs.logs.some(log => {
-        const lowerLog = log.toLowerCase();
-        // Look for patterns that indicate NEW token creation
-        return (lowerLog.includes('create') && !log.includes('AToken')) || // Create but not AToken
-               lowerLog.includes('initialize bonding') ||
-               lowerLog.includes('new bonding curve') ||
-               lowerLog.includes('deploy') ||
-               (lowerLog.includes('instruction:') && !lowerLog.includes('buy') && !lowerLog.includes('sell'));
-      });
-
-      if (!hasCreationPattern) {
-        // Check if this might be a creation based on log count and structure
-        // New token creations typically have more complex log patterns
-        const hasComplexStructure = logs.logs.length > 30 && 
-                                    !isBuyOrSell && 
-                                    logs.logs.filter(log => log.includes('Program 6EF8')).length > 2;
-        
-        if (!hasComplexStructure) {
-          return;
-        }
-        
-        console.log(`🔍 [PumpfunSniper] Complex transaction detected, analyzing further...`);
-      }
+      
+      console.log(`🆕 [PumpfunSniper] NEW TOKEN LAUNCH DETECTED!`);
+      console.log(`   - Pumpfun Create: ✅`);
+      console.log(`   - MintTo: ✅`);
+      console.log(`   - First Buy: ✅`);
+      console.log(`   - Log count: ${logs.logs.length}`);
 
       console.log(`🎆 [PumpfunSniper] NEW TOKEN LAUNCH DETECTED!`);
       console.log(`📄 [PumpfunSniper] Transaction: ${logs.signature}`);
