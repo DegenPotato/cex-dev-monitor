@@ -40,6 +40,7 @@ export interface PumpfunBuyParams {
   amountSol: number; // Amount in SOL to spend
   slippageBps: number; // Slippage in basis points (100 = 1%)
   priorityFee?: number; // Priority fee in SOL
+  bondingCurveAddress?: PublicKey; // Optional - use extracted bonding curve address instead of deriving
   curveData?: BondingCurveData | null; // Optional bonding curve snapshot
 }
 
@@ -171,11 +172,17 @@ export function calculateBuyAmount(
 export async function buildPumpfunBuyInstruction(
   params: PumpfunBuyParams
 ): Promise<Transaction> {
-  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee, curveData: providedCurve } = params;
+  const { connection, wallet, tokenMint, amountSol, slippageBps, priorityFee, bondingCurveAddress, curveData: providedCurve } = params;
   
-  // Derive PDAs
-  const [bondingCurve] = deriveBondingCurvePDA(tokenMint);
-  console.log(`🧮 [PumpfunBuy] Derived bonding curve PDA: ${bondingCurve.toBase58()}`);
+  // Use provided bonding curve address OR derive it
+  let bondingCurve: PublicKey;
+  if (bondingCurveAddress) {
+    bondingCurve = bondingCurveAddress;
+    console.log(`✅ [PumpfunBuy] Using extracted bonding curve: ${bondingCurve.toBase58()}`);
+  } else {
+    [bondingCurve] = deriveBondingCurvePDA(tokenMint);
+    console.log(`🧮 [PumpfunBuy] Derived bonding curve PDA: ${bondingCurve.toBase58()}`);
+  }
   const associatedBondingCurve = await getAssociatedTokenAddress(
     tokenMint,
     bondingCurve,

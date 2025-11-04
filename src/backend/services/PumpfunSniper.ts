@@ -913,8 +913,9 @@ export class PumpfunSniper extends EventEmitter {
       }
       
       console.log('⚡ [PumpfunSniper] Executing buy');
+      console.log(`🎯 [PumpfunSniper] Using bonding curve: ${bondingCurveAddress}`);
       
-      // Single attempt - if 1000ms isn't enough, retries won't help
+      // Single attempt - pass the extracted bonding curve address
       const buyResult = await this.tradingEngine.buyToken({
         connection: this.connection, // Use same connection for consistency
         userId: this.config.userId,
@@ -924,6 +925,7 @@ export class PumpfunSniper extends EventEmitter {
         slippageBps: this.config.slippage || 1000, // Default 10% slippage for Pumpfun
         priorityFee: this.config.priorityFee ?? 0.001, // Default 0.001 SOL priority
         skipTax: this.config.skipTax || false,
+        bondingCurveAddress, // CRITICAL: Pass the extracted bonding curve address!
         curveData: curveSnapshot ? {
           virtualTokenReserves: curveSnapshot.virtualTokenReserves,
           virtualSolReserves: curveSnapshot.virtualSolReserves,
