@@ -8,6 +8,7 @@ import { walletStorageServiceCompat } from './WalletStorageServiceCompat.js';
 import { executePumpfunBuy } from './PumpfunBuyLogic.js';
 
 export interface TradeParams {
+  connection?: Connection; // Optional - use specific connection for consistency
   userId?: number;
   walletAddress: string;
   tokenMint: string;
@@ -57,6 +58,9 @@ export class TradingEngine {
         priority: params.priorityFee
       });
 
+      // Use provided connection or default
+      const connection = params.connection || this.connection;
+
       // Get wallet keypair
       const wallet = await this.getWalletKeypair(params.walletAddress);
       if (!wallet) {
@@ -64,7 +68,7 @@ export class TradingEngine {
       }
 
       // Check SOL balance
-      const balance = await this.connection.getBalance(wallet.publicKey);
+      const balance = await connection.getBalance(wallet.publicKey);
       const balanceSOL = balance / LAMPORTS_PER_SOL;
       
       if (balanceSOL < params.amount + (params.priorityFee || 0.001)) {
@@ -78,7 +82,7 @@ export class TradingEngine {
 
       // Execute Pumpfun buy
       const result = await executePumpfunBuy({
-        connection: this.connection,
+        connection, // Use the same connection for consistency
         wallet,
         tokenMint: new PublicKey(params.tokenMint),
         amountSol: params.amount,

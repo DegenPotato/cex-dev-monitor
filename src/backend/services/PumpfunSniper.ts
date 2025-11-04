@@ -87,52 +87,6 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized with RPC:', this.rpcUrl);
   }
 
-  /**
-   * Poll signature status until it reaches confirmed/finalized or times out
-   */
-  private async waitForSignatureConfirmation(
-    signature: string,
-    timeoutMs = 4000,
-    pollIntervalMs = 120
-  ): Promise<boolean> {
-    const start = Date.now();
-    let attempt = 0;
-
-    while (Date.now() - start < timeoutMs) {
-      attempt += 1;
-
-      try {
-        const statusResult = await this.directRpcRequest('getSignatureStatuses', [[signature]]);
-        const status = statusResult?.value?.[0];
-
-        if (status?.err) {
-          console.warn('⚠️ [PumpfunSniper] Creation transaction errored while waiting for confirmation');
-          return false;
-        }
-
-        if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
-          return true;
-        }
-
-        // Older nodes might not set confirmationStatus but will clear confirmations field
-        if (status && status.confirmations === null) {
-          return true;
-        }
-
-        if (attempt === 1 || attempt % 10 === 0) {
-          console.log(`⌛ [PumpfunSniper] Waiting for creation tx confirmation (attempt ${attempt})`);
-        }
-      } catch (error: any) {
-        if (attempt === 1 || attempt % 10 === 0) {
-          console.warn(`⚠️ [PumpfunSniper] Signature status check failed: ${error.message}`);
-        }
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-    }
-
-    return false;
-  }
 
   /**
    * Direct RPC request with retry logic (from OHLC monitor)
@@ -501,7 +455,7 @@ export class PumpfunSniper extends EventEmitter {
           mentions: [PUMPFUN_PROGRAM_ID.toString()]
         },
         {
-          commitment: 'confirmed'
+          commitment: 'processed' // Fastest - see txs as soon as they hit the ledger
         }
       ]
     };
@@ -650,8 +604,8 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
 
-      // Execute snipe immediately (creation tx signature included for confirmation wait)
-      await this.executeSnipe(tokenMint, bondingCurve, logs.signature);
+      // Execute snipe immediately - no waiting for block 0 entry
+      await this.executeSnipe(tokenMint, bondingCurve);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -804,7 +758,7 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>, creationTxSignature?: string): Promise<void> {
+  private async executeSnipe(tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -822,15 +776,8 @@ export class PumpfunSniper extends EventEmitter {
       // Mark as sniped immediately to prevent duplicates
       this.snipedTokens.add(tokenMint);
 
-      // Wait for the creation transaction to reach confirmed status (best-effort)
-      if (creationTxSignature) {
-        const creationConfirmed = await this.waitForSignatureConfirmation(creationTxSignature, 4000, 120);
-        if (!creationConfirmed) {
-          console.warn('⚠️ [PumpfunSniper] Creation transaction not confirmed within 4s – proceeding with retries');
-        } else {
-          console.log('✅ [PumpfunSniper] Creation transaction confirmed');
-        }
-      }
+      // Skip confirmation wait - we need to be FAST for block 0
+      // Other successful snipers don't wait, they fire immediately
 
       // Execute buy immediately with retry logic
       // The PDA address is derived instantly, we don't need to wait for getAccountInfo
@@ -839,18 +786,20 @@ export class PumpfunSniper extends EventEmitter {
       
       let buyResult = null;
       let attempt = 0;
-      const maxAttempts = 5; // More attempts with better delays
+      const maxAttempts = 6; // Quick burst of retries
       
       while (attempt < maxAttempts && !buyResult?.success) {
         attempt++;
         
         if (attempt > 1) {
-          const delay = 80 + (attempt - 1) * 320; // 80ms, 400ms, 720ms, 1040ms, 1360ms
+          // Ultra-fast retries: 0ms, 100ms, 150ms, 200ms, 250ms, 300ms
+          const delay = Math.min((attempt - 1) * 50 + 50, 300);
           console.log(`🔄 [PumpfunSniper] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
         buyResult = await this.tradingEngine.buyToken({
+        connection: this.connection, // Use same connection for consistency
         userId: this.config.userId,
         walletAddress: this.config.wallet,
         tokenMint,

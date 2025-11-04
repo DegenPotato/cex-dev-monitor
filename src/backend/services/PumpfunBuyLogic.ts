@@ -299,12 +299,12 @@ export async function executePumpfunBuy(
     // Sign transaction
     transaction.sign(wallet);
     
-    // Send transaction
+    // Send transaction - skipPreflight for SPEED (block 0 entry)
     const signature = await connection.sendRawTransaction(
       transaction.serialize(),
       {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed'
+        skipPreflight: true, // Skip simulation for fastest execution
+        maxRetries: 3
       }
     );
     
