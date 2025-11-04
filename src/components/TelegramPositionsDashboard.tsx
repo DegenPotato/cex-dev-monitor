@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   TrendingUp, 
   Activity,
@@ -25,57 +25,44 @@ import { formatDistanceToNow } from 'date-fns';
 
 interface Position {
   id: number;
-  user_id: number;
-  wallet_id: number;
   token_mint: string;
   token_symbol?: string;
   token_name?: string;
-  source_chat_id: string;
-  source_chat_name?: string;
-  source_sender_username?: string;
-  status: 'pending' | 'open' | 'partial_close' | 'closed' | 'failed';
+  buy_amount_sol: number;
   current_balance: number;
   avg_entry_price: number;
   current_price?: number;
-  last_price?: number; // For price change indicator
-  total_invested_sol: number;
+  current_price_usd?: number;
+  entry_price_usd?: number;
+  peak_price?: number;
+  low_price?: number;
   realized_pnl_sol: number;
   unrealized_pnl_sol: number;
+  unrealized_pnl_usd?: number;
   total_pnl_sol: number;
   roi_percent: number;
-  peak_price?: number;
+  total_invested_sol: number;
+  current_value_sol?: number;
+  current_value_usd?: number;
+  status: string;
+  source_chat_name?: string;
+  source_sender_username?: string;
+  detected_at: number;
+  created_at: number;
+  first_buy_at?: number;
+  current_mcap_usd?: number;
   peak_roi_percent?: number;
   max_drawdown_percent?: number;
   stop_loss_target?: number;
   take_profit_target?: number;
   trailing_stop_active?: boolean;
-  exit_reason?: string;
-  first_buy_at?: number;
-  closed_at?: number;
-  detected_at: number;
-  buy_signature?: string;
-  tokens_bought?: number;
   current_tokens?: number;
-  monitoring_active?: boolean; // Track if monitoring is active
-  last_update?: number; // Track last price update
-  alerts_triggered?: number; // Count of triggered alerts
+  last_price?: number;
+  monitoring_active?: boolean;
+  last_update?: number;
+  alerts_triggered?: number;
 }
 
-interface PositionUpdate {
-  position_id: number;
-  token_symbol?: string;
-  old_price?: number;
-  new_price?: number;
-  change_percent?: number;
-  unrealized_pnl?: number;
-  total_pnl?: number;
-  roi_percent?: number;
-  trade_type?: string;
-  amount_sol?: number;
-  signature?: string;
-  alert_type?: string;
-  message?: string;
-}
 
 export const TelegramPositionsDashboard: React.FC = () => {
   const [positions, setPositions] = useState<Position[]>([]);
@@ -148,49 +135,68 @@ export const TelegramPositionsDashboard: React.FC = () => {
     toast.success(`${action} ${data.amount_tokens?.toFixed(2) || ''} ${data.token_symbol || ''}`);
   };
 
-  const handlePriceUpdate = (data: PositionUpdate) => {
+  const handlePriceUpdate = useCallback((data: any) => {
     setPositions(prev => prev.map(p => {
       if (p.id === data.position_id) {
         // Track price direction for visual indicator
-        if (data.new_price !== undefined && p.current_price !== undefined) {
-          setPriceChangeIndicators(indicators => {
-            const newMap = new Map(indicators);
-            newMap.set(p.id, data.new_price! > p.current_price! ? 'up' : 'down');
-            // Remove indicator after 2 seconds
-            setTimeout(() => {
-              setPriceChangeIndicators(ind => {
-                const map = new Map(ind);
-                map.delete(p.id);
-                return map;
-              });
-            }, 2000);
-            return newMap;
-          });
+        const priceChange = (data.current_price_sol || 0) - (p.current_price || 0);
+        if (priceChange !== 0) {
+          setPriceChangeIndicators(prev => ({
+            ...prev,
+            [p.id]: priceChange > 0 ? 'up' : 'down'
+          }));
+          
+          // Clear indicator after animation
+          setTimeout(() => {
+            setPriceChangeIndicators(prev => {
+              const next = new Map(prev);
+              next.delete(p.id);
+              return next;
+            });
+          }, 1000);
         }
         
         return {
           ...p,
+          // Prices
+          current_price: data.current_price_sol,
+          current_price_usd: data.current_price_usd,
+          avg_entry_price: data.entry_price_sol,
+          entry_price_usd: data.entry_price_usd,
+          
+          // Session stats
+          peak_price: data.session_high_sol,
+          low_price: data.session_low_sol,
+          peak_roi_percent: data.highest_gain_percent,
+          max_drawdown_percent: Math.abs(data.lowest_drop_percent || 0),
+          
+          // P&L
+          unrealized_pnl_sol: data.unrealized_pnl_sol,
+          unrealized_pnl_usd: data.unrealized_pnl_usd,
+          total_pnl_sol: data.total_pnl_sol,
+          roi_percent: data.roi_percent,
+          
+          // Holdings
+          current_tokens: data.current_tokens,
+          current_value_sol: data.current_value_sol,
+          current_value_usd: data.current_value_usd,
+          
+          // Metadata
           last_price: p.current_price,
-          current_price: data.new_price,
-          unrealized_pnl_sol: data.unrealized_pnl || p.unrealized_pnl_sol,
-          total_pnl_sol: data.total_pnl || p.total_pnl_sol,
-          roi_percent: data.roi_percent || p.roi_percent,
-          peak_roi_percent: Math.max(p.peak_roi_percent || 0, data.roi_percent || 0),
-          monitoring_active: true,
-          last_update: Date.now()
+          last_update: data.last_update || Date.now()
         };
       }
       return p;
     }));
     
-    // Show price change notification only for significant changes
-    if (data.change_percent && Math.abs(data.change_percent) > 5) {
-      const emoji = data.change_percent > 0 ? '📈' : '📉';
-      toast(`${emoji} ${data.token_symbol}: ${data.change_percent > 0 ? '+' : ''}${data.change_percent.toFixed(2)}%`, {
-        duration: 3000
+    // Show toast for significant moves
+    if (Math.abs(data.change_percent_from_entry) > 10) {
+      const direction = data.change_percent_from_entry > 0 ? '📈' : '📉';
+      toast(`${direction} ${data.token_symbol}: ${data.change_percent_from_entry.toFixed(1)}% from entry`, {
+        position: 'top-right'
       });
     }
-  };
+  }, []);
 
   const handleAlert = (data: any) => {
     if (data.alert_type === 'stop_loss') {
@@ -517,27 +523,42 @@ const PositionCard: React.FC<{
           <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
             <DollarSign className="w-3 h-3" /> Entry
           </p>
-          <p className="text-sm font-bold text-white">{position.total_invested_sol.toFixed(6)} SOL</p>
-          <p className="text-xs text-gray-500">
-            {position.current_tokens ? `${position.current_tokens.toFixed(4)} tokens` : ''}
+          <p className="text-sm font-bold text-white">
+            {(position.avg_entry_price || 0) > 0.001 
+              ? `${(position.avg_entry_price || 0).toFixed(6)} SOL`
+              : `${((position.avg_entry_price || 0) * 1e9).toFixed(2)}e-9 SOL`
+            }
           </p>
+          {position.entry_price_usd && (
+            <p className="text-xs text-gray-500">
+              ${(position.entry_price_usd || 0).toFixed(8)} USD
+            </p>
+          )}
           <p className="text-xs text-gray-500">
-            @ {(position.avg_entry_price || 0).toFixed(9)} SOL/token
+            {position.current_tokens ? `${position.current_tokens.toFixed(2)} tokens` : ''}
           </p>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
             <Activity className="w-3 h-3" /> Current
+            {priceChangeIndicators.get(position.id) && (
+              <span className={`text-xs ${
+                priceChangeIndicators.get(position.id) === 'up' ? 'text-green-400' : 'text-red-400'
+              } animate-pulse`}>
+                {priceChangeIndicators.get(position.id) === 'up' ? '↑' : '↓'}
+              </span>
+            )}
           </p>
           <p className="text-sm font-bold text-white">
-            {(position.current_price || 0) > 0 ? 
-              `${(position.current_price || 0).toFixed(9)} SOL/token` : 
-              'No price data'
-            }
+            {(position.current_price || 0) > 0 ? (
+              (position.current_price || 0) > 0.001 
+                ? `${(position.current_price || 0).toFixed(6)} SOL`
+                : `${((position.current_price || 0) * 1e9).toFixed(2)}e-9 SOL`
+            ) : 'No price data'}
           </p>
-          {(position.current_price || 0) > 0 && position.current_tokens && (
-            <p className="text-xs text-gray-500">
-              Value: {(position.current_tokens * (position.current_price || 0)).toFixed(6)} SOL
+          {position.current_price_usd && (
+            <p className="text-xs text-green-400">
+              ${(position.current_price_usd || 0).toFixed(8)} USD
             </p>
           )}
           {(position.current_price || 0) > 0 && (position.avg_entry_price || 0) > 0 && (
