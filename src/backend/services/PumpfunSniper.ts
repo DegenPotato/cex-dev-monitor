@@ -611,7 +611,7 @@ export class PumpfunSniper extends EventEmitter {
       }
 
       // Execute snipe with creation tx confirmation
-      await this.executeSnipe(logs.signature, tokenMint, bondingCurve);
+      await this.executeSnipe(logs.signature, tokenMint);
 
     } catch (error: any) {
       console.error('❌ [PumpfunSniper] Error handling logs:', error.message);
@@ -814,7 +814,7 @@ export class PumpfunSniper extends EventEmitter {
   /**
    * Execute the snipe - buy token and set up monitoring
    */
-  private async executeSnipe(signature: string, tokenMint: string, curveSnapshot?: Partial<BondingCurve>): Promise<void> {
+  private async executeSnipe(signature: string, tokenMint: string): Promise<void> {
     if (!this.config || !this.tradingEngine) {
       return;
     }
@@ -843,26 +843,30 @@ export class PumpfunSniper extends EventEmitter {
         return;
       }
       
-      // Simple strategy: Try immediately, retry once after 1000ms if failed
-      console.log('⚡ [PumpfunSniper] Attempting buy (attempt 1/2)...');
+      // Use Jupiter API (same as fetcher trading bot) - handles all Pumpfun complexity
+      console.log('⚡ [PumpfunSniper] Attempting buy via Jupiter (attempt 1/2)...');
       
-      let buyResult = await this.tradingEngine.buyToken({
-        connection: this.connection,
-        userId: this.config.userId,
+      // Import the Jupiter-based trading engine
+      const { getTradingEngine } = await import('../core/trade.js');
+      const jupiterEngine = getTradingEngine();
+      
+      // Get wallet from config
+      const { queryOne } = await import('../database/helpers.js');
+      const wallet = await queryOne('SELECT user_id FROM trading_wallets WHERE public_key = ?', [this.config.wallet]) as any;
+      
+      if (!wallet || !wallet.user_id) {
+        console.error('❌ [PumpfunSniper] Wallet not found in database');
+        return;
+      }
+      
+      let buyResult = await jupiterEngine.buyToken({
+        userId: wallet.user_id,
         walletAddress: this.config.wallet,
         tokenMint,
         amount: this.config.buyAmount,
         slippageBps: this.config.slippage || 1000,
-        priorityFee: this.config.priorityFee ?? 0.001,
-        skipTax: this.config.skipTax || false,
-        curveData: curveSnapshot ? {
-          virtualTokenReserves: curveSnapshot.virtualTokenReserves,
-          virtualSolReserves: curveSnapshot.virtualSolReserves,
-          realTokenReserves: curveSnapshot.realTokenReserves,
-          realSolReserves: curveSnapshot.realSolReserves,
-          tokenTotalSupply: curveSnapshot.tokenTotalSupply,
-          complete: curveSnapshot.complete ?? false
-        } : undefined
+        priorityLevel: 'high',
+        skipTax: this.config.skipTax || false
       });
       
       // If first attempt failed, wait 1000ms and retry
@@ -872,24 +876,15 @@ export class PumpfunSniper extends EventEmitter {
         
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        console.log('⚡ [PumpfunSniper] Attempting buy (attempt 2/2)...');
-        buyResult = await this.tradingEngine.buyToken({
-          connection: this.connection,
-          userId: this.config.userId,
+        console.log('⚡ [PumpfunSniper] Attempting buy via Jupiter (attempt 2/2)...');
+        buyResult = await jupiterEngine.buyToken({
+          userId: wallet.user_id,
           walletAddress: this.config.wallet,
           tokenMint,
           amount: this.config.buyAmount,
           slippageBps: this.config.slippage || 1000,
-          priorityFee: this.config.priorityFee ?? 0.001,
-          skipTax: this.config.skipTax || false,
-          curveData: curveSnapshot ? {
-            virtualTokenReserves: curveSnapshot.virtualTokenReserves,
-            virtualSolReserves: curveSnapshot.virtualSolReserves,
-            realTokenReserves: curveSnapshot.realTokenReserves,
-            realSolReserves: curveSnapshot.realSolReserves,
-            tokenTotalSupply: curveSnapshot.tokenTotalSupply,
-            complete: curveSnapshot.complete ?? false
-          } : undefined
+          priorityLevel: 'high',
+          skipTax: this.config.skipTax || false
         });
       }
 
@@ -912,7 +907,7 @@ export class PumpfunSniper extends EventEmitter {
       console.log(`🔗 Solscan: https://solscan.io/tx/${buyResult.signature}`);
       
       // Track position
-      const tokensBought = buyResult.tokenAmount || 0;
+      const tokensBought = buyResult.amountOut || 0;
       const pricePerToken = this.config.buyAmount / tokensBought;
       
       // Track position in test lab for monitoring
