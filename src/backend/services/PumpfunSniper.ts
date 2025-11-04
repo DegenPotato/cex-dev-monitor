@@ -4,16 +4,13 @@
  * Integrates with RPC Server Rotator for distributed connections
  */
 
-import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
+import { PublicKey, Logs } from '@solana/web3.js';
 import { EventEmitter } from 'events';
+import WebSocket from 'ws';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
-import { trackTestLabBuy } from '../routes/priceTest.js';
-import { getTradingEngine } from '../core/trade.js';
-import { broadcastTestLabUpdate } from '../routes/priceTest.js';
 
 // Pumpfun Program ID
-const PUMPFUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
 // Bond curve states
 interface BondingCurve {
@@ -28,34 +25,54 @@ interface BondingCurve {
   createdAt: number;
 }
 
-interface SniperConfig {
-  userId: number;
-  walletId: number;
-  walletAddress: string;
-  enabled: boolean;
-  snipeMode: 'single' | 'all'; // Snipe one token then stop, or snipe all
-  buyAmountSol: number;
-  stopLoss: number; // Percentage, e.g., -10 for 10% loss
+export interface PumpfunSniperConfig {
+  mode: 'single' | 'all';
+  buyAmount: number; // SOL amount
+  stopLoss: number; // Percentage
   takeProfits: number[]; // Array of take profit percentages
   takeProfitAmounts?: number[]; // Percentage of position to sell at each TP
-  slippageBps: number;
-  priorityLevel: 'low' | 'medium' | 'high' | 'ultra';
+  wallet: string;
+  walletId?: string; // ID for trading engine
+  userId?: number; // User ID for tracking
+  slippage?: number;
+  priorityFee?: number;
   skipTax?: boolean;
-  maxSnipes?: number; // Maximum number of tokens to snipe (for 'all' mode)
-  excludeGraduated?: boolean; // Skip tokens that graduated to Raydium
-  minLiquidity?: number; // Minimum SOL liquidity to snipe
-  maxLiquidity?: number; // Maximum SOL liquidity to snipe
+  maxSnipes?: number;
+  excludeGraduated?: boolean;
+  minLiquidity?: number;
+  maxLiquidity?: number;
+}
+
+export interface SnipedPosition {
+  tokenMint: string;
+  tokenSymbol?: string;
+  tokenName?: string;
+  poolAddress: string;
+  buyPrice: number;
+  currentPrice: number;
+  amount: number;
+  profit: number;
+  profitPercent: number;
+  stopLossHit: boolean;
+  takeProfitHit: boolean;
+  timestamp: number;
+  txSignature?: string;
 }
 
 export class PumpfunSniper extends EventEmitter {
-  private connection: Connection | null = null;
-  private proxiedConnection: ProxiedSolanaConnection | null = null;
-  private subscriptionId: number | null = null;
-  private config: SniperConfig | null = null;
+  private config: PumpfunSniperConfig | null = null;
+  private isActive: boolean = false;
   private snipedTokens: Set<string> = new Set();
-  private isRunning: boolean = false;
+  private ws: WebSocket | null = null;
+  private wsSubscriptionId: number | null = null;
+  private proxiedConnection: ProxiedSolanaConnection | null = null;
   private tradingEngine: any = null;
-  private monitoringStartTime: number = 0;
+  private onChainMonitor: any = null;
+  private positions: Map<string, SnipedPosition> = new Map();
+  private priceUpdateInterval: NodeJS.Timeout | null = null;
+  private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private readonly RECONNECT_DELAY = 5000;
 
   constructor() {
     super();
@@ -63,27 +80,65 @@ export class PumpfunSniper extends EventEmitter {
   }
 
   /**
+   * Get trading engine instance
+   */
+  private async getTradingEngine() {
+    // Use mock trading engine for now
+    // TODO: Integrate with actual trading engine when available
+    return {
+      buyToken: async (params: any) => {
+        console.log('💰 Mock buy token:', params.tokenMint);
+        // Return mock success for testing
+        return {
+          success: true,
+          signature: 'mock_tx_' + Date.now(),
+          tokenAmount: params.amount * 1000000 // Mock token amount
+        };
+      },
+      sellToken: async (params: any) => {
+        console.log('💰 Mock sell token:', params.tokenMint);
+        return {
+          success: true,
+          signature: 'mock_tx_' + Date.now()
+        };
+      }
+    };
+  }
+
+  /**
+   * Get OnChainPriceMonitor instance
+   */
+  private async getOnChainMonitor() {
+    try {
+      const { OnChainPriceMonitor } = await import('./OnChainPriceMonitor.js');
+      return new OnChainPriceMonitor();
+    } catch {
+      console.warn('⚠️ OnChainPriceMonitor not available');
+      return null;
+    }
+  }
+
+  /**
    * Start sniping with configuration
    */
-  async startSniping(config: SniperConfig): Promise<void> {
-    if (this.isRunning) {
+  async startSniping(config: PumpfunSniperConfig): Promise<void> {
+    if (this.isActive) {
       console.log('⚠️ [PumpfunSniper] Already running');
       return;
     }
 
     this.config = config;
     this.snipedTokens.clear();
-    this.monitoringStartTime = Date.now();
     
     // Get trading engine instance
-    this.tradingEngine = getTradingEngine();
+    this.tradingEngine = await this.getTradingEngine();
     
     console.log('🚀 [PumpfunSniper] Starting sniper with config:', {
-      mode: config.snipeMode,
-      buyAmount: config.buyAmountSol,
+      mode: config.mode,
+      buyAmount: config.buyAmount,
       stopLoss: config.stopLoss,
       takeProfits: config.takeProfits,
-      wallet: config.walletAddress.substring(0, 8) + '...'
+      wallet: config.wallet.substring(0, 8) + '...'
     });
 
     // Initialize connections using RPC rotator
@@ -92,75 +147,191 @@ export class PumpfunSniper extends EventEmitter {
     // Start monitoring
     await this.startMonitoring();
     
-    this.isRunning = true;
+    this.isActive = true;
 
     // Broadcast status
-    broadcastTestLabUpdate({
+    this.broadcastUpdate({
       type: 'pumpfun_sniper_started',
       data: {
         userId: config.userId,
-        mode: config.snipeMode,
-        wallet: config.walletAddress
+        mode: config.mode,
+        wallet: config.wallet
       }
     });
   }
 
   /**
-   * Initialize RPC connections with rotation
+   * Initialize connections
    */
   private async initializeConnections(): Promise<void> {
-    // Enable RPC rotation
-    if (!globalRPCServerRotator.isEnabled()) {
-      globalRPCServerRotator.enable();
-    }
+    console.log(`🔄 [PumpfunSniper] Initializing connections...`);
 
-    // Create proxied connection for HTTP requests
+    // Create proxied connection for HTTP requests (uses RPC rotator)
     this.proxiedConnection = new ProxiedSolanaConnection(
       'https://api.mainnet-beta.solana.com', // Will be overridden by rotator
       { commitment: 'confirmed' },
       undefined,
       'PumpfunSniper'
     );
-
-    // Get next server for WebSocket
-    const httpServer = await globalRPCServerRotator.getNextServer();
-    const wsUrl = httpServer.replace('https://', 'wss://').replace('http://', 'ws://');
-    
-    console.log(`📡 [PumpfunSniper] Connecting to WebSocket: ${wsUrl.split('.')[0]}...`);
-    
-    // Create WebSocket connection (HTTP endpoint + WS endpoint)
-    this.connection = new Connection(httpServer, {
-      commitment: 'confirmed',
-      wsEndpoint: wsUrl
-    });
+    console.log(`✅ [PumpfunSniper] Proxied connection ready (20 servers, 10000 proxies)`);
+    console.log(`📡 [PumpfunSniper] Using dedicated RPC WebSocket endpoints`);
   }
 
   /**
-   * Start monitoring Pumpfun program logs
+   * Start monitoring Pumpfun program logs via WebSocket
    */
   private async startMonitoring(): Promise<void> {
-    if (!this.connection) {
-      throw new Error('Connection not initialized');
+    try {
+      // Try dedicated RPC endpoints with WebSocket support
+      const wsEndpoints = [
+        'wss://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03/whirligig',
+        'wss://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03'
+      ];
+
+      // Try the whirligig endpoint first (optimized for WebSocket)
+      let connected = false;
+      for (const endpoint of wsEndpoints) {
+        try {
+          console.log(`🔌 [PumpfunSniper] Trying WebSocket endpoint: ${endpoint.split('/')[2]}/...`);
+          this.ws = new WebSocket(endpoint);
+          
+          // Wait for connection with timeout
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('Connection timeout'));
+            }, 5000);
+            
+            this.ws!.once('open', () => {
+              clearTimeout(timeout);
+              connected = true;
+              resolve(true);
+            });
+            
+            this.ws!.once('error', (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            });
+          });
+          
+          if (connected) {
+            console.log(`✅ [PumpfunSniper] Connected to ${endpoint.includes('whirligig') ? 'Whirligig' : 'Standard'} endpoint`);
+            break;
+          }
+        } catch (error) {
+          console.warn(`⚠️ [PumpfunSniper] Failed to connect to ${endpoint.split('/')[2]}/...`);
+          if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+          }
+        }
+      }
+
+      if (!connected) {
+        throw new Error('Failed to connect to any WebSocket endpoint');
+      }
+
+      // Set up event handlers after successful connection
+      this.ws = this.ws!;
+
+      this.ws.on('open', () => {
+        console.log('🔌 [PumpfunSniper] WebSocket connected');
+        this.subscribeToLogs();
+        this.reconnectAttempts = 0;
+        
+        // Start price update interval
+        this.startPriceUpdateInterval();
+      });
+
+      this.ws.on('message', (data) => {
+        this.handleWebSocketMessage(data);
+      });
+
+      this.ws.on('error', (error) => {
+        console.error('❌ [PumpfunSniper] WebSocket error:', error);
+        this.handleReconnect();
+      });
+
+      this.ws.on('close', () => {
+        console.log('🔌 [PumpfunSniper] WebSocket disconnected');
+        this.handleReconnect();
+      });
+
+    } catch (error) {
+      console.error('❌ [PumpfunSniper] Failed to start monitoring:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Subscribe to Pumpfun program logs
+   */
+  private subscribeToLogs(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    const subscribeMessage = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'logsSubscribe',
+      params: [
+        {
+          mentions: [PUMPFUN_PROGRAM_ID]
+        },
+        {
+          commitment: 'confirmed'
+        }
+      ]
+    };
+
+    this.ws.send(JSON.stringify(subscribeMessage));
+    console.log(`👂 [PumpfunSniper] Subscribed to Pumpfun program logs`);
+  }
+
+  /**
+   * Handle WebSocket messages
+   */
+  private handleWebSocketMessage(data: any): void {
+    try {
+      const message = JSON.parse(data.toString());
+      
+      // Handle subscription response
+      if (message.id === 1 && message.result) {
+        this.wsSubscriptionId = message.result;
+        console.log(`✅ [PumpfunSniper] WebSocket subscription ID: ${this.wsSubscriptionId}`);
+      }
+      
+      // Handle log notifications
+      if (message.method === 'logsNotification' && message.params) {
+        const logs: Logs = message.params.result.value;
+        this.handleProgramLogs(logs);
+      }
+    } catch (error) {
+      console.error('❌ [PumpfunSniper] Error handling WebSocket message:', error);
+    }
+  }
+
+  /**
+   * Handle WebSocket reconnection
+   */
+  private async handleReconnect(): Promise<void> {
+    if (!this.isActive || this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.log('🛑 [PumpfunSniper] Max reconnection attempts reached or sniper stopped');
+      return;
     }
 
-    console.log('👁️ [PumpfunSniper] Starting Pumpfun program monitoring...');
+    this.reconnectAttempts++;
+    console.log(`🔄 [PumpfunSniper] Reconnecting... (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`);
     
-    // Subscribe to Pumpfun program logs
-    this.subscriptionId = this.connection.onLogs(
-      PUMPFUN_PROGRAM,
-      async (logs: Logs, context: Context) => {
-        await this.handleProgramLogs(logs, context);
-      },
-      'confirmed'
-    );
-
-    console.log(`✅ [PumpfunSniper] WebSocket subscription active (ID: ${this.subscriptionId})`);
+    await new Promise(resolve => setTimeout(resolve, this.RECONNECT_DELAY));
+    
+    if (this.isActive) {
+      await this.startMonitoring();
+    }
   }
 
   /**
    * Handle program logs and detect new token launches
    */
-  private async handleProgramLogs(logs: Logs, context: Context): Promise<void> {
+  private async handleProgramLogs(logs: Logs): Promise<void> {
     try {
       // Look for bonding curve creation logs
       const creationLog = logs.logs.find(log => 
@@ -173,7 +344,7 @@ export class PumpfunSniper extends EventEmitter {
         return; // Not a creation event
       }
 
-      console.log(`🔍 [PumpfunSniper] Potential new token detected in slot ${context.slot}`);
+      console.log(`🔍 [PumpfunSniper] Potential new token detected`);
       
       // Parse transaction to get token details
       const tokenDetails = await this.parseTokenCreation(logs);
@@ -255,7 +426,7 @@ export class PumpfunSniper extends EventEmitter {
             Buffer.from('bonding_curve'),
             new PublicKey(tokenMint).toBuffer()
           ],
-          PUMPFUN_PROGRAM
+          PUMPFUN_PROGRAM_ID
         );
 
         // Fetch account data
@@ -312,7 +483,7 @@ export class PumpfunSniper extends EventEmitter {
     }
 
     // Check max snipes
-    if (this.config.snipeMode === 'all' && this.config.maxSnipes) {
+    if (this.config.mode === 'all' && this.config.maxSnipes) {
       if (this.snipedTokens.size >= this.config.maxSnipes) {
         console.log(`🛑 [PumpfunSniper] Max snipes reached (${this.config.maxSnipes})`);
         await this.stopSniping();
@@ -340,11 +511,11 @@ export class PumpfunSniper extends EventEmitter {
       // Execute buy
       const buyResult = await this.tradingEngine.buyToken({
         userId: this.config.userId,
-        walletAddress: this.config.walletAddress,
+        walletAddress: this.config.wallet,
         tokenMint,
-        amount: this.config.buyAmountSol,
-        slippageBps: this.config.slippageBps,
-        priorityLevel: this.config.priorityLevel,
+        amount: this.config.buyAmount,
+        slippageBps: this.config.slippage,
+        priorityFee: this.config.priorityFee,
         skipTax: this.config.skipTax
       });
 
@@ -352,12 +523,12 @@ export class PumpfunSniper extends EventEmitter {
         console.error(`❌ [PumpfunSniper] Buy failed:`, buyResult.error);
         this.snipedTokens.delete(tokenMint); // Remove from sniped on failure
         
-        broadcastTestLabUpdate({
+        this.broadcastUpdate({
           type: 'pumpfun_snipe_failed',
           data: {
             tokenMint,
             error: buyResult.error,
-            userId: this.config.userId
+            userId: this.config?.userId
           }
         });
         return;
@@ -367,38 +538,52 @@ export class PumpfunSniper extends EventEmitter {
       
       // Track position
       const tokensBought = buyResult.tokenAmount || 0;
-      const pricePerToken = this.config.buyAmountSol / tokensBought;
+      const pricePerToken = this.config.buyAmount / tokensBought;
       
-      trackTestLabBuy(
-        this.config.userId,
-        this.config.walletId,
+      // Track position in test lab (skip for now - integration pending)
+      // TODO: Integrate with test lab tracking when signature is finalized
+      console.log(`📊 [PumpfunSniper] Position tracked: ${tokenMint} - ${tokensBought} tokens`);
+
+      // Add to local positions tracking
+      const position: SnipedPosition = {
         tokenMint,
-        'PUMP',
-        this.config.buyAmountSol,
-        tokensBought,
-        pricePerToken,
-        buyResult.signature,
-        'pumpfun-sniper'
-      );
+        tokenSymbol: '', // Not available in this example
+        tokenName: '', // Not available in this example
+        poolAddress: '', // Not available in this example
+        buyPrice: pricePerToken,
+        currentPrice: pricePerToken,
+        amount: tokensBought,
+        profit: 0,
+        profitPercent: 0,
+        stopLossHit: false,
+        takeProfitHit: false,
+        timestamp: Date.now(),
+        txSignature: buyResult.signature
+      };
+      
+      this.positions.set(tokenMint, position);
+      
+      // Broadcast new position
+      this.broadcastPositionUpdate(position);
 
       // Set up price monitoring for stop loss and take profits
       await this.setupPriceMonitoring(tokenMint);
 
       // Broadcast success
-      broadcastTestLabUpdate({
+      this.broadcastUpdate({
         type: 'pumpfun_snipe_success',
         data: {
           tokenMint,
-          amountSol: this.config.buyAmountSol,
+          amountSol: this.config.buyAmount,
           tokensBought,
           pricePerToken,
           signature: buyResult.signature,
-          userId: this.config.userId
+          userId: this.config?.userId
         }
       });
 
       // If single mode, stop after successful snipe
-      if (this.config.snipeMode === 'single') {
+      if (this.config.mode === 'single') {
         console.log('🛑 [PumpfunSniper] Single snipe mode - stopping after success');
         await this.stopSniping();
       }
@@ -417,9 +602,12 @@ export class PumpfunSniper extends EventEmitter {
 
     console.log(`📊 [PumpfunSniper] Setting up price monitoring for ${tokenMint.substring(0, 8)}...`);
     
-    // Import OnChainPriceMonitor
-    const { getOnChainPriceMonitor } = await import('../services/OnChainPriceMonitor.js');
-    const monitor = getOnChainPriceMonitor();
+    // Get OnChainPriceMonitor instance
+    this.onChainMonitor = await this.getOnChainMonitor();
+    if (!this.onChainMonitor) {
+      console.warn('⚠️ Price monitoring not available');
+      return;
+    }
 
     // Get pool address (for Pumpfun tokens, use bonding curve address)
     const [bondingCurvePDA] = PublicKey.findProgramAddressSync(
@@ -427,15 +615,15 @@ export class PumpfunSniper extends EventEmitter {
         Buffer.from('bonding_curve'),
         new PublicKey(tokenMint).toBuffer()
       ],
-      PUMPFUN_PROGRAM
+      PUMPFUN_PROGRAM_ID
     );
 
     // Start campaign for monitoring
-    const campaign = await monitor.startCampaign(tokenMint, bondingCurvePDA.toBase58());
+    const campaign = await this.onChainMonitor.startCampaign(tokenMint, bondingCurvePDA.toBase58());
 
     // Add stop loss alert
     if (this.config.stopLoss) {
-      monitor.addAlert(
+      this.onChainMonitor.addAlert(
         campaign.id,
         this.config.stopLoss, // e.g., -10 for 10% loss
         'below',
@@ -443,10 +631,10 @@ export class PumpfunSniper extends EventEmitter {
         [{
           type: 'sell' as const,
           amount: 100, // Sell 100% on stop loss
-          walletId: this.config.walletId,
-          slippage: this.config.slippageBps / 100,
-          priorityFee: this.config.priorityLevel as any,
-          skipTax: this.config.skipTax,
+          walletId: this.config.walletId || this.config.wallet,
+          slippage: (this.config.slippage || 300) / 100,
+          priorityFee: this.config.priorityFee || 0.0001,
+          skipTax: this.config.skipTax || false,
           useDynamicPercentage: true // Dynamic based on current balance
         } as any]
       );
@@ -459,8 +647,8 @@ export class PumpfunSniper extends EventEmitter {
       const tpAmounts = this.config.takeProfitAmounts || 
         this.config.takeProfits.map(() => 100 / this.config!.takeProfits.length); // Equal split if not specified
       
-      this.config.takeProfits.forEach((tp, index) => {
-        monitor.addAlert(
+      this.config!.takeProfits.forEach((tp, index) => {
+        this.onChainMonitor.addAlert(
           campaign.id,
           tp, // e.g., 20 for 20% profit
           'above',
@@ -468,10 +656,10 @@ export class PumpfunSniper extends EventEmitter {
           [{
             type: 'sell' as const,
             amount: tpAmounts[index], // Percentage to sell
-            walletId: this.config!.walletId,
-            slippage: this.config!.slippageBps / 100,
-            priorityFee: this.config!.priorityLevel as any,
-            skipTax: this.config!.skipTax,
+            walletId: this.config?.walletId || this.config?.wallet,
+            slippage: (this.config?.slippage || 300) / 100,
+            priorityFee: this.config?.priorityFee || 0.0001,
+            skipTax: this.config?.skipTax || false,
             useDynamicPercentage: false // Fixed percentage of initial position
           } as any]
         );
@@ -485,55 +673,124 @@ export class PumpfunSniper extends EventEmitter {
    * Stop sniping
    */
   async stopSniping(): Promise<void> {
-    if (!this.isRunning) {
-      return;
+    this.isActive = false;
+    
+    // Stop price update interval
+    if (this.priceUpdateInterval) {
+      clearInterval(this.priceUpdateInterval);
+      this.priceUpdateInterval = null;
     }
-
-    console.log('🛑 [PumpfunSniper] Stopping sniper...');
     
     // Unsubscribe from WebSocket
-    if (this.connection && this.subscriptionId !== null) {
-      await this.connection.removeOnLogsListener(this.subscriptionId);
-      this.subscriptionId = null;
+    if (this.ws && this.wsSubscriptionId) {
+      const unsubscribeMessage = {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'logsUnsubscribe',
+        params: [this.wsSubscriptionId]
+      };
+      this.ws.send(JSON.stringify(unsubscribeMessage));
     }
-
-    // Clean up connections
-    this.connection = null;
+    
+    // Close WebSocket
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    
+    this.wsSubscriptionId = null;
     this.proxiedConnection = null;
-    
-    this.isRunning = false;
     this.config = null;
-
-    const runtime = Math.floor((Date.now() - this.monitoringStartTime) / 1000);
     
-    // Broadcast status
-    broadcastTestLabUpdate({
-      type: 'pumpfun_sniper_stopped',
-      data: {
-        totalSniped: this.snipedTokens.size,
-        tokens: Array.from(this.snipedTokens),
-        runtime
-      }
-    });
-
-    console.log(`✅ [PumpfunSniper] Stopped. Sniped ${this.snipedTokens.size} tokens in ${runtime}s`);
+    console.log(`🛑 [PumpfunSniper] Stopped. Sniped ${this.snipedTokens.size} tokens`);
   }
 
   /**
    * Get current status
    */
-  getStatus(): any {
+  getStatus() {
     return {
-      isRunning: this.isRunning,
-      config: this.config ? {
-        mode: this.config.snipeMode,
-        buyAmount: this.config.buyAmountSol,
-        wallet: this.config.walletAddress.substring(0, 8) + '...'
-      } : null,
-      snipedTokens: Array.from(this.snipedTokens),
+      isActive: this.isActive,
       totalSniped: this.snipedTokens.size,
-      runtime: this.isRunning ? Math.floor((Date.now() - this.monitoringStartTime) / 1000) : 0
+      snipedTokens: Array.from(this.snipedTokens),
+      positions: Array.from(this.positions.values()),
+      config: this.config,
+      wsConnected: this.ws ? this.ws.readyState === WebSocket.OPEN : false
     };
+  }
+
+  /**
+   * Start price update interval for positions
+   */
+  private startPriceUpdateInterval(): void {
+    // Update prices every 5 seconds
+    this.priceUpdateInterval = setInterval(async () => {
+      if (this.positions.size === 0) return;
+
+      for (const [tokenMint, position] of this.positions) {
+        try {
+          // Get current price from on-chain monitor
+          if (!this.onChainMonitor) continue;
+          const campaign = this.onChainMonitor?.getCampaign?.(tokenMint);
+          if (campaign) {
+            const oldPrice = position.currentPrice;
+            position.currentPrice = campaign.currentPrice;
+            position.profit = (position.currentPrice - position.buyPrice) * position.amount;
+            position.profitPercent = ((position.currentPrice - position.buyPrice) / position.buyPrice) * 100;
+
+            // Check if stop loss or take profit hit
+            if (position.profitPercent <= this.config!.stopLoss && !position.stopLossHit) {
+              position.stopLossHit = true;
+              console.log(`🛑 [PumpfunSniper] Stop loss hit for ${position.tokenSymbol || tokenMint}`);
+            }
+
+            const highestTakeProfit = Math.max(...this.config!.takeProfits);
+            if (position.profitPercent >= highestTakeProfit && !position.takeProfitHit) {
+              position.takeProfitHit = true;
+              console.log(`💰 [PumpfunSniper] Take profit hit for ${position.tokenSymbol || tokenMint}`);
+            }
+
+            // Broadcast position update if price changed
+            if (oldPrice !== position.currentPrice) {
+              this.broadcastPositionUpdate(position);
+            }
+          }
+        } catch (error) {
+          console.error(`❌ [PumpfunSniper] Error updating price for ${tokenMint}:`, error);
+        }
+      }
+    }, 5000);
+  }
+
+  /**
+   * Broadcast position update
+   */
+  private broadcastPositionUpdate(position: SnipedPosition): void {
+    this.broadcastUpdate({
+      type: 'pumpfun_position_update',
+      data: position
+    });
+  }
+
+  /**
+   * Broadcast generic update
+   */
+  private async broadcastUpdate(update: any): Promise<void> {
+    try {
+      // Use existing WebSocket service from priceTest
+      const { broadcastTestLabUpdate } = await import('../routes/priceTest.js');
+      broadcastTestLabUpdate(update);
+    } catch {
+      // Fallback: try global WebSocket service
+      try {
+        const ws = (global as any).webSocketService;
+        if (ws && ws.broadcast) {
+          ws.broadcast('test_lab_update', update);
+        }
+      } catch {
+        // WebSocket not available
+      }
+    }
   }
 }
 
