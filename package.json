@@ -74,23 +74,13 @@
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
     "@types/cookie-parser": "^1.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/dotenv": "^8.2.0",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/node": "^20.10.6",
-    "@types/node-fetch": "^2.6.13",
-    "@types/puppeteer": "^7.0.4",
-    "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
-    "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.16",
+    "autoprefixer": "^10.4.17",
     "concurrently": "^8.2.2",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.4.0",
-    "tsx": "^4.7.0",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
-    "vite": "^5.0.10"
+    "vite": "^5.0.12"
   }
 }
