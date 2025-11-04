@@ -72,8 +72,33 @@ export async function fetchBondingCurveData(
   bondingCurve: PublicKey
 ): Promise<BondingCurveData | null> {
   try {
-    const accountInfo = await connection.getAccountInfo(bondingCurve);
-    if (!accountInfo) return null;
+    let accountInfo = await connection.getAccountInfo(bondingCurve, 'processed');
+
+    if (!accountInfo) {
+      // Retry a couple of times with small delay in case the account hasn't propagated yet
+      for (let attempt = 0; attempt < 2 && !accountInfo; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+        accountInfo = await connection.getAccountInfo(bondingCurve, 'processed');
+      }
+    }
+
+    if (!accountInfo) {
+      accountInfo = await connection.getAccountInfo(bondingCurve, 'confirmed');
+    }
+
+    if (!accountInfo) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      accountInfo = await connection.getAccountInfo(bondingCurve, 'confirmed');
+    }
+
+    if (!accountInfo) {
+      accountInfo = await connection.getAccountInfo(bondingCurve, 'finalized');
+    }
+
+    if (!accountInfo) {
+      console.warn(`⚠️ [PumpfunBuy] Bonding curve account not yet available: ${bondingCurve.toBase58()}`);
+      return null;
+    }
 
     // Parse the account data (this is based on Pumpfun's structure)
     const data = accountInfo.data;
@@ -149,6 +174,7 @@ export async function buildPumpfunBuyInstruction(
   
   // Derive PDAs
   const [bondingCurve] = deriveBondingCurvePDA(tokenMint);
+  console.log(`🧮 [PumpfunBuy] Derived bonding curve PDA: ${bondingCurve.toBase58()}`);
   const associatedBondingCurve = await getAssociatedTokenAddress(
     tokenMint,
     bondingCurve,

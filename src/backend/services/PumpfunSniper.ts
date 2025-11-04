@@ -83,6 +83,43 @@ export class PumpfunSniper extends EventEmitter {
     console.log('🎯 [PumpfunSniper] Initialized');
   }
 
+  private parseBondingCurveSnapshot(logEntry: string): {
+    virtualTokenReserves: bigint;
+    virtualSolReserves: bigint;
+    realTokenReserves: bigint;
+    realSolReserves: bigint;
+    tokenTotalSupply: bigint;
+  } | null {
+    if (!logEntry.includes('Program data:')) return null;
+
+    try {
+      const base64 = logEntry.substring(logEntry.indexOf('Program data:') + 13).trim();
+      const buffer = Buffer.from(base64, 'base64');
+
+      if (buffer.length < 48) {
+        return null;
+      }
+
+      let offset = 8; // Skip discriminator
+      const readU64 = () => {
+        const value = buffer.readBigUInt64LE(offset);
+        offset += 8;
+        return value;
+      };
+
+      return {
+        virtualTokenReserves: readU64(),
+        virtualSolReserves: readU64(),
+        realTokenReserves: readU64(),
+        realSolReserves: readU64(),
+        tokenTotalSupply: readU64()
+      };
+    } catch (error) {
+      console.warn('⚠️ [PumpfunSniper] Failed to decode bonding curve snapshot:', (error as Error).message);
+      return null;
+    }
+  }
+
   private isValidMintAddress(address: string): boolean {
     try {
       new PublicKey(address);
@@ -500,6 +537,13 @@ export class PumpfunSniper extends EventEmitter {
       // Look for mint addresses in the logs
       // Pumpfun typically logs the mint address when creating a new token
       let tokenMint: string | null = null;
+      let curveSnapshot: {
+        virtualTokenReserves: bigint;
+        virtualSolReserves: bigint;
+        realTokenReserves: bigint;
+        realSolReserves: bigint;
+        tokenTotalSupply: bigint;
+      } | null = null;
 
       const isFilteredAddress = (addr: string) => (
         addr === PUMPFUN_PROGRAM_ID.toString() ||
@@ -524,7 +568,13 @@ export class PumpfunSniper extends EventEmitter {
       for (const log of logs.logs) {
         if (tokenMint) break;
 
-        if (log.includes('Program data:')) {
+        if (curveSnapshot === null && log.includes('Program data:')) {
+          const snapshot = this.parseBondingCurveSnapshot(log);
+          if (snapshot) {
+            curveSnapshot = snapshot;
+            console.log('📊 [PumpfunSniper] Captured bonding curve snapshot from logs');
+          }
+
           const dataSection = log.substring(log.indexOf('Program data:') + 13);
           const addressMatch = dataSection.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g);
           if (addressMatch) {
@@ -596,11 +646,23 @@ export class PumpfunSniper extends EventEmitter {
         }
       }
 
+      const bondingCurveData = curveSnapshot || {
+        virtualTokenReserves: BigInt(0),
+        virtualSolReserves: BigInt(0),
+        realTokenReserves: BigInt(0),
+        realSolReserves: BigInt(0),
+        tokenTotalSupply: BigInt(0)
+      };
+
       return {
         tokenMint,
         bondingCurve: {
-          virtualSolReserves: BigInt(1000000000),
-          virtualTokenReserves: BigInt(1000000000000)
+          virtualSolReserves: bondingCurveData.virtualSolReserves,
+          virtualTokenReserves: bondingCurveData.virtualTokenReserves,
+          realSolReserves: bondingCurveData.realSolReserves,
+          realTokenReserves: bondingCurveData.realTokenReserves,
+          tokenTotalSupply: bondingCurveData.tokenTotalSupply,
+          complete: false
         }
       };
     } catch (error) {
