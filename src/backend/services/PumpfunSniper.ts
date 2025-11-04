@@ -545,8 +545,55 @@ export class PumpfunSniper extends EventEmitter {
       }
 
       if (!tokenMint) {
-        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs');
-        return null;
+        console.warn('⚠️ [PumpfunSniper] No valid mint address found in logs, attempting transaction decode');
+
+        if (this.connection) {
+          try {
+            const tx = await this.connection.getTransaction(logs.signature, {
+              maxSupportedTransactionVersion: 0,
+              commitment: 'confirmed'
+            });
+
+            const postTokenBalances = tx?.meta?.postTokenBalances || [];
+            const mintFromBalances = postTokenBalances
+              .map(balance => balance.mint)
+              .find(mint => mint && !isFilteredAddress(mint));
+
+            if (mintFromBalances && await this.isUsableMintAddress(mintFromBalances)) {
+              tokenMint = mintFromBalances;
+              console.log(`🎯 [PumpfunSniper] Extracted token mint via transaction balances: ${tokenMint}`);
+            }
+
+            if (!tokenMint) {
+              const accountKeys = (() => {
+                const message: any = tx?.transaction?.message;
+                if (!message) return [];
+                if (typeof message.getAccountKeys === 'function') {
+                  const keys = message.getAccountKeys();
+                  return [...keys.staticAccountKeys, ...(keys.accountKeys || [])];
+                }
+                return message.accountKeys || [];
+              })();
+
+              for (const account of accountKeys) {
+                const accountStr = typeof account === 'string' ? account : account.toBase58();
+                if (isFilteredAddress(accountStr)) continue;
+                if (await this.isUsableMintAddress(accountStr)) {
+                  tokenMint = accountStr;
+                  console.log(`🎯 [PumpfunSniper] Extracted token mint via transaction accounts: ${tokenMint}`);
+                  break;
+                }
+              }
+            }
+          } catch (fallbackError) {
+            console.error('❌ [PumpfunSniper] Failed to decode transaction for mint:', fallbackError);
+          }
+        }
+
+        if (!tokenMint) {
+          console.warn('⚠️ [PumpfunSniper] No valid mint address found even after transaction decode');
+          return null;
+        }
       }
 
       return {
