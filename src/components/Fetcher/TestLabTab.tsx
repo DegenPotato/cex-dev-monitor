@@ -144,7 +144,7 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
-  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader' | 'pumpfun-sniper'>('manual');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader' | 'pumpfun-sniper' | 'smart-money'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramSelectedUserIds, setTelegramSelectedUserIds] = useState<string[]>([]);
@@ -1093,6 +1093,17 @@ export const TestLabTab: React.FC = () => {
             >
               <div className="font-medium">🎯 Pumpfun Sniper</div>
               <div className="text-xs mt-1">Auto-snipe new launches</div>
+            </button>
+            <button
+              onClick={() => setCampaignSource('smart-money')}
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'smart-money'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">💎 Smart Money Tracker</div>
+              <div className="text-xs mt-1">Track large Pumpfun buys</div>
             </button>
           </div>
         </div>
@@ -2177,6 +2188,85 @@ export const TestLabTab: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+        )}
+
+        {/* Smart Money Tracker Fields */}
+        {campaignSource === 'smart-money' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+            <p className="text-sm text-emerald-300">
+              <strong>💎 Smart Money Tracker:</strong> Monitors all Pumpfun transactions and tracks large buys (5M+ tokens). 
+              Automatically follows positions until the wallet sells, tracking P&L, highs/lows, and performance metrics. 
+              Features wallet and token leaderboards. In-memory tracking, refreshable within sessions.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Minimum Tokens Threshold</label>
+              <input
+                type="number"
+                value="5000000"
+                readOnly
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
+              />
+              <p className="text-xs text-gray-500 mt-1">Only tracks buys of 5M+ tokens (configurable in backend)</p>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Price Update Interval</label>
+              <input
+                type="text"
+                value="1.5 seconds"
+                readOnly
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
+              />
+              <p className="text-xs text-gray-500 mt-1">Jupiter Price API v3 polling frequency</p>
+            </div>
+          </div>
+
+          {/* Start/Stop Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const endpoint = `/api/smart-money-tracker/${loading ? 'stop' : 'start'}`;
+                  const response = await fetch(`${config.apiUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    toast.success(data.message);
+                  } else {
+                    toast.error(data.error || 'Failed to toggle tracker');
+                  }
+                } catch (error) {
+                  toast.error('Failed to toggle tracker');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Zap className="w-4 h-4" />
+              {loading ? 'Processing...' : 'Start Tracking'}
+            </button>
+          </div>
+
+          <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+            <h4 className="text-white font-medium mb-2">What Gets Tracked:</h4>
+            <ul className="space-y-1 text-sm text-gray-400">
+              <li>• <span className="text-emerald-400">Large Buys:</span> Positions opened with 5M+ tokens</li>
+              <li>• <span className="text-emerald-400">Price Monitoring:</span> Real-time updates every 1.5s via Jupiter</li>
+              <li>• <span className="text-emerald-400">Performance:</span> Unrealized P&L, high/low since entry</li>
+              <li>• <span className="text-emerald-400">Exit Detection:</span> Automatic position closure when wallet sells</li>
+              <li>• <span className="text-emerald-400">Leaderboards:</span> Top performing wallets and hottest tokens</li>
+            </ul>
+          </div>
         </div>
         )}
       </motion.div>

@@ -465,21 +465,17 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Fetch current price for a token from Jupiter API
-   * Same method as Manual test - Jupiter quotes
+   * Fetch current price for a token from Jupiter Price API v3
+   * Correct method using Price API (not swap API)
    */
   private async fetchTokenPriceFromJupiter(tokenMint: string): Promise<number | null> {
     try {
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
-      const JUPITER_API_URL = 'https://lite-api.jup.ag/swap/v1';
+      const PRICE_API_URL = 'https://price.jup.ag/v3/price';
 
-      // Get quote for 1 token -> SOL (1e9 = 1 token with 9 decimals)
+      // Get price for token in terms of SOL
       const response = await fetch(
-        `${JUPITER_API_URL}/quote?` +
-        `inputMint=${tokenMint}&` +
-        `outputMint=${SOL_MINT}&` +
-        `amount=1000000000&` +
-        `slippageBps=1`
+        `${PRICE_API_URL}?ids=${tokenMint}&vsToken=${SOL_MINT}`
       );
 
       if (!response.ok) {
@@ -487,12 +483,14 @@ export class SmartMoneyTracker extends EventEmitter {
       }
 
       const data = await response.json();
-      const outAmount = Number(data.outAmount);
       
-      // Convert lamports to SOL
-      const priceInSOL = outAmount / 1e9;
+      // Response format: { data: { [tokenMint]: { id: string, mintSymbol: string, vsToken: string, vsTokenSymbol: string, price: number } } }
+      const tokenData = data.data?.[tokenMint];
+      if (!tokenData || typeof tokenData.price !== 'number') {
+        return null;
+      }
       
-      return priceInSOL;
+      return tokenData.price; // Already in SOL
     } catch (error) {
       return null;
     }
