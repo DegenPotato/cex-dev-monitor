@@ -647,7 +647,7 @@ export class SmartMoneyTracker extends EventEmitter {
 
     this.emit('positionUpdated', position);
     this.wsService.broadcast('smartMoney:positionUpdated', {
-      position,
+      position: this.sanitizePosition(position),
       stats: this.getStatus()
     });
   }
@@ -732,7 +732,7 @@ export class SmartMoneyTracker extends EventEmitter {
             
             // Broadcast to WebSocket (throttled by >1% change)
             this.wsService.broadcast('smartMoney:priceUpdate', {
-              position,
+              position: this.sanitizePosition(position),
               stats: this.getStatus()
             });
           }
@@ -934,17 +934,19 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Get all positions
+   * Get all positions (sanitized for frontend)
    */
-  getPositions(): TrackedPosition[] {
-    return Array.from(this.positions.values());
+  getPositions(): any[] {
+    return Array.from(this.positions.values()).map(p => this.sanitizePosition(p));
   }
 
   /**
-   * Get active positions only
+   * Get active positions only (sanitized for frontend)
    */
-  getActivePositions(): TrackedPosition[] {
-    return Array.from(this.positions.values()).filter(p => p.isActive);
+  getActivePositions(): any[] {
+    return Array.from(this.positions.values())
+      .filter(p => p.isActive)
+      .map(p => this.sanitizePosition(p));
   }
 
   /**
@@ -1142,6 +1144,35 @@ export class SmartMoneyTracker extends EventEmitter {
     return {
       wallets: this.getWalletLeaderboard(),
       tokens: this.getTokenLeaderboard()
+    };
+  }
+
+  /**
+   * Sanitize position for frontend (convert all undefined to 0 or appropriate defaults)
+   */
+  private sanitizePosition(position: TrackedPosition): any {
+    return {
+      ...position,
+      tokenSymbol: position.tokenSymbol || '',
+      tokenName: position.tokenName || '',
+      tokenLogo: position.tokenLogo || '',
+      totalSupply: position.totalSupply || 0,
+      firstSellTime: position.firstSellTime || 0,
+      lastSellTime: position.lastSellTime || 0,
+      avgSellPrice: position.avgSellPrice || 0,
+      currentPriceUsd: position.currentPriceUsd || 0,
+      marketCapUsd: position.marketCapUsd || 0,
+      marketCapSol: position.marketCapSol || 0,
+      // Entry fields - always defined in creation
+      entryPrice: position.avgBuyPrice || 0,
+      solSpent: position.totalSolSpent || 0,
+      tokensBought: position.totalTokensBought || 0,
+      // Exit fields
+      exitPrice: position.avgSellPrice || 0,
+      exitTime: position.lastSellTime || 0,
+      exitTx: position.trades.filter(t => t.type === 'sell').pop()?.tx || '',
+      entryTx: position.trades[0]?.tx || '',
+      entryTime: position.firstBuyTime || 0
     };
   }
 
