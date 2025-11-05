@@ -153,7 +153,7 @@ export class SmartMoneyTracker extends EventEmitter {
   private tokenPositions: Map<string, Set<string>> = new Map(); // tokenMint -> Set<positionId>
   
   // Configuration
-  private minTokenThreshold: number = 5_000_000; // 5M tokens minimum
+  private minTokenThreshold: number = 100_000; // 100K tokens minimum (0.01% of 1B supply)
   private pollIntervalMs: number = 5000; // Check for new transactions every 5s
   private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s (matches Manual test: 1-2s)
   
@@ -562,8 +562,8 @@ export class SmartMoneyTracker extends EventEmitter {
       this.tokenPositions.get(tokenMint)!.add(positionId);
     }
 
-    // Extract token metadata IMMEDIATELY for new positions (BEFORE incrementing buy count)
-    if (!position.tokenSymbol && position.buyCount === 0) {
+    // Extract token metadata if missing (retry on every buy until we get it)
+    if (!position.tokenSymbol) {
       try {
         const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
         if (metadata) {
@@ -579,11 +579,14 @@ export class SmartMoneyTracker extends EventEmitter {
               position.tokenSymbol = jupMeta.symbol;
               position.tokenName = jupMeta.name;
               position.tokenLogo = jupMeta.logo;
+              console.log(`📦 [SmartMoneyTracker] Metadata (Jupiter): ${jupMeta.symbol}`);
             }
-          } catch {}
+          } catch (jupError) {
+            console.log(`⚠️ [SmartMoneyTracker] Metadata fetch failed for ${tokenMint.slice(0, 8)}, will retry on next buy`);
+          }
         }
-      } catch {
-        // Silent fail - metadata is optional
+      } catch (error) {
+        console.log(`⚠️ [SmartMoneyTracker] Metadata extraction error for ${tokenMint.slice(0, 8)}, will retry on next buy`);
       }
     }
 

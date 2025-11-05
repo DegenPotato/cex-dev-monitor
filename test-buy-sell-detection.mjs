@@ -123,7 +123,9 @@ const sampleTransactions = async () => {
           }
 
           // Progress update
-          const emoji = detectionType === 'BUY' ? '💰' : detectionType === 'SELL' ? '💸' : '❓';
+          const emoji = detectionType === 'BUY' ? '💰' : 
+                        detectionType === 'SELL' ? '💸' : 
+                        detectionType === 'WRAPPER' ? '📦' : '❓';
           console.log(`${emoji} [${results.total}/100] ${detectionType.padEnd(7)} - Disc: ${discriminator || 'none'} - ${signature.slice(0, 8)}`);
 
           // Stop after 100 samples
@@ -152,7 +154,8 @@ console.log('='.repeat(80));
 console.log(`\n📈 Total Transactions: ${results.total}`);
 console.log(`💰 Detected Buys:      ${results.buys} (${((results.buys / results.total) * 100).toFixed(1)}%)`);
 console.log(`💸 Detected Sells:     ${results.sells} (${((results.sells / results.total) * 100).toFixed(1)}%)`);
-console.log(`❓ Unknown:            ${results.unknown} (${((results.unknown / results.total) * 100).toFixed(1)}%)`);
+console.log(`📦 Wrappers (labeled): ${results.wrappers} (${((results.wrappers / results.total) * 100).toFixed(1)}%)`);
+console.log(`❓ Unknown:            ${results.unknown} (${((results.unknown / results.total) * 100).toFixed(1)}%)`);  
 
 console.log('\n' + '-'.repeat(80));
 console.log('🔢 ALL DISCRIMINATORS FOUND:');
@@ -165,9 +168,10 @@ const sortedDiscriminators = Array.from(results.discriminators.entries())
 for (const [disc, count] of sortedDiscriminators) {
   const isBuy = BUY_DISCRIMINATORS.includes(disc);
   const isSell = SELL_DISCRIMINATORS.includes(disc);
-  const label = isBuy ? '✅ BUY ' : isSell ? '✅ SELL' : '❌ UNKN';
+  const isWrapper = WRAPPER_DISCRIMINATORS.includes(disc);
+  const label = isBuy ? '✅ BUY ' : isSell ? '✅ SELL' : isWrapper ? '📦 WRAP' : '❌ UNKN';
   const pct = ((count / results.total) * 100).toFixed(1);
-  console.log(`${label} | ${disc} | Count: ${count.toString().padStart(3)} (${pct.padStart(5)}%)`);
+  console.log(`${label} | ${disc} | Count: ${count.toString().padStart(3)} (${pct.padStart(5)}%)`);  
 }
 
 if (results.unknownTransactions.length > 0) {
