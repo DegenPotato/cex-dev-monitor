@@ -490,7 +490,7 @@ export class SmartMoneyTracker extends EventEmitter {
         tokenSymbol: undefined,
         tokenName: undefined,
         tokenLogo: undefined,
-        totalSupply: undefined
+        totalSupply: 1_000_000_000 // Pumpfun tokens are always 1 billion
       };
       
       this.positions.set(positionId, position);
@@ -537,11 +537,10 @@ export class SmartMoneyTracker extends EventEmitter {
       position.lowTime = tradeTime;
     }
 
-    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
-
-    // Extract token metadata directly from transaction accounts (if not already fetched)
-    if (!position.tokenSymbol) {
-      this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
+    // Extract token metadata IMMEDIATELY for new positions (await for first buy)
+    if (!position.tokenSymbol && position.buyCount === 0) {
+      try {
+        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
         if (metadata) {
           position.tokenSymbol = metadata.symbol || undefined;
           position.tokenName = metadata.name || undefined;
@@ -549,25 +548,21 @@ export class SmartMoneyTracker extends EventEmitter {
           console.log(`📦 [SmartMoneyTracker] Metadata: ${metadata.symbol || 'Unknown'}`);
         } else {
           // Fallback to Jupiter API
-          this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+          try {
+            const jupMeta = await this.fetchTokenMetadata(tokenMint);
             if (jupMeta) {
               position.tokenSymbol = jupMeta.symbol;
               position.tokenName = jupMeta.name;
               position.tokenLogo = jupMeta.logo;
             }
-          }).catch(() => {});
+          } catch {}
         }
-      }).catch(() => {
-        // Try Jupiter fallback
-        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
-          if (jupMeta) {
-            position.tokenSymbol = jupMeta.symbol;
-            position.tokenName = jupMeta.name;
-            position.tokenLogo = jupMeta.logo;
-          }
-        }).catch(() => {});
-      });
+      } catch {
+        // Silent fail - metadata is optional
+      }
     }
+
+    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
   }
 
   /**
