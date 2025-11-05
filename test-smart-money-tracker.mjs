@@ -11,9 +11,16 @@ const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uB
 const BUY_DISCRIMINATORS = ['0094d0da1f435eb0', 'e6345c8dd8b14540'];
 const SELL_DISCRIMINATORS = ['33e685a4017f83ad'];
 
+// Known gas wallets to ignore
+const GAS_WALLET_BLACKLIST = [
+  'CgPfjJEeUHFcr1cXnpkZM9wWGB5RV9m2mjyrwYrhAJWK', // Jupiter Gas Wallet
+];
+
 const MIN_TOKENS_THRESHOLD = 5_000_000; // 5M tokens
 
 let detectionCount = 0;
+let buyCount = 0;
+let sellCount = 0;
 let lastProcessedSlot = 0;
 
 console.log('🎯 Smart Money Tracker - Test Mode');
@@ -76,8 +83,6 @@ async function analyzeTransaction(signature) {
       accountKeys = allKeys;
     }
 
-    const walletAddress = accountKeys[0].toBase58();
-
     for (const innerGroup of tx.meta.innerInstructions) {
       for (const innerIx of innerGroup.instructions) {
         const programIdIndex = innerIx.programIdIndex;
@@ -100,7 +105,7 @@ async function analyzeTransaction(signature) {
 
         const tokenMint = accountKeys[accounts[2]].toBase58();
 
-        // Analyze token balance changes
+        // Analyze token balance changes and extract wallet from token account owner
         if (tx.meta?.postTokenBalances && tx.meta?.preTokenBalances) {
           for (const post of tx.meta.postTokenBalances) {
             if (post.mint === tokenMint) {
@@ -114,8 +119,18 @@ async function analyzeTransaction(signature) {
                 const decimals = post.uiTokenAmount.decimals;
                 const tokenAmount = Number(absChange) / Math.pow(10, decimals);
                 
+                // Get actual wallet from token account owner
+                const walletAddress = post.owner;
+                
+                // Skip if blacklisted
+                if (GAS_WALLET_BLACKLIST.includes(walletAddress)) {
+                  console.log(`⚠️ Skipped blacklisted wallet: ${walletAddress.slice(0, 8)}`);
+                  continue;
+                }
+                
                 // Determine actual buy/sell from balance direction
                 const actualType = change > 0n ? 'BUY' : 'SELL';
+                const expectedType = isBuy ? 'BUY' : 'SELL';
 
                 // Only show if meets threshold (for buys)
                 if (actualType === 'BUY' && tokenAmount < MIN_TOKENS_THRESHOLD) {
@@ -133,24 +148,30 @@ async function analyzeTransaction(signature) {
                 const pricePerToken = solAmount / tokenAmount;
 
                 detectionCount++;
+                if (actualType === 'BUY') buyCount++;
+                if (actualType === 'SELL') sellCount++;
 
                 const icon = actualType === 'BUY' ? '🟢' : '🔴';
                 const time = new Date(tx.blockTime * 1000).toISOString();
+                const match = actualType === expectedType ? '✅' : '⚠️ MISMATCH';
                 
-                console.log(`\n${icon} Detection #${detectionCount} - ${actualType}`);
+                console.log(`\n${icon} Detection #${detectionCount} - ${actualType} ${match}`);
                 console.log(`─────────────────────────────────────────────────────────────`);
                 console.log(`Time:   ${time}`);
-                console.log(`Wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}`);
+                console.log(`Wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)} (from token owner)`);
                 console.log(`Token:  ${tokenMint.slice(0, 8)}...${tokenMint.slice(-8)}`);
                 console.log(`Tokens: ${tokenAmount.toLocaleString()} tokens`);
                 console.log(`SOL:    ${solAmount.toFixed(6)} SOL`);
                 console.log(`Price:  ${pricePerToken.toExponential(6)} SOL/token`);
-                console.log(`Tx:     ${signature.slice(0, 16)}...`);
+                console.log(`Tx:     https://solscan.io/tx/${signature}`);
                 console.log(`Format: ${accounts.length}-account (${accounts.length === 16 ? 'WITH' : 'WITHOUT'} creator fee)`);
-                console.log(`Disc:   ${discriminator}`);
+                console.log(`Disc:   ${discriminator} (expected: ${expectedType})`);
+                console.log(`Stats:  Buys: ${buyCount} | Sells: ${sellCount} | Total: ${detectionCount}`);
 
                 if (actualType === 'BUY') {
                   console.log(`\n✨ This position would be tracked!`);
+                } else if (actualType === 'SELL') {
+                  console.log(`\n📤 This would update existing position`);
                 }
               }
             }
