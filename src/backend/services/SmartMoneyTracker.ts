@@ -70,6 +70,7 @@ interface TokenPerformance {
   tokenMint: string;
   tokenSymbol?: string;
   tokenName?: string;
+  tokenLogo?: string;
   holders: number;
   totalVolume: number;
   avgEntryPrice: number;
@@ -639,6 +640,7 @@ export class SmartMoneyTracker extends EventEmitter {
           tokenMint: position.tokenMint,
           tokenSymbol: position.tokenSymbol,
           tokenName: position.tokenName,
+          tokenLogo: position.tokenLogo,
           holders: 0,
           totalVolume: 0,
           avgEntryPrice: 0,

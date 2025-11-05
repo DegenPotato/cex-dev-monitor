@@ -2413,13 +2413,54 @@ export const TestLabTab: React.FC = () => {
                       }`}>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-white font-medium">{pos.tokenSymbol || pos.tokenMint.slice(0, 8)}</span>
-                              {pos.isActive && <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">ACTIVE</span>}
-                              {!pos.isActive && <span className="px-2 py-0.5 text-xs bg-gray-600/20 text-gray-400 rounded">CLOSED</span>}
+                            <div className="flex items-center gap-3 mb-2">
+                              {/* Token Logo */}
+                              {pos.tokenLogo && (
+                                <img src={pos.tokenLogo} alt={pos.tokenSymbol} className="w-8 h-8 rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                              )}
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  {/* Token Symbol with Solscan Link */}
+                                  <a 
+                                    href={`https://solscan.io/token/${pos.tokenMint}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-white font-medium hover:text-emerald-400 transition-colors"
+                                  >
+                                    {pos.tokenSymbol || pos.tokenMint.slice(0, 8)}
+                                  </a>
+                                  {/* GMGN Chart Link */}
+                                  <a
+                                    href={`https://gmgn.ai/sol/token/${pos.tokenMint}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                                    title="View on GMGN"
+                                  >
+                                    📊
+                                  </a>
+                                  {pos.isActive && <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">ACTIVE</span>}
+                                  {!pos.isActive && <span className="px-2 py-0.5 text-xs bg-gray-600/20 text-gray-400 rounded">CLOSED</span>}
+                                </div>
+                                {/* Token Name */}
+                                {pos.tokenName && (
+                                  <div className="text-xs text-gray-500 mt-0.5">{pos.tokenName}</div>
+                                )}
+                              </div>
                             </div>
                             <div className="text-sm text-gray-400 space-y-1">
-                              <div>Wallet: <span className="text-gray-300 font-mono">{pos.walletAddress.slice(0, 8)}...{pos.walletAddress.slice(-6)}</span></div>
+                              {/* Wallet with Solscan Link */}
+                              <div>
+                                Wallet: 
+                                <a 
+                                  href={`https://solscan.io/account/${pos.walletAddress}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-gray-300 font-mono hover:text-emerald-400 transition-colors ml-1"
+                                >
+                                  {pos.walletAddress.slice(0, 8)}...{pos.walletAddress.slice(-6)}
+                                </a>
+                              </div>
                               <div>Bought: <span className="text-emerald-400">{pos.tokensBought.toLocaleString()} tokens</span> for <span className="text-cyan-400">{pos.solSpent.toFixed(4)} SOL</span></div>
                               {pos.isActive && (
                                 <>
@@ -2457,7 +2498,15 @@ export const TestLabTab: React.FC = () => {
                           <div className="flex items-center gap-3">
                             <span className="text-2xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '💎'}</span>
                             <div>
-                              <div className="text-white font-mono">{wallet.walletAddress.slice(0, 8)}...{wallet.walletAddress.slice(-6)}</div>
+                              {/* Wallet Address with Solscan Link */}
+                              <a
+                                href={`https://solscan.io/account/${wallet.walletAddress}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-white font-mono hover:text-emerald-400 transition-colors"
+                              >
+                                {wallet.walletAddress.slice(0, 8)}...{wallet.walletAddress.slice(-6)}
+                              </a>
                               <div className="text-xs text-gray-400 mt-1">
                                 {wallet.activePositions} active • {wallet.closedPositions} closed • {wallet.winRate.toFixed(0)}% win rate
                               </div>
@@ -2492,8 +2541,36 @@ export const TestLabTab: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <span className="text-2xl">{idx === 0 ? '🔥' : idx === 1 ? '⚡' : idx === 2 ? '✨' : '🪙'}</span>
-                            <div>
-                              <div className="text-white font-medium">{token.tokenSymbol || token.tokenMint.slice(0, 8)}</div>
+                            {/* Token Logo */}
+                            {token.tokenLogo && (
+                              <img src={token.tokenLogo} alt={token.tokenSymbol} className="w-10 h-10 rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            )}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                {/* Token Symbol with Solscan Link */}
+                                <a
+                                  href={`https://solscan.io/token/${token.tokenMint}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-white font-medium hover:text-emerald-400 transition-colors"
+                                >
+                                  {token.tokenSymbol || token.tokenMint.slice(0, 8)}
+                                </a>
+                                {/* GMGN Chart Link */}
+                                <a
+                                  href={`https://gmgn.ai/sol/token/${token.tokenMint}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-400 hover:text-purple-300 transition-colors"
+                                  title="View chart on GMGN"
+                                >
+                                  📊
+                                </a>
+                              </div>
+                              {/* Token Name */}
+                              {token.tokenName && (
+                                <div className="text-xs text-gray-500 mt-0.5">{token.tokenName}</div>
+                              )}
                               <div className="text-xs text-gray-400 mt-1">
                                 {token.holders} smart holders • {token.totalVolume.toFixed(2)} SOL volume
                               </div>
