@@ -508,6 +508,31 @@ export class SmartMoneyTracker extends EventEmitter {
       this.tokenPositions.get(tokenMint)!.add(positionId);
     }
 
+    // Extract token metadata IMMEDIATELY for new positions (BEFORE incrementing buy count)
+    if (!position.tokenSymbol && position.buyCount === 0) {
+      try {
+        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
+        if (metadata) {
+          position.tokenSymbol = metadata.symbol || undefined;
+          position.tokenName = metadata.name || undefined;
+          position.tokenLogo = metadata.logo || undefined;
+          console.log(`📦 [SmartMoneyTracker] Metadata: ${metadata.symbol || 'Unknown'}`);
+        } else {
+          // Fallback to Jupiter API
+          try {
+            const jupMeta = await this.fetchTokenMetadata(tokenMint);
+            if (jupMeta) {
+              position.tokenSymbol = jupMeta.symbol;
+              position.tokenName = jupMeta.name;
+              position.tokenLogo = jupMeta.logo;
+            }
+          } catch {}
+        }
+      } catch {
+        // Silent fail - metadata is optional
+      }
+    }
+
     // Add trade to history
     position.trades.push({
       tx: signature,
@@ -537,32 +562,14 @@ export class SmartMoneyTracker extends EventEmitter {
       position.lowTime = tradeTime;
     }
 
-    // Extract token metadata IMMEDIATELY for new positions (await for first buy)
-    if (!position.tokenSymbol && position.buyCount === 0) {
-      try {
-        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
-        if (metadata) {
-          position.tokenSymbol = metadata.symbol || undefined;
-          position.tokenName = metadata.name || undefined;
-          position.tokenLogo = metadata.logo || undefined;
-          console.log(`📦 [SmartMoneyTracker] Metadata: ${metadata.symbol || 'Unknown'}`);
-        } else {
-          // Fallback to Jupiter API
-          try {
-            const jupMeta = await this.fetchTokenMetadata(tokenMint);
-            if (jupMeta) {
-              position.tokenSymbol = jupMeta.symbol;
-              position.tokenName = jupMeta.name;
-              position.tokenLogo = jupMeta.logo;
-            }
-          } catch {}
-        }
-      } catch {
-        // Silent fail - metadata is optional
-      }
-    }
-
     console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
+
+    // Broadcast buy to frontend
+    this.emit('newBuy', position);
+    this.wsService.broadcast('smartMoney:newBuy', {
+      position: this.sanitizePosition(position),
+      stats: this.getStatus()
+    });
   }
 
   /**
