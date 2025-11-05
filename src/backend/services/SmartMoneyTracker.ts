@@ -7,8 +7,6 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
-import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -125,8 +123,7 @@ interface TokenPerformance {
 }
 
 export class SmartMoneyTracker extends EventEmitter {
-  private connection: Connection; // Direct connection for WebSocket only
-  private proxiedConnection: ProxiedSolanaConnection; // For transaction fetching with RPC rotator
+  private connection: Connection; // Direct connection for all RPC calls (private RPC, no rotation)
   private isRunning: boolean = false;
   private pollingInterval: NodeJS.Timeout | null = null;
   private subscriptionId: number | null = null;
@@ -150,17 +147,10 @@ export class SmartMoneyTracker extends EventEmitter {
 
   constructor(rpcUrl: string) {
     super();
-    // Direct connection for WebSocket
+    // Direct connection for everything (private RPC, no rotation needed)
     this.connection = new Connection(rpcUrl, 'confirmed');
     
-    // ProxiedSolanaConnection for transaction fetching with RPC rotator
-    this.proxiedConnection = new ProxiedSolanaConnection(rpcUrl, { commitment: 'confirmed' }, undefined, 'SmartMoneyTracker');
-    
-    // Enable RPC rotator
-    globalRPCServerRotator.enable();
-    console.log(`🎯 [SmartMoneyTracker] Initialized:`);
-    console.log(`   📡 WebSocket: Direct private RPC`);
-    console.log(`   🔄 Transaction Fetching: 20 RPC Rotator via ProxiedConnection`);
+    console.log(`🎯 [SmartMoneyTracker] Initialized with direct private RPC connection`);
   }
 
   /**
@@ -254,9 +244,6 @@ export class SmartMoneyTracker extends EventEmitter {
       this.batchPriceMonitor = null;
     }
 
-    // Disable RPC rotator
-    globalRPCServerRotator.disable();
-
     this.emit('stopped');
   }
 
@@ -326,13 +313,11 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async processTransaction(signature: string): Promise<void> {
     try {
-      // Fetch transaction using ProxiedSolanaConnection with RPC rotator
-      const tx = await this.proxiedConnection.withProxy(conn => 
-        conn.getTransaction(signature, {
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0
-        })
-      );
+      // Fetch transaction using direct connection (private RPC, no rotation needed)
+      const tx = await this.connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
 
       if (!tx || !tx.meta?.innerInstructions) return;
 
@@ -836,10 +821,8 @@ export class SmartMoneyTracker extends EventEmitter {
       // Try to fetch the mint account to get token details
       const mintPubkey = new PublicKey(tokenMint);
       
-      // Get mint account info (use rotator)
-      const mintInfo = await this.proxiedConnection.withProxy(conn =>
-        conn.getAccountInfo(mintPubkey, 'confirmed')
-      );
+      // Get mint account info (direct connection)
+      const mintInfo = await this.connection.getAccountInfo(mintPubkey, 'confirmed');
 
       if (!mintInfo) {
         return null;
@@ -872,9 +855,7 @@ export class SmartMoneyTracker extends EventEmitter {
         METADATA_PROGRAM_ID
       );
 
-      const metadataAccount = await this.proxiedConnection.withProxy(conn =>
-        conn.getAccountInfo(metadataPDA, 'confirmed')
-      );
+      const metadataAccount = await this.connection.getAccountInfo(metadataPDA, 'confirmed');
 
       if (metadataAccount && metadataAccount.data.length > 0) {
         // Parse Metaplex metadata (simplified - full parser would be more complex)
