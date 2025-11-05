@@ -499,10 +499,35 @@ export class SmartMoneyTracker extends EventEmitter {
 
     console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
 
-    // Extract token metadata directly from transaction accounts
-    this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
-      // ... (rest of the code remains the same)
-    });
+    // Extract token metadata directly from transaction accounts (if not already fetched)
+    if (!position.tokenSymbol) {
+      this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
+        if (metadata) {
+          position.tokenSymbol = metadata.symbol || undefined;
+          position.tokenName = metadata.name || undefined;
+          position.tokenLogo = metadata.logo || undefined;
+          console.log(`📦 [SmartMoneyTracker] Metadata: ${metadata.symbol || 'Unknown'}`);
+        } else {
+          // Fallback to Jupiter API
+          this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+            if (jupMeta) {
+              position.tokenSymbol = jupMeta.symbol;
+              position.tokenName = jupMeta.name;
+              position.tokenLogo = jupMeta.logo;
+            }
+          }).catch(() => {});
+        }
+      }).catch(() => {
+        // Try Jupiter fallback
+        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+          if (jupMeta) {
+            position.tokenSymbol = jupMeta.symbol;
+            position.tokenName = jupMeta.name;
+            position.tokenLogo = jupMeta.logo;
+          }
+        }).catch(() => {});
+      });
+    }
   }
 
   /**

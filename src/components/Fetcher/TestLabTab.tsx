@@ -2690,10 +2690,10 @@ export const TestLabTab: React.FC = () => {
                                 {wallet.walletAddress.slice(0, 8)}...{wallet.walletAddress.slice(-6)}
                               </a>
                               <div className="text-xs text-gray-400 mt-1">
-                                {wallet.activePositions} active • {wallet.closedPositions} closed • {wallet.totalBuys} buys • {wallet.totalSells} sells
+                                {wallet.activePositions || 0} active • {wallet.closedPositions || 0} closed • {wallet.totalBuys || 0} buys • {wallet.totalSells || 0} sells
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                Win Rate: {wallet.winRate.toFixed(1)}% • Avg Hold: {(wallet.avgHoldingTime / 3600000).toFixed(1)}h
+                                Win Rate: {(wallet.winRate || 0).toFixed(1)}% • Avg Hold: {((wallet.avgHoldingTime || 0) / 3600000).toFixed(1)}h
                               </div>
                             </div>
                           </div>
@@ -2703,18 +2703,18 @@ export const TestLabTab: React.FC = () => {
                               {(wallet.totalRealizedPnl + wallet.totalUnrealizedPnl).toFixed(4)} SOL
                             </div>
                             <div className="text-xs text-gray-400">
-                              In: {wallet.totalInvested.toFixed(2)} SOL • Out: {wallet.totalReturned.toFixed(2)} SOL
+                              In: {(wallet.totalInvested || 0).toFixed(2)} SOL • Out: {(wallet.totalReturned || 0).toFixed(2)} SOL
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">
-                              Avg Buy: {(wallet.avgEntryPrice * 1e9).toFixed(4)} SOL/B
+                              Avg Buy: {((wallet.avgEntryPrice || 0) * 1e9).toFixed(4)} SOL/B
                             </div>
-                            {wallet.avgExitPrice > 0 && (
+                            {(wallet.avgExitPrice || 0) > 0 && (
                               <div className="text-xs text-gray-500">
-                                Avg Sell: {(wallet.avgExitPrice * 1e9).toFixed(4)} SOL/B
+                                Avg Sell: {((wallet.avgExitPrice || 0) * 1e9).toFixed(4)} SOL/B
                               </div>
                             )}
                             <div className="text-xs text-gray-600 mt-1">
-                              Best: {wallet.bestTrade.toFixed(1)}% | Worst: {wallet.worstTrade.toFixed(1)}%
+                              Best: {(wallet.bestTrade || 0).toFixed(1)}% | Worst: {(wallet.worstTrade || 0).toFixed(1)}%
                             </div>
                           </div>
                         </div>
@@ -2768,14 +2768,14 @@ export const TestLabTab: React.FC = () => {
                                 <div className="text-xs text-gray-500 mt-0.5">{token.tokenName}</div>
                               )}
                               <div className="text-xs text-gray-400 mt-1">
-                                {token.holders} holders • {token.totalBuys} buys • {token.totalSells} sells
+                                {token.holders || 0} holders • {token.totalBuys || 0} buys • {token.totalSells || 0} sells
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                Vol: {token.totalVolumeSol.toFixed(2)} SOL ({token.totalVolumeTokens.toLocaleString()} tokens)
+                                Vol: {(token.totalVolumeSol || 0).toFixed(2)} SOL ({(token.totalVolumeTokens || 0).toLocaleString()} tokens)
                               </div>
                               {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">
-                                Price: {(token.currentPrice * 1e9).toFixed(6)} SOL/B
+                                Price: {((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/B
                                 {token.currentPriceUsd && (
                                   <span className="ml-1 text-purple-400">
                                     (${token.currentPriceUsd.toFixed(8)})
@@ -2792,14 +2792,14 @@ export const TestLabTab: React.FC = () => {
                                 </div>
                               )}
                               <div className="text-xs text-gray-600 mt-0.5">
-                                Avg Buy: {(token.avgBuyPrice * 1e9).toFixed(4)} SOL/B
-                                {token.avgSellPrice > 0 && (
-                                  <span className="ml-1">• Avg Sell: {(token.avgSellPrice * 1e9).toFixed(4)} SOL/B</span>
+                                Avg Buy: {((token.avgBuyPrice || 0) * 1e9).toFixed(4)} SOL/B
+                                {(token.avgSellPrice || 0) > 0 && (
+                                  <span className="ml-1">• Avg Sell: {((token.avgSellPrice || 0) * 1e9).toFixed(4)} SOL/B</span>
                                 )}
                               </div>
-                              {token.avgHoldingTime > 0 && (
+                              {(token.avgHoldingTime || 0) > 0 && (
                                 <div className="text-xs text-gray-600">
-                                  Avg Hold: {(token.avgHoldingTime / 3600000).toFixed(1)}h
+                                  Avg Hold: {((token.avgHoldingTime || 0) / 3600000).toFixed(1)}h
                                 </div>
                               )}
                             </div>
@@ -2822,7 +2822,7 @@ export const TestLabTab: React.FC = () => {
                                 {token.bestPerformer.slice(0, 6)}...{token.bestPerformer.slice(-4)}
                               </a>
                             )}
-                            {token.worstPerformance < 0 && (
+                            {(token.worstPerformance || 0) < 0 && (
                               <>
                                 <div className="text-xs text-red-400 mt-1">
                                   Worst: {token.worstPerformance.toFixed(1)}%
