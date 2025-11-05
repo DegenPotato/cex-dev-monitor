@@ -28,15 +28,13 @@ export class ProxiedSolanaConnection {
     // Default to RPC rotation mode (proxies can be manually enabled if needed)
     this.useProxies = false;
     
-    // Enable RPC rotation by default
-    if (!globalRPCServerRotator.isEnabled()) {
-      globalRPCServerRotator.enable();
-    }
+    // DO NOT enable RPC rotation by default - let the service control it
+    // SmartMoneyTracker will enable/disable based on user config
     
     if (this.proxyManager.hasProxies()) {
-      console.log(`🔄 [${serviceName}] Initialized with RPC server rotation (20 servers) - ${this.proxyManager.getStats().totalProxies} proxies available`);
+      console.log(`🔄 [${serviceName}] Initialized - RPC rotation controlled by service config - ${this.proxyManager.getStats().totalProxies} proxies available`);
     } else {
-      console.log(`🔄 [${serviceName}] Initialized with RPC server rotation (20 servers)`);
+      console.log(`🔄 [${serviceName}] Initialized - RPC rotation controlled by service config`);
     }
   }
 

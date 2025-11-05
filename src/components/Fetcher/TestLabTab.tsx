@@ -2702,6 +2702,9 @@ export const TestLabTab: React.FC = () => {
                             <div className="text-xs text-gray-400">
                               {wallet.totalInvested.toFixed(2)} SOL invested
                             </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Best: {wallet.bestTrade.toFixed(1)}% | Worst: {wallet.worstTrade.toFixed(1)}%
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2756,6 +2759,17 @@ export const TestLabTab: React.FC = () => {
                               <div className="text-xs text-gray-400 mt-1">
                                 {token.holders} smart holders • {token.totalVolume.toFixed(2)} SOL volume
                               </div>
+                              {/* Current Price and Market Cap */}
+                              <div className="text-xs text-gray-500 mt-1">
+                                Price: {(token.currentPrice * 1e9).toFixed(6)} SOL/B
+                                {token.avgEntryPrice && (
+                                  <span className={`ml-2 ${
+                                    token.currentPrice > token.avgEntryPrice ? 'text-green-400' : 'text-red-400'
+                                  }`}>
+                                    ({((token.currentPrice / token.avgEntryPrice - 1) * 100).toFixed(1)}%)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="text-right">
@@ -2765,6 +2779,17 @@ export const TestLabTab: React.FC = () => {
                             <div className="text-xs text-gray-400">
                               Best performer
                             </div>
+                            {/* Show best performer wallet */}
+                            {token.bestPerformer && (
+                              <a
+                                href={`https://solscan.io/account/${token.bestPerformer}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                              >
+                                {token.bestPerformer.slice(0, 6)}...{token.bestPerformer.slice(-4)}
+                              </a>
+                            )}
                           </div>
                         </div>
                       </div>

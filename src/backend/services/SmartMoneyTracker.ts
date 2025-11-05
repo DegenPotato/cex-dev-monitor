@@ -606,7 +606,7 @@ export class SmartMoneyTracker extends EventEmitter {
 
   /**
    * Batch fetch prices for all active tokens from Jupiter Price API v3
-   * Returns both SOL and USD prices
+   * Returns both SOL and USD prices (MATCHES WORKING MANUAL TEST IMPLEMENTATION)
    */
   private async batchFetchPricesFromJupiter(tokenMints: string[]): Promise<Map<string, { priceInSol: number; priceInUsd: number }>> {
     const results = new Map<string, { priceInSol: number; priceInUsd: number }>();
@@ -615,46 +615,45 @@ export class SmartMoneyTracker extends EventEmitter {
 
     try {
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
-      const PRICE_API_URL = 'https://price.jup.ag/v3/price';
-
-      // Batch fetch prices (Jupiter supports comma-separated IDs)
-      const idsParam = tokenMints.join(',');
+      // Use lite-api endpoint (same as Manual test)
+      const idsParam = [...tokenMints, SOL_MINT].join(',');
+      const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${idsParam}`;
       
-      // Get prices in USD
-      const usdResponse = await fetch(`${PRICE_API_URL}?ids=${idsParam}`);
-      if (!usdResponse.ok) {
-        console.error(`❌ [Jupiter Price API] HTTP ${usdResponse.status} for batch USD prices`);
-        if (usdResponse.status === 429) {
+      const response = await fetch(priceUrl);
+      if (!response.ok) {
+        console.error(`❌ [Jupiter Price API] HTTP ${response.status}`);
+        if (response.status === 429) {
           console.error(`⚠️  [Jupiter Price API] RATE LIMITED - Status 429`);
         }
         return results;
       }
 
-      const usdData = await usdResponse.json();
-
-      // Get prices in SOL
-      const solResponse = await fetch(`${PRICE_API_URL}?ids=${idsParam}&vsToken=${SOL_MINT}`);
-      if (!solResponse.ok) {
-        console.error(`❌ [Jupiter Price API] HTTP ${solResponse.status} for batch SOL prices`);
+      const priceData = await response.json();
+      const solData = priceData[SOL_MINT];
+      
+      if (!solData?.usdPrice) {
+        console.error(`❌ [Jupiter Price API] No SOL price data available`);
         return results;
       }
+      
+      const solUsdPrice = parseFloat(solData.usdPrice);
 
-      const solData = await solResponse.json();
-
-      // Parse results
+      // Parse results for each token
       for (const tokenMint of tokenMints) {
-        const usdPrice = usdData.data?.[tokenMint]?.price;
-        const solPrice = solData.data?.[tokenMint]?.price;
-
-        if (typeof solPrice === 'number' && typeof usdPrice === 'number') {
+        const tokenData = priceData[tokenMint];
+        
+        if (tokenData?.usdPrice) {
+          const tokenUsdPrice = parseFloat(tokenData.usdPrice);
+          const priceInSol = tokenUsdPrice / solUsdPrice; // Calculate SOL price (same as Manual test)
+          
           results.set(tokenMint, {
-            priceInSol: solPrice,
-            priceInUsd: usdPrice
+            priceInSol,
+            priceInUsd: tokenUsdPrice
           });
         }
       }
 
-      console.log(`📊 [Jupiter Price API] Fetched ${results.size}/${tokenMints.length} token prices in batch`);
+      console.log(`📊 [Jupiter Price API] Fetched ${results.size}/${tokenMints.length} token prices (SOL: $${solUsdPrice.toFixed(2)})`);
       return results;
     } catch (error: any) {
       console.error(`❌ [Jupiter Price API] Batch fetch error: ${error.message}`);
