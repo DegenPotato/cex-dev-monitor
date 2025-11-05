@@ -2562,20 +2562,21 @@ export const TestLabTab: React.FC = () => {
                                     href={`https://solscan.io/tx/${pos.entryTx}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-400 hover:text-blue-300"
-                                    title="View entry transaction"
+                                    className="text-blue-400 hover:text-blue-300 underline"
+                                    title="View entry transaction on Solscan"
                                   >
                                     {new Date(pos.entryTime).toLocaleTimeString()}
                                   </a>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Amount:</span> <span className="text-emerald-400">{Number(pos.tokensBought ?? 0).toLocaleString()}</span>
+                                  <span className="text-gray-500">Buys:</span> <span className="text-emerald-400">{pos.buyCount || 0}</span>
+                                  {pos.sellCount > 0 && <span className="text-gray-500"> • Sells: <span className="text-red-400">{pos.sellCount}</span></span>}
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{Number((pos.entryPrice ?? 0) * 1e9).toFixed(4)} SOL/B</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Cost:</span> <span className="text-cyan-400">{Number(pos.solSpent ?? 0).toFixed(4)} SOL</span>
+                                  <span className="text-gray-500">Total Cost:</span> <span className="text-cyan-400">{Number(pos.solSpent ?? 0).toFixed(4)} SOL</span>
                                 </div>
                               </div>
 
@@ -2584,8 +2585,8 @@ export const TestLabTab: React.FC = () => {
                                 <div className="pt-2 border-t border-gray-700">
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                      <span className="text-gray-500">Price (SOL):</span>{' '}
-                                      <span className="text-white">{Number((pos.currentPrice ?? 0) * 1e9).toFixed(4)}</span>
+                                      <span className="text-gray-500">Price:</span>{' '}
+                                      <span className="text-white">{Number((pos.currentPrice ?? 0) * 1e9).toFixed(4)} SOL/B</span>
                                     </div>
                                     {pos.currentPriceUsd && (
                                       <div>
@@ -2599,7 +2600,7 @@ export const TestLabTab: React.FC = () => {
                                         {Number(pos.unrealizedPnl ?? 0) >= 0 ? '+' : ''}{Number(pos.unrealizedPnl ?? 0).toFixed(4)} SOL ({Number(pos.unrealizedPnlPercent ?? 0).toFixed(2)}%)
                                       </span>
                                     </div>
-                                    {pos.marketCapUsd && (
+                                    {Number(pos.marketCapUsd || 0) > 0 && (
                                       <div>
                                         <span className="text-gray-500">Market Cap:</span>{' '}
                                         <span className="text-purple-400">${Number(pos.marketCapUsd / 1000).toFixed(1)}K</span>
@@ -2608,13 +2609,13 @@ export const TestLabTab: React.FC = () => {
                                     <div>
                                       <span className="text-gray-500">High:</span>{' '}
                                       <span className="text-green-400">
-                                        {Number((pos.high ?? 0) * 1e9).toFixed(4)} (+{Number(((pos.high ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
+                                        {Number((pos.high ?? 0) * 1e9).toFixed(4)} SOL/B (+{Number(((pos.high ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                     </div>
                                     <div>
                                       <span className="text-gray-500">Low:</span>{' '}
                                       <span className="text-red-400">
-                                        {Number((pos.low ?? 0) * 1e9).toFixed(4)} ({Number(((pos.low ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
+                                        {Number((pos.low ?? 0) * 1e9).toFixed(4)} SOL/B ({Number(((pos.low ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                     </div>
                                   </div>

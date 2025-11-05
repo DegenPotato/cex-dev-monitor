@@ -16,6 +16,11 @@ const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uB
 const BUY_DISCRIMINATORS = ['0094d0da1f435eb0', 'e6345c8dd8b14540'];
 const SELL_DISCRIMINATORS = ['33e685a4017f83ad'];
 
+// Known gas wallets to ignore (Jupiter, etc.)
+const GAS_WALLET_BLACKLIST = [
+  'CgPfjJEeUHFcr1cXnpkZM9wWGB5RV9m2mjyrwYrhAJWK', // Jupiter Gas Wallet
+];
+
 interface Trade {
   tx: string;
   time: number;
@@ -342,8 +347,6 @@ export class SmartMoneyTracker extends EventEmitter {
         accountKeys = allKeys;
       }
 
-      const walletAddress = accountKeys[0].toBase58(); // Fee payer
-
       // Find Pumpfun instructions
       for (const innerGroup of tx.meta.innerInstructions) {
         for (const innerIx of innerGroup.instructions) {
@@ -372,9 +375,9 @@ export class SmartMoneyTracker extends EventEmitter {
 
           // Process buy or sell
           if (isBuy) {
-            await this.handleBuy(signature, walletAddress, tokenMint, tx);
+            await this.handleBuy(signature, tokenMint, tx);
           } else if (isSell) {
-            await this.handleSell(signature, walletAddress, tokenMint, tx);
+            await this.handleSell(signature, tokenMint, tx);
           }
         }
       }
@@ -388,15 +391,15 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async handleBuy(
     signature: string,
-    walletAddress: string,
     tokenMint: string,
     tx: any
   ): Promise<void> {
-    // Extract token balance change
+    // Extract token balance change and actual wallet (token account owner)
     if (!tx.meta?.postTokenBalances || !tx.meta?.preTokenBalances) return;
 
     let tokensBought = 0;
     let decimals = 6;
+    let walletAddress: string | null = null;
 
     for (const post of tx.meta.postTokenBalances) {
       if (post.mint === tokenMint) {
@@ -408,9 +411,17 @@ export class SmartMoneyTracker extends EventEmitter {
         if (change > 0n) {
           decimals = post.uiTokenAmount.decimals;
           tokensBought = Number(change) / Math.pow(10, decimals);
+          // Use token account owner, not fee payer
+          walletAddress = post.owner;
           break;
         }
       }
+    }
+
+    // Validate wallet
+    if (!walletAddress || GAS_WALLET_BLACKLIST.includes(walletAddress)) {
+      console.log(`⚠️ [SmartMoneyTracker] Skipping buy - invalid or blacklisted wallet: ${walletAddress}`);
+      return;
     }
 
     // Check if meets minimum threshold for FIRST buy only
@@ -564,10 +575,41 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async handleSell(
     signature: string,
-    walletAddress: string,
     tokenMint: string,
     tx: any
   ): Promise<void> {
+    // Extract token balance change and actual wallet (token account owner)
+    if (!tx.meta?.postTokenBalances || !tx.meta?.preTokenBalances) return;
+
+    let tokensSold = 0;
+    let decimals = 6;
+    let walletAddress: string | null = null;
+
+    for (const post of tx.meta.postTokenBalances) {
+      if (post.mint === tokenMint) {
+        const pre = tx.meta.preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
+        const preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
+        const postAmount = BigInt(post.uiTokenAmount.amount);
+        const change = preAmount - postAmount; // Negative for sell
+
+        if (change > 0n) {
+          decimals = post.uiTokenAmount.decimals;
+          tokensSold = Number(change) / Math.pow(10, decimals);
+          // Use token account owner, not fee payer
+          walletAddress = post.owner;
+          break;
+        }
+      }
+    }
+
+    // Validate wallet
+    if (!walletAddress || GAS_WALLET_BLACKLIST.includes(walletAddress)) {
+      console.log(`⚠️ [SmartMoneyTracker] Skipping sell - invalid or blacklisted wallet: ${walletAddress}`);
+      return;
+    }
+
+    if (tokensSold <= 0) return;
+
     // Find existing position
     const position = this.findPositionByWalletToken(walletAddress, tokenMint);
     
@@ -575,27 +617,6 @@ export class SmartMoneyTracker extends EventEmitter {
       console.log(`⚠️ [SmartMoneyTracker] Sell detected but no position found for ${walletAddress.slice(0, 8)} - ${tokenMint.slice(0, 8)}`);
       return;
     }
-
-    // Extract token balance change
-    if (!tx.meta?.postTokenBalances || !tx.meta?.preTokenBalances) return;
-
-    let tokensSold = 0;
-    for (const pre of tx.meta.preTokenBalances) {
-      if (pre.mint === tokenMint) {
-        const post = tx.meta.postTokenBalances.find((p: any) => p.accountIndex === pre.accountIndex);
-        const preAmount = BigInt(pre.uiTokenAmount.amount);
-        const postAmount = post ? BigInt(post.uiTokenAmount.amount) : 0n;
-        const change = preAmount - postAmount;
-
-        if (change > 0n) {
-          const decimals = pre.uiTokenAmount.decimals;
-          tokensSold = Number(change) / Math.pow(10, decimals);
-          break;
-        }
-      }
-    }
-
-    if (tokensSold <= 0) return;
 
     // Calculate SOL received
     let solReceived = 0;
@@ -1163,6 +1184,9 @@ export class SmartMoneyTracker extends EventEmitter {
       currentPriceUsd: position.currentPriceUsd || 0,
       marketCapUsd: position.marketCapUsd || 0,
       marketCapSol: position.marketCapSol || 0,
+      // Trade counts
+      buyCount: position.buyCount || 0,
+      sellCount: position.sellCount || 0,
       // Entry fields - always defined in creation
       entryPrice: position.avgBuyPrice || 0,
       solSpent: position.totalSolSpent || 0,
