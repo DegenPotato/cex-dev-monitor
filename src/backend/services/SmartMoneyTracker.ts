@@ -7,6 +7,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
+import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
@@ -119,8 +120,8 @@ interface TokenPerformance {
 }
 
 export class SmartMoneyTracker extends EventEmitter {
-  private connection: Connection; // For WebSocket only
-  private rotatorConnections: Map<string, Connection> = new Map(); // Cached connections for each RPC
+  private connection: Connection; // Direct connection for WebSocket only
+  private proxiedConnection: ProxiedSolanaConnection; // For transaction fetching with RPC rotator
   private isRunning: boolean = false;
   private pollingInterval: NodeJS.Timeout | null = null;
   private subscriptionId: number | null = null;
@@ -142,15 +143,19 @@ export class SmartMoneyTracker extends EventEmitter {
   // WebSocket
   private wsService = getWebSocketServer();
 
-  constructor(connection: Connection) {
+  constructor(rpcUrl: string) {
     super();
-    this.connection = connection; // Private RPC for WebSocket
+    // Direct connection for WebSocket
+    this.connection = new Connection(rpcUrl, 'confirmed');
     
-    // Enable RPC rotator for transaction fetching
+    // ProxiedSolanaConnection for transaction fetching with RPC rotator
+    this.proxiedConnection = new ProxiedSolanaConnection(rpcUrl, { commitment: 'confirmed' }, undefined, 'SmartMoneyTracker');
+    
+    // Enable RPC rotator
     globalRPCServerRotator.enable();
     console.log(`🎯 [SmartMoneyTracker] Initialized:`);
-    console.log(`   📡 WebSocket: Private RPC`);
-    console.log(`   🔄 Transaction Fetching: 20 RPC Rotator`);
+    console.log(`   📡 WebSocket: Direct private RPC`);
+    console.log(`   🔄 Transaction Fetching: 20 RPC Rotator via ProxiedConnection`);
   }
 
   /**
@@ -316,21 +321,13 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async processTransaction(signature: string): Promise<void> {
     try {
-      // Get next RPC from rotator
-      const rpcUrl = await globalRPCServerRotator.getNextServer();
-      
-      // Get or create connection for this RPC
-      let rpcConnection = this.rotatorConnections.get(rpcUrl);
-      if (!rpcConnection) {
-        rpcConnection = new Connection(rpcUrl, 'confirmed');
-        this.rotatorConnections.set(rpcUrl, rpcConnection);
-      }
-      
-      // Fetch transaction using rotator RPC
-      const tx = await rpcConnection.getTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0
-      });
+      // Fetch transaction using ProxiedSolanaConnection with RPC rotator
+      const tx = await this.proxiedConnection.withProxy(conn => 
+        conn.getTransaction(signature, {
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: 0
+        })
+      );
 
       if (!tx || !tx.meta?.innerInstructions) return;
 
@@ -817,13 +814,9 @@ export class SmartMoneyTracker extends EventEmitter {
       const mintPubkey = new PublicKey(tokenMint);
       
       // Get mint account info (use rotator)
-      const rpcUrl = await globalRPCServerRotator.getNextServer();
-      let rpcConnection = this.rotatorConnections.get(rpcUrl);
-      if (!rpcConnection) {
-        rpcConnection = new Connection(rpcUrl, 'confirmed');
-        this.rotatorConnections.set(rpcUrl, rpcConnection);
-      }
-      const mintInfo = await rpcConnection.getAccountInfo(mintPubkey, 'confirmed');
+      const mintInfo = await this.proxiedConnection.withProxy(conn =>
+        conn.getAccountInfo(mintPubkey, 'confirmed')
+      );
 
       if (!mintInfo) {
         return null;
@@ -856,7 +849,9 @@ export class SmartMoneyTracker extends EventEmitter {
         METADATA_PROGRAM_ID
       );
 
-      const metadataAccount = await rpcConnection.getAccountInfo(metadataPDA, 'confirmed');
+      const metadataAccount = await this.proxiedConnection.withProxy(conn =>
+        conn.getAccountInfo(metadataPDA, 'confirmed')
+      );
 
       if (metadataAccount && metadataAccount.data.length > 0) {
         // Parse Metaplex metadata (simplified - full parser would be more complex)
@@ -1197,10 +1192,9 @@ let smartMoneyTrackerInstance: SmartMoneyTracker | null = null;
  */
 export function getSmartMoneyTracker(): SmartMoneyTracker {
   if (!smartMoneyTrackerInstance) {
-    // Use private RPC endpoint directly (no rotation, no proxies, no limiters)
+    // Use private RPC endpoint
     const rpcUrl = process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03';
-    const connection = new Connection(rpcUrl, 'confirmed');
-    smartMoneyTrackerInstance = new SmartMoneyTracker(connection);
+    smartMoneyTrackerInstance = new SmartMoneyTracker(rpcUrl);
   }
   return smartMoneyTrackerInstance;
 }
