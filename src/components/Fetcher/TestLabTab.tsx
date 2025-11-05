@@ -199,12 +199,7 @@ export const TestLabTab: React.FC = () => {
   const [smartMoneyTab, setSmartMoneyTab] = useState<'positions' | 'wallets' | 'tokens'>('positions');
   const [smartMoneyConfig, setSmartMoneyConfig] = useState({
     minTokenThreshold: 5000000,
-    pollIntervalMs: 5000,
-    priceUpdateIntervalMs: 1500,
-    maxConcurrentRequests: 10,
-    rpcRateLimitPerServer: 90,
-    useRpcRotation: true,
-    rpcRotatorEnabled: true // Actual state from backend
+    priceUpdateIntervalMs: 1500
   });
   
   // Use existing trading store for wallets 
@@ -2353,68 +2348,10 @@ export const TestLabTab: React.FC = () => {
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">Poll Interval (ms)</label>
-                <input
-                  type="number"
-                  value={smartMoneyConfig.pollIntervalMs}
-                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, pollIntervalMs: parseInt(e.target.value)})}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                  step="1000"
-                  min="3000"
-                />
-                <p className="text-xs text-gray-500 mt-1">Transaction polling frequency</p>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">RPC Rotation</label>
-                <button
-                  onClick={() => setSmartMoneyConfig({...smartMoneyConfig, useRpcRotation: !smartMoneyConfig.useRpcRotation})}
-                  className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${
-                    smartMoneyConfig.useRpcRotation
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-400'
-                  }`}
-                >
-                  {smartMoneyConfig.useRpcRotation ? '✅ Enabled' : '❌ Disabled'}
-                </button>
-                <p className="text-xs text-gray-500 mt-1">
-                  20 RPC endpoints rotation
-                  {smartMoneyConfig.rpcRotatorEnabled !== smartMoneyConfig.useRpcRotation && (
-                    <span className="text-yellow-400 ml-1">(Backend: {smartMoneyConfig.rpcRotatorEnabled ? 'ON' : 'OFF'})</span>
-                  )}
-                </p>
-              </div>
-            </div>
-            
-            {/* RPC Rotation Configuration */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">⚡ Max Concurrent Requests</label>
-                <input
-                  type="number"
-                  value={smartMoneyConfig.maxConcurrentRequests}
-                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, maxConcurrentRequests: parseInt(e.target.value)})}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                  step="5"
-                  min="5"
-                  max="50"
-                />
-                <p className="text-xs text-gray-500 mt-1">Parallel RPC requests (5-50)</p>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">🚦 Rate Limit per Server</label>
-                <input
-                  type="number"
-                  value={smartMoneyConfig.rpcRateLimitPerServer}
-                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, rpcRateLimitPerServer: parseInt(e.target.value)})}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                  step="10"
-                  min="50"
-                  max="100"
-                />
-                <p className="text-xs text-gray-500 mt-1">Max req/10s per RPC server</p>
-              </div>
+            <div className="p-3 bg-emerald-900/20 border border-emerald-600/30 rounded-lg">
+              <p className="text-sm text-emerald-400">
+                🚀 <strong>WebSocket Mode:</strong> Direct connection with no rate limits on private RPC endpoint
+              </p>
             </div>
             
             <button
