@@ -122,7 +122,7 @@ interface TokenPerformance {
 export class SmartMoneyTracker extends EventEmitter {
   private connection: ProxiedSolanaConnection;
   private isRunning: boolean = false;
-  private useRpcRotation: boolean = true; // Enable RPC rotation by default
+  private useRpcRotation: boolean = false; // DISABLED - use private RPC directly
   private pollingInterval: NodeJS.Timeout | null = null;
   private subscriptionId: number | null = null;
   
@@ -969,6 +969,11 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   getWalletLeaderboard(): WalletPerformance[] {
     const leaderboard: Map<string, WalletPerformance> = new Map();
+    
+    // Return empty array if no positions
+    if (this.positions.size === 0) {
+      return [];
+    }
 
     for (const position of this.positions.values()) {
       if (!leaderboard.has(position.walletAddress)) {
@@ -1001,7 +1006,7 @@ export class SmartMoneyTracker extends EventEmitter {
       perf.totalReturned += position.totalSolReceived;
       perf.totalRealizedPnl += position.realizedPnl;
       perf.totalUnrealizedPnl += position.unrealizedPnl;
-      perf.totalPnl += position.totalPnl;
+      perf.totalPnl += position.totalPnl || 0;
 
       if (position.isActive) {
         perf.activePositions++;
@@ -1009,8 +1014,8 @@ export class SmartMoneyTracker extends EventEmitter {
         perf.closedPositions++;
       }
 
-      // Track best/worst trades
-      const posPerf = position.totalPnlPercent;
+      // Track best/worst trades (with NaN check)
+      const posPerf = position.totalPnlPercent || 0;
       if (posPerf > perf.bestTrade) perf.bestTrade = posPerf;
       if (posPerf < perf.worstTrade) perf.worstTrade = posPerf;
     }
@@ -1055,6 +1060,11 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   getTokenLeaderboard(): TokenPerformance[] {
     const leaderboard: Map<string, TokenPerformance> = new Map();
+    
+    // Return empty array if no positions
+    if (this.positions.size === 0) {
+      return [];
+    }
 
     for (const position of this.positions.values()) {
       if (!leaderboard.has(position.tokenMint)) {
@@ -1087,10 +1097,10 @@ export class SmartMoneyTracker extends EventEmitter {
       perf.totalBuys += position.buyCount;
       perf.totalSells += position.sellCount;
       perf.totalVolumeTokens += position.totalTokensBought;
-      perf.totalVolumeSol += position.totalSolSpent;
+      perf.totalVolumeSol += position.totalSolSpent || 0;
 
-      // Update best/worst performers
-      const posPerf = position.totalPnlPercent;
+      // Update best/worst performers (with NaN check)
+      const posPerf = position.totalPnlPercent || 0;
       if (posPerf > perf.bestPerformance) {
         perf.bestPerformance = posPerf;
         perf.bestPerformer = position.walletAddress;
