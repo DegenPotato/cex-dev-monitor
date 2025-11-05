@@ -88,6 +88,7 @@ export class TradingEngine {
       console.log(`📉 [PumpPortal] Slippage: ${slippageBps / 100}%`);
       
       // Use PumpPortal API to generate transaction
+      const apiStart = Date.now();
       const response = await fetch('https://pumpportal.fun/api/trade-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,6 +103,9 @@ export class TradingEngine {
           pool: 'pump'
         })
       });
+      
+      const apiTime = Date.now() - apiStart;
+      console.log(`⏱️  [PumpPortal] API response time: ${apiTime}ms`);
       
       if (response.status !== 200) {
         const errorText = await response.text();

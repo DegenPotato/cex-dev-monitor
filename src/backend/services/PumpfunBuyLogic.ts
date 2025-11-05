@@ -15,15 +15,12 @@ import {
 import { 
   TOKEN_PROGRAM_ID, 
   getAssociatedTokenAddress,
-  getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID
 } from '@solana/spl-token';
+import { detectPumpfunFormat } from './PumpfunFormatDetector.js';
 // Pumpfun Program ID
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
-
-// WSOL Token Mint (Wrapped SOL)
-const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
 
 // Pumpfun Global State (usually constant)
 const PUMPFUN_GLOBAL = new PublicKey('4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf');
@@ -282,17 +279,22 @@ export async function buildPumpfunBuyInstruction(
     transaction.add(createAtaIx);
   }
   
+  // DYNAMIC FORMAT DETECTION: Detect if this token uses 14 or 16-account format
+  console.log(`🔍 [PumpfunBuy] Detecting instruction format...`);
+  const format = await detectPumpfunFormat(connection, tokenMint);
+  
+  if (!format) {
+    throw new Error('Could not detect Pumpfun buy format - no recent buy transactions found');
+  }
+  
+  console.log(`✅ [PumpfunBuy] Detected ${format.accountCount}-account format (${format.hasCreatorVault ? 'WITH' : 'WITHOUT'} creator fee)`);
+  
   // Build buy instruction data
   const instructionData = Buffer.alloc(24);
-  // Instruction discriminator for "buy" (66063d1201daebea = 0x66063d1201daebea in little-endian)
-  instructionData.writeUInt8(0x66, 0);
-  instructionData.writeUInt8(0x06, 1);
-  instructionData.writeUInt8(0x3d, 2);
-  instructionData.writeUInt8(0x12, 3);
-  instructionData.writeUInt8(0x01, 4);
-  instructionData.writeUInt8(0xda, 5);
-  instructionData.writeUInt8(0xeb, 6);
-  instructionData.writeUInt8(0xea, 7);
+  
+  // Use discriminator from detected format
+  const discBytes = Buffer.from(format.discriminator, 'hex');
+  discBytes.copy(instructionData, 0);
   
   // Amount (8 bytes)
   instructionData.writeBigUInt64LE(solAmountLamports, 8);
@@ -300,42 +302,39 @@ export async function buildPumpfunBuyInstruction(
   // Max sol cost (8 bytes) - same as amount for simplicity
   instructionData.writeBigUInt64LE(solAmountLamports, 16);
   
-  // Derive creator fee accounts (NEW - required since 0.05% creator fee update)
-  const creatorVaultSeed = Buffer.from('creator_vault');
-  const [coinCreatorVaultAuthority] = PublicKey.findProgramAddressSync(
-    [creatorVaultSeed, curveData.creator.toBuffer()],
-    PUMPFUN_PROGRAM_ID
-  );
+  // Build account list based on detected format
+  const accountKeys = [
+    { pubkey: PUMPFUN_GLOBAL, isSigner: false, isWritable: false },           // 0
+    { pubkey: PUMPFUN_FEE_RECIPIENT, isSigner: false, isWritable: true },     // 1
+    { pubkey: tokenMint, isSigner: false, isWritable: false },                // 2
+    { pubkey: bondingCurve, isSigner: false, isWritable: true },              // 3
+    { pubkey: associatedBondingCurve, isSigner: false, isWritable: true },    // 4
+    { pubkey: userAta, isSigner: false, isWritable: true },                   // 5
+    { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // 6
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },  // 7
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },         // 8
+    { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }, // 9
+    { pubkey: PUMPFUN_EVENT_AUTHORITY, isSigner: false, isWritable: false },  // 10
+    { pubkey: PUMPFUN_PROGRAM_ID, isSigner: false, isWritable: false }        // 11
+  ];
   
-  const coinCreatorVaultAta = getAssociatedTokenAddressSync(
-    WSOL_MINT,
-    coinCreatorVaultAuthority,
-    true // allowOwnerOffCurve for PDA
-  );
+  // Add creator vault accounts if format requires them (16-account format)
+  if (format.hasCreatorVault && format.vaultAuthority && format.vaultPda) {
+    console.log(`💰 [PumpfunBuy] Adding creator vault accounts:`);
+    console.log(`   Vault Authority: ${format.vaultAuthority.toBase58()}`);
+    console.log(`   Vault PDA: ${format.vaultPda.toBase58()}`);
+    
+    accountKeys.push(
+      { pubkey: format.vaultAuthority, isSigner: false, isWritable: false },  // 12
+      { pubkey: format.vaultPda, isSigner: false, isWritable: true }          // 13
+    );
+  }
   
-  console.log(`💰 [PumpfunBuy] Creator: ${curveData.creator.toBase58()}`);
-  console.log(`💰 [PumpfunBuy] Creator vault authority: ${coinCreatorVaultAuthority.toBase58()}`);
-  console.log(`💰 [PumpfunBuy] Creator vault ATA: ${coinCreatorVaultAta.toBase58()}`);
+  console.log(`📋 [PumpfunBuy] Building instruction with ${accountKeys.length} accounts`);
   
   // Create buy instruction
   const buyInstruction = new TransactionInstruction({
-    keys: [
-      { pubkey: PUMPFUN_GLOBAL, isSigner: false, isWritable: false },
-      { pubkey: PUMPFUN_FEE_RECIPIENT, isSigner: false, isWritable: true },
-      { pubkey: tokenMint, isSigner: false, isWritable: false },
-      { pubkey: bondingCurve, isSigner: false, isWritable: true },
-      { pubkey: associatedBondingCurve, isSigner: false, isWritable: true },
-      { pubkey: userAta, isSigner: false, isWritable: true },
-      { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: PUMPFUN_EVENT_AUTHORITY, isSigner: false, isWritable: false },
-      { pubkey: PUMPFUN_PROGRAM_ID, isSigner: false, isWritable: false },
-      // NEW: Creator fee accounts (0.05% creator fee)
-      { pubkey: coinCreatorVaultAuthority, isSigner: false, isWritable: false },
-      { pubkey: coinCreatorVaultAta, isSigner: false, isWritable: true }
-    ],
+    keys: accountKeys,
     programId: PUMPFUN_PROGRAM_ID,
     data: instructionData
   });
