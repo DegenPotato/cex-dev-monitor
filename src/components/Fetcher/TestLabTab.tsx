@@ -2649,7 +2649,7 @@ export const TestLabTab: React.FC = () => {
                                   {pos.sellCount > 0 && <span className="text-gray-500"> • Sells: <span className="text-red-400">{pos.sellCount}</span></span>}
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{Number((pos.entryPrice ?? 0) * 1e9).toFixed(4)} SOL/{pos.tokenSymbol || 'token'}</span>
+                                  <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{Number(pos.entryPrice ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'}</span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Total Cost:</span> <span className="text-cyan-400">{Number(pos.solSpent ?? 0).toFixed(4)} SOL</span>
@@ -2662,7 +2662,7 @@ export const TestLabTab: React.FC = () => {
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
                                       <span className="text-gray-500">Price:</span>{' '}
-                                      <span className="text-white">{Number((pos.currentPrice ?? 0) * 1e9).toFixed(4)} SOL/{pos.tokenSymbol || 'token'}</span>
+                                      <span className="text-white">{Number(pos.currentPrice ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'}</span>
                                     </div>
                                     {Number(pos.currentPriceUsd || 0) > 0 && (
                                       <div>
@@ -2685,7 +2685,7 @@ export const TestLabTab: React.FC = () => {
                                     <div>
                                       <span className="text-gray-500">High:</span>{' '}
                                       <span className="text-green-400">
-                                        {Number((pos.high ?? 0) * 1e9).toFixed(4)} SOL/{pos.tokenSymbol || 'token'} (+{Number(((pos.high ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
+                                        {Number(pos.high ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'} (+{Number(((pos.high ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                       {Number(pos.highUsd || 0) > 0 && (
                                         <span className="ml-1 text-green-300 text-xs">(${Number(pos.highUsd).toFixed(8)})</span>
@@ -2694,7 +2694,7 @@ export const TestLabTab: React.FC = () => {
                                     <div>
                                       <span className="text-gray-500">Low:</span>{' '}
                                       <span className="text-red-400">
-                                        {Number((pos.low ?? 0) * 1e9).toFixed(4)} SOL/{pos.tokenSymbol || 'token'} ({Number(((pos.low ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
+                                        {Number(pos.low ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'} ({Number(((pos.low ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                       {Number(pos.lowUsd || 0) > 0 && (
                                         <span className="ml-1 text-red-300 text-xs">(${Number(pos.lowUsd).toFixed(8)})</span>
@@ -2729,7 +2729,7 @@ export const TestLabTab: React.FC = () => {
                                     </div>
                                     <div>
                                       <span className="text-gray-500">Exit Price:</span>{' '}
-                                      <span className="text-white">{pos.exitPrice ? Number(pos.exitPrice * 1e9).toFixed(4) : 'N/A'} SOL/{pos.tokenSymbol || 'token'}</span>
+                                      <span className="text-white">{pos.exitPrice ? Number(pos.exitPrice).toFixed(10) : 'N/A'} SOL/{pos.tokenSymbol || 'token'}</span>
                                     </div>
                                     <div className="col-span-2">
                                       <span className="text-gray-500">Realized P&L:</span>{' '}
@@ -2875,9 +2875,9 @@ export const TestLabTab: React.FC = () => {
                                 </div>
                               )}
                               <div className="text-xs text-gray-600 mt-0.5">
-                                Avg Buy: {Number((token.avgBuyPrice || 0) * 1e9).toFixed(4)} SOL/{token.tokenSymbol || 'token'}
+                                Avg Buy: {Number(token.avgBuyPrice || 0).toFixed(10)} SOL/{token.tokenSymbol || 'token'}
                                 {(token.avgSellPrice || 0) > 0 && (
-                                  <span className="ml-1">• Avg Sell: {Number((token.avgSellPrice || 0) * 1e9).toFixed(4)} SOL/{token.tokenSymbol || 'token'}</span>
+                                  <span className="ml-1">• Avg Sell: {Number(token.avgSellPrice || 0).toFixed(10)} SOL/{token.tokenSymbol || 'token'}</span>
                                 )}
                               </div>
                               {(token.avgHoldingTime || 0) > 0 && (

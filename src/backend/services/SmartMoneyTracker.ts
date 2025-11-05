@@ -53,6 +53,7 @@ interface TrackedPosition {
   tokenName?: string;
   tokenLogo?: string;
   totalSupply?: number;
+  _metadataFetching?: boolean; // Internal flag to prevent duplicate fetches
   
   // Trade history
   trades: Trade[];
@@ -537,6 +538,10 @@ export class SmartMoneyTracker extends EventEmitter {
         low: buyPrice,
         highTime: tradeTime,
         lowTime: tradeTime,
+        highUsd: undefined,
+        lowUsd: undefined,
+        highUsdTime: undefined,
+        lowUsdTime: undefined,
         lastUpdate: Date.now(),
         unrealizedPnl: 0,
         unrealizedPnlPercent: 0,
@@ -595,36 +600,34 @@ export class SmartMoneyTracker extends EventEmitter {
       position.lowTime = tradeTime;
     }
 
-    // Extract metadata SYNCHRONOUSLY if missing (we have the tx right here!)
-    if (!position.tokenSymbol) {
-      try {
-        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
-        if (metadata) {
-          position.tokenSymbol = metadata.symbol || undefined;
-          position.tokenName = metadata.name || undefined;
-          position.tokenLogo = metadata.logo || undefined;
-        } else {
-          // Fallback to Jupiter API
-          try {
-            const jupMeta = await this.fetchTokenMetadata(tokenMint);
-            if (jupMeta) {
-              position.tokenSymbol = jupMeta.symbol;
-              position.tokenName = jupMeta.name;
-              position.tokenLogo = jupMeta.logo;
-            }
-          } catch {}
-        }
-      } catch {}
-    }
+    console.log(`💰 [SmartMoneyTracker] BUY ${tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token | BuyCount: ${position.buyCount}`);
 
-    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token | BuyCount: ${position.buyCount}`);
-
-    // Broadcast buy to frontend
+    // Broadcast buy to frontend immediately
     this.emit('newBuy', position);
     this.wsService.broadcast('smartMoney:newBuy', {
       position: this.sanitizePosition(position),
       stats: this.getStatus()
     });
+
+    // Extract metadata in background (don't block)
+    if (!position.tokenSymbol) {
+      this.fetchTokenMetadata(tokenMint).then(metadata => {
+        if (metadata) {
+          position.tokenSymbol = metadata.symbol;
+          position.tokenName = metadata.name;
+          position.tokenLogo = metadata.logo;
+          console.log(`✅ [SmartMoneyTracker] Metadata enriched: ${metadata.symbol}`);
+          
+          // Broadcast update with metadata
+          this.wsService.broadcast('smartMoney:positionUpdated', {
+            position: this.sanitizePosition(position),
+            stats: this.getStatus()
+          });
+        }
+      }).catch(() => {
+        // Silently fail, Jupiter price monitor will retry
+      });
+    }
   }
 
   /**
@@ -776,6 +779,21 @@ export class SmartMoneyTracker extends EventEmitter {
           position.currentPriceUsd = prices.priceInUsd;
           position.lastUpdate = Date.now();
 
+          // Fetch metadata if missing (Jupiter often has it)
+          if (!position.tokenSymbol && !position._metadataFetching) {
+            position._metadataFetching = true; // Prevent repeated fetches
+            this.fetchTokenMetadata(position.tokenMint).then(metadata => {
+              if (metadata) {
+                position.tokenSymbol = metadata.symbol;
+                position.tokenName = metadata.name;
+                position.tokenLogo = metadata.logo;
+                console.log(`✅ [SmartMoneyTracker] Metadata enriched in price monitor: ${metadata.symbol}`);
+              }
+            }).catch(() => {}).finally(() => {
+              position._metadataFetching = false;
+            });
+          }
+
           // Calculate market cap if we have total supply
           if (position.totalSupply) {
             position.marketCapUsd = position.totalSupply * prices.priceInUsd;
@@ -792,13 +810,21 @@ export class SmartMoneyTracker extends EventEmitter {
             position.lowTime = Date.now();
           }
 
-          // Update high/low (USD)
+          // Update high/low (USD) - initialize if first time
           if (prices.priceInUsd) {
-            if (!position.highUsd || prices.priceInUsd > position.highUsd) {
+            // Initialize USD highs/lows if not set
+            if (!position.highUsd) {
+              position.highUsd = prices.priceInUsd;
+              position.highUsdTime = Date.now();
+            } else if (prices.priceInUsd > position.highUsd) {
               position.highUsd = prices.priceInUsd;
               position.highUsdTime = Date.now();
             }
-            if (!position.lowUsd || prices.priceInUsd < position.lowUsd) {
+            
+            if (!position.lowUsd) {
+              position.lowUsd = prices.priceInUsd;
+              position.lowUsdTime = Date.now();
+            } else if (prices.priceInUsd < position.lowUsd) {
               position.lowUsd = prices.priceInUsd;
               position.lowUsdTime = Date.now();
             }
@@ -895,110 +921,12 @@ export class SmartMoneyTracker extends EventEmitter {
   // Legacy single-token price fetch removed - use batchFetchPricesFromJupiter() directly for better efficiency
 
   /**
-   * Extract token metadata directly from blockchain (Metaplex metadata account)
-   */
-  private async extractTokenMetadataFromTransaction(_tx: any, tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
-    try {
-      // For Pumpfun, metadata is often in the mint account
-      // Try to fetch the mint account to get token details
-      const mintPubkey = new PublicKey(tokenMint);
-      
-      // Get mint account info (rotated RPC)
-      const mintInfo = await this.proxiedConnection.withProxy(conn =>
-        conn.getAccountInfo(mintPubkey, 'confirmed')
-      );
-
-      if (!mintInfo) {
-        return null;
-      }
-
-      // Extract total supply from mint account (first 36 bytes: mintAuthority(32) + supply(8))
-      // SPL Token mint layout: mintAuthority(32) + supply(8) + decimals(1) + isInitialized(1) + freezeAuthority(32)
-      if (mintInfo.data.length >= 82) {
-        const supply = mintInfo.data.readBigUInt64LE(36);
-        const decimals = mintInfo.data.readUInt8(44);
-        const totalSupply = Number(supply) / Math.pow(10, decimals);
-        
-        // Find position and set total supply
-        for (const position of this.positions.values()) {
-          if (position.tokenMint === tokenMint) {
-            position.totalSupply = totalSupply;
-          }
-        }
-      }
-
-      // Try to extract metadata from Metaplex metadata account
-      // Metaplex metadata PDA is derived from: ['metadata', metadataProgramId, mint]
-      const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-      const [metadataPDA] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from('metadata'),
-          METADATA_PROGRAM_ID.toBuffer(),
-          mintPubkey.toBuffer()
-        ],
-        METADATA_PROGRAM_ID
-      );
-
-      const metadataAccount = await this.proxiedConnection.withProxy(conn =>
-        conn.getAccountInfo(metadataPDA, 'confirmed')
-      );
-
-      if (metadataAccount && metadataAccount.data.length > 0) {
-        // Parse Metaplex metadata (simplified - full parser would be more complex)
-        const data = metadataAccount.data;
-        
-        // Skip first byte (key), then read name
-        let offset = 1 + 32 + 32; // key + update authority + mint
-        
-        // Read name length (u32)
-        const nameLen = data.readUInt32LE(offset);
-        offset += 4;
-        const name = data.slice(offset, offset + nameLen).toString('utf8').replace(/\0/g, '').trim();
-        offset += nameLen;
-        
-        // Read symbol length (u32)
-        const symbolLen = data.readUInt32LE(offset);
-        offset += 4;
-        const symbol = data.slice(offset, offset + symbolLen).toString('utf8').replace(/\0/g, '').trim();
-        offset += symbolLen;
-        
-        // Read uri length (u32)
-        const uriLen = data.readUInt32LE(offset);
-        offset += 4;
-        const uri = data.slice(offset, offset + uriLen).toString('utf8').replace(/\0/g, '').trim();
-        
-        // Try to fetch logo from URI if it's a valid URL
-        let logo: string | undefined;
-        if (uri && uri.startsWith('http')) {
-          try {
-            const uriResponse = await fetch(uri);
-            const uriData = await uriResponse.json();
-            logo = uriData.image || uriData.logo;
-          } catch {
-            // Silent fail - logo is optional
-          }
-        }
-        
-        return {
-          name: name || undefined,
-          symbol: symbol || undefined,
-          logo
-        };
-      }
-
-      return null;
-    } catch (error: any) {
-      console.log(`⚠️  [SmartMoneyTracker] Could not extract metadata from transaction: ${error.message}`);
-      return null;
-    }
-  }
-
-  /**
    * Fetch token metadata from Jupiter tokens API
    */
   private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
     try {
-      const tokensUrl = `https://lite-api.jup.ag/tokens/v2/search?query=${tokenMint}`;
+      // Use direct token endpoint instead of search
+      const tokensUrl = `https://token.jup.ag/strict?tokens=${tokenMint}`;
       const response = await fetch(tokensUrl);
       
       if (!response.ok) {
@@ -1007,8 +935,8 @@ export class SmartMoneyTracker extends EventEmitter {
       
       const data = await response.json();
       
-      // Find exact match for the token mint
-      const token = data.find((t: any) => t.address === tokenMint);
+      // Direct response for single token
+      const token = data[0];
       if (!token) {
         return null;
       }
