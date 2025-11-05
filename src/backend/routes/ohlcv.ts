@@ -2,9 +2,13 @@ import { Router, Request, Response } from 'express';
 import SecureAuthService from '../../lib/auth/SecureAuthService.js';
 import { ohlcvCollectorV3 } from '../services/OHLCVCollectorV3.js';
 import { queryAll, queryOne } from '../database/helpers.js';
+import { OnchainOHLCVBuilder } from '../services/OnchainOHLCVBuilder.js';
 
 const router = Router();
 const authService = new SecureAuthService();
+
+// Initialize onchain OHLCV builder (in-memory, no database)
+const onchainBuilder = new OnchainOHLCVBuilder(process.env.RPC_URL || 'https://api.mainnet-beta.solana.com');
 
 /**
  * Start OHLCV collector V2
@@ -126,6 +130,31 @@ router.get('/api/ohlcv/:mintAddress', authService.requireSecureAuth(), async (re
     });
   } catch (error: any) {
     console.error('Error fetching OHLCV data:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Build OHLCV data from onchain transactions (no database)
+ */
+router.post('/api/ohlcv/onchain/build', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { tokenMint, timeframeMinutes = 5, lookbackHours = 24 } = req.body;
+    
+    if (!tokenMint) {
+      return res.status(400).json({ success: false, error: 'tokenMint is required' });
+    }
+    
+    console.log(`📊 [API] Building onchain OHLCV for ${tokenMint.slice(0, 8)}... (${timeframeMinutes}m, ${lookbackHours}h)`);
+    
+    const result = await onchainBuilder.buildOHLCV(tokenMint, timeframeMinutes, lookbackHours);
+    
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Error building onchain OHLCV:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

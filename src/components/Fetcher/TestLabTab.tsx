@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import { useTradingStore } from '../../stores/tradingStore';
 import { PoolSelectionModal } from './PoolSelectionModal';
 import { AlertActionConfig, AlertAction } from './AlertActionConfig';
+import { OnchainOHLCVChart } from '../charts/OnchainOHLCVChart';
 
 const apiUrl = (path: string) => `${config.apiUrl}${path}`;
 
@@ -203,6 +204,13 @@ export const TestLabTab: React.FC = () => {
     minMarketCapUsd: 0,
     maxMarketCapUsd: 0 // 0 = no limit
   });
+
+  // Onchain OHLCV Builder states
+  const [ohlcvCandles, setOhlcvCandles] = useState<any[]>([]);
+  const [ohlcvMetadata, setOhlcvMetadata] = useState<any>(null);
+  const [ohlcvLoading, setOhlcvLoading] = useState(false);
+  const [ohlcvTimeframe, setOhlcvTimeframe] = useState<number>(5);
+  const [ohlcvLookback, setOhlcvLookback] = useState<string>('24h');
   
   // Use existing trading store for wallets 
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
@@ -2946,8 +2954,8 @@ export const TestLabTab: React.FC = () => {
             <div>
               <label className="block text-sm text-gray-400 mb-2">Timeframe</label>
               <select
-                value={chartInterval}
-                onChange={(e) => setChartInterval(e.target.value as '1' | '5')}
+                value={ohlcvTimeframe}
+                onChange={(e) => setOhlcvTimeframe(parseInt(e.target.value))}
                 className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
               >
                 <option value="1">1 minute</option>
@@ -2959,6 +2967,8 @@ export const TestLabTab: React.FC = () => {
             <div>
               <label className="block text-sm text-gray-400 mb-2">Lookback Period</label>
               <select
+                value={ohlcvLookback}
+                onChange={(e) => setOhlcvLookback(e.target.value)}
                 className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
               >
                 <option value="1h">Last 1 hour</option>
@@ -2970,18 +2980,65 @@ export const TestLabTab: React.FC = () => {
           </div>
 
           <button
-            onClick={() => {
+            onClick={async () => {
               if (!tokenMint.trim()) {
                 toast.error('Please enter a token contract address');
                 return;
               }
-              toast.success('Building OHLCV data from transactions...');
-              // TODO: Implement onchain OHLCV builder
+              
+              setOhlcvLoading(true);
+              toast.loading('Fetching transactions from blockchain...');
+              
+              try {
+                // Parse lookback period
+                const lookbackHours = ohlcvLookback === '1h' ? 1 : 
+                                     ohlcvLookback === '4h' ? 4 : 
+                                     ohlcvLookback === '24h' ? 24 : 168; // 7d
+                
+                const response = await fetch(`${config.apiUrl}/api/ohlcv/onchain/build`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    tokenMint: tokenMint.trim(),
+                    timeframeMinutes: ohlcvTimeframe,
+                    lookbackHours
+                  })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                  setOhlcvCandles(data.candles);
+                  setOhlcvMetadata(data.metadata);
+                  toast.dismiss();
+                  toast.success(`Built ${data.candles.length} candles from ${data.metadata.totalSwaps} swaps!`);
+                } else {
+                  toast.dismiss();
+                  toast.error(data.error || 'Failed to build OHLCV data');
+                }
+              } catch (error: any) {
+                toast.dismiss();
+                toast.error('Failed to build OHLCV data');
+                console.error(error);
+              } finally {
+                setOhlcvLoading(false);
+              }
             }}
-            className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+            disabled={ohlcvLoading}
+            className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
           >
-            <span>📊</span>
-            Build Chart from Onchain Data
+            {ohlcvLoading ? (
+              <>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                Building from blockchain...
+              </>
+            ) : (
+              <>
+                <span>📊</span>
+                Build Chart from Onchain Data
+              </>
+            )}
           </button>
 
           <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
@@ -2994,6 +3051,38 @@ export const TestLabTab: React.FC = () => {
               <li>• <span className="text-orange-400">Chart:</span> TradingView lightweight charts widget</li>
             </ul>
           </div>
+
+          {/* Chart Display */}
+          {ohlcvCandles.length > 0 && (
+            <div className="mt-6">
+              <OnchainOHLCVChart 
+                candles={ohlcvCandles} 
+                tokenSymbol={ohlcvMetadata?.tokenMint?.slice(0, 8)} 
+              />
+              
+              {/* Metadata Display */}
+              {ohlcvMetadata && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                    <div className="text-xs text-gray-500">Total Swaps</div>
+                    <div className="text-lg font-bold text-white">{ohlcvMetadata.totalSwaps}</div>
+                  </div>
+                  <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                    <div className="text-xs text-gray-500">Total Volume</div>
+                    <div className="text-lg font-bold text-emerald-400">{ohlcvMetadata.totalVolume.toFixed(2)} SOL</div>
+                  </div>
+                  <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                    <div className="text-xs text-gray-500">Candles</div>
+                    <div className="text-lg font-bold text-orange-400">{ohlcvCandles.length}</div>
+                  </div>
+                  <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                    <div className="text-xs text-gray-500">Timeframe</div>
+                    <div className="text-lg font-bold text-purple-400">{ohlcvTimeframe}m</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         )}
       </motion.div>
