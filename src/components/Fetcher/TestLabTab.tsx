@@ -199,7 +199,9 @@ export const TestLabTab: React.FC = () => {
   const [smartMoneyTab, setSmartMoneyTab] = useState<'positions' | 'wallets' | 'tokens'>('positions');
   const [smartMoneyConfig, setSmartMoneyConfig] = useState({
     minTokenThreshold: 5000000,
-    priceUpdateIntervalMs: 1500
+    priceUpdateIntervalMs: 1500,
+    minMarketCapUsd: 0,
+    maxMarketCapUsd: 0 // 0 = no limit
   });
   
   // Use existing trading store for wallets 
@@ -2348,6 +2350,36 @@ export const TestLabTab: React.FC = () => {
               </div>
             </div>
             
+            {/* Market Cap Filters */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">💰 Min Market Cap (USD)</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.minMarketCapUsd}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, minMarketCapUsd: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="1000"
+                  min="0"
+                  placeholder="0 = no limit"
+                />
+                <p className="text-xs text-gray-500 mt-1">Only track tokens above this market cap</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">💰 Max Market Cap (USD)</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.maxMarketCapUsd}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, maxMarketCapUsd: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="1000"
+                  min="0"
+                  placeholder="0 = no limit"
+                />
+                <p className="text-xs text-gray-500 mt-1">Only track tokens below this market cap</p>
+              </div>
+            </div>
+            
             <div className="p-3 bg-emerald-900/20 border border-emerald-600/30 rounded-lg">
               <p className="text-sm text-emerald-400">
                 🚀 <strong>WebSocket Mode:</strong> Direct connection with no rate limits on private RPC endpoint
@@ -2597,14 +2629,16 @@ export const TestLabTab: React.FC = () => {
                               {pos.isActive && (
                                 <div className="pt-2 border-t border-gray-700">
                                   <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <span className="text-gray-500">Price:</span>{' '}
-                                      <span className="text-white">{Number(pos.currentPrice ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'}</span>
-                                    </div>
-                                    {Number(pos.currentPriceUsd || 0) > 0 && (
+                                    {Number(pos.currentPriceUsd || 0) > 0 ? (
                                       <div>
-                                        <span className="text-gray-500">Price (USD):</span>{' '}
-                                        <span className="text-yellow-400">${Number(pos.currentPriceUsd).toFixed(8)}</span>
+                                        <span className="text-gray-500">Price:</span>{' '}
+                                        <span className="text-yellow-400 font-bold">${Number(pos.currentPriceUsd).toFixed(8)}</span>
+                                        <span className="text-gray-600 text-xs ml-1">({Number(pos.currentPrice ?? 0).toFixed(10)} SOL)</span>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <span className="text-gray-500">Price:</span>{' '}
+                                        <span className="text-white">{Number(pos.currentPrice ?? 0).toFixed(10)} SOL/{pos.tokenSymbol || 'token'}</span>
                                       </div>
                                     )}
                                     <div>
@@ -2795,11 +2829,15 @@ export const TestLabTab: React.FC = () => {
                               </div>
                               {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">
-                                Price: {Number((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/{token.tokenSymbol || 'token'}
-                                {Number(token.currentPriceUsd || 0) > 0 && (
-                                  <span className="ml-1 text-purple-400">
-                                    (${Number(token.currentPriceUsd).toFixed(8)})
-                                  </span>
+                                {Number(token.currentPriceUsd || 0) > 0 ? (
+                                  <>
+                                    Price: <span className="text-yellow-400 font-semibold">${Number(token.currentPriceUsd).toFixed(8)}</span>
+                                    <span className="ml-1 text-gray-600">
+                                      ({Number((token.currentPrice || 0) * 1e9).toFixed(6)} SOL)
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>Price: {Number((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/{token.tokenSymbol || 'token'}</>
                                 )}
                               </div>
                               {/* Market Cap */}

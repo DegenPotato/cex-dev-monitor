@@ -155,6 +155,8 @@ export class SmartMoneyTracker extends EventEmitter {
   // Configuration
   private minTokenThreshold: number = 5_000_000; // 5M tokens minimum
   private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s
+  private minMarketCapUsd: number = 0; // 0 = no limit
+  private maxMarketCapUsd: number = 0; // 0 = no limit
   
   // Price monitoring
   private batchPriceMonitor: NodeJS.Timeout | null = null; // Single batch monitor for all tokens
@@ -164,11 +166,15 @@ export class SmartMoneyTracker extends EventEmitter {
 
   constructor(rpcUrl: string, config?: {
     priceUpdateIntervalMs?: number;
+    minMarketCapUsd?: number;
+    maxMarketCapUsd?: number;
   }) {
     super();
     
     // Apply custom config
     if (config?.priceUpdateIntervalMs) this.priceUpdateIntervalMs = config.priceUpdateIntervalMs;
+    if (config?.minMarketCapUsd !== undefined) this.minMarketCapUsd = config.minMarketCapUsd;
+    if (config?.maxMarketCapUsd !== undefined) this.maxMarketCapUsd = config.maxMarketCapUsd;
     
     // Single direct connection for everything (private endpoint = no rate limits)
     this.connection = new Connection(rpcUrl, 'confirmed');
@@ -184,6 +190,8 @@ export class SmartMoneyTracker extends EventEmitter {
   updateConfig(config: {
     minTokenThreshold?: number;
     priceUpdateIntervalMs?: number;
+    minMarketCapUsd?: number;
+    maxMarketCapUsd?: number;
   }): void {
     if (config.minTokenThreshold !== undefined) {
       this.minTokenThreshold = config.minTokenThreshold;
@@ -199,6 +207,14 @@ export class SmartMoneyTracker extends EventEmitter {
         this.startBatchPriceMonitoring();
       }
     }
+    if (config.minMarketCapUsd !== undefined) {
+      this.minMarketCapUsd = config.minMarketCapUsd;
+      console.log(`💰 [SmartMoneyTracker] Min market cap: $${this.minMarketCapUsd.toLocaleString()}`);
+    }
+    if (config.maxMarketCapUsd !== undefined) {
+      this.maxMarketCapUsd = config.maxMarketCapUsd;
+      console.log(`💰 [SmartMoneyTracker] Max market cap: ${this.maxMarketCapUsd > 0 ? '$' + this.maxMarketCapUsd.toLocaleString() : 'unlimited'}`);
+    }
   }
 
   /**
@@ -208,6 +224,8 @@ export class SmartMoneyTracker extends EventEmitter {
     return {
       minTokenThreshold: this.minTokenThreshold,
       priceUpdateIntervalMs: this.priceUpdateIntervalMs,
+      minMarketCapUsd: this.minMarketCapUsd,
+      maxMarketCapUsd: this.maxMarketCapUsd,
       isRunning: this.isRunning
     };
   }
@@ -686,6 +704,35 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
+   * Remove a position and clean up all indices
+   */
+  private removePosition(positionId: string): void {
+    const position = this.positions.get(positionId);
+    if (!position) return;
+
+    // Remove from main map
+    this.positions.delete(positionId);
+
+    // Remove from wallet index
+    const walletSet = this.walletPositions.get(position.walletAddress);
+    if (walletSet) {
+      walletSet.delete(positionId);
+      if (walletSet.size === 0) {
+        this.walletPositions.delete(position.walletAddress);
+      }
+    }
+
+    // Remove from token index
+    const tokenSet = this.tokenPositions.get(position.tokenMint);
+    if (tokenSet) {
+      tokenSet.delete(positionId);
+      if (tokenSet.size === 0) {
+        this.tokenPositions.delete(position.tokenMint);
+      }
+    }
+  }
+
+  /**
    * Start batch price monitoring for ALL active tokens (efficient!)
    */
   private startBatchPriceMonitoring(): void {
@@ -742,6 +789,19 @@ export class SmartMoneyTracker extends EventEmitter {
           if (position.totalSupply) {
             position.marketCapUsd = position.totalSupply * prices.priceInUsd;
             position.marketCapSol = position.totalSupply * prices.priceInSol;
+            
+            // Apply market cap filters - remove position if outside range
+            const mcap = position.marketCapUsd || 0;
+            if (this.minMarketCapUsd > 0 && mcap < this.minMarketCapUsd) {
+              console.log(`🚫 [SmartMoneyTracker] Removing ${position.tokenSymbol || position.tokenMint.slice(0,8)} - market cap $${mcap.toLocaleString()} below min $${this.minMarketCapUsd.toLocaleString()}`);
+              this.removePosition(position.id);
+              return;
+            }
+            if (this.maxMarketCapUsd > 0 && mcap > this.maxMarketCapUsd) {
+              console.log(`🚫 [SmartMoneyTracker] Removing ${position.tokenSymbol || position.tokenMint.slice(0,8)} - market cap $${mcap.toLocaleString()} above max $${this.maxMarketCapUsd.toLocaleString()}`);
+              this.removePosition(position.id);
+              return;
+            }
           }
 
           // Update high/low (SOL)
