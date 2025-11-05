@@ -27,7 +27,7 @@ function getTracker(): SmartMoneyTracker {
 /**
  * Start tracking
  */
-router.post('/start', async (req: Request, res: Response) => {
+router.post('/start', async (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     await tracker.start();
@@ -41,7 +41,7 @@ router.post('/start', async (req: Request, res: Response) => {
 /**
  * Stop tracking
  */
-router.post('/stop', async (req: Request, res: Response) => {
+router.post('/stop', async (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     tracker.stop();
@@ -55,7 +55,7 @@ router.post('/stop', async (req: Request, res: Response) => {
 /**
  * Get all positions
  */
-router.get('/positions', (req: Request, res: Response) => {
+router.get('/positions', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     const positions = tracker.getPositions();
@@ -69,7 +69,7 @@ router.get('/positions', (req: Request, res: Response) => {
 /**
  * Get active positions only
  */
-router.get('/positions/active', (req: Request, res: Response) => {
+router.get('/positions/active', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     const positions = tracker.getActivePositions();
@@ -83,7 +83,7 @@ router.get('/positions/active', (req: Request, res: Response) => {
 /**
  * Get wallet leaderboard
  */
-router.get('/leaderboard/wallets', (req: Request, res: Response) => {
+router.get('/leaderboard/wallets', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     const leaderboard = tracker.getWalletLeaderboard();
@@ -97,7 +97,7 @@ router.get('/leaderboard/wallets', (req: Request, res: Response) => {
 /**
  * Get token leaderboard
  */
-router.get('/leaderboard/tokens', (req: Request, res: Response) => {
+router.get('/leaderboard/tokens', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     const leaderboard = tracker.getTokenLeaderboard();
@@ -111,7 +111,7 @@ router.get('/leaderboard/tokens', (req: Request, res: Response) => {
 /**
  * Clear all data (refresh)
  */
-router.post('/clear', (req: Request, res: Response) => {
+router.post('/clear', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
     tracker.clear();
@@ -125,7 +125,7 @@ router.post('/clear', (req: Request, res: Response) => {
 /**
  * Get tracker status
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', (_req: Request, res: Response) => {
   try {
     const hasTracker = trackerInstance !== null;
     const positions = hasTracker ? trackerInstance!.getPositions().length : 0;

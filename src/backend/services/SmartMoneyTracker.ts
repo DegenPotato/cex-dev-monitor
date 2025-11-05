@@ -232,7 +232,7 @@ export class SmartMoneyTracker extends EventEmitter {
 
           // Process buy or sell
           if (isBuy) {
-            await this.handleBuy(signature, walletAddress, tokenMint, tx, accountKeys, accounts);
+            await this.handleBuy(signature, walletAddress, tokenMint, tx);
           } else if (isSell) {
             await this.handleSell(signature, walletAddress, tokenMint, tx);
           }
@@ -250,9 +250,7 @@ export class SmartMoneyTracker extends EventEmitter {
     signature: string,
     walletAddress: string,
     tokenMint: string,
-    tx: any,
-    accountKeys: PublicKey[],
-    accounts: number[]
+    tx: any
   ): Promise<void> {
     // Extract token balance change
     if (!tx.meta?.postTokenBalances || !tx.meta?.preTokenBalances) return;
