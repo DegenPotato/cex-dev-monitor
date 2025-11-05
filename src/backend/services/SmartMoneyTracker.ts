@@ -124,6 +124,7 @@ export class SmartMoneyTracker extends EventEmitter {
   private isRunning: boolean = false;
   private useRpcRotation: boolean = true; // Enable RPC rotation by default
   private pollingInterval: NodeJS.Timeout | null = null;
+  private subscriptionId: number | null = null;
   
   // In-memory storage
   private positions: Map<string, TrackedPosition> = new Map(); // positionId -> position
@@ -225,28 +226,34 @@ export class SmartMoneyTracker extends EventEmitter {
     console.log('🎯 Starting Smart Money Tracker...');
     this.isRunning = true;
     
-    // Get current slot
-    this.lastProcessedSlot = await this.connection.withProxy(conn => conn.getSlot('confirmed'));
+    // Subscribe to Pumpfun program logs via WebSocket
+    await this.startWebSocketMonitoring();
     
-    // Start polling for new transactions
-    this.pollingInterval = setInterval(() => {
-      this.pollTransactions().catch(console.error);
-    }, this.pollIntervalMs);
-
-    // Start batch price monitoring for all active tokens
+    // Start batch price monitoring
     this.startBatchPriceMonitoring();
-
+    
     this.emit('started');
   }
 
   /**
    * Stop monitoring
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isRunning) return;
 
     console.log('🛑 Stopping Smart Money Tracker...');
     this.isRunning = false;
+
+    // Unsubscribe from WebSocket
+    if (this.subscriptionId !== null) {
+      try {
+        await this.connection.withProxy(conn => conn.removeOnLogsListener(this.subscriptionId!));
+        console.log('✅ Unsubscribed from Pumpfun program logs');
+      } catch (error) {
+        console.error('Error unsubscribing:', error);
+      }
+      this.subscriptionId = null;
+    }
 
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
@@ -263,32 +270,61 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Poll for new Pumpfun transactions
+   * Start WebSocket monitoring for Pumpfun program transactions
+   */
+  private async startWebSocketMonitoring(): Promise<void> {
+    try {
+      console.log('📡 [SmartMoneyTracker] Starting WebSocket subscription to Pumpfun program...');
+      
+      this.subscriptionId = await this.connection.withProxy(async (conn) => {
+        return conn.onLogs(
+          PUMPFUN_PROGRAM_ID,
+          async (logs) => {
+            if (!this.isRunning) return;
+            
+            // Process the transaction
+            const signature = logs.signature;
+            await this.processTransaction(signature);
+          },
+          'confirmed'
+        );
+      });
+      
+      console.log(`✅ [SmartMoneyTracker] WebSocket subscribed (ID: ${this.subscriptionId})`);
+    } catch (error) {
+      console.error('❌ [SmartMoneyTracker] WebSocket subscription failed:', error);
+      // Fallback to polling if WebSocket fails
+      console.log('⚠️ [SmartMoneyTracker] Falling back to polling...');
+      this.pollingInterval = setInterval(
+        () => this.pollTransactions(),
+        this.pollIntervalMs
+      );
+    }
+  }
+
+  /**
+   * Fallback polling method (used if WebSocket fails)
    */
   private async pollTransactions(): Promise<void> {
     try {
-      console.log('🔍 [SmartMoneyTracker] Polling for new transactions...');
       const currentSlot = await this.connection.withProxy(conn => conn.getSlot('confirmed'));
       
       if (currentSlot <= this.lastProcessedSlot) {
-        return; // No new slots
+        return;
       }
 
-      // Get signatures for Pumpfun program
       const signatures = await this.connection.withProxy(conn => 
         conn.getSignaturesForAddress(
           PUMPFUN_PROGRAM_ID,
-          { limit: 100 },
+          { limit: 50 },
           'confirmed'
         )
       );
 
-      // Process each signature
       for (const sig of signatures) {
         if (sig.slot && sig.slot <= this.lastProcessedSlot) {
-          continue; // Already processed
+          continue;
         }
-
         await this.processTransaction(sig.signature);
       }
 
@@ -1024,9 +1060,9 @@ export class SmartMoneyTracker extends EventEmitter {
       if (!leaderboard.has(position.tokenMint)) {
         leaderboard.set(position.tokenMint, {
           tokenMint: position.tokenMint,
-          tokenSymbol: position.tokenSymbol,
-          tokenName: position.tokenName,
-          tokenLogo: position.tokenLogo,
+          tokenSymbol: position.tokenSymbol || undefined,
+          tokenName: position.tokenName || undefined,
+          tokenLogo: position.tokenLogo || undefined,
           holders: 0,
           totalBuys: 0,
           totalSells: 0,
@@ -1034,10 +1070,10 @@ export class SmartMoneyTracker extends EventEmitter {
           totalVolumeSol: 0,
           avgBuyPrice: 0,
           avgSellPrice: 0,
-          currentPrice: position.currentPrice,
-          currentPriceUsd: position.currentPriceUsd,
-          marketCapUsd: position.marketCapUsd,
-          marketCapSol: position.marketCapSol,
+          currentPrice: position.currentPrice || 0,
+          currentPriceUsd: position.currentPriceUsd || undefined,
+          marketCapUsd: position.marketCapUsd || undefined,
+          marketCapSol: position.marketCapSol || undefined,
           bestPerformer: '',
           bestPerformance: -Infinity,
           worstPerformer: '',

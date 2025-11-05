@@ -1600,7 +1600,7 @@ router.post('/api/smart-money-tracker/stop', authService.requireSecureAuth(), as
     const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
     const tracker = getSmartMoneyTracker();
     
-    tracker.stop();
+    await tracker.stop();
     
     res.json({ 
       success: true,

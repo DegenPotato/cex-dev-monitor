@@ -27,7 +27,7 @@ router.post('/start', async (_req: Request, res: Response) => {
 router.post('/stop', async (_req: Request, res: Response) => {
   try {
     const tracker = getSmartMoneyTracker();
-    tracker.stop();
+    await tracker.stop();
     
     res.json({ success: true, message: 'Smart Money Tracker stopped' });
   } catch (error: any) {
