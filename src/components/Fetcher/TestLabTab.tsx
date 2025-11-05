@@ -201,6 +201,8 @@ export const TestLabTab: React.FC = () => {
     minTokenThreshold: 5000000,
     pollIntervalMs: 5000,
     priceUpdateIntervalMs: 1500,
+    maxConcurrentRequests: 10,
+    rpcRateLimitPerServer: 90,
     useRpcRotation: true,
     rpcRotatorEnabled: true // Actual state from backend
   });
@@ -2338,6 +2340,36 @@ export const TestLabTab: React.FC = () => {
                     <span className="text-yellow-400 ml-1">(Backend: {smartMoneyConfig.rpcRotatorEnabled ? 'ON' : 'OFF'})</span>
                   )}
                 </p>
+              </div>
+            </div>
+            
+            {/* RPC Rotation Configuration */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">⚡ Max Concurrent Requests</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.maxConcurrentRequests}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, maxConcurrentRequests: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="5"
+                  min="5"
+                  max="50"
+                />
+                <p className="text-xs text-gray-500 mt-1">Parallel RPC requests (5-50)</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">🚦 Rate Limit per Server</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.rpcRateLimitPerServer}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, rpcRateLimitPerServer: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="10"
+                  min="50"
+                  max="100"
+                />
+                <p className="text-xs text-gray-500 mt-1">Max req/10s per RPC server</p>
               </div>
             </div>
             
