@@ -3,12 +3,10 @@
  * In-memory only, no database persistence
  */
 
-import { PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
-import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -120,9 +118,8 @@ interface TokenPerformance {
 }
 
 export class SmartMoneyTracker extends EventEmitter {
-  private connection: ProxiedSolanaConnection;
+  private connection: Connection;
   private isRunning: boolean = false;
-  private useRpcRotation: boolean = false; // DISABLED - use private RPC directly
   private pollingInterval: NodeJS.Timeout | null = null;
   private subscriptionId: number | null = null;
   
@@ -143,18 +140,11 @@ export class SmartMoneyTracker extends EventEmitter {
   // WebSocket
   private wsService = getWebSocketServer();
 
-  constructor(connection: ProxiedSolanaConnection) {
+  constructor(connection: Connection) {
     super();
     this.connection = connection;
     
-    // Apply initial RPC rotation setting
-    if (this.useRpcRotation) {
-      globalRPCServerRotator.enable();
-    } else {
-      globalRPCServerRotator.disable();
-    }
-    
-    console.log(`🎯 [SmartMoneyTracker] Initialized with ${this.useRpcRotation ? 'RPC rotation ENABLED' : 'RPC rotation DISABLED'}`);
+    console.log('🎯 [SmartMoneyTracker] Initialized with direct private RPC connection');
   }
 
   /**
@@ -164,7 +154,6 @@ export class SmartMoneyTracker extends EventEmitter {
     minTokenThreshold?: number;
     pollIntervalMs?: number;
     priceUpdateIntervalMs?: number;
-    useRpcRotation?: boolean;
   }): void {
     if (config.minTokenThreshold !== undefined) {
       this.minTokenThreshold = config.minTokenThreshold;
@@ -184,20 +173,6 @@ export class SmartMoneyTracker extends EventEmitter {
         this.startBatchPriceMonitoring();
       }
     }
-    if (config.useRpcRotation !== undefined) {
-      this.useRpcRotation = config.useRpcRotation;
-      
-      // Apply RPC rotation setting immediately
-      if (this.useRpcRotation) {
-        globalRPCServerRotator.enable();
-        console.log(`✅ [SmartMoneyTracker] RPC rotation ENABLED - Using 20 RPC server pool`);
-      } else {
-        globalRPCServerRotator.disable();
-        console.log(`⛔ [SmartMoneyTracker] RPC rotation DISABLED - Using direct connection to single RPC`);
-      }
-      
-      console.log(`🔄 [SmartMoneyTracker] RPC rotator state confirmed: ${globalRPCServerRotator.isEnabled() ? 'ENABLED' : 'DISABLED'}`);
-    }
   }
 
   /**
@@ -208,10 +183,7 @@ export class SmartMoneyTracker extends EventEmitter {
       minTokenThreshold: this.minTokenThreshold,
       pollIntervalMs: this.pollIntervalMs,
       priceUpdateIntervalMs: this.priceUpdateIntervalMs,
-      useRpcRotation: this.useRpcRotation,
-      isRunning: this.isRunning,
-      // Also include actual RPC rotator state for verification
-      rpcRotatorEnabled: globalRPCServerRotator.isEnabled()
+      isRunning: this.isRunning
     };
   }
 
@@ -247,7 +219,7 @@ export class SmartMoneyTracker extends EventEmitter {
     // Unsubscribe from WebSocket
     if (this.subscriptionId !== null) {
       try {
-        await this.connection.withProxy(conn => conn.removeOnLogsListener(this.subscriptionId!));
+        await this.connection.removeOnLogsListener(this.subscriptionId);
         console.log('✅ Unsubscribed from Pumpfun program logs');
       } catch (error) {
         console.error('Error unsubscribing:', error);
@@ -276,19 +248,19 @@ export class SmartMoneyTracker extends EventEmitter {
     try {
       console.log('📡 [SmartMoneyTracker] Starting WebSocket subscription to Pumpfun program...');
       
-      this.subscriptionId = await this.connection.withProxy(async (conn) => {
-        return conn.onLogs(
-          PUMPFUN_PROGRAM_ID,
-          async (logs) => {
-            if (!this.isRunning) return;
-            
-            // Process the transaction
-            const signature = logs.signature;
-            await this.processTransaction(signature);
-          },
-          'confirmed'
-        );
-      });
+      this.subscriptionId = await this.connection.onLogs(
+        PUMPFUN_PROGRAM_ID,
+        async (logs) => {
+          if (!this.isRunning) return;
+          
+          try {
+            await this.processTransaction(logs.signature);
+          } catch (error) {
+            console.error('Error processing WebSocket transaction:', error);
+          }
+        },
+        'confirmed'
+      );
       
       console.log(`✅ [SmartMoneyTracker] WebSocket subscribed (ID: ${this.subscriptionId})`);
     } catch (error) {
@@ -307,18 +279,16 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async pollTransactions(): Promise<void> {
     try {
-      const currentSlot = await this.connection.withProxy(conn => conn.getSlot('confirmed'));
+      const currentSlot = await this.connection.getSlot('confirmed');
       
       if (currentSlot <= this.lastProcessedSlot) {
         return;
       }
 
-      const signatures = await this.connection.withProxy(conn => 
-        conn.getSignaturesForAddress(
-          PUMPFUN_PROGRAM_ID,
-          { limit: 50 },
-          'confirmed'
-        )
+      const signatures = await this.connection.getSignaturesForAddress(
+        PUMPFUN_PROGRAM_ID,
+        { limit: 50 },
+        'confirmed'
       );
 
       for (const sig of signatures) {
@@ -339,12 +309,10 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async processTransaction(signature: string): Promise<void> {
     try {
-      const tx = await this.connection.withProxy(conn => 
-        conn.getTransaction(signature, {
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0
-        })
-      );
+      const tx = await this.connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
 
       if (!tx || !tx.meta?.innerInstructions) return;
 
@@ -831,9 +799,7 @@ export class SmartMoneyTracker extends EventEmitter {
       const mintPubkey = new PublicKey(tokenMint);
       
       // Get mint account info
-      const mintInfo = await this.connection.withProxy(conn => 
-        conn.getAccountInfo(mintPubkey, 'confirmed')
-      );
+      const mintInfo = await this.connection.getAccountInfo(mintPubkey, 'confirmed');
 
       if (!mintInfo) {
         return null;
@@ -866,9 +832,7 @@ export class SmartMoneyTracker extends EventEmitter {
         METADATA_PROGRAM_ID
       );
 
-      const metadataAccount = await this.connection.withProxy(conn =>
-        conn.getAccountInfo(metadataPDA, 'confirmed')
-      );
+      const metadataAccount = await this.connection.getAccountInfo(metadataPDA, 'confirmed');
 
       if (metadataAccount && metadataAccount.data.length > 0) {
         // Parse Metaplex metadata (simplified - full parser would be more complex)
@@ -1209,14 +1173,11 @@ let smartMoneyTrackerInstance: SmartMoneyTracker | null = null;
  */
 export function getSmartMoneyTracker(): SmartMoneyTracker {
   if (!smartMoneyTrackerInstance) {
-    // Use private RPC endpoint with rotation enabled
     const rpcUrl = process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03';
-    const connection = new ProxiedSolanaConnection(
-      rpcUrl,
-      { commitment: 'confirmed' },
-      undefined, // No proxy file
-      'SmartMoneyTracker'
-    );
+    const connection = new Connection(rpcUrl, {
+      commitment: 'confirmed',
+      wsEndpoint: rpcUrl.replace('https://', 'wss://').replace('http://', 'ws://')
+    });
     smartMoneyTrackerInstance = new SmartMoneyTracker(connection);
   }
   return smartMoneyTrackerInstance;
