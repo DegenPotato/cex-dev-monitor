@@ -8,6 +8,7 @@ import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
 import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
+import { globalRPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -22,6 +23,7 @@ interface TrackedPosition {
   tokenSymbol?: string;
   tokenName?: string;
   tokenLogo?: string;
+  totalSupply?: number;
   
   // Entry details
   entryTx: string;
@@ -38,7 +40,10 @@ interface TrackedPosition {
   solReceived?: number;
   
   // Performance tracking
-  currentPrice: number;
+  currentPrice: number; // in SOL
+  currentPriceUsd?: number; // in USD
+  marketCapUsd?: number; // total supply * price USD
+  marketCapSol?: number; // total supply * price SOL
   high: number;
   low: number;
   highTime: number;
@@ -97,7 +102,8 @@ export class SmartMoneyTracker extends EventEmitter {
   private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s (matches Manual test: 1-2s)
   
   // Price monitoring
-  private priceMonitors: Map<string, NodeJS.Timeout> = new Map(); // tokenMint -> interval
+  private priceMonitors: Map<string, NodeJS.Timeout> = new Map(); // tokenMint -> interval (legacy)
+  private batchPriceMonitor: NodeJS.Timeout | null = null; // Single batch monitor for all tokens
   private lastProcessedSlot: number = 0;
   
   // WebSocket
@@ -106,7 +112,15 @@ export class SmartMoneyTracker extends EventEmitter {
   constructor(connection: ProxiedSolanaConnection) {
     super();
     this.connection = connection;
-    console.log(`🎯 [SmartMoneyTracker] Initialized with ${this.useRpcRotation ? 'RPC rotation' : 'direct connection'}`);
+    
+    // Apply initial RPC rotation setting
+    if (this.useRpcRotation) {
+      globalRPCServerRotator.enable();
+    } else {
+      globalRPCServerRotator.disable();
+    }
+    
+    console.log(`🎯 [SmartMoneyTracker] Initialized with ${this.useRpcRotation ? 'RPC rotation ENABLED' : 'RPC rotation DISABLED'}`);
   }
 
   /**
@@ -129,10 +143,26 @@ export class SmartMoneyTracker extends EventEmitter {
     if (config.priceUpdateIntervalMs !== undefined) {
       this.priceUpdateIntervalMs = config.priceUpdateIntervalMs;
       console.log(`💹 [SmartMoneyTracker] Price update interval: ${this.priceUpdateIntervalMs}ms`);
+      
+      // Restart batch price monitoring with new interval
+      if (this.isRunning && this.batchPriceMonitor) {
+        clearInterval(this.batchPriceMonitor);
+        this.startBatchPriceMonitoring();
+      }
     }
     if (config.useRpcRotation !== undefined) {
       this.useRpcRotation = config.useRpcRotation;
-      console.log(`🔄 [SmartMoneyTracker] RPC rotation: ${this.useRpcRotation ? 'ENABLED' : 'DISABLED'}`);
+      
+      // Apply RPC rotation setting immediately
+      if (this.useRpcRotation) {
+        globalRPCServerRotator.enable();
+        console.log(`✅ [SmartMoneyTracker] RPC rotation ENABLED - Using 20 RPC server pool`);
+      } else {
+        globalRPCServerRotator.disable();
+        console.log(`⛔ [SmartMoneyTracker] RPC rotation DISABLED - Using direct connection to single RPC`);
+      }
+      
+      console.log(`🔄 [SmartMoneyTracker] RPC rotator state confirmed: ${globalRPCServerRotator.isEnabled() ? 'ENABLED' : 'DISABLED'}`);
     }
   }
 
@@ -145,7 +175,9 @@ export class SmartMoneyTracker extends EventEmitter {
       pollIntervalMs: this.pollIntervalMs,
       priceUpdateIntervalMs: this.priceUpdateIntervalMs,
       useRpcRotation: this.useRpcRotation,
-      isRunning: this.isRunning
+      isRunning: this.isRunning,
+      // Also include actual RPC rotator state for verification
+      rpcRotatorEnabled: globalRPCServerRotator.isEnabled()
     };
   }
 
@@ -167,6 +199,9 @@ export class SmartMoneyTracker extends EventEmitter {
     this.pollingInterval = setInterval(() => {
       this.pollTransactions().catch(console.error);
     }, this.pollIntervalMs);
+
+    // Start batch price monitoring for all active tokens
+    this.startBatchPriceMonitoring();
 
     this.emit('started');
   }
@@ -190,6 +225,12 @@ export class SmartMoneyTracker extends EventEmitter {
       clearInterval(interval);
     }
     this.priceMonitors.clear();
+
+    // Stop batch price monitor
+    if (this.batchPriceMonitor) {
+      clearInterval(this.batchPriceMonitor);
+      this.batchPriceMonitor = null;
+    }
 
     this.emit('stopped');
   }
@@ -409,10 +450,8 @@ export class SmartMoneyTracker extends EventEmitter {
       }).catch(() => {});
     });
 
-    // Start price monitoring for this token if not already started
-    if (!this.priceMonitors.has(tokenMint)) {
-      this.startPriceMonitor(tokenMint);
-    }
+    // NOTE: Price monitoring is now handled by batch monitoring (startBatchPriceMonitoring)
+    // Individual per-token monitoring is no longer used
 
     console.log(`🎯 New position detected: ${walletAddress.slice(0, 8)} bought ${tokensBought.toLocaleString()} ${position.tokenSymbol || tokenMint.slice(0, 8)} for ${solSpent.toFixed(4)} SOL`);
 
@@ -493,7 +532,8 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Start monitoring price for a token using Jupiter
+   * Start monitoring price for a token using Jupiter (DEPRECATED - use batch monitoring)
+   * @deprecated Use startBatchPriceMonitoring() instead for better performance
    */
   private startPriceMonitor(tokenMint: string): void {
     const interval = setInterval(async () => {
@@ -565,41 +605,147 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Fetch current price for a token from Jupiter Price API v3
-   * Correct method using Price API (not swap API)
+   * Start batch price monitoring for ALL active tokens (efficient!)
    */
-  private async fetchTokenPriceFromJupiter(tokenMint: string): Promise<number | null> {
+  private startBatchPriceMonitoring(): void {
+    // Clear any existing batch monitor
+    if (this.batchPriceMonitor) {
+      clearInterval(this.batchPriceMonitor);
+    }
+
+    this.batchPriceMonitor = setInterval(async () => {
+      try {
+        // Get all unique token mints from active positions
+        const activeTokens = new Set<string>();
+        for (const position of this.positions.values()) {
+          if (position.isActive) {
+            activeTokens.add(position.tokenMint);
+          }
+        }
+
+        if (activeTokens.size === 0) return;
+
+        console.log(`📊 [SmartMoneyTracker] Batch updating prices for ${activeTokens.size} tokens...`);
+
+        // Batch fetch prices for all active tokens
+        const priceData = await this.batchFetchPricesFromJupiter(Array.from(activeTokens));
+
+        // Update all positions with new prices
+        for (const position of this.positions.values()) {
+          if (!position.isActive) continue;
+
+          const prices = priceData.get(position.tokenMint);
+          if (!prices) continue;
+
+          const previousPrice = position.currentPrice;
+          position.currentPrice = prices.priceInSol;
+          position.currentPriceUsd = prices.priceInUsd;
+          position.lastUpdate = Date.now();
+
+          // Calculate market cap if we have total supply
+          if (position.totalSupply) {
+            position.marketCapUsd = position.totalSupply * prices.priceInUsd;
+            position.marketCapSol = position.totalSupply * prices.priceInSol;
+          }
+
+          // Update high/low
+          if (prices.priceInSol > position.high) {
+            position.high = prices.priceInSol;
+            position.highTime = Date.now();
+          }
+          if (prices.priceInSol < position.low) {
+            position.low = prices.priceInSol;
+            position.lowTime = Date.now();
+          }
+
+          // Calculate unrealized P&L
+          const currentValue = position.tokensBought * prices.priceInSol;
+          position.unrealizedPnl = currentValue - position.solSpent;
+          position.unrealizedPnlPercent = (position.unrealizedPnl / position.solSpent) * 100;
+
+          // Emit update if price changed significantly (>1%)
+          if (previousPrice && Math.abs((prices.priceInSol - previousPrice) / previousPrice) > 0.01) {
+            this.emit('priceUpdate', position);
+            
+            // Broadcast to WebSocket (throttled by >1% change)
+            this.wsService.broadcast('smartMoney:priceUpdate', {
+              position,
+              stats: this.getStatus()
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`❌ [SmartMoneyTracker] Batch price update error:`, error);
+      }
+    }, this.priceUpdateIntervalMs);
+
+    console.log(`✅ [SmartMoneyTracker] Batch price monitoring started (interval: ${this.priceUpdateIntervalMs}ms)`);
+  }
+
+  /**
+   * Batch fetch prices for all active tokens from Jupiter Price API v3
+   * Returns both SOL and USD prices
+   */
+  private async batchFetchPricesFromJupiter(tokenMints: string[]): Promise<Map<string, { priceInSol: number; priceInUsd: number }>> {
+    const results = new Map<string, { priceInSol: number; priceInUsd: number }>();
+    
+    if (tokenMints.length === 0) return results;
+
     try {
       const SOL_MINT = 'So11111111111111111111111111111111111111112';
       const PRICE_API_URL = 'https://price.jup.ag/v3/price';
 
-      // Get price for token in terms of SOL
-      const response = await fetch(
-        `${PRICE_API_URL}?ids=${tokenMint}&vsToken=${SOL_MINT}`
-      );
-
-      if (!response.ok) {
-        console.error(`❌ [Jupiter Price API] HTTP ${response.status} for ${tokenMint.slice(0, 8)}`);
-        if (response.status === 429) {
+      // Batch fetch prices (Jupiter supports comma-separated IDs)
+      const idsParam = tokenMints.join(',');
+      
+      // Get prices in USD
+      const usdResponse = await fetch(`${PRICE_API_URL}?ids=${idsParam}`);
+      if (!usdResponse.ok) {
+        console.error(`❌ [Jupiter Price API] HTTP ${usdResponse.status} for batch USD prices`);
+        if (usdResponse.status === 429) {
           console.error(`⚠️  [Jupiter Price API] RATE LIMITED - Status 429`);
         }
-        return null;
+        return results;
       }
 
-      const data = await response.json();
-      
-      // Response format: { data: { [tokenMint]: { id: string, mintSymbol: string, vsToken: string, vsTokenSymbol: string, price: number } } }
-      const tokenData = data.data?.[tokenMint];
-      if (!tokenData || typeof tokenData.price !== 'number') {
-        console.warn(`⚠️  [Jupiter Price API] No price data for ${tokenMint.slice(0, 8)}`);
-        return null;
+      const usdData = await usdResponse.json();
+
+      // Get prices in SOL
+      const solResponse = await fetch(`${PRICE_API_URL}?ids=${idsParam}&vsToken=${SOL_MINT}`);
+      if (!solResponse.ok) {
+        console.error(`❌ [Jupiter Price API] HTTP ${solResponse.status} for batch SOL prices`);
+        return results;
       }
-      
-      return tokenData.price; // Already in SOL
+
+      const solData = await solResponse.json();
+
+      // Parse results
+      for (const tokenMint of tokenMints) {
+        const usdPrice = usdData.data?.[tokenMint]?.price;
+        const solPrice = solData.data?.[tokenMint]?.price;
+
+        if (typeof solPrice === 'number' && typeof usdPrice === 'number') {
+          results.set(tokenMint, {
+            priceInSol: solPrice,
+            priceInUsd: usdPrice
+          });
+        }
+      }
+
+      console.log(`📊 [Jupiter Price API] Fetched ${results.size}/${tokenMints.length} token prices in batch`);
+      return results;
     } catch (error: any) {
-      console.error(`❌ [Jupiter Price API] Error: ${error.message}`);
-      return null;
+      console.error(`❌ [Jupiter Price API] Batch fetch error: ${error.message}`);
+      return results;
     }
+  }
+
+  /**
+   * Fetch current price for a single token (fallback method)
+   */
+  private async fetchTokenPriceFromJupiter(tokenMint: string): Promise<number | null> {
+    const batch = await this.batchFetchPricesFromJupiter([tokenMint]);
+    return batch.get(tokenMint)?.priceInSol ?? null;
   }
 
   /**
@@ -618,6 +764,21 @@ export class SmartMoneyTracker extends EventEmitter {
 
       if (!mintInfo) {
         return null;
+      }
+
+      // Extract total supply from mint account (first 36 bytes: mintAuthority(32) + supply(8))
+      // SPL Token mint layout: mintAuthority(32) + supply(8) + decimals(1) + isInitialized(1) + freezeAuthority(32)
+      if (mintInfo.data.length >= 82) {
+        const supply = mintInfo.data.readBigUInt64LE(36);
+        const decimals = mintInfo.data.readUInt8(44);
+        const totalSupply = Number(supply) / Math.pow(10, decimals);
+        
+        // Find position and set total supply
+        for (const position of this.positions.values()) {
+          if (position.tokenMint === tokenMint) {
+            position.totalSupply = totalSupply;
+          }
+        }
       }
 
       // Try to extract metadata from Metaplex metadata account

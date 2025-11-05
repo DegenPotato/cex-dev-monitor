@@ -201,7 +201,8 @@ export const TestLabTab: React.FC = () => {
     minTokenThreshold: 5000000,
     pollIntervalMs: 5000,
     priceUpdateIntervalMs: 1500,
-    useRpcRotation: true
+    useRpcRotation: true,
+    rpcRotatorEnabled: true // Actual state from backend
   });
   
   // Use existing trading store for wallets 
@@ -2331,7 +2332,12 @@ export const TestLabTab: React.FC = () => {
                 >
                   {smartMoneyConfig.useRpcRotation ? '✅ Enabled' : '❌ Disabled'}
                 </button>
-                <p className="text-xs text-gray-500 mt-1">20 RPC endpoints rotation</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  20 RPC endpoints rotation
+                  {smartMoneyConfig.rpcRotatorEnabled !== smartMoneyConfig.useRpcRotation && (
+                    <span className="text-yellow-400 ml-1">(Backend: {smartMoneyConfig.rpcRotatorEnabled ? 'ON' : 'OFF'})</span>
+                  )}
+                </p>
               </div>
             </div>
             
@@ -2346,6 +2352,8 @@ export const TestLabTab: React.FC = () => {
                   });
                   const data = await response.json();
                   if (data.success) {
+                    // Update local state with actual backend config
+                    setSmartMoneyConfig(data.config);
                     toast.success('Configuration updated');
                   }
                 } catch (error) {
@@ -2576,14 +2584,27 @@ export const TestLabTab: React.FC = () => {
                                 <div className="pt-2 border-t border-gray-700">
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                      <span className="text-gray-500">Current:</span> <span className="text-white">{(pos.currentPrice * 1e9).toFixed(4)} SOL/B</span>
+                                      <span className="text-gray-500">Price (SOL):</span>{' '}
+                                      <span className="text-white">{(pos.currentPrice * 1e9).toFixed(4)}</span>
                                     </div>
+                                    {pos.currentPriceUsd && (
+                                      <div>
+                                        <span className="text-gray-500">Price (USD):</span>{' '}
+                                        <span className="text-yellow-400">${pos.currentPriceUsd.toFixed(8)}</span>
+                                      </div>
+                                    )}
                                     <div>
                                       <span className="text-gray-500">P&L:</span>{' '}
                                       <span className={pos.unrealizedPnl >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
                                         {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(4)} SOL ({pos.unrealizedPnlPercent.toFixed(2)}%)
                                       </span>
                                     </div>
+                                    {pos.marketCapUsd && (
+                                      <div>
+                                        <span className="text-gray-500">Market Cap:</span>{' '}
+                                        <span className="text-purple-400">${(pos.marketCapUsd / 1000).toFixed(1)}K</span>
+                                      </div>
+                                    )}
                                     <div>
                                       <span className="text-gray-500">High:</span>{' '}
                                       <span className="text-green-400">
