@@ -144,7 +144,7 @@ export const TestLabTab: React.FC = () => {
   const [showPoolModal, setShowPoolModal] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [chartInterval, setChartInterval] = useState<'1' | '5'>('5');
-  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader' | 'pumpfun-sniper' | 'smart-money'>('manual');
+  const [campaignSource, setCampaignSource] = useState<'manual' | 'telegram' | 'gmgn-test' | 'telegram-autotrader' | 'pumpfun-sniper' | 'smart-money' | 'onchain-ohlcv'>('manual');
   const [telegramAccountId, setTelegramAccountId] = useState<number | null>(null);
   const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [telegramSelectedUserIds, setTelegramSelectedUserIds] = useState<string[]>([]);
@@ -1219,6 +1219,17 @@ export const TestLabTab: React.FC = () => {
             >
               <div className="font-medium">💎 Smart Money Tracker</div>
               <div className="text-xs mt-1">Track large Pumpfun buys</div>
+            </button>
+            <button
+              onClick={() => setCampaignSource('onchain-ohlcv')}
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                campaignSource === 'onchain-ohlcv'
+                  ? 'bg-orange-500/20 border-orange-500 text-orange-400'
+                  : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="font-medium">📊 Onchain OHLCV Builder</div>
+              <div className="text-xs mt-1">Build candlesticks from TX data</div>
             </button>
           </div>
         </div>
@@ -2907,6 +2918,82 @@ export const TestLabTab: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+        )}
+
+        {/* Onchain OHLCV Builder Fields */}
+        {campaignSource === 'onchain-ohlcv' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+            <h4 className="text-orange-400 font-medium mb-2">📊 Onchain OHLCV Builder</h4>
+            <p className="text-sm text-gray-400">
+              Build candlestick charts from raw Solana transactions. Extracts price, volume, and metadata directly from onchain data.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Token Contract Address</label>
+            <input
+              type="text"
+              value={tokenMint}
+              onChange={(e) => setTokenMint(e.target.value)}
+              placeholder="Paste token CA..."
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Timeframe</label>
+              <select
+                value={chartInterval}
+                onChange={(e) => setChartInterval(e.target.value as '1' | '5')}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+              >
+                <option value="1">1 minute</option>
+                <option value="5">5 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="60">1 hour</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Lookback Period</label>
+              <select
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
+              >
+                <option value="1h">Last 1 hour</option>
+                <option value="4h">Last 4 hours</option>
+                <option value="24h">Last 24 hours</option>
+                <option value="7d">Last 7 days</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              if (!tokenMint.trim()) {
+                toast.error('Please enter a token contract address');
+                return;
+              }
+              toast.success('Building OHLCV data from transactions...');
+              // TODO: Implement onchain OHLCV builder
+            }}
+            className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+          >
+            <span>📊</span>
+            Build Chart from Onchain Data
+          </button>
+
+          <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+            <h4 className="text-white font-medium mb-2">Data Sources:</h4>
+            <ul className="space-y-1 text-sm text-gray-400">
+              <li>• <span className="text-orange-400">Transaction Data:</span> Direct from Solana blockchain</li>
+              <li>• <span className="text-orange-400">OHLCV:</span> Calculated from swap transactions</li>
+              <li>• <span className="text-orange-400">Volume:</span> Aggregated from all detected swaps</li>
+              <li>• <span className="text-orange-400">Metadata:</span> Extracted from Metaplex</li>
+              <li>• <span className="text-orange-400">Chart:</span> TradingView lightweight charts widget</li>
+            </ul>
+          </div>
         </div>
         )}
       </motion.div>
