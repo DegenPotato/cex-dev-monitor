@@ -296,6 +296,50 @@ export const TestLabTab: React.FC = () => {
     }
   }, [smartMoneyActive]);
 
+  // Initialize Smart Money state from backend + localStorage on mount
+  useEffect(() => {
+    const initializeSmartMoney = async () => {
+      try {
+        // Check backend status
+        const statusRes = await fetch(`${config.apiUrl}/api/smart-money-tracker/status`, { credentials: 'include' });
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          const isRunning = data.isRunning || false;
+          
+          // Restore state from localStorage or backend
+          const savedState = localStorage.getItem('smartMoneyActive');
+          const wasActiveLastSession = savedState === 'true';
+          
+          if (isRunning) {
+            // Backend is running - sync frontend state
+            setSmartMoneyActive(true);
+            localStorage.setItem('smartMoneyActive', 'true');
+            // Fetch existing data immediately
+            fetchSmartMoneyData();
+            console.log('✅ Smart Money Tracker restored - backend is running');
+          } else if (wasActiveLastSession && !isRunning) {
+            // Was active but backend stopped - clear state
+            setSmartMoneyActive(false);
+            localStorage.removeItem('smartMoneyActive');
+            console.log('⚠️ Smart Money Tracker was active but backend stopped');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize Smart Money state:', error);
+      }
+    };
+    initializeSmartMoney();
+  }, []); // Run once on mount
+
+  // Persist smartMoneyActive to localStorage
+  useEffect(() => {
+    if (smartMoneyActive) {
+      localStorage.setItem('smartMoneyActive', 'true');
+    } else {
+      localStorage.removeItem('smartMoneyActive');
+    }
+  }, [smartMoneyActive]);
+
   // Fetch Smart Money config when campaign source is selected
   useEffect(() => {
     if (campaignSource === 'smart-money') {
