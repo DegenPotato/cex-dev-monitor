@@ -7,8 +7,6 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
-import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
-import { RPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -145,12 +143,9 @@ interface TokenPerformance {
 }
 
 export class SmartMoneyTracker extends EventEmitter {
-  private connection: Connection; // Direct connection for WebSocket
-  private proxiedConnection: ProxiedSolanaConnection; // For RPC calls with isolated rotator
-  private rpcRotator: RPCServerRotator; // Isolated RPC rotator for this tracker
-  private isRunning: boolean = false;
-  private pollingInterval: NodeJS.Timeout | null = null;
+  private connection: Connection; // Single direct connection for everything (no rate limits on private endpoint)
   private subscriptionId: number | null = null;
+  private isRunning: boolean = false;
   
   // In-memory storage
   private positions: Map<string, TrackedPosition> = new Map(); // positionId -> position
@@ -159,74 +154,40 @@ export class SmartMoneyTracker extends EventEmitter {
   
   // Configuration
   private minTokenThreshold: number = 5_000_000; // 5M tokens minimum
-  private pollIntervalMs: number = 5000; // Check for new transactions every 5s
-  private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s (matches Manual test: 1-2s)
-  
-  // RPC Rotation Config (isolated from global)
-  private maxConcurrentRequests: number = 10; // Max concurrent RPC requests
-  private rpcRateLimitPerServer: number = 90; // Max requests per 10s per server (safety ceiling)
+  private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s
   
   // Price monitoring
   private batchPriceMonitor: NodeJS.Timeout | null = null; // Single batch monitor for all tokens
-  private lastProcessedSlot: number = 0;
   
   // WebSocket
   private wsService = getWebSocketServer();
 
   constructor(rpcUrl: string, config?: {
-    maxConcurrentRequests?: number;
-    rpcRateLimitPerServer?: number;
-    pollIntervalMs?: number;
     priceUpdateIntervalMs?: number;
   }) {
     super();
     
     // Apply custom config
-    if (config?.maxConcurrentRequests) this.maxConcurrentRequests = config.maxConcurrentRequests;
-    if (config?.rpcRateLimitPerServer) this.rpcRateLimitPerServer = config.rpcRateLimitPerServer;
-    if (config?.pollIntervalMs) this.pollIntervalMs = config.pollIntervalMs;
     if (config?.priceUpdateIntervalMs) this.priceUpdateIntervalMs = config.priceUpdateIntervalMs;
     
-    // Direct connection for WebSocket only
+    // Single direct connection for everything (private endpoint = no rate limits)
     this.connection = new Connection(rpcUrl, 'confirmed');
     
-    // Create ISOLATED RPC rotator for Smart Money Tracker
-    this.rpcRotator = new RPCServerRotator();
-    this.rpcRotator.enable();
-    
-    // ProxiedConnection using the ISOLATED rotator
-    this.proxiedConnection = new ProxiedSolanaConnection(
-      rpcUrl,
-      { commitment: 'confirmed' },
-      undefined,
-      'SmartMoneyTracker',
-      this.rpcRotator // Pass isolated rotator
-    );
-    
     console.log(`🎯 [SmartMoneyTracker] Initialized:`);
-    console.log(`   📡 WebSocket: Direct RPC`);
-    console.log(`   🔄 Transactions: ISOLATED 20-server rotator`);
-    console.log(`   ⚡ Max Concurrent: ${this.maxConcurrentRequests}`);
-    console.log(`   🚦 Rate Limit: ${this.rpcRateLimitPerServer} req/10s per server`);
+    console.log(`   📡 Single WebSocket connection (no rate limits)`);
+    console.log(`   ⚡ Private RPC endpoint`);
   }
 
   /**
-   * Update configuration (including RPC settings)
+   * Update configuration
    */
   updateConfig(config: {
     minTokenThreshold?: number;
-    pollIntervalMs?: number;
     priceUpdateIntervalMs?: number;
-    maxConcurrentRequests?: number;
-    rpcRateLimitPerServer?: number;
   }): void {
     if (config.minTokenThreshold !== undefined) {
       this.minTokenThreshold = config.minTokenThreshold;
       console.log(`📊 [SmartMoneyTracker] Min token threshold: ${this.minTokenThreshold.toLocaleString()}`);
-    }
-    if (config.pollIntervalMs !== undefined) {
-      this.pollIntervalMs = config.pollIntervalMs;
-      console.log(`⏱️  [SmartMoneyTracker] Poll interval: ${this.pollIntervalMs}ms`);
     }
     if (config.priceUpdateIntervalMs !== undefined) {
       this.priceUpdateIntervalMs = config.priceUpdateIntervalMs;
@@ -238,14 +199,6 @@ export class SmartMoneyTracker extends EventEmitter {
         this.startBatchPriceMonitoring();
       }
     }
-    if (config.maxConcurrentRequests !== undefined) {
-      this.maxConcurrentRequests = config.maxConcurrentRequests;
-      console.log(`⚡ [SmartMoneyTracker] Max concurrent requests: ${this.maxConcurrentRequests}`);
-    }
-    if (config.rpcRateLimitPerServer !== undefined) {
-      this.rpcRateLimitPerServer = config.rpcRateLimitPerServer;
-      console.log(`🚦 [SmartMoneyTracker] RPC rate limit per server: ${this.rpcRateLimitPerServer} req/10s`);
-    }
   }
 
   /**
@@ -254,10 +207,7 @@ export class SmartMoneyTracker extends EventEmitter {
   getConfig() {
     return {
       minTokenThreshold: this.minTokenThreshold,
-      pollIntervalMs: this.pollIntervalMs,
       priceUpdateIntervalMs: this.priceUpdateIntervalMs,
-      maxConcurrentRequests: this.maxConcurrentRequests,
-      rpcRateLimitPerServer: this.rpcRateLimitPerServer,
       isRunning: this.isRunning
     };
   }
@@ -302,19 +252,11 @@ export class SmartMoneyTracker extends EventEmitter {
       this.subscriptionId = null;
     }
 
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
-
     // Stop batch price monitor
     if (this.batchPriceMonitor) {
       clearInterval(this.batchPriceMonitor);
       this.batchPriceMonitor = null;
     }
-
-    // Disable isolated RPC rotator
-    this.rpcRotator.disable();
 
     this.emit('stopped');
   }
@@ -341,42 +283,7 @@ export class SmartMoneyTracker extends EventEmitter {
       console.log(`✅ [SmartMoneyTracker] WebSocket subscribed (ID: ${this.subscriptionId})`);
     } catch (error) {
       console.error('❌ [SmartMoneyTracker] WebSocket subscription failed:', error);
-      // Fallback to polling if WebSocket fails
-      console.log('⚠️ [SmartMoneyTracker] Falling back to polling...');
-      this.pollingInterval = setInterval(
-        () => this.pollTransactions(),
-        this.pollIntervalMs
-      );
-    }
-  }
-
-  /**
-   * Fallback polling method (used if WebSocket fails)
-   */
-  private async pollTransactions(): Promise<void> {
-    try {
-      const currentSlot = await this.connection.getSlot('confirmed');
-      
-      if (currentSlot <= this.lastProcessedSlot) {
-        return;
-      }
-
-      const signatures = await this.connection.getSignaturesForAddress(
-        PUMPFUN_PROGRAM_ID,
-        { limit: 50 },
-        'confirmed'
-      );
-
-      for (const sig of signatures) {
-        if (sig.slot && sig.slot <= this.lastProcessedSlot) {
-          continue;
-        }
-        await this.processTransaction(sig.signature);
-      }
-
-      this.lastProcessedSlot = currentSlot;
-    } catch (error) {
-      console.error('Error polling transactions:', error);
+      throw error;
     }
   }
 
@@ -385,13 +292,11 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async processTransaction(signature: string): Promise<void> {
     try {
-      // Fetch transaction using rotated RPC (isolated 20-server rotation)
-      const tx = await this.proxiedConnection.withProxy(conn =>
-        conn.getTransaction(signature, {
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0
-        })
-      );
+      // Fetch transaction using direct connection (no rate limits)
+      const tx = await this.connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
 
       if (!tx || !tx.meta?.innerInstructions) return;
 
@@ -976,9 +881,7 @@ export class SmartMoneyTracker extends EventEmitter {
       );
 
       // Fetch metadata account
-      const metadataAccount = await this.proxiedConnection.withProxy(conn =>
-        conn.getAccountInfo(metadataPDA, 'confirmed')
-      );
+      const metadataAccount = await this.connection.getAccountInfo(metadataPDA, 'confirmed');
 
       if (metadataAccount && metadataAccount.data.length > 0) {
         const data = metadataAccount.data;
