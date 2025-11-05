@@ -611,8 +611,8 @@ export class SmartMoneyTracker extends EventEmitter {
 
     // Extract metadata from transaction FIRST (we have it right here!)
     if (!position.tokenSymbol) {
-      console.log(`🔍 [SmartMoneyTracker] Extracting metadata from transaction for ${tokenMint.slice(0, 8)}...`);
-      this.extractMetadataFromTransaction(tx, tokenMint).then(metadata => {
+      console.log(`🔍 [SmartMoneyTracker] Extracting metadata for ${tokenMint.slice(0, 8)}...`);
+      this.extractMetadataFromTransaction(tokenMint).then(metadata => {
         if (metadata) {
           position.tokenSymbol = metadata.symbol;
           position.tokenName = metadata.name;
@@ -958,9 +958,9 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Extract metadata directly from transaction (Metaplex metadata account)
+   * Extract metadata from Metaplex metadata account
    */
-  private async extractMetadataFromTransaction(tx: any, tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
+  private async extractMetadataFromTransaction(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
     try {
       const mintPubkey = new PublicKey(tokenMint);
       
