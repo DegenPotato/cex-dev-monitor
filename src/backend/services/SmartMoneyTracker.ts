@@ -12,9 +12,24 @@ import { RPCServerRotator } from './RPCServerRotator.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
-// Known buy discriminators
-const BUY_DISCRIMINATORS = ['0094d0da1f435eb0', 'e6345c8dd8b14540'];
-const SELL_DISCRIMINATORS = ['33e685a4017f83ad'];
+// Known buy discriminators (verified via live sampling + manual analysis)
+const BUY_DISCRIMINATORS = [
+  '0094d0da1f435eb0', // 16-account buy (with creator fee)
+  'e6345c8dd8b14540', // 14-account buy (without creator fee)  
+  '48feac982b20e013', // 19-account buy variant (46% of txs!)
+  '00b08712a8402815'  // 19-account buy variant with 293-byte data (rare, <1%)
+];
+const SELL_DISCRIMINATORS = [
+  '33e685a4017f83ad', // Original sell
+  'db0d98c38ed07cfd'  // New sell variant (21% of live txs)
+];
+
+// Known but NOT tracked (setup/wrapper instructions, not actual trades)
+// These appear alongside actual buy/sell instructions in the same transaction
+// Tracking them would cause duplicate detections:
+// - e3c092e6b37125bf (ATA/token account setup, 3% of txs, 27 bytes)
+// - 8b8dd6794046280e (Setup wrapper, <1%, 25 bytes)
+// - e5986f6e9dcba52c (Unknown wrapper, <1%)
 
 // Known gas wallets to ignore (Jupiter, etc.)
 const GAS_WALLET_BLACKLIST = [
