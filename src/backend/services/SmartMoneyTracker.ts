@@ -3,10 +3,11 @@
  * In-memory only, no database persistence
  */
 
-import { Connection, PublicKey } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
 import { getWebSocketServer } from './WebSocketService.js';
+import { ProxiedSolanaConnection } from './ProxiedSolanaConnection.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -80,8 +81,9 @@ interface TokenPerformance {
 }
 
 export class SmartMoneyTracker extends EventEmitter {
-  private connection: Connection;
+  private connection: ProxiedSolanaConnection;
   private isRunning: boolean = false;
+  private useRpcRotation: boolean = true; // Enable RPC rotation by default
   private pollingInterval: NodeJS.Timeout | null = null;
   
   // In-memory storage
@@ -101,9 +103,50 @@ export class SmartMoneyTracker extends EventEmitter {
   // WebSocket
   private wsService = getWebSocketServer();
 
-  constructor(connection: Connection) {
+  constructor(connection: ProxiedSolanaConnection) {
     super();
     this.connection = connection;
+    console.log(`🎯 [SmartMoneyTracker] Initialized with ${this.useRpcRotation ? 'RPC rotation' : 'direct connection'}`);
+  }
+
+  /**
+   * Update configuration
+   */
+  updateConfig(config: {
+    minTokenThreshold?: number;
+    pollIntervalMs?: number;
+    priceUpdateIntervalMs?: number;
+    useRpcRotation?: boolean;
+  }): void {
+    if (config.minTokenThreshold !== undefined) {
+      this.minTokenThreshold = config.minTokenThreshold;
+      console.log(`📊 [SmartMoneyTracker] Min token threshold: ${this.minTokenThreshold.toLocaleString()}`);
+    }
+    if (config.pollIntervalMs !== undefined) {
+      this.pollIntervalMs = config.pollIntervalMs;
+      console.log(`⏱️  [SmartMoneyTracker] Poll interval: ${this.pollIntervalMs}ms`);
+    }
+    if (config.priceUpdateIntervalMs !== undefined) {
+      this.priceUpdateIntervalMs = config.priceUpdateIntervalMs;
+      console.log(`💹 [SmartMoneyTracker] Price update interval: ${this.priceUpdateIntervalMs}ms`);
+    }
+    if (config.useRpcRotation !== undefined) {
+      this.useRpcRotation = config.useRpcRotation;
+      console.log(`🔄 [SmartMoneyTracker] RPC rotation: ${this.useRpcRotation ? 'ENABLED' : 'DISABLED'}`);
+    }
+  }
+
+  /**
+   * Get current configuration
+   */
+  getConfig() {
+    return {
+      minTokenThreshold: this.minTokenThreshold,
+      pollIntervalMs: this.pollIntervalMs,
+      priceUpdateIntervalMs: this.priceUpdateIntervalMs,
+      useRpcRotation: this.useRpcRotation,
+      isRunning: this.isRunning
+    };
   }
 
   /**
@@ -118,7 +161,7 @@ export class SmartMoneyTracker extends EventEmitter {
     this.isRunning = true;
     
     // Get current slot
-    this.lastProcessedSlot = await this.connection.getSlot('confirmed');
+    this.lastProcessedSlot = await this.connection.withProxy(conn => conn.getSlot('confirmed'));
     
     // Start polling for new transactions
     this.pollingInterval = setInterval(() => {
@@ -156,17 +199,20 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async pollTransactions(): Promise<void> {
     try {
-      const currentSlot = await this.connection.getSlot('confirmed');
+      console.log('🔍 [SmartMoneyTracker] Polling for new transactions...');
+      const currentSlot = await this.connection.withProxy(conn => conn.getSlot('confirmed'));
       
       if (currentSlot <= this.lastProcessedSlot) {
         return; // No new slots
       }
 
       // Get signatures for Pumpfun program
-      const signatures = await this.connection.getSignaturesForAddress(
-        PUMPFUN_PROGRAM_ID,
-        { limit: 100 },
-        'confirmed'
+      const signatures = await this.connection.withProxy(conn => 
+        conn.getSignaturesForAddress(
+          PUMPFUN_PROGRAM_ID,
+          { limit: 100 },
+          'confirmed'
+        )
       );
 
       // Process each signature
@@ -189,10 +235,12 @@ export class SmartMoneyTracker extends EventEmitter {
    */
   private async processTransaction(signature: string): Promise<void> {
     try {
-      const tx = await this.connection.getTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0
-      });
+      const tx = await this.connection.withProxy(conn => 
+        conn.getTransaction(signature, {
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: 0
+        })
+      );
 
       if (!tx || !tx.meta?.innerInstructions) return;
 
@@ -513,6 +561,10 @@ export class SmartMoneyTracker extends EventEmitter {
       );
 
       if (!response.ok) {
+        console.error(`❌ [Jupiter Price API] HTTP ${response.status} for ${tokenMint.slice(0, 8)}`);
+        if (response.status === 429) {
+          console.error(`⚠️  [Jupiter Price API] RATE LIMITED - Status 429`);
+        }
         return null;
       }
 
@@ -521,11 +573,13 @@ export class SmartMoneyTracker extends EventEmitter {
       // Response format: { data: { [tokenMint]: { id: string, mintSymbol: string, vsToken: string, vsTokenSymbol: string, price: number } } }
       const tokenData = data.data?.[tokenMint];
       if (!tokenData || typeof tokenData.price !== 'number') {
+        console.warn(`⚠️  [Jupiter Price API] No price data for ${tokenMint.slice(0, 8)}`);
         return null;
       }
       
       return tokenData.price; // Already in SOL
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`❌ [Jupiter Price API] Error: ${error.message}`);
       return null;
     }
   }
@@ -728,9 +782,14 @@ let smartMoneyTrackerInstance: SmartMoneyTracker | null = null;
  */
 export function getSmartMoneyTracker(): SmartMoneyTracker {
   if (!smartMoneyTrackerInstance) {
-    // Use RPC URL from environment or default
+    // Use private RPC endpoint with rotation enabled
     const rpcUrl = process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03';
-    const connection = new Connection(rpcUrl, 'confirmed');
+    const connection = new ProxiedSolanaConnection(
+      rpcUrl,
+      { commitment: 'confirmed' },
+      undefined, // No proxy file
+      'SmartMoneyTracker'
+    );
     smartMoneyTrackerInstance = new SmartMoneyTracker(connection);
   }
   return smartMoneyTrackerInstance;

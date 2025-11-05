@@ -3,33 +3,16 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { Connection } from '@solana/web3.js';
-import { SmartMoneyTracker } from '../services/SmartMoneyTracker.js';
+import { getSmartMoneyTracker } from '../services/SmartMoneyTracker.js';
 
 const router = Router();
-
-// In-memory instance (no persistence)
-let trackerInstance: SmartMoneyTracker | null = null;
-let connection: Connection | null = null;
-
-/**
- * Initialize tracker
- */
-function getTracker(): SmartMoneyTracker {
-  if (!trackerInstance) {
-    const rpcUrl = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
-    connection = new Connection(rpcUrl, 'confirmed');
-    trackerInstance = new SmartMoneyTracker(connection);
-  }
-  return trackerInstance;
-}
 
 /**
  * Start tracking
  */
 router.post('/start', async (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     await tracker.start();
     
     res.json({ success: true, message: 'Smart Money Tracker started' });
@@ -43,7 +26,7 @@ router.post('/start', async (_req: Request, res: Response) => {
  */
 router.post('/stop', async (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     tracker.stop();
     
     res.json({ success: true, message: 'Smart Money Tracker stopped' });
@@ -57,7 +40,7 @@ router.post('/stop', async (_req: Request, res: Response) => {
  */
 router.get('/positions', (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     const positions = tracker.getPositions();
     
     res.json({ positions });
@@ -71,7 +54,7 @@ router.get('/positions', (_req: Request, res: Response) => {
  */
 router.get('/positions/active', (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     const positions = tracker.getActivePositions();
     
     res.json({ positions });
@@ -85,7 +68,7 @@ router.get('/positions/active', (_req: Request, res: Response) => {
  */
 router.get('/leaderboard/wallets', (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     const leaderboard = tracker.getWalletLeaderboard();
     
     res.json({ leaderboard });
@@ -99,7 +82,7 @@ router.get('/leaderboard/wallets', (_req: Request, res: Response) => {
  */
 router.get('/leaderboard/tokens', (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     const leaderboard = tracker.getTokenLeaderboard();
     
     res.json({ leaderboard });
@@ -113,7 +96,7 @@ router.get('/leaderboard/tokens', (_req: Request, res: Response) => {
  */
 router.post('/clear', (_req: Request, res: Response) => {
   try {
-    const tracker = getTracker();
+    const tracker = getSmartMoneyTracker();
     tracker.clearAllData();
     
     res.json({ success: true, message: 'Data cleared' });
@@ -127,18 +110,55 @@ router.post('/clear', (_req: Request, res: Response) => {
  */
 router.get('/status', (_req: Request, res: Response) => {
   try {
-    const hasTracker = trackerInstance !== null;
-    const positions = hasTracker ? trackerInstance!.getPositions().length : 0;
-    const activePositions = hasTracker ? trackerInstance!.getActivePositions().length : 0;
+    const tracker = getSmartMoneyTracker();
+    const status = tracker.getStatus();
     
-    res.json({ 
-      running: hasTracker,
-      totalPositions: positions,
-      activePositions
-    });
+    res.json(status);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-export { router as smartMoneyTrackerRouter, getTracker };
+/**
+ * Get leaderboards (both wallets and tokens)
+ */
+router.get('/leaderboards', (_req: Request, res: Response) => {
+  try {
+    const tracker = getSmartMoneyTracker();
+    const leaderboards = tracker.getLeaderboards();
+    
+    res.json(leaderboards);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Update configuration
+ */
+router.post('/config', (req: Request, res: Response) => {
+  try {
+    const tracker = getSmartMoneyTracker();
+    tracker.updateConfig(req.body);
+    
+    res.json({ success: true, config: tracker.getConfig() });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get current configuration
+ */
+router.get('/config', (_req: Request, res: Response) => {
+  try {
+    const tracker = getSmartMoneyTracker();
+    const config = tracker.getConfig();
+    
+    res.json(config);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+export { router as smartMoneyTrackerRouter };

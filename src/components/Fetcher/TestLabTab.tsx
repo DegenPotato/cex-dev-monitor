@@ -197,6 +197,12 @@ export const TestLabTab: React.FC = () => {
   const [smartMoneyTokenLeaderboard, setSmartMoneyTokenLeaderboard] = useState<any[]>([]);
   const [smartMoneyStats, setSmartMoneyStats] = useState<any>(null);
   const [smartMoneyTab, setSmartMoneyTab] = useState<'positions' | 'wallets' | 'tokens'>('positions');
+  const [smartMoneyConfig, setSmartMoneyConfig] = useState({
+    minTokenThreshold: 5000000,
+    pollIntervalMs: 5000,
+    priceUpdateIntervalMs: 1500,
+    useRpcRotation: true
+  });
   
   // Use existing trading store for wallets 
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
@@ -2251,27 +2257,89 @@ export const TestLabTab: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Minimum Tokens Threshold</label>
-              <input
-                type="number"
-                value="5000000"
-                readOnly
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
-              />
-              <p className="text-xs text-gray-500 mt-1">Only tracks buys of 5M+ tokens (configurable in backend)</p>
+          {/* Configuration Controls */}
+          <div className="space-y-4 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+            <h4 className="text-white font-medium flex items-center gap-2">
+              <span>⚙️</span> Configuration
+            </h4>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Minimum Tokens</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.minTokenThreshold}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, minTokenThreshold: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="1000000"
+                  min="1000000"
+                />
+                <p className="text-xs text-gray-500 mt-1">Track buys above this threshold</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Price Update (ms)</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.priceUpdateIntervalMs}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, priceUpdateIntervalMs: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="500"
+                  min="1000"
+                />
+                <p className="text-xs text-gray-500 mt-1">Jupiter Price API polling</p>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Price Update Interval</label>
-              <input
-                type="text"
-                value="1.5 seconds"
-                readOnly
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
-              />
-              <p className="text-xs text-gray-500 mt-1">Jupiter Price API v3 polling frequency</p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Poll Interval (ms)</label>
+                <input
+                  type="number"
+                  value={smartMoneyConfig.pollIntervalMs}
+                  onChange={(e) => setSmartMoneyConfig({...smartMoneyConfig, pollIntervalMs: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  step="1000"
+                  min="3000"
+                />
+                <p className="text-xs text-gray-500 mt-1">Transaction polling frequency</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">RPC Rotation</label>
+                <button
+                  onClick={() => setSmartMoneyConfig({...smartMoneyConfig, useRpcRotation: !smartMoneyConfig.useRpcRotation})}
+                  className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${
+                    smartMoneyConfig.useRpcRotation
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-400'
+                  }`}
+                >
+                  {smartMoneyConfig.useRpcRotation ? '✅ Enabled' : '❌ Disabled'}
+                </button>
+                <p className="text-xs text-gray-500 mt-1">20 RPC endpoints rotation</p>
+              </div>
             </div>
+            
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch(`${config.apiUrl}/api/smart-money-tracker/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(smartMoneyConfig)
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    toast.success('Configuration updated');
+                  }
+                } catch (error) {
+                  toast.error('Failed to update config');
+                }
+              }}
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              Apply Configuration
+            </button>
           </div>
 
           {/* Start/Stop Button */}
