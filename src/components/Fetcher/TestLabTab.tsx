@@ -2572,10 +2572,10 @@ export const TestLabTab: React.FC = () => {
                                   <span className="text-gray-500">Amount:</span> <span className="text-emerald-400">{Number(pos.tokensBought ?? 0).toLocaleString()}</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{(pos.entryPrice * 1e9).toFixed(4)} SOL/B</span>
+                                  <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{Number((pos.entryPrice ?? 0) * 1e9).toFixed(4)} SOL/B</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Cost:</span> <span className="text-cyan-400">{pos.solSpent.toFixed(4)} SOL</span>
+                                  <span className="text-gray-500">Cost:</span> <span className="text-cyan-400">{Number(pos.solSpent ?? 0).toFixed(4)} SOL</span>
                                 </div>
                               </div>
 
@@ -2585,36 +2585,36 @@ export const TestLabTab: React.FC = () => {
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
                                       <span className="text-gray-500">Price (SOL):</span>{' '}
-                                      <span className="text-white">{(pos.currentPrice * 1e9).toFixed(4)}</span>
+                                      <span className="text-white">{Number((pos.currentPrice ?? 0) * 1e9).toFixed(4)}</span>
                                     </div>
                                     {pos.currentPriceUsd && (
                                       <div>
                                         <span className="text-gray-500">Price (USD):</span>{' '}
-                                        <span className="text-yellow-400">${pos.currentPriceUsd.toFixed(8)}</span>
+                                        <span className="text-yellow-400">${Number(pos.currentPriceUsd).toFixed(8)}</span>
                                       </div>
                                     )}
                                     <div>
                                       <span className="text-gray-500">P&L:</span>{' '}
-                                      <span className={pos.unrealizedPnl >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
-                                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(4)} SOL ({pos.unrealizedPnlPercent.toFixed(2)}%)
+                                      <span className={Number(pos.unrealizedPnl ?? 0) >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                                        {Number(pos.unrealizedPnl ?? 0) >= 0 ? '+' : ''}{Number(pos.unrealizedPnl ?? 0).toFixed(4)} SOL ({Number(pos.unrealizedPnlPercent ?? 0).toFixed(2)}%)
                                       </span>
                                     </div>
                                     {pos.marketCapUsd && (
                                       <div>
                                         <span className="text-gray-500">Market Cap:</span>{' '}
-                                        <span className="text-purple-400">${(pos.marketCapUsd / 1000).toFixed(1)}K</span>
+                                        <span className="text-purple-400">${Number(pos.marketCapUsd / 1000).toFixed(1)}K</span>
                                       </div>
                                     )}
                                     <div>
                                       <span className="text-gray-500">High:</span>{' '}
                                       <span className="text-green-400">
-                                        {(pos.high * 1e9).toFixed(4)} (+{((pos.high / pos.entryPrice - 1) * 100).toFixed(2)}%)
+                                        {Number((pos.high ?? 0) * 1e9).toFixed(4)} (+{Number(((pos.high ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                     </div>
                                     <div>
                                       <span className="text-gray-500">Low:</span>{' '}
                                       <span className="text-red-400">
-                                        {(pos.low * 1e9).toFixed(4)} ({((pos.low / pos.entryPrice - 1) * 100).toFixed(2)}%)
+                                        {Number((pos.low ?? 0) * 1e9).toFixed(4)} ({Number(((pos.low ?? 0) / (pos.entryPrice || 1) - 1) * 100).toFixed(2)}%)
                                       </span>
                                     </div>
                                   </div>
@@ -2646,12 +2646,12 @@ export const TestLabTab: React.FC = () => {
                                     </div>
                                     <div>
                                       <span className="text-gray-500">Exit Price:</span>{' '}
-                                      <span className="text-white">{pos.exitPrice ? (pos.exitPrice * 1e9).toFixed(4) : 'N/A'} SOL/B</span>
+                                      <span className="text-white">{pos.exitPrice ? Number(pos.exitPrice * 1e9).toFixed(4) : 'N/A'} SOL/B</span>
                                     </div>
                                     <div className="col-span-2">
                                       <span className="text-gray-500">Realized P&L:</span>{' '}
-                                      <span className={pos.realizedPnl >= 0 ? 'text-green-400 font-bold text-lg' : 'text-red-400 font-bold text-lg'}>
-                                        {pos.realizedPnl >= 0 ? '+' : ''}{pos.realizedPnl.toFixed(4)} SOL ({pos.realizedPnlPercent.toFixed(2)}%)
+                                      <span className={Number(pos.realizedPnl ?? 0) >= 0 ? 'text-green-400 font-bold text-lg' : 'text-red-400 font-bold text-lg'}>
+                                        {Number(pos.realizedPnl ?? 0) >= 0 ? '+' : ''}{Number(pos.realizedPnl ?? 0).toFixed(4)} SOL ({Number(pos.realizedPnlPercent ?? 0).toFixed(2)}%)
                                       </span>
                                     </div>
                                   </div>
@@ -2693,28 +2693,28 @@ export const TestLabTab: React.FC = () => {
                                 {wallet.activePositions || 0} active • {wallet.closedPositions || 0} closed • {wallet.totalBuys || 0} buys • {wallet.totalSells || 0} sells
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                Win Rate: {(wallet.winRate || 0).toFixed(1)}% • Avg Hold: {((wallet.avgHoldingTime || 0) / 3600000).toFixed(1)}h
+                                Win Rate: {Number(wallet.winRate || 0).toFixed(1)}% • Avg Hold: {Number((wallet.avgHoldingTime || 0) / 3600000).toFixed(1)}h
                               </div>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className={`text-lg font-bold ${wallet.totalRealizedPnl + wallet.totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {wallet.totalRealizedPnl + wallet.totalUnrealizedPnl >= 0 ? '+' : ''}
-                              {(wallet.totalRealizedPnl + wallet.totalUnrealizedPnl).toFixed(4)} SOL
+                            <div className={`text-lg font-bold ${Number(wallet.totalRealizedPnl || 0) + Number(wallet.totalUnrealizedPnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {Number(wallet.totalRealizedPnl || 0) + Number(wallet.totalUnrealizedPnl || 0) >= 0 ? '+' : ''}
+                              {Number(Number(wallet.totalRealizedPnl || 0) + Number(wallet.totalUnrealizedPnl || 0)).toFixed(4)} SOL
                             </div>
                             <div className="text-xs text-gray-400">
-                              In: {(wallet.totalInvested || 0).toFixed(2)} SOL • Out: {(wallet.totalReturned || 0).toFixed(2)} SOL
+                              In: {Number(wallet.totalInvested || 0).toFixed(2)} SOL • Out: {Number(wallet.totalReturned || 0).toFixed(2)} SOL
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">
-                              Avg Buy: {((wallet.avgEntryPrice || 0) * 1e9).toFixed(4)} SOL/B
+                              Avg Buy: {Number((wallet.avgEntryPrice || 0) * 1e9).toFixed(4)} SOL/B
                             </div>
                             {(wallet.avgExitPrice || 0) > 0 && (
                               <div className="text-xs text-gray-500">
-                                Avg Sell: {((wallet.avgExitPrice || 0) * 1e9).toFixed(4)} SOL/B
+                                Avg Sell: {Number((wallet.avgExitPrice || 0) * 1e9).toFixed(4)} SOL/B
                               </div>
                             )}
                             <div className="text-xs text-gray-600 mt-1">
-                              Best: {(wallet.bestTrade || 0).toFixed(1)}% | Worst: {(wallet.worstTrade || 0).toFixed(1)}%
+                              Best: {Number(wallet.bestTrade || 0).toFixed(1)}% | Worst: {Number(wallet.worstTrade || 0).toFixed(1)}%
                             </div>
                           </div>
                         </div>
@@ -2775,38 +2775,38 @@ export const TestLabTab: React.FC = () => {
                               </div>
                               {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">
-                                Price: {((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/B
+                                Price: {Number((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/B
                                 {token.currentPriceUsd && (
                                   <span className="ml-1 text-purple-400">
-                                    (${token.currentPriceUsd.toFixed(8)})
+                                    (${Number(token.currentPriceUsd).toFixed(8)})
                                   </span>
                                 )}
                               </div>
                               {/* Market Cap */}
                               {token.marketCapUsd && (
                                 <div className="text-xs text-gray-500">
-                                  MCap: ${(token.marketCapUsd / 1e6).toFixed(2)}M
+                                  MCap: ${Number(token.marketCapUsd / 1e6).toFixed(2)}M
                                   {token.marketCapSol && (
-                                    <span className="ml-1">({token.marketCapSol.toFixed(0)} SOL)</span>
+                                    <span className="ml-1">({Number(token.marketCapSol).toFixed(0)} SOL)</span>
                                   )}
                                 </div>
                               )}
                               <div className="text-xs text-gray-600 mt-0.5">
-                                Avg Buy: {((token.avgBuyPrice || 0) * 1e9).toFixed(4)} SOL/B
+                                Avg Buy: {Number((token.avgBuyPrice || 0) * 1e9).toFixed(4)} SOL/B
                                 {(token.avgSellPrice || 0) > 0 && (
-                                  <span className="ml-1">• Avg Sell: {((token.avgSellPrice || 0) * 1e9).toFixed(4)} SOL/B</span>
+                                  <span className="ml-1">• Avg Sell: {Number((token.avgSellPrice || 0) * 1e9).toFixed(4)} SOL/B</span>
                                 )}
                               </div>
                               {(token.avgHoldingTime || 0) > 0 && (
                                 <div className="text-xs text-gray-600">
-                                  Avg Hold: {((token.avgHoldingTime || 0) / 3600000).toFixed(1)}h
+                                  Avg Hold: {Number((token.avgHoldingTime || 0) / 3600000).toFixed(1)}h
                                 </div>
                               )}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className={`text-lg font-bold ${token.bestPerformance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {token.bestPerformance >= 0 ? '+' : ''}{token.bestPerformance.toFixed(2)}%
+                            <div className={`text-lg font-bold ${Number(token.bestPerformance || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {Number(token.bestPerformance || 0) >= 0 ? '+' : ''}{Number(token.bestPerformance || 0).toFixed(2)}%
                             </div>
                             <div className="text-xs text-emerald-400">
                               Top Gain
@@ -2825,7 +2825,7 @@ export const TestLabTab: React.FC = () => {
                             {(token.worstPerformance || 0) < 0 && (
                               <>
                                 <div className="text-xs text-red-400 mt-1">
-                                  Worst: {token.worstPerformance.toFixed(1)}%
+                                  Worst: {Number(token.worstPerformance || 0).toFixed(1)}%
                                 </div>
                                 {token.worstPerformer && (
                                   <a
