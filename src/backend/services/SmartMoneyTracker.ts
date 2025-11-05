@@ -609,23 +609,26 @@ export class SmartMoneyTracker extends EventEmitter {
       stats: this.getStatus()
     });
 
-    // Extract metadata in background (don't block)
+    // Fetch metadata IMMEDIATELY in background (don't wait)
     if (!position.tokenSymbol) {
+      console.log(`🔍 [SmartMoneyTracker] Fetching metadata for ${tokenMint.slice(0, 8)}...`);
       this.fetchTokenMetadata(tokenMint).then(metadata => {
         if (metadata) {
           position.tokenSymbol = metadata.symbol;
           position.tokenName = metadata.name;
           position.tokenLogo = metadata.logo;
-          console.log(`✅ [SmartMoneyTracker] Metadata enriched: ${metadata.symbol}`);
+          console.log(`✅ [SmartMoneyTracker] Metadata enriched: ${metadata.symbol} for ${tokenMint.slice(0, 8)}`);
           
           // Broadcast update with metadata
           this.wsService.broadcast('smartMoney:positionUpdated', {
             position: this.sanitizePosition(position),
             stats: this.getStatus()
           });
+        } else {
+          console.log(`❌ [SmartMoneyTracker] No metadata found for ${tokenMint.slice(0, 8)}`);
         }
-      }).catch(() => {
-        // Silently fail, Jupiter price monitor will retry
+      }).catch(err => {
+        console.error(`❌ [SmartMoneyTracker] Metadata fetch failed for ${tokenMint.slice(0, 8)}: ${err.message}`);
       });
     }
   }
@@ -671,12 +674,32 @@ export class SmartMoneyTracker extends EventEmitter {
     if (tokensSold <= 0) return;
 
     // Find existing position
+    const positionId = `${walletAddress}-${tokenMint}`;
     const position = this.findPositionByWalletToken(walletAddress, tokenMint);
     
     if (!position) {
-      console.log(`⚠️ [SmartMoneyTracker] Sell detected but no position found for ${walletAddress.slice(0, 8)} - ${tokenMint.slice(0, 8)}`);
+      console.log(`⚠️ [SmartMoneyTracker] SELL IGNORED - No position found`);
+      console.log(`   Wallet: ${walletAddress}`);
+      console.log(`   Token: ${tokenMint}`);
+      console.log(`   Expected Position ID: ${positionId}`);
+      console.log(`   Amount sold: ${tokensSold.toLocaleString()}`);
+      console.log(`   Tracked positions: ${this.positions.size}`);
+      console.log(`   Tracked wallets: ${this.walletPositions.size}`);
+      
+      // Debug: Show similar positions
+      const similarPositions = Array.from(this.positions.values()).filter(p => 
+        p.walletAddress === walletAddress || p.tokenMint === tokenMint
+      );
+      if (similarPositions.length > 0) {
+        console.log(`   📋 Similar positions found (${similarPositions.length}):`);
+        similarPositions.slice(0, 3).forEach(p => {
+          console.log(`      ${p.id} (wallet match: ${p.walletAddress === walletAddress}, token match: ${p.tokenMint === tokenMint})`);
+        });
+      }
       return;
     }
+    
+    console.log(`🔔 [SmartMoneyTracker] SELL DETECTED for tracked position | Wallet: ${walletAddress.slice(0, 8)} | Token: ${tokenMint.slice(0, 8)} | Position ID: ${position.id}`);
 
     // Calculate SOL received
     let solReceived = 0;
@@ -918,48 +941,63 @@ export class SmartMoneyTracker extends EventEmitter {
     }
   }
 
-  // Legacy single-token price fetch removed - use batchFetchPricesFromJupiter() directly for better efficiency
-
   /**
-   * Fetch token metadata from Jupiter tokens API
+   * Fetch token metadata from multiple sources
    */
   private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
     try {
-      // Use direct token endpoint instead of search
-      const tokensUrl = `https://token.jup.ag/strict?tokens=${tokenMint}`;
-      const response = await fetch(tokensUrl);
-      
-      if (!response.ok) {
-        return null;
-      }
-      
-      const data = await response.json();
-      
-      // Direct response for single token
-      const token = data[0];
-      if (!token) {
-        return null;
-      }
-      
-      return {
-        name: token.name,
-        symbol: token.symbol,
-        logo: token.logoURI
-      };
-    } catch (error) {
+      // Try Jupiter first (has most established tokens)
+      try {
+        const jupiterUrl = `https://token.jup.ag/strict?tokens=${tokenMint}`;
+        const jupResponse = await fetch(jupiterUrl, { timeout: 3000 } as any);
+        if (jupResponse.ok) {
+          const data = await jupResponse.json();
+          if (data && data[0]) {
+            console.log(`✅ [SmartMoneyTracker] Metadata from Jupiter: ${data[0].symbol}`);
+            return {
+              name: data[0].name,
+              symbol: data[0].symbol,
+              logo: data[0].logoURI
+            };
+          }
+        }
+      } catch {}
+
+      // Fallback to GeckoTerminal (has newer Pumpfun tokens)
+      try {
+        const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}`;
+        const geckoResponse = await fetch(geckoUrl, { timeout: 3000 } as any);
+        if (geckoResponse.ok) {
+          const data = await geckoResponse.json();
+          if (data?.data?.attributes) {
+            const attrs = data.data.attributes;
+            console.log(`✅ [SmartMoneyTracker] Metadata from GeckoTerminal: ${attrs.symbol}`);
+            return {
+              name: attrs.name,
+              symbol: attrs.symbol,
+              logo: attrs.image_url
+            };
+          }
+        }
+      } catch {}
+
+      console.log(`⚠️ [SmartMoneyTracker] No metadata found for ${tokenMint.slice(0, 8)}`);
+      return null;
+    } catch (error: any) {
+      console.log(`⚠️  [SmartMoneyTracker] Metadata fetch error: ${error.message}`);
       return null;
     }
   }
 
   /**
-   * Get all positions (sanitized for frontend)
+   * Get all positions
    */
   getPositions(): any[] {
     return Array.from(this.positions.values()).map(p => this.sanitizePosition(p));
   }
 
   /**
-   * Get active positions only (sanitized for frontend)
+   * Get active positions only
    */
   getActivePositions(): any[] {
     return Array.from(this.positions.values())
