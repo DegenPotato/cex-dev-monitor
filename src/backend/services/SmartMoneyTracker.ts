@@ -153,7 +153,7 @@ export class SmartMoneyTracker extends EventEmitter {
   private tokenPositions: Map<string, Set<string>> = new Map(); // tokenMint -> Set<positionId>
   
   // Configuration
-  private minTokenThreshold: number = 100_000; // 100K tokens minimum (0.01% of 1B supply)
+  private minTokenThreshold: number = 5_000_000; // 5M tokens minimum
   private pollIntervalMs: number = 5000; // Check for new transactions every 5s
   private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s (matches Manual test: 1-2s)
   
@@ -562,35 +562,7 @@ export class SmartMoneyTracker extends EventEmitter {
       this.tokenPositions.get(tokenMint)!.add(positionId);
     }
 
-    // Extract token metadata if missing (retry on every buy until we get it)
-    if (!position.tokenSymbol) {
-      try {
-        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
-        if (metadata) {
-          position.tokenSymbol = metadata.symbol || undefined;
-          position.tokenName = metadata.name || undefined;
-          position.tokenLogo = metadata.logo || undefined;
-          console.log(`📦 [SmartMoneyTracker] Metadata: ${metadata.symbol || 'Unknown'}`);
-        } else {
-          // Fallback to Jupiter API
-          try {
-            const jupMeta = await this.fetchTokenMetadata(tokenMint);
-            if (jupMeta) {
-              position.tokenSymbol = jupMeta.symbol;
-              position.tokenName = jupMeta.name;
-              position.tokenLogo = jupMeta.logo;
-              console.log(`📦 [SmartMoneyTracker] Metadata (Jupiter): ${jupMeta.symbol}`);
-            }
-          } catch (jupError) {
-            console.log(`⚠️ [SmartMoneyTracker] Metadata fetch failed for ${tokenMint.slice(0, 8)}, will retry on next buy`);
-          }
-        }
-      } catch (error) {
-        console.log(`⚠️ [SmartMoneyTracker] Metadata extraction error for ${tokenMint.slice(0, 8)}, will retry on next buy`);
-      }
-    }
-
-    // Add trade to history
+    // Add trade to history FIRST (don't let metadata extraction block this)
     position.trades.push({
       tx: signature,
       time: tradeTime,
@@ -619,7 +591,27 @@ export class SmartMoneyTracker extends EventEmitter {
       position.lowTime = tradeTime;
     }
 
-    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
+    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token | BuyCount: ${position.buyCount}`);
+
+    // Extract metadata AFTER recording buy (async, non-blocking)
+    if (!position.tokenSymbol) {
+      this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
+        if (metadata) {
+          position.tokenSymbol = metadata.symbol || undefined;
+          position.tokenName = metadata.name || undefined;
+          position.tokenLogo = metadata.logo || undefined;
+        }
+      }).catch(() => {
+        // Try Jupiter fallback
+        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+          if (jupMeta) {
+            position.tokenSymbol = jupMeta.symbol;
+            position.tokenName = jupMeta.name;
+            position.tokenLogo = jupMeta.logo;
+          }
+        }).catch(() => {});
+      });
+    }
 
     // Broadcast buy to frontend
     this.emit('newBuy', position);
