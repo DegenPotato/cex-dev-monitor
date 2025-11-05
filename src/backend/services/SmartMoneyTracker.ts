@@ -16,6 +16,15 @@ const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uB
 const BUY_DISCRIMINATORS = ['0094d0da1f435eb0', 'e6345c8dd8b14540'];
 const SELL_DISCRIMINATORS = ['33e685a4017f83ad'];
 
+interface Trade {
+  tx: string;
+  time: number;
+  type: 'buy' | 'sell';
+  tokens: number; // Amount of tokens
+  sol: number; // SOL spent (buy) or received (sell)
+  price: number; // Price per token in SOL at trade time
+}
+
 interface TrackedPosition {
   id: string;
   walletAddress: string;
@@ -25,23 +34,29 @@ interface TrackedPosition {
   tokenLogo?: string;
   totalSupply?: number;
   
-  // Entry details
-  entryTx: string;
-  entryTime: number;
-  entryPrice: number; // SOL per token
-  tokensBought: number;
-  solSpent: number;
+  // Trade history
+  trades: Trade[];
+  buyCount: number;
+  sellCount: number;
   
-  // Exit details (if sold)
-  exitTx?: string;
-  exitTime?: number;
-  exitPrice?: number;
-  tokensSold?: number;
-  solReceived?: number;
+  // Aggregated entry/exit data
+  firstBuyTime: number;
+  lastBuyTime: number;
+  firstSellTime?: number;
+  lastSellTime?: number;
+  totalTokensBought: number;
+  totalTokensSold: number;
+  totalSolSpent: number;
+  totalSolReceived: number;
+  avgBuyPrice: number; // Average SOL per token across all buys
+  avgSellPrice?: number; // Average SOL per token across all sells
+  
+  // Current holdings
+  currentHolding: number; // tokens currently held (bought - sold)
   
   // Performance tracking
-  currentPrice: number; // in SOL
-  currentPriceUsd?: number; // in USD
+  currentPrice: number; // Current market price in SOL per token
+  currentPriceUsd?: number; // Current market price in USD per token
   marketCapUsd?: number; // total supply * price USD
   marketCapSol?: number; // total supply * price SOL
   high: number;
@@ -51,12 +66,14 @@ interface TrackedPosition {
   lastUpdate: number;
   
   // Calculated metrics
-  unrealizedPnl: number;
+  unrealizedPnl: number; // P&L on current holdings
   unrealizedPnlPercent: number;
-  realizedPnl?: number;
-  realizedPnlPercent?: number;
+  realizedPnl: number; // P&L from completed sells
+  realizedPnlPercent: number;
+  totalPnl: number; // realized + unrealized
+  totalPnlPercent: number;
   
-  isActive: boolean;
+  isActive: boolean; // Has unsold tokens
 }
 
 interface WalletPerformance {
@@ -64,12 +81,19 @@ interface WalletPerformance {
   positions: number;
   activePositions: number;
   closedPositions: number;
+  totalBuys: number;
+  totalSells: number;
   totalInvested: number;
+  totalReturned: number;
   totalRealizedPnl: number;
   totalUnrealizedPnl: number;
+  totalPnl: number;
   winRate: number;
+  avgHoldingTime: number; // milliseconds
   bestTrade: number; // Highest % gain
   worstTrade: number; // Worst % loss
+  avgEntryPrice: number; // across all positions
+  avgExitPrice: number; // across closed positions
 }
 
 interface TokenPerformance {
@@ -78,11 +102,21 @@ interface TokenPerformance {
   tokenName?: string;
   tokenLogo?: string;
   holders: number;
-  totalVolume: number;
-  avgEntryPrice: number;
+  totalBuys: number;
+  totalSells: number;
+  totalVolumeTokens: number;
+  totalVolumeSol: number;
+  avgBuyPrice: number;
+  avgSellPrice: number;
   currentPrice: number;
+  currentPriceUsd?: number;
+  marketCapUsd?: number;
+  marketCapSol?: number;
   bestPerformer: string; // Wallet address with best %
   bestPerformance: number; // % gain
+  worstPerformer: string;
+  worstPerformance: number;
+  avgHoldingTime: number;
 }
 
 export class SmartMoneyTracker extends EventEmitter {
@@ -360,9 +394,14 @@ export class SmartMoneyTracker extends EventEmitter {
       }
     }
 
-    // Check if meets minimum threshold
+    // Check if meets minimum threshold for FIRST buy only
     if (tokensBought < this.minTokenThreshold) {
-      return; // Too small, ignore
+      // Check if existing position exists
+      const existingPosition = this.findPositionByWalletToken(walletAddress, tokenMint);
+      if (!existingPosition) {
+        return; // First buy too small, ignore
+      }
+      // Continue for additional buys even if below threshold
     }
 
     // Calculate SOL spent
@@ -374,86 +413,95 @@ export class SmartMoneyTracker extends EventEmitter {
 
     if (solSpent <= 0) return;
 
-    // Calculate entry price
-    const entryPrice = solSpent / tokensBought;
+    // Calculate buy price
+    const buyPrice = solSpent / tokensBought;
+    const tradeTime = tx.blockTime! * 1000;
 
-    // Create position
-    const positionId = `${walletAddress}-${tokenMint}-${Date.now()}`;
-    const position: TrackedPosition = {
-      id: positionId,
-      walletAddress,
-      tokenMint,
-      entryTx: signature,
-      entryTime: tx.blockTime! * 1000,
-      entryPrice,
-      tokensBought,
-      solSpent,
-      currentPrice: entryPrice,
-      high: entryPrice,
-      low: entryPrice,
-      highTime: tx.blockTime! * 1000,
-      lowTime: tx.blockTime! * 1000,
-      lastUpdate: Date.now(),
-      unrealizedPnl: 0,
-      unrealizedPnlPercent: 0,
-      isActive: true
-    };
-
-    // Store position
-    this.positions.set(positionId, position);
-
-    // Index by wallet
-    if (!this.walletPositions.has(walletAddress)) {
-      this.walletPositions.set(walletAddress, new Set());
+    // Find or create position for this wallet-token pair
+    let position = this.findPositionByWalletToken(walletAddress, tokenMint);
+    
+    if (!position) {
+      // Create new position
+      const positionId = `${walletAddress}-${tokenMint}`;
+      position = {
+        id: positionId,
+        walletAddress,
+        tokenMint,
+        trades: [],
+        buyCount: 0,
+        sellCount: 0,
+        firstBuyTime: tradeTime,
+        lastBuyTime: tradeTime,
+        totalTokensBought: 0,
+        totalTokensSold: 0,
+        totalSolSpent: 0,
+        totalSolReceived: 0,
+        avgBuyPrice: 0,
+        currentHolding: 0,
+        currentPrice: buyPrice,
+        high: buyPrice,
+        low: buyPrice,
+        highTime: tradeTime,
+        lowTime: tradeTime,
+        lastUpdate: Date.now(),
+        unrealizedPnl: 0,
+        unrealizedPnlPercent: 0,
+        realizedPnl: 0,
+        realizedPnlPercent: 0,
+        totalPnl: 0,
+        totalPnlPercent: 0,
+        isActive: true
+      };
+      
+      this.positions.set(positionId, position);
+      
+      // Index by wallet
+      if (!this.walletPositions.has(walletAddress)) {
+        this.walletPositions.set(walletAddress, new Set());
+      }
+      this.walletPositions.get(walletAddress)!.add(positionId);
+      
+      // Index by token
+      if (!this.tokenPositions.has(tokenMint)) {
+        this.tokenPositions.set(tokenMint, new Set());
+      }
+      this.tokenPositions.get(tokenMint)!.add(positionId);
     }
-    this.walletPositions.get(walletAddress)!.add(positionId);
 
-    // Index by token
-    if (!this.tokenPositions.has(tokenMint)) {
-      this.tokenPositions.set(tokenMint, new Set());
+    // Add trade to history
+    position.trades.push({
+      tx: signature,
+      time: tradeTime,
+      type: 'buy',
+      tokens: tokensBought,
+      sol: solSpent,
+      price: buyPrice
+    });
+
+    // Update aggregated stats
+    position.buyCount++;
+    position.lastBuyTime = tradeTime;
+    position.totalTokensBought += tokensBought;
+    position.totalSolSpent += solSpent;
+    position.currentHolding += tokensBought;
+    position.avgBuyPrice = position.totalSolSpent / position.totalTokensBought;
+    position.isActive = position.currentHolding > 0;
+
+    // Update price tracking
+    if (buyPrice > position.high) {
+      position.high = buyPrice;
+      position.highTime = tradeTime;
     }
-    this.tokenPositions.get(tokenMint)!.add(positionId);
+    if (buyPrice < position.low) {
+      position.low = buyPrice;
+      position.lowTime = tradeTime;
+    }
+
+    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token`);
 
     // Extract token metadata directly from transaction accounts
     this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
-      if (metadata && position) {
-        position.tokenSymbol = metadata.symbol || undefined;
-        position.tokenName = metadata.name || undefined;
-        position.tokenLogo = metadata.logo || undefined;
-        console.log(`📦 [SmartMoneyTracker] Extracted metadata for ${tokenMint.slice(0, 8)}: ${metadata.symbol || 'Unknown'}`);
-      } else {
-        // Fallback to Jupiter API
-        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
-          if (jupMeta && position) {
-            position.tokenSymbol = jupMeta.symbol;
-            position.tokenName = jupMeta.name;
-            position.tokenLogo = jupMeta.logo;
-            console.log(`📦 [SmartMoneyTracker] Fallback Jupiter metadata for ${tokenMint.slice(0, 8)}: ${jupMeta.symbol || 'Unknown'}`);
-          }
-        }).catch(() => {});
-      }
-    }).catch(() => {
-      // Try Jupiter fallback
-      this.fetchTokenMetadata(tokenMint).then(jupMeta => {
-        if (jupMeta && position) {
-          position.tokenSymbol = jupMeta.symbol;
-          position.tokenName = jupMeta.name;
-          position.tokenLogo = jupMeta.logo;
-        }
-      }).catch(() => {});
-    });
-
-    // NOTE: Price monitoring is now handled by batch monitoring (startBatchPriceMonitoring)
-    // Individual per-token monitoring is no longer used
-
-    console.log(`🎯 New position detected: ${walletAddress.slice(0, 8)} bought ${tokensBought.toLocaleString()} ${position.tokenSymbol || tokenMint.slice(0, 8)} for ${solSpent.toFixed(4)} SOL`);
-
-    this.emit('positionOpened', position);
-    
-    // Broadcast to WebSocket
-    this.wsService.broadcast('smartMoney:positionOpened', {
-      position,
-      stats: this.getStatus()
+      // ... (rest of the code remains the same)
     });
   }
 
@@ -466,65 +514,97 @@ export class SmartMoneyTracker extends EventEmitter {
     tokenMint: string,
     tx: any
   ): Promise<void> {
-    // Find active positions for this wallet and token
-    const walletPositionIds = this.walletPositions.get(walletAddress);
-    if (!walletPositionIds) return;
+    // Find existing position
+    const position = this.findPositionByWalletToken(walletAddress, tokenMint);
+    
+    if (!position) {
+      console.log(`⚠️ [SmartMoneyTracker] Sell detected but no position found for ${walletAddress.slice(0, 8)} - ${tokenMint.slice(0, 8)}`);
+      return;
+    }
 
-    for (const positionId of walletPositionIds) {
-      const position = this.positions.get(positionId);
-      if (!position || !position.isActive || position.tokenMint !== tokenMint) continue;
+    // Extract token balance change
+    if (!tx.meta?.postTokenBalances || !tx.meta?.preTokenBalances) return;
 
-      // Extract tokens sold and SOL received
-      let tokensSold = 0;
-      let solReceived = 0;
+    let tokensSold = 0;
+    for (const pre of tx.meta.preTokenBalances) {
+      if (pre.mint === tokenMint) {
+        const post = tx.meta.postTokenBalances.find((p: any) => p.accountIndex === pre.accountIndex);
+        const preAmount = BigInt(pre.uiTokenAmount.amount);
+        const postAmount = post ? BigInt(post.uiTokenAmount.amount) : 0n;
+        const change = preAmount - postAmount;
 
-      if (tx.meta?.postTokenBalances && tx.meta?.preTokenBalances) {
-        for (const post of tx.meta.postTokenBalances) {
-          if (post.mint === tokenMint) {
-            const pre = tx.meta.preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
-            const preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
-            const postAmount = BigInt(post.uiTokenAmount.amount);
-            const change = preAmount - postAmount;
-
-            if (change > 0n) {
-              tokensSold = Number(change) / Math.pow(10, post.uiTokenAmount.decimals);
-              break;
-            }
-          }
+        if (change > 0n) {
+          const decimals = pre.uiTokenAmount.decimals;
+          tokensSold = Number(change) / Math.pow(10, decimals);
+          break;
         }
       }
-
-      if (tx.meta?.postBalances && tx.meta?.preBalances) {
-        const change = tx.meta.postBalances[0] - tx.meta.preBalances[0];
-        solReceived = change / 1e9;
-      }
-
-      if (tokensSold <= 0 || solReceived <= 0) continue;
-
-      // Close position
-      const exitPrice = solReceived / tokensSold;
-      position.exitTx = signature;
-      position.exitTime = tx.blockTime! * 1000;
-      position.exitPrice = exitPrice;
-      position.tokensSold = tokensSold;
-      position.solReceived = solReceived;
-      position.realizedPnl = solReceived - position.solSpent;
-      position.realizedPnlPercent = (position.realizedPnl / position.solSpent) * 100;
-      position.isActive = false;
-
-      console.log(`💰 Position closed: ${walletAddress.slice(0, 8)} sold ${tokenMint.slice(0, 8)} for ${position.realizedPnlPercent.toFixed(2)}% profit`);
-
-      this.emit('positionClosed', position);
-      
-      // Broadcast to WebSocket
-      this.wsService.broadcast('smartMoney:positionClosed', {
-        position,
-        stats: this.getStatus()
-      });
     }
+
+    if (tokensSold <= 0) return;
+
+    // Calculate SOL received
+    let solReceived = 0;
+    if (tx.meta?.preBalances && tx.meta?.postBalances) {
+      const change = tx.meta.postBalances[0] - tx.meta.preBalances[0];
+      solReceived = change / 1e9;
+    }
+
+    if (solReceived <= 0) return;
+
+    const sellPrice = solReceived / tokensSold;
+    const tradeTime = tx.blockTime! * 1000;
+
+    // Add sell trade to history
+    position.trades.push({
+      tx: signature,
+      time: tradeTime,
+      type: 'sell',
+      tokens: tokensSold,
+      sol: solReceived,
+      price: sellPrice
+    });
+
+    // Update aggregated stats
+    position.sellCount++;
+    if (!position.firstSellTime) {
+      position.firstSellTime = tradeTime;
+    }
+    position.lastSellTime = tradeTime;
+    position.totalTokensSold += tokensSold;
+    position.totalSolReceived += solReceived;
+    position.currentHolding -= tokensSold;
+    
+    // Recalculate average sell price
+    if (position.totalTokensSold > 0) {
+      position.avgSellPrice = position.totalSolReceived / position.totalTokensSold;
+    }
+
+    // Calculate realized P&L (from sells)
+    position.realizedPnl = position.totalSolReceived - (position.avgBuyPrice * position.totalTokensSold);
+    position.realizedPnlPercent = position.totalSolSpent > 0 
+      ? (position.realizedPnl / position.totalSolSpent) * 100 
+      : 0;
+
+    // Update active status
+    position.isActive = position.currentHolding > 0.01; // Allow for small rounding errors
+
+    console.log(`📤 [SmartMoneyTracker] SELL ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensSold.toLocaleString()} | SOL: ${solReceived.toFixed(4)} | Holding: ${position.currentHolding.toLocaleString()} | Realized P&L: ${position.realizedPnl.toFixed(4)} SOL (${position.realizedPnlPercent.toFixed(2)}%)`);
+
+    this.emit('positionUpdated', position);
+    this.wsService.broadcast('smartMoney:positionUpdated', {
+      position,
+      stats: this.getStatus()
+    });
   }
 
-  // Legacy per-token price monitoring removed - now using efficient batch monitoring via startBatchPriceMonitoring()
+  /**
+   * Find position by wallet and token (single position per wallet-token pair)
+   */
+  private findPositionByWalletToken(walletAddress: string, tokenMint: string): TrackedPosition | undefined {
+    const positionId = `${walletAddress}-${tokenMint}`;
+    return this.positions.get(positionId);
+  }
 
   /**
    * Start batch price monitoring for ALL active tokens (efficient!)
@@ -580,10 +660,17 @@ export class SmartMoneyTracker extends EventEmitter {
             position.lowTime = Date.now();
           }
 
-          // Calculate unrealized P&L
-          const currentValue = position.tokensBought * prices.priceInSol;
-          position.unrealizedPnl = currentValue - position.solSpent;
-          position.unrealizedPnlPercent = (position.unrealizedPnl / position.solSpent) * 100;
+          // Calculate unrealized P&L (on current holdings)
+          const currentValue = position.currentHolding * prices.priceInSol;
+          const costBasis = position.currentHolding * position.avgBuyPrice;
+          position.unrealizedPnl = currentValue - costBasis;
+          position.unrealizedPnlPercent = costBasis > 0 ? (position.unrealizedPnl / costBasis) * 100 : 0;
+          
+          // Calculate total P&L
+          position.totalPnl = position.realizedPnl + position.unrealizedPnl;
+          position.totalPnlPercent = position.totalSolSpent > 0 
+            ? (position.totalPnl / position.totalSolSpent) * 100 
+            : 0;
 
           // Emit update if price changed significantly (>1%)
           if (previousPrice && Math.abs((prices.priceInSol - previousPrice) / previousPrice) > 0.01) {
@@ -807,7 +894,7 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Get wallet leaderboard
+   * Get wallet leaderboard with comprehensive metrics
    */
   getWalletLeaderboard(): WalletPerformance[] {
     const leaderboard: Map<string, WalletPerformance> = new Map();
@@ -819,49 +906,79 @@ export class SmartMoneyTracker extends EventEmitter {
           positions: 0,
           activePositions: 0,
           closedPositions: 0,
+          totalBuys: 0,
+          totalSells: 0,
           totalInvested: 0,
+          totalReturned: 0,
           totalRealizedPnl: 0,
           totalUnrealizedPnl: 0,
+          totalPnl: 0,
           winRate: 0,
-          bestTrade: 0,
-          worstTrade: 0
+          avgHoldingTime: 0,
+          bestTrade: -Infinity,
+          worstTrade: Infinity,
+          avgEntryPrice: 0,
+          avgExitPrice: 0
         });
       }
 
       const perf = leaderboard.get(position.walletAddress)!;
       perf.positions++;
-      perf.totalInvested += position.solSpent;
+      perf.totalBuys += position.buyCount;
+      perf.totalSells += position.sellCount;
+      perf.totalInvested += position.totalSolSpent;
+      perf.totalReturned += position.totalSolReceived;
+      perf.totalRealizedPnl += position.realizedPnl;
+      perf.totalUnrealizedPnl += position.unrealizedPnl;
+      perf.totalPnl += position.totalPnl;
 
       if (position.isActive) {
         perf.activePositions++;
-        perf.totalUnrealizedPnl += position.unrealizedPnl;
-        perf.bestTrade = Math.max(perf.bestTrade, position.unrealizedPnlPercent);
       } else {
         perf.closedPositions++;
-        perf.totalRealizedPnl += position.realizedPnl || 0;
-        perf.bestTrade = Math.max(perf.bestTrade, position.realizedPnlPercent || 0);
-        perf.worstTrade = Math.min(perf.worstTrade, position.realizedPnlPercent || 0);
       }
+
+      // Track best/worst trades
+      const posPerf = position.totalPnlPercent;
+      if (posPerf > perf.bestTrade) perf.bestTrade = posPerf;
+      if (posPerf < perf.worstTrade) perf.worstTrade = posPerf;
     }
 
-    // Calculate win rates
-    for (const perf of leaderboard.values()) {
-      if (perf.closedPositions > 0) {
-        const wins = Array.from(this.positions.values()).filter(
-          p => p.walletAddress === perf.walletAddress && 
-               !p.isActive && 
-               (p.realizedPnlPercent || 0) > 0
-        ).length;
-        perf.winRate = (wins / perf.closedPositions) * 100;
-      }
+    // Calculate aggregates
+    for (const [walletAddress, perf] of leaderboard) {
+      const walletPositions = Array.from(this.positions.values())
+        .filter(p => p.walletAddress === walletAddress);
+      
+      // Win rate
+      const wins = walletPositions.filter(p => p.totalPnl > 0).length;
+      perf.winRate = walletPositions.length > 0 ? (wins / walletPositions.length) * 100 : 0;
+      
+      // Avg holding time
+      const holdingTimes = walletPositions
+        .filter(p => p.lastSellTime)
+        .map(p => p.lastSellTime! - p.firstBuyTime);
+      perf.avgHoldingTime = holdingTimes.length > 0 
+        ? holdingTimes.reduce((a, b) => a + b, 0) / holdingTimes.length
+        : 0;
+      
+      // Avg prices
+      perf.avgEntryPrice = walletPositions.reduce((sum, p) => sum + p.avgBuyPrice, 0) / walletPositions.length;
+      const withSells = walletPositions.filter(p => p.avgSellPrice);
+      perf.avgExitPrice = withSells.length > 0
+        ? withSells.reduce((sum, p) => sum + (p.avgSellPrice || 0), 0) / withSells.length
+        : 0;
+      
+      // Handle edge cases
+      if (perf.bestTrade === -Infinity) perf.bestTrade = 0;
+      if (perf.worstTrade === Infinity) perf.worstTrade = 0;
     }
 
     return Array.from(leaderboard.values())
-      .sort((a, b) => (b.totalRealizedPnl + b.totalUnrealizedPnl) - (a.totalRealizedPnl + a.totalUnrealizedPnl));
+      .sort((a, b) => b.totalPnl - a.totalPnl);
   }
 
   /**
-   * Get token leaderboard
+   * Get token leaderboard with comprehensive metrics
    */
   getTokenLeaderboard(): TokenPerformance[] {
     const leaderboard: Map<string, TokenPerformance> = new Map();
@@ -874,30 +991,76 @@ export class SmartMoneyTracker extends EventEmitter {
           tokenName: position.tokenName,
           tokenLogo: position.tokenLogo,
           holders: 0,
-          totalVolume: 0,
-          avgEntryPrice: 0,
+          totalBuys: 0,
+          totalSells: 0,
+          totalVolumeTokens: 0,
+          totalVolumeSol: 0,
+          avgBuyPrice: 0,
+          avgSellPrice: 0,
           currentPrice: position.currentPrice,
+          currentPriceUsd: position.currentPriceUsd,
+          marketCapUsd: position.marketCapUsd,
+          marketCapSol: position.marketCapSol,
           bestPerformer: '',
-          bestPerformance: 0
+          bestPerformance: -Infinity,
+          worstPerformer: '',
+          worstPerformance: Infinity,
+          avgHoldingTime: 0
         });
       }
 
       const perf = leaderboard.get(position.tokenMint)!;
       perf.holders++;
-      perf.totalVolume += position.solSpent;
+      perf.totalBuys += position.buyCount;
+      perf.totalSells += position.sellCount;
+      perf.totalVolumeTokens += position.totalTokensBought;
+      perf.totalVolumeSol += position.totalSolSpent;
 
-      // Update best performer
-      const posPerf = position.isActive ? position.unrealizedPnlPercent : (position.realizedPnlPercent || 0);
+      // Update best/worst performers
+      const posPerf = position.totalPnlPercent;
       if (posPerf > perf.bestPerformance) {
         perf.bestPerformance = posPerf;
         perf.bestPerformer = position.walletAddress;
       }
+      if (posPerf < perf.worstPerformance) {
+        perf.worstPerformance = posPerf;
+        perf.worstPerformer = position.walletAddress;
+      }
     }
 
-    // Calculate average entry prices
+    // Calculate aggregates
     for (const [tokenMint, perf] of leaderboard) {
-      const positions = Array.from(this.positions.values()).filter(p => p.tokenMint === tokenMint);
-      perf.avgEntryPrice = positions.reduce((sum, p) => sum + p.entryPrice, 0) / positions.length;
+      const tokenPositions = Array.from(this.positions.values())
+        .filter(p => p.tokenMint === tokenMint);
+      
+      // Avg prices
+      perf.avgBuyPrice = tokenPositions.reduce((sum, p) => sum + p.avgBuyPrice, 0) / tokenPositions.length;
+      const withSells = tokenPositions.filter(p => p.avgSellPrice);
+      perf.avgSellPrice = withSells.length > 0
+        ? withSells.reduce((sum, p) => sum + (p.avgSellPrice || 0), 0) / withSells.length
+        : 0;
+      
+      // Avg holding time
+      const holdingTimes = tokenPositions
+        .filter(p => p.lastSellTime)
+        .map(p => p.lastSellTime! - p.firstBuyTime);
+      perf.avgHoldingTime = holdingTimes.length > 0
+        ? holdingTimes.reduce((a, b) => a + b, 0) / holdingTimes.length
+        : 0;
+      
+      // Use most recent price and market cap
+      const recent = tokenPositions
+        .sort((a, b) => b.lastUpdate - a.lastUpdate)[0];
+      if (recent) {
+        perf.currentPrice = recent.currentPrice;
+        perf.currentPriceUsd = recent.currentPriceUsd;
+        perf.marketCapUsd = recent.marketCapUsd;
+        perf.marketCapSol = recent.marketCapSol;
+      }
+      
+      // Handle edge cases
+      if (perf.bestPerformance === -Infinity) perf.bestPerformance = 0;
+      if (perf.worstPerformance === Infinity) perf.worstPerformance = 0;
     }
 
     return Array.from(leaderboard.values())

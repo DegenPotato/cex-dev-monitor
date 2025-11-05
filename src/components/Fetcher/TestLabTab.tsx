@@ -2690,7 +2690,10 @@ export const TestLabTab: React.FC = () => {
                                 {wallet.walletAddress.slice(0, 8)}...{wallet.walletAddress.slice(-6)}
                               </a>
                               <div className="text-xs text-gray-400 mt-1">
-                                {wallet.activePositions} active • {wallet.closedPositions} closed • {wallet.winRate.toFixed(0)}% win rate
+                                {wallet.activePositions} active • {wallet.closedPositions} closed • {wallet.totalBuys} buys • {wallet.totalSells} sells
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                Win Rate: {wallet.winRate.toFixed(1)}% • Avg Hold: {(wallet.avgHoldingTime / 3600000).toFixed(1)}h
                               </div>
                             </div>
                           </div>
@@ -2700,9 +2703,17 @@ export const TestLabTab: React.FC = () => {
                               {(wallet.totalRealizedPnl + wallet.totalUnrealizedPnl).toFixed(4)} SOL
                             </div>
                             <div className="text-xs text-gray-400">
-                              {wallet.totalInvested.toFixed(2)} SOL invested
+                              In: {wallet.totalInvested.toFixed(2)} SOL • Out: {wallet.totalReturned.toFixed(2)} SOL
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              Avg Buy: {(wallet.avgEntryPrice * 1e9).toFixed(4)} SOL/B
+                            </div>
+                            {wallet.avgExitPrice > 0 && (
+                              <div className="text-xs text-gray-500">
+                                Avg Sell: {(wallet.avgExitPrice * 1e9).toFixed(4)} SOL/B
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-600 mt-1">
                               Best: {wallet.bestTrade.toFixed(1)}% | Worst: {wallet.worstTrade.toFixed(1)}%
                             </div>
                           </div>
@@ -2757,38 +2768,77 @@ export const TestLabTab: React.FC = () => {
                                 <div className="text-xs text-gray-500 mt-0.5">{token.tokenName}</div>
                               )}
                               <div className="text-xs text-gray-400 mt-1">
-                                {token.holders} smart holders • {token.totalVolume.toFixed(2)} SOL volume
+                                {token.holders} holders • {token.totalBuys} buys • {token.totalSells} sells
                               </div>
-                              {/* Current Price and Market Cap */}
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                Vol: {token.totalVolumeSol.toFixed(2)} SOL ({token.totalVolumeTokens.toLocaleString()} tokens)
+                              </div>
+                              {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">
                                 Price: {(token.currentPrice * 1e9).toFixed(6)} SOL/B
-                                {token.avgEntryPrice && (
-                                  <span className={`ml-2 ${
-                                    token.currentPrice > token.avgEntryPrice ? 'text-green-400' : 'text-red-400'
-                                  }`}>
-                                    ({((token.currentPrice / token.avgEntryPrice - 1) * 100).toFixed(1)}%)
+                                {token.currentPriceUsd && (
+                                  <span className="ml-1 text-purple-400">
+                                    (${token.currentPriceUsd.toFixed(8)})
                                   </span>
                                 )}
                               </div>
+                              {/* Market Cap */}
+                              {token.marketCapUsd && (
+                                <div className="text-xs text-gray-500">
+                                  MCap: ${(token.marketCapUsd / 1e6).toFixed(2)}M
+                                  {token.marketCapSol && (
+                                    <span className="ml-1">({token.marketCapSol.toFixed(0)} SOL)</span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                Avg Buy: {(token.avgBuyPrice * 1e9).toFixed(4)} SOL/B
+                                {token.avgSellPrice > 0 && (
+                                  <span className="ml-1">• Avg Sell: {(token.avgSellPrice * 1e9).toFixed(4)} SOL/B</span>
+                                )}
+                              </div>
+                              {token.avgHoldingTime > 0 && (
+                                <div className="text-xs text-gray-600">
+                                  Avg Hold: {(token.avgHoldingTime / 3600000).toFixed(1)}h
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="text-right">
                             <div className={`text-lg font-bold ${token.bestPerformance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {token.bestPerformance >= 0 ? '+' : ''}{token.bestPerformance.toFixed(2)}%
                             </div>
-                            <div className="text-xs text-gray-400">
-                              Best performer
+                            <div className="text-xs text-emerald-400">
+                              Top Gain
                             </div>
-                            {/* Show best performer wallet */}
                             {token.bestPerformer && (
                               <a
                                 href={`https://solscan.io/account/${token.bestPerformer}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                                title="Best performer"
                               >
                                 {token.bestPerformer.slice(0, 6)}...{token.bestPerformer.slice(-4)}
                               </a>
+                            )}
+                            {token.worstPerformance < 0 && (
+                              <>
+                                <div className="text-xs text-red-400 mt-1">
+                                  Worst: {token.worstPerformance.toFixed(1)}%
+                                </div>
+                                {token.worstPerformer && (
+                                  <a
+                                    href={`https://solscan.io/account/${token.worstPerformer}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-gray-400 hover:text-gray-300 transition-colors"
+                                    title="Worst performer"
+                                  >
+                                    {token.worstPerformer.slice(0, 6)}...{token.worstPerformer.slice(-4)}
+                                  </a>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
