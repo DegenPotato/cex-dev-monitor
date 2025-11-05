@@ -37,7 +37,10 @@ const results = {
   wrappers: 0,
   unknown: 0,
   discriminators: new Map(),
-  unknownTransactions: []
+  unknownTransactions: [],
+  walletPositions: new Map(), // wallet-token -> {buys: [], sells: []}
+  sellsWithPosition: 0,
+  sellsWithoutPosition: 0
 };
 
 console.log('🔍 Live Buy/Sell Detection Test');
@@ -122,6 +125,45 @@ const sampleTransactions = async () => {
             });
           }
 
+          // Extract wallet and token for buy/sell tracking
+          if (detectionType === 'BUY' || detectionType === 'SELL') {
+            if (tx.meta?.postTokenBalances?.length) {
+              for (const post of tx.meta.postTokenBalances) {
+                const pre = tx.meta.preTokenBalances?.find(p => p.accountIndex === post.accountIndex);
+                const preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
+                const postAmount = BigInt(post.uiTokenAmount.amount);
+                const change = postAmount - preAmount;
+                
+                if ((detectionType === 'BUY' && change > 0n) || (detectionType === 'SELL' && change < 0n)) {
+                  const wallet = post.owner;
+                  const token = post.mint;
+                  const positionKey = `${wallet}-${token}`;
+                  
+                  if (!results.walletPositions.has(positionKey)) {
+                    results.walletPositions.set(positionKey, { buys: [], sells: [] });
+                  }
+                  
+                  if (detectionType === 'BUY') {
+                    results.walletPositions.get(positionKey).buys.push(signature);
+                  } else {
+                    const position = results.walletPositions.get(positionKey);
+                    position.sells.push(signature);
+                    
+                    // Check if this sell has a corresponding buy
+                    if (position.buys.length > 0) {
+                      results.sellsWithPosition++;
+                      console.log(`   ✅ Sell has position (${position.buys.length} buys tracked)`);
+                    } else {
+                      results.sellsWithoutPosition++;
+                      console.log(`   ⚠️  Sell WITHOUT position! Wallet: ${wallet.slice(0,8)} Token: ${token.slice(0,8)}`);
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
           // Progress update
           const emoji = detectionType === 'BUY' ? '💰' : 
                         detectionType === 'SELL' ? '💸' : 
@@ -155,7 +197,22 @@ console.log(`\n📈 Total Transactions: ${results.total}`);
 console.log(`💰 Detected Buys:      ${results.buys} (${((results.buys / results.total) * 100).toFixed(1)}%)`);
 console.log(`💸 Detected Sells:     ${results.sells} (${((results.sells / results.total) * 100).toFixed(1)}%)`);
 console.log(`📦 Wrappers (labeled): ${results.wrappers} (${((results.wrappers / results.total) * 100).toFixed(1)}%)`);
-console.log(`❓ Unknown:            ${results.unknown} (${((results.unknown / results.total) * 100).toFixed(1)}%)`);  
+console.log(`❓ Unknown:            ${results.unknown} (${((results.unknown / results.total) * 100).toFixed(1)}%)`);
+
+console.log('\n' + '-'.repeat(80));
+console.log('🎯 SELL TRACKING ANALYSIS:');
+console.log('-'.repeat(80));
+console.log(`Total positions tracked: ${results.walletPositions.size}`);
+console.log(`✅ Sells WITH buy position:    ${results.sellsWithPosition}`);
+console.log(`⚠️  Sells WITHOUT buy position: ${results.sellsWithoutPosition}`);
+if (results.sells > 0) {
+  const matchRate = (results.sellsWithPosition / results.sells) * 100;
+  console.log(`📊 Position match rate: ${matchRate.toFixed(1)}%`);
+  if (matchRate < 100) {
+    console.log(`⚠️  WARNING: ${results.sellsWithoutPosition} sells detected without corresponding buy!`);
+    console.log(`   This means these wallets bought BEFORE monitoring started.`);
+  }
+}
 
 console.log('\n' + '-'.repeat(80));
 console.log('🔢 ALL DISCRIMINATORS FOUND:');
