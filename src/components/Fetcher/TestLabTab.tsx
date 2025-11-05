@@ -190,6 +190,14 @@ export const TestLabTab: React.FC = () => {
   const [pumpfunSnipedTokens, setPumpfunSnipedTokens] = useState<string[]>([]);
   const [selectedPumpfunWallet, setSelectedPumpfunWallet] = useState<number | null>(null);
   
+  // Smart Money Tracker states
+  const [smartMoneyActive, setSmartMoneyActive] = useState(false);
+  const [smartMoneyPositions, setSmartMoneyPositions] = useState<any[]>([]);
+  const [smartMoneyWalletLeaderboard, setSmartMoneyWalletLeaderboard] = useState<any[]>([]);
+  const [smartMoneyTokenLeaderboard, setSmartMoneyTokenLeaderboard] = useState<any[]>([]);
+  const [smartMoneyStats, setSmartMoneyStats] = useState<any>(null);
+  const [smartMoneyTab, setSmartMoneyTab] = useState<'positions' | 'wallets' | 'tokens'>('positions');
+  
   // Use existing trading store for wallets 
   const { wallets: tradingWallets, fetchWallets } = useTradingStore();
   const [gmgnIndicators, setGmgnIndicators] = useState<{ [key: string]: number | null }>({
@@ -210,6 +218,35 @@ export const TestLabTab: React.FC = () => {
     setCopiedAddress(address);
     toast.success('Address copied!');
     setTimeout(() => setCopiedAddress(null), 2000);
+  };
+
+  // Fetch Smart Money Tracker data
+  const fetchSmartMoneyData = async () => {
+    try {
+      const [positionsRes, leaderboardsRes, statusRes] = await Promise.all([
+        fetch(`${config.apiUrl}/api/smart-money-tracker/positions`, { credentials: 'include' }),
+        fetch(`${config.apiUrl}/api/smart-money-tracker/leaderboards`, { credentials: 'include' }),
+        fetch(`${config.apiUrl}/api/smart-money-tracker/status`, { credentials: 'include' })
+      ]);
+
+      if (positionsRes.ok) {
+        const data = await positionsRes.json();
+        setSmartMoneyPositions(data.positions || []);
+      }
+
+      if (leaderboardsRes.ok) {
+        const data = await leaderboardsRes.json();
+        setSmartMoneyWalletLeaderboard(data.wallets || []);
+        setSmartMoneyTokenLeaderboard(data.tokens || []);
+      }
+
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setSmartMoneyStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch smart money data:', error);
+    }
   };
 
   // Fetch telegram accounts for source selection
@@ -237,6 +274,18 @@ export const TestLabTab: React.FC = () => {
     const defaultWallet = tradingWallets.find((w: any) => w.isDefault);
     if (defaultWallet) setTelegramWalletId(parseInt(defaultWallet.id));
   }, [fetchWallets]);
+
+  // Poll Smart Money data when active
+  useEffect(() => {
+    if (smartMoneyActive) {
+      // Fetch immediately
+      fetchSmartMoneyData();
+      
+      // Poll every 3 seconds
+      const interval = setInterval(fetchSmartMoneyData, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [smartMoneyActive]);
 
   // Fetch active Telegram monitors
   const fetchActiveTelegramMonitors = async () => {
@@ -2226,34 +2275,77 @@ export const TestLabTab: React.FC = () => {
           </div>
 
           {/* Start/Stop Button */}
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            {smartMoneyStats && (
+              <div className="text-sm text-gray-400">
+                <span className="text-emerald-400 font-bold">{smartMoneyStats.activePositions || 0}</span> active • 
+                <span className="text-gray-300 font-bold ml-2">{smartMoneyStats.closedPositions || 0}</span> closed
+              </div>
+            )}
             <button
               onClick={async () => {
-                setLoading(true);
-                try {
-                  const endpoint = `/api/smart-money-tracker/${loading ? 'stop' : 'start'}`;
-                  const response = await fetch(`${config.apiUrl}${endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include'
-                  });
-                  const data = await response.json();
-                  if (data.success) {
-                    toast.success(data.message);
-                  } else {
-                    toast.error(data.error || 'Failed to toggle tracker');
+                if (smartMoneyActive) {
+                  // Stop tracker
+                  setLoading(true);
+                  try {
+                    const response = await fetch(`${config.apiUrl}/api/smart-money-tracker/stop`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      setSmartMoneyActive(false);
+                      toast.success('Smart Money Tracker stopped');
+                    }
+                  } catch (error) {
+                    toast.error('Failed to stop tracker');
+                  } finally {
+                    setLoading(false);
                   }
-                } catch (error) {
-                  toast.error('Failed to toggle tracker');
-                } finally {
-                  setLoading(false);
+                } else {
+                  // Start tracker
+                  setLoading(true);
+                  try {
+                    const response = await fetch(`${config.apiUrl}/api/smart-money-tracker/start`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      setSmartMoneyActive(true);
+                      toast.success(data.message);
+                      // Fetch initial data
+                      fetchSmartMoneyData();
+                    } else {
+                      toast.error(data.error || 'Failed to start tracker');
+                    }
+                  } catch (error) {
+                    toast.error('Failed to start tracker');
+                  } finally {
+                    setLoading(false);
+                  }
                 }
               }}
               disabled={loading}
-              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
+              className={`px-6 py-2 ${
+                smartMoneyActive 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              } disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors ml-auto`}
             >
-              <Zap className="w-4 h-4" />
-              {loading ? 'Processing...' : 'Start Tracking'}
+              {smartMoneyActive ? (
+                <>
+                  <X className="w-4 h-4" />
+                  {loading ? 'Stopping...' : 'Stop Tracker'}
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  {loading ? 'Starting...' : 'Start Tracking'}
+                </>
+              )}
             </button>
           </div>
 
@@ -2267,6 +2359,162 @@ export const TestLabTab: React.FC = () => {
               <li>• <span className="text-emerald-400">Leaderboards:</span> Top performing wallets and hottest tokens</li>
             </ul>
           </div>
+
+          {/* Smart Money Data Display */}
+          {smartMoneyActive && (
+            <div className="mt-6 space-y-4">
+              {/* Tabs */}
+              <div className="flex gap-2 border-b border-gray-700">
+                <button
+                  onClick={() => setSmartMoneyTab('positions')}
+                  className={`px-4 py-2 font-medium transition-colors ${
+                    smartMoneyTab === 'positions'
+                      ? 'text-emerald-400 border-b-2 border-emerald-400'
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  💎 Positions ({smartMoneyPositions.length})
+                </button>
+                <button
+                  onClick={() => setSmartMoneyTab('wallets')}
+                  className={`px-4 py-2 font-medium transition-colors ${
+                    smartMoneyTab === 'wallets'
+                      ? 'text-emerald-400 border-b-2 border-emerald-400'
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  👤 Wallets ({smartMoneyWalletLeaderboard.length})
+                </button>
+                <button
+                  onClick={() => setSmartMoneyTab('tokens')}
+                  className={`px-4 py-2 font-medium transition-colors ${
+                    smartMoneyTab === 'tokens'
+                      ? 'text-emerald-400 border-b-2 border-emerald-400'
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  🪙 Tokens ({smartMoneyTokenLeaderboard.length})
+                </button>
+              </div>
+
+              {/* Positions Tab */}
+              {smartMoneyTab === 'positions' && (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {smartMoneyPositions.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      No positions detected yet. Waiting for large buys...
+                    </div>
+                  ) : (
+                    smartMoneyPositions.map((pos: any) => (
+                      <div key={pos.id} className={`p-4 rounded-lg border ${
+                        pos.isActive
+                          ? 'bg-emerald-900/10 border-emerald-600/30'
+                          : 'bg-gray-800/50 border-gray-700'
+                      }`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-white font-medium">{pos.tokenSymbol || pos.tokenMint.slice(0, 8)}</span>
+                              {pos.isActive && <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-400 rounded">ACTIVE</span>}
+                              {!pos.isActive && <span className="px-2 py-0.5 text-xs bg-gray-600/20 text-gray-400 rounded">CLOSED</span>}
+                            </div>
+                            <div className="text-sm text-gray-400 space-y-1">
+                              <div>Wallet: <span className="text-gray-300 font-mono">{pos.walletAddress.slice(0, 8)}...{pos.walletAddress.slice(-6)}</span></div>
+                              <div>Bought: <span className="text-emerald-400">{pos.tokensBought.toLocaleString()} tokens</span> for <span className="text-cyan-400">{pos.solSpent.toFixed(4)} SOL</span></div>
+                              {pos.isActive && (
+                                <>
+                                  <div>Current: <span className={pos.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                    {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(4)} SOL ({pos.unrealizedPnlPercent.toFixed(2)}%)
+                                  </span></div>
+                                  <div>Range: <span className="text-green-400">↑{((pos.high / pos.entryPrice - 1) * 100).toFixed(2)}%</span> / <span className="text-red-400">↓{((pos.low / pos.entryPrice - 1) * 100).toFixed(2)}%</span></div>
+                                </>
+                              )}
+                              {!pos.isActive && pos.realizedPnl !== undefined && (
+                                <div>Realized: <span className={pos.realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {pos.realizedPnl >= 0 ? '+' : ''}{pos.realizedPnl.toFixed(4)} SOL ({pos.realizedPnlPercent.toFixed(2)}%)
+                                </span></div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Wallets Tab */}
+              {smartMoneyTab === 'wallets' && (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {smartMoneyWalletLeaderboard.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      No wallet data yet
+                    </div>
+                  ) : (
+                    smartMoneyWalletLeaderboard.map((wallet: any, idx: number) => (
+                      <div key={wallet.walletAddress} className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '💎'}</span>
+                            <div>
+                              <div className="text-white font-mono">{wallet.walletAddress.slice(0, 8)}...{wallet.walletAddress.slice(-6)}</div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                {wallet.activePositions} active • {wallet.closedPositions} closed • {wallet.winRate.toFixed(0)}% win rate
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-lg font-bold ${wallet.totalRealizedPnl + wallet.totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {wallet.totalRealizedPnl + wallet.totalUnrealizedPnl >= 0 ? '+' : ''}
+                              {(wallet.totalRealizedPnl + wallet.totalUnrealizedPnl).toFixed(4)} SOL
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {wallet.totalInvested.toFixed(2)} SOL invested
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Tokens Tab */}
+              {smartMoneyTab === 'tokens' && (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {smartMoneyTokenLeaderboard.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      No token data yet
+                    </div>
+                  ) : (
+                    smartMoneyTokenLeaderboard.map((token: any, idx: number) => (
+                      <div key={token.tokenMint} className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{idx === 0 ? '🔥' : idx === 1 ? '⚡' : idx === 2 ? '✨' : '🪙'}</span>
+                            <div>
+                              <div className="text-white font-medium">{token.tokenSymbol || token.tokenMint.slice(0, 8)}</div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                {token.holders} smart holders • {token.totalVolume.toFixed(2)} SOL volume
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-lg font-bold ${token.bestPerformance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {token.bestPerformance >= 0 ? '+' : ''}{token.bestPerformance.toFixed(2)}%
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              Best performer
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         )}
       </motion.div>
