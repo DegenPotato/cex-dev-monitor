@@ -380,15 +380,33 @@ export class SmartMoneyTracker extends EventEmitter {
     }
     this.tokenPositions.get(tokenMint)!.add(positionId);
 
-    // Fetch token metadata in background
-    this.fetchTokenMetadata(tokenMint).then(metadata => {
+    // Extract token metadata directly from transaction accounts
+    this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
       if (metadata && position) {
-        position.tokenSymbol = metadata.symbol;
-        position.tokenName = metadata.name;
-        position.tokenLogo = metadata.logo;
+        position.tokenSymbol = metadata.symbol || undefined;
+        position.tokenName = metadata.name || undefined;
+        position.tokenLogo = metadata.logo || undefined;
+        console.log(`📦 [SmartMoneyTracker] Extracted metadata for ${tokenMint.slice(0, 8)}: ${metadata.symbol || 'Unknown'}`);
+      } else {
+        // Fallback to Jupiter API
+        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+          if (jupMeta && position) {
+            position.tokenSymbol = jupMeta.symbol;
+            position.tokenName = jupMeta.name;
+            position.tokenLogo = jupMeta.logo;
+            console.log(`📦 [SmartMoneyTracker] Fallback Jupiter metadata for ${tokenMint.slice(0, 8)}: ${jupMeta.symbol || 'Unknown'}`);
+          }
+        }).catch(() => {});
       }
     }).catch(() => {
-      // Silent fail - metadata is optional
+      // Try Jupiter fallback
+      this.fetchTokenMetadata(tokenMint).then(jupMeta => {
+        if (jupMeta && position) {
+          position.tokenSymbol = jupMeta.symbol;
+          position.tokenName = jupMeta.name;
+          position.tokenLogo = jupMeta.logo;
+        }
+      }).catch(() => {});
     });
 
     // Start price monitoring for this token if not already started
@@ -580,6 +598,90 @@ export class SmartMoneyTracker extends EventEmitter {
       return tokenData.price; // Already in SOL
     } catch (error: any) {
       console.error(`❌ [Jupiter Price API] Error: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Extract token metadata directly from blockchain (Metaplex metadata account)
+   */
+  private async extractTokenMetadataFromTransaction(_tx: any, tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
+    try {
+      // For Pumpfun, metadata is often in the mint account
+      // Try to fetch the mint account to get token details
+      const mintPubkey = new PublicKey(tokenMint);
+      
+      // Get mint account info
+      const mintInfo = await this.connection.withProxy(conn => 
+        conn.getAccountInfo(mintPubkey, 'confirmed')
+      );
+
+      if (!mintInfo) {
+        return null;
+      }
+
+      // Try to extract metadata from Metaplex metadata account
+      // Metaplex metadata PDA is derived from: ['metadata', metadataProgramId, mint]
+      const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+      const [metadataPDA] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from('metadata'),
+          METADATA_PROGRAM_ID.toBuffer(),
+          mintPubkey.toBuffer()
+        ],
+        METADATA_PROGRAM_ID
+      );
+
+      const metadataAccount = await this.connection.withProxy(conn =>
+        conn.getAccountInfo(metadataPDA, 'confirmed')
+      );
+
+      if (metadataAccount && metadataAccount.data.length > 0) {
+        // Parse Metaplex metadata (simplified - full parser would be more complex)
+        const data = metadataAccount.data;
+        
+        // Skip first byte (key), then read name
+        let offset = 1 + 32 + 32; // key + update authority + mint
+        
+        // Read name length (u32)
+        const nameLen = data.readUInt32LE(offset);
+        offset += 4;
+        const name = data.slice(offset, offset + nameLen).toString('utf8').replace(/\0/g, '').trim();
+        offset += nameLen;
+        
+        // Read symbol length (u32)
+        const symbolLen = data.readUInt32LE(offset);
+        offset += 4;
+        const symbol = data.slice(offset, offset + symbolLen).toString('utf8').replace(/\0/g, '').trim();
+        offset += symbolLen;
+        
+        // Read uri length (u32)
+        const uriLen = data.readUInt32LE(offset);
+        offset += 4;
+        const uri = data.slice(offset, offset + uriLen).toString('utf8').replace(/\0/g, '').trim();
+        
+        // Try to fetch logo from URI if it's a valid URL
+        let logo: string | undefined;
+        if (uri && uri.startsWith('http')) {
+          try {
+            const uriResponse = await fetch(uri);
+            const uriData = await uriResponse.json();
+            logo = uriData.image || uriData.logo;
+          } catch {
+            // Silent fail - logo is optional
+          }
+        }
+        
+        return {
+          name: name || undefined,
+          symbol: symbol || undefined,
+          logo
+        };
+      }
+
+      return null;
+    } catch (error: any) {
+      console.log(`⚠️  [SmartMoneyTracker] Could not extract metadata from transaction: ${error.message}`);
       return null;
     }
   }

@@ -293,6 +293,22 @@ export const TestLabTab: React.FC = () => {
     }
   }, [smartMoneyActive]);
 
+  // Fetch Smart Money config when campaign source is selected
+  useEffect(() => {
+    if (campaignSource === 'smart-money') {
+      fetch(`${config.apiUrl}/api/smart-money-tracker/config`, {
+        credentials: 'include'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.minTokenThreshold !== undefined) {
+            setSmartMoneyConfig(data);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [campaignSource]);
+
   // Fetch active Telegram monitors
   const fetchActiveTelegramMonitors = async () => {
     try {
@@ -2518,30 +2534,107 @@ export const TestLabTab: React.FC = () => {
                             </div>
                             <div className="text-sm text-gray-400 space-y-1">
                               {/* Wallet with Solscan Link */}
-                              <div>
-                                Wallet: 
+                              <div className="flex items-center gap-2">
+                                <span>Wallet:</span>
                                 <a 
                                   href={`https://solscan.io/account/${pos.walletAddress}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-gray-300 font-mono hover:text-emerald-400 transition-colors ml-1"
+                                  className="text-gray-300 font-mono hover:text-emerald-400 transition-colors"
                                 >
                                   {pos.walletAddress.slice(0, 8)}...{pos.walletAddress.slice(-6)}
                                 </a>
                               </div>
-                              <div>Bought: <span className="text-emerald-400">{pos.tokensBought.toLocaleString()} tokens</span> for <span className="text-cyan-400">{pos.solSpent.toFixed(4)} SOL</span></div>
+                              
+                              {/* Entry Details */}
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                <div>
+                                  <span className="text-gray-500">Entry:</span>{' '}
+                                  <a 
+                                    href={`https://solscan.io/tx/${pos.entryTx}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-400 hover:text-blue-300"
+                                    title="View entry transaction"
+                                  >
+                                    {new Date(pos.entryTime).toLocaleTimeString()}
+                                  </a>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Amount:</span> <span className="text-emerald-400">{pos.tokensBought.toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{(pos.entryPrice * 1e9).toFixed(4)} SOL/B</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Cost:</span> <span className="text-cyan-400">{pos.solSpent.toFixed(4)} SOL</span>
+                                </div>
+                              </div>
+
+                              {/* Active Position Metrics */}
                               {pos.isActive && (
-                                <>
-                                  <div>Current: <span className={pos.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                                    {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(4)} SOL ({pos.unrealizedPnlPercent.toFixed(2)}%)
-                                  </span></div>
-                                  <div>Range: <span className="text-green-400">↑{((pos.high / pos.entryPrice - 1) * 100).toFixed(2)}%</span> / <span className="text-red-400">↓{((pos.low / pos.entryPrice - 1) * 100).toFixed(2)}%</span></div>
-                                </>
+                                <div className="pt-2 border-t border-gray-700">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <span className="text-gray-500">Current:</span> <span className="text-white">{(pos.currentPrice * 1e9).toFixed(4)} SOL/B</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">P&L:</span>{' '}
+                                      <span className={pos.unrealizedPnl >= 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(4)} SOL ({pos.unrealizedPnlPercent.toFixed(2)}%)
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">High:</span>{' '}
+                                      <span className="text-green-400">
+                                        {(pos.high * 1e9).toFixed(4)} (+{((pos.high / pos.entryPrice - 1) * 100).toFixed(2)}%)
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Low:</span>{' '}
+                                      <span className="text-red-400">
+                                        {(pos.low * 1e9).toFixed(4)} ({((pos.low / pos.entryPrice - 1) * 100).toFixed(2)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    Last update: {new Date(pos.lastUpdate).toLocaleTimeString()}
+                                  </div>
+                                </div>
                               )}
+
+                              {/* Closed Position Metrics */}
                               {!pos.isActive && pos.realizedPnl !== undefined && (
-                                <div>Realized: <span className={pos.realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                                  {pos.realizedPnl >= 0 ? '+' : ''}{pos.realizedPnl.toFixed(4)} SOL ({pos.realizedPnlPercent.toFixed(2)}%)
-                                </span></div>
+                                <div className="pt-2 border-t border-gray-700">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <span className="text-gray-500">Exit:</span>{' '}
+                                      {pos.exitTx ? (
+                                        <a 
+                                          href={`https://solscan.io/tx/${pos.exitTx}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-400 hover:text-blue-300"
+                                          title="View exit transaction"
+                                        >
+                                          {pos.exitTime ? new Date(pos.exitTime).toLocaleTimeString() : 'N/A'}
+                                        </a>
+                                      ) : (
+                                        <span className="text-gray-500">Detected</span>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Exit Price:</span>{' '}
+                                      <span className="text-white">{pos.exitPrice ? (pos.exitPrice * 1e9).toFixed(4) : 'N/A'} SOL/B</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <span className="text-gray-500">Realized P&L:</span>{' '}
+                                      <span className={pos.realizedPnl >= 0 ? 'text-green-400 font-bold text-lg' : 'text-red-400 font-bold text-lg'}>
+                                        {pos.realizedPnl >= 0 ? '+' : ''}{pos.realizedPnl.toFixed(4)} SOL ({pos.realizedPnlPercent.toFixed(2)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </div>

@@ -1695,4 +1695,39 @@ router.post('/api/smart-money-tracker/clear', authService.requireSecureAuth(), a
   }
 });
 
+/**
+ * Update Configuration
+ */
+router.post('/api/smart-money-tracker/config', authService.requireSecureAuth(), async (req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    tracker.updateConfig(req.body);
+    
+    res.json({ 
+      success: true,
+      config: tracker.getConfig()
+    });
+  } catch (error: any) {
+    console.error('❌ Error updating config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get Current Configuration
+ */
+router.get('/api/smart-money-tracker/config', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    res.json(tracker.getConfig());
+  } catch (error: any) {
+    console.error('❌ Error getting config:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
