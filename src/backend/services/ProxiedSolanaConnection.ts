@@ -2,7 +2,7 @@ import { Connection, ConnectionConfig } from '@solana/web3.js';
 import { ProxyManager } from './ProxyManager.js';
 import { RequestStatsTracker } from './RequestStatsTracker.js';
 import { globalRateLimiter } from './RateLimiter.js';
-import { globalRPCServerRotator } from './RPCServerRotator.js';
+import { globalRPCServerRotator, RPCServerRotator } from './RPCServerRotator.js';
 import { globalConcurrencyLimiter } from './GlobalConcurrencyLimiter.js';
 import fetch from 'cross-fetch';
 
@@ -17,13 +17,17 @@ export class ProxiedSolanaConnection {
   private useProxies: boolean;
   private serviceName: string;
   private statsTracker: RequestStatsTracker;
+  private rpcRotator: RPCServerRotator; // Isolated or global rotator
 
-  constructor(endpoint: string, config?: ConnectionConfig, proxyFilePath?: string, serviceName: string = 'unknown') {
+  constructor(endpoint: string, config?: ConnectionConfig, proxyFilePath?: string, serviceName: string = 'unknown', isolatedRotator?: RPCServerRotator) {
     this.endpoint = endpoint;
     this.config = config || { commitment: 'confirmed' };
     this.proxyManager = new ProxyManager(proxyFilePath);
     this.serviceName = serviceName;
     this.statsTracker = RequestStatsTracker.getInstance();
+    
+    // Use isolated rotator if provided, otherwise use global
+    this.rpcRotator = isolatedRotator || globalRPCServerRotator;
 
     // Default to RPC rotation mode (proxies can be manually enabled if needed)
     this.useProxies = false;
@@ -53,9 +57,9 @@ export class ProxiedSolanaConnection {
     // Priority: Server Rotation > Proxies > Direct
     
     // 1. Try RPC server rotation first (no proxies needed)
-    if (globalRPCServerRotator.isEnabled()) {
-      const serverUrl = await globalRPCServerRotator.getNextServer(); // Async for safety ceiling
-      const hostHeader = globalRPCServerRotator.getHostHeader();
+    if (this.rpcRotator.isEnabled()) {
+      const serverUrl = await this.rpcRotator.getNextServer(); // Async for safety ceiling
+      const hostHeader = this.rpcRotator.getHostHeader();
       
       // Custom fetch with Host header trick
       const customFetch = (url: string, options?: any) => {
@@ -115,7 +119,7 @@ export class ProxiedSolanaConnection {
    */
   async withProxy<T>(fn: (connection: Connection) => Promise<T>, maxRetries: number = 3): Promise<T> {
     // Determine active mode: RPC Rotation > Proxies > Rate Limiting
-    const usingRPCRotation = globalRPCServerRotator.isEnabled();
+    const usingRPCRotation = this.rpcRotator.isEnabled();
     const usingProxies = !usingRPCRotation && this.useProxies;
     const shouldRateLimit = !usingRPCRotation && !this.useProxies;
     
@@ -136,7 +140,7 @@ export class ProxiedSolanaConnection {
         try {
           // Get endpoint being used (for tracking)
           if (usingRPCRotation) {
-            endpoint = await globalRPCServerRotator.getNextServer();
+            endpoint = await this.rpcRotator.getNextServer();
           } else if (usingProxies) {
             endpoint = `proxy-${this.endpoint}`;
           } else {
