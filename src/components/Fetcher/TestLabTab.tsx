@@ -2569,7 +2569,7 @@ export const TestLabTab: React.FC = () => {
                                   </a>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Amount:</span> <span className="text-emerald-400">{pos.tokensBought.toLocaleString()}</span>
+                                  <span className="text-gray-500">Amount:</span> <span className="text-emerald-400">{Number(pos.tokensBought ?? 0).toLocaleString()}</span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Entry Price:</span> <span className="text-cyan-400">{(pos.entryPrice * 1e9).toFixed(4)} SOL/B</span>
@@ -2771,7 +2771,7 @@ export const TestLabTab: React.FC = () => {
                                 {token.holders || 0} holders • {token.totalBuys || 0} buys • {token.totalSells || 0} sells
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                Vol: {(token.totalVolumeSol || 0).toFixed(2)} SOL ({(token.totalVolumeTokens || 0).toLocaleString()} tokens)
+                                Vol: {Number(token.totalVolumeSol ?? 0).toFixed(2)} SOL ({Number(token.totalVolumeTokens ?? 0).toLocaleString()} tokens)
                               </div>
                               {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">

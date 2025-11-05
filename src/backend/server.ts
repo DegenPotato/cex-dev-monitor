@@ -405,27 +405,10 @@ globalConcurrencyLimiter.setRPCMaxConcurrent(rpcMaxConcurrent ? parseInt(rpcMaxC
 
 // IMPORTANT: Enable RPC server rotation BEFORE initializing monitors
 // This allows the connections to detect it's enabled from the start
-console.log('🔧 [Init] Checking for proxies...');
-const testProxyManager = (await import('./services/ProxyManager.js')).ProxyManager;
-const testProxy = new testProxyManager('./proxies.txt');
-const hasProxies = testProxy.hasProxies();
-
-if (hasProxies) {
-  // Proxies available - use proxy mode
-  globalRateLimiter.disable();
-  globalRPCServerRotator.disable();
-  globalConcurrencyLimiter.useProxyRotation();
-  console.log('🚀 [Init] Proxies FOUND - PROXY ROTATION MODE');
-  console.log(`   Max Concurrent: ${proxyMaxConcurrent || 20}`);
-} else {
-  // No proxies - use RPC rotation mode
-  globalRPCServerRotator.enable();
-  globalRateLimiter.disable();
-  globalConcurrencyLimiter.useRPCRotation();
-  console.log('🚀 [Init] No proxies - RPC ROTATION MODE');
-  console.log('🔄 [Init] Rotating through 20 RPC pool servers to bypass rate limits');
-  console.log(`   Max Concurrent: ${rpcMaxConcurrent || 2}`);
-}
+globalRateLimiter.disable();
+globalRPCServerRotator.disable();
+globalConcurrencyLimiter.disable();
+console.log('🚀 [Init] Using direct private RPC - no rotation, no proxies, no global concurrency limiter');
 
 // Initialize Solana monitor (connections will now detect rotation is enabled)
 const solanaMonitor = new SolanaMonitor();
