@@ -110,8 +110,10 @@ export class OnchainOHLCVBuilder {
 
     console.log(`⏰ [OHLCV] ${signatures.length} signatures in lookback period`);
 
-    // Fetch transactions in batches
-    const batchSize = 100;
+    // Fetch transactions in batches with rate limiting
+    const batchSize = 10; // Reduced from 100 to avoid rate limits
+    const batchDelayMs = 500; // Delay between batches
+    
     for (let i = 0; i < signatures.length; i += batchSize) {
       const batch = signatures.slice(i, i + batchSize);
       const txSigs = batch.map(sig => sig.signature);
@@ -131,6 +133,11 @@ export class OnchainOHLCVBuilder {
         if (swapData) {
           swaps.push(swapData);
         }
+      }
+
+      // Rate limit: delay between batches (except for last batch)
+      if (i + batchSize < signatures.length) {
+        await new Promise(resolve => setTimeout(resolve, batchDelayMs));
       }
     }
 
