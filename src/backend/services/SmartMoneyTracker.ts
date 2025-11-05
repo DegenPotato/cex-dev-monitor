@@ -609,15 +609,15 @@ export class SmartMoneyTracker extends EventEmitter {
       stats: this.getStatus()
     });
 
-    // Fetch metadata IMMEDIATELY in background (don't wait)
+    // Extract metadata from transaction FIRST (we have it right here!)
     if (!position.tokenSymbol) {
-      console.log(`🔍 [SmartMoneyTracker] Fetching metadata for ${tokenMint.slice(0, 8)}...`);
-      this.fetchTokenMetadata(tokenMint).then(metadata => {
+      console.log(`🔍 [SmartMoneyTracker] Extracting metadata from transaction for ${tokenMint.slice(0, 8)}...`);
+      this.extractMetadataFromTransaction(tx, tokenMint).then(metadata => {
         if (metadata) {
           position.tokenSymbol = metadata.symbol;
           position.tokenName = metadata.name;
           position.tokenLogo = metadata.logo;
-          console.log(`✅ [SmartMoneyTracker] Metadata enriched: ${metadata.symbol} for ${tokenMint.slice(0, 8)}`);
+          console.log(`✅ [SmartMoneyTracker] Metadata extracted from TX: ${metadata.symbol}`);
           
           // Broadcast update with metadata
           this.wsService.broadcast('smartMoney:positionUpdated', {
@@ -625,10 +625,26 @@ export class SmartMoneyTracker extends EventEmitter {
             stats: this.getStatus()
           });
         } else {
-          console.log(`❌ [SmartMoneyTracker] No metadata found for ${tokenMint.slice(0, 8)}`);
+          console.log(`⚠️ [SmartMoneyTracker] No metadata in TX, trying APIs...`);
+          // Fallback to APIs only if transaction extraction fails
+          this.fetchTokenMetadataFromAPIs(tokenMint).then(apiMetadata => {
+            if (apiMetadata) {
+              position.tokenSymbol = apiMetadata.symbol;
+              position.tokenName = apiMetadata.name;
+              position.tokenLogo = apiMetadata.logo;
+              console.log(`✅ [SmartMoneyTracker] Metadata from API: ${apiMetadata.symbol}`);
+              
+              this.wsService.broadcast('smartMoney:positionUpdated', {
+                position: this.sanitizePosition(position),
+                stats: this.getStatus()
+              });
+            } else {
+              console.log(`❌ [SmartMoneyTracker] No metadata found anywhere for ${tokenMint.slice(0, 8)}`);
+            }
+          }).catch(() => {});
         }
       }).catch(err => {
-        console.error(`❌ [SmartMoneyTracker] Metadata fetch failed for ${tokenMint.slice(0, 8)}: ${err.message}`);
+        console.error(`❌ [SmartMoneyTracker] Metadata extraction error: ${err.message}`);
       });
     }
   }
@@ -802,10 +818,10 @@ export class SmartMoneyTracker extends EventEmitter {
           position.currentPriceUsd = prices.priceInUsd;
           position.lastUpdate = Date.now();
 
-          // Fetch metadata if missing (Jupiter often has it)
+          // Fetch metadata if missing (API fallback in price monitor)
           if (!position.tokenSymbol && !position._metadataFetching) {
             position._metadataFetching = true; // Prevent repeated fetches
-            this.fetchTokenMetadata(position.tokenMint).then(metadata => {
+            this.fetchTokenMetadataFromAPIs(position.tokenMint).then((metadata: any) => {
               if (metadata) {
                 position.tokenSymbol = metadata.symbol;
                 position.tokenName = metadata.name;
@@ -942,9 +958,81 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Fetch token metadata from multiple sources
+   * Extract metadata directly from transaction (Metaplex metadata account)
    */
-  private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
+  private async extractMetadataFromTransaction(tx: any, tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
+    try {
+      const mintPubkey = new PublicKey(tokenMint);
+      
+      // Metaplex metadata PDA
+      const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+      const [metadataPDA] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from('metadata'),
+          METADATA_PROGRAM_ID.toBuffer(),
+          mintPubkey.toBuffer()
+        ],
+        METADATA_PROGRAM_ID
+      );
+
+      // Fetch metadata account
+      const metadataAccount = await this.proxiedConnection.withProxy(conn =>
+        conn.getAccountInfo(metadataPDA, 'confirmed')
+      );
+
+      if (metadataAccount && metadataAccount.data.length > 0) {
+        const data = metadataAccount.data;
+        
+        // Parse Metaplex metadata
+        let offset = 1 + 32 + 32; // key + update authority + mint
+        
+        // Read name
+        const nameLen = data.readUInt32LE(offset);
+        offset += 4;
+        const name = data.slice(offset, offset + nameLen).toString('utf8').replace(/\0/g, '').trim();
+        offset += nameLen;
+        
+        // Read symbol
+        const symbolLen = data.readUInt32LE(offset);
+        offset += 4;
+        const symbol = data.slice(offset, offset + symbolLen).toString('utf8').replace(/\0/g, '').trim();
+        offset += symbolLen;
+        
+        // Read URI
+        const uriLen = data.readUInt32LE(offset);
+        offset += 4;
+        const uri = data.slice(offset, offset + uriLen).toString('utf8').replace(/\0/g, '').trim();
+        
+        let logo: string | undefined;
+        // Try to fetch logo from URI
+        if (uri && uri.startsWith('http')) {
+          try {
+            const metadataResponse = await fetch(uri, { timeout: 2000 } as any);
+            if (metadataResponse.ok) {
+              const jsonMetadata = await metadataResponse.json();
+              logo = jsonMetadata.image || jsonMetadata.logo || jsonMetadata.icon;
+            }
+          } catch {}
+        }
+        
+        return {
+          name: name || undefined,
+          symbol: symbol || undefined,
+          logo
+        };
+      }
+
+      return null;
+    } catch (error: any) {
+      console.log(`⚠️ [SmartMoneyTracker] TX metadata extraction failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch token metadata from APIs (fallback only)
+   */
+  private async fetchTokenMetadataFromAPIs(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
     try {
       // Try Jupiter first (has most established tokens)
       try {
