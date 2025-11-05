@@ -432,13 +432,19 @@ export class SmartMoneyTracker extends EventEmitter {
         sellCount: 0,
         firstBuyTime: tradeTime,
         lastBuyTime: tradeTime,
+        firstSellTime: undefined,
+        lastSellTime: undefined,
         totalTokensBought: 0,
         totalTokensSold: 0,
         totalSolSpent: 0,
         totalSolReceived: 0,
         avgBuyPrice: 0,
+        avgSellPrice: undefined,
         currentHolding: 0,
         currentPrice: buyPrice,
+        currentPriceUsd: undefined,
+        marketCapUsd: undefined,
+        marketCapSol: undefined,
         high: buyPrice,
         low: buyPrice,
         highTime: tradeTime,
@@ -450,7 +456,11 @@ export class SmartMoneyTracker extends EventEmitter {
         realizedPnlPercent: 0,
         totalPnl: 0,
         totalPnlPercent: 0,
-        isActive: true
+        isActive: true,
+        tokenSymbol: undefined,
+        tokenName: undefined,
+        tokenLogo: undefined,
+        totalSupply: undefined
       };
       
       this.positions.set(positionId, position);
@@ -986,8 +996,10 @@ export class SmartMoneyTracker extends EventEmitter {
         ? holdingTimes.reduce((a, b) => a + b, 0) / holdingTimes.length
         : 0;
       
-      // Avg prices
-      perf.avgEntryPrice = walletPositions.reduce((sum, p) => sum + p.avgBuyPrice, 0) / walletPositions.length;
+      // Avg prices (safe division)
+      perf.avgEntryPrice = walletPositions.length > 0
+        ? walletPositions.reduce((sum, p) => sum + (p.avgBuyPrice || 0), 0) / walletPositions.length
+        : 0;
       const withSells = walletPositions.filter(p => p.avgSellPrice);
       perf.avgExitPrice = withSells.length > 0
         ? withSells.reduce((sum, p) => sum + (p.avgSellPrice || 0), 0) / withSells.length
@@ -1058,8 +1070,10 @@ export class SmartMoneyTracker extends EventEmitter {
       const tokenPositions = Array.from(this.positions.values())
         .filter(p => p.tokenMint === tokenMint);
       
-      // Avg prices
-      perf.avgBuyPrice = tokenPositions.reduce((sum, p) => sum + p.avgBuyPrice, 0) / tokenPositions.length;
+      // Avg prices (safe division)
+      perf.avgBuyPrice = tokenPositions.length > 0
+        ? tokenPositions.reduce((sum, p) => sum + (p.avgBuyPrice || 0), 0) / tokenPositions.length
+        : 0;
       const withSells = tokenPositions.filter(p => p.avgSellPrice);
       perf.avgSellPrice = withSells.length > 0
         ? withSells.reduce((sum, p) => sum + (p.avgSellPrice || 0), 0) / withSells.length
