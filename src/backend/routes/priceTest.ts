@@ -1565,4 +1565,134 @@ router.get('/api/test-lab/pumpfun-sniper/status', authService.requireSecureAuth(
   }
 });
 
+// ============================================================================
+// SMART MONEY TRACKER ROUTES
+// ============================================================================
+
+/**
+ * Start Smart Money Tracker
+ */
+router.post('/api/smart-money-tracker/start', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    await tracker.start();
+    
+    res.json({ 
+      success: true,
+      message: '💎 Smart Money Tracker started! Monitoring large Pumpfun buys...'
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting Smart Money Tracker:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * Stop Smart Money Tracker
+ */
+router.post('/api/smart-money-tracker/stop', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    tracker.stop();
+    
+    res.json({ 
+      success: true,
+      message: 'Smart Money Tracker stopped'
+    });
+  } catch (error: any) {
+    console.error('❌ Error stopping Smart Money Tracker:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * Get Smart Money Tracker Status
+ */
+router.get('/api/smart-money-tracker/status', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    const status = tracker.getStatus();
+    
+    res.json({ 
+      success: true,
+      ...status
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting Smart Money Tracker status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get Active Positions
+ */
+router.get('/api/smart-money-tracker/positions', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    const positions = tracker.getPositions();
+    
+    res.json({ 
+      success: true,
+      positions
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting positions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get Leaderboards
+ */
+router.get('/api/smart-money-tracker/leaderboards', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    const leaderboards = tracker.getLeaderboards();
+    
+    res.json({ 
+      success: true,
+      ...leaderboards
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting leaderboards:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Clear All Data
+ */
+router.post('/api/smart-money-tracker/clear', authService.requireSecureAuth(), async (_req: Request, res: Response) => {
+  try {
+    const { getSmartMoneyTracker } = await import('../services/SmartMoneyTracker.js');
+    const tracker = getSmartMoneyTracker();
+    
+    tracker.clearAllData();
+    
+    res.json({ 
+      success: true,
+      message: 'All Smart Money Tracker data cleared'
+    });
+  } catch (error: any) {
+    console.error('❌ Error clearing data:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

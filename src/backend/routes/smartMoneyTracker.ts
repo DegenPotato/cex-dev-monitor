@@ -114,7 +114,7 @@ router.get('/leaderboard/tokens', (_req: Request, res: Response) => {
 router.post('/clear', (_req: Request, res: Response) => {
   try {
     const tracker = getTracker();
-    tracker.clear();
+    tracker.clearAllData();
     
     res.json({ success: true, message: 'Data cleared' });
   } catch (error: any) {

@@ -608,9 +608,40 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Clear all data (for refresh)
+   * Get tracker status
    */
-  clear(): void {
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      totalPositions: this.positions.size,
+      activePositions: Array.from(this.positions.values()).filter(p => p.isActive).length,
+      closedPositions: Array.from(this.positions.values()).filter(p => !p.isActive).length,
+      monitoredTokens: this.priceMonitors.size,
+      trackedWallets: this.walletPositions.size
+    };
+  }
+
+  /**
+   * Get combined leaderboards
+   */
+  getLeaderboards() {
+    return {
+      wallets: this.getWalletLeaderboard(),
+      tokens: this.getTokenLeaderboard()
+    };
+  }
+
+  /**
+   * Clear all data (for refresh) - public version
+   */
+  clearAllData(): void {
+    this.clear();
+  }
+
+  /**
+   * Clear all data (for refresh) - internal
+   */
+  private clear(): void {
     this.positions.clear();
     this.walletPositions.clear();
     this.tokenPositions.clear();
@@ -622,4 +653,20 @@ export class SmartMoneyTracker extends EventEmitter {
 
     this.emit('cleared');
   }
+}
+
+// Singleton instance
+let smartMoneyTrackerInstance: SmartMoneyTracker | null = null;
+
+/**
+ * Get the singleton instance of SmartMoneyTracker
+ */
+export function getSmartMoneyTracker(): SmartMoneyTracker {
+  if (!smartMoneyTrackerInstance) {
+    // Use RPC URL from environment or default
+    const rpcUrl = process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03';
+    const connection = new Connection(rpcUrl, 'confirmed');
+    smartMoneyTrackerInstance = new SmartMoneyTracker(connection);
+  }
+  return smartMoneyTrackerInstance;
 }
