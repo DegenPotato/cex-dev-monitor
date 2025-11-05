@@ -403,11 +403,7 @@ const rpcMaxConcurrent = await ConfigProvider.get('rpc_max_concurrent');
 globalConcurrencyLimiter.setProxyMaxConcurrent(proxyMaxConcurrent ? parseInt(proxyMaxConcurrent) : 20);
 globalConcurrencyLimiter.setRPCMaxConcurrent(rpcMaxConcurrent ? parseInt(rpcMaxConcurrent) : 2);
 
-// IMPORTANT: Enable RPC server rotation BEFORE initializing monitors
-// This allows the connections to detect it's enabled from the start
-globalRateLimiter.disable();
-globalRPCServerRotator.disable();
-globalConcurrencyLimiter.disable();
+// Check for proxy availability
 console.log('🔧 [Init] Checking for proxies...');
 const testProxyManager = (await import('./services/ProxyManager.js')).ProxyManager;
 const testProxy = new testProxyManager('./proxies.txt');

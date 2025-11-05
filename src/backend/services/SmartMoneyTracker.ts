@@ -143,8 +143,7 @@ export class SmartMoneyTracker extends EventEmitter {
   constructor(connection: Connection) {
     super();
     this.connection = connection;
-    
-    console.log('🎯 [SmartMoneyTracker] Initialized with direct private RPC connection');
+    console.log(`🎯 [SmartMoneyTracker] Initialized with direct private RPC connection`);
   }
 
   /**
@@ -248,16 +247,14 @@ export class SmartMoneyTracker extends EventEmitter {
     try {
       console.log('📡 [SmartMoneyTracker] Starting WebSocket subscription to Pumpfun program...');
       
-      this.subscriptionId = await this.connection.onLogs(
+      this.subscriptionId = this.connection.onLogs(
         PUMPFUN_PROGRAM_ID,
         async (logs) => {
           if (!this.isRunning) return;
           
-          try {
-            await this.processTransaction(logs.signature);
-          } catch (error) {
-            console.error('Error processing WebSocket transaction:', error);
-          }
+          // Process the transaction
+          const signature = logs.signature;
+          await this.processTransaction(signature);
         },
         'confirmed'
       );
@@ -1173,11 +1170,9 @@ let smartMoneyTrackerInstance: SmartMoneyTracker | null = null;
  */
 export function getSmartMoneyTracker(): SmartMoneyTracker {
   if (!smartMoneyTrackerInstance) {
+    // Use private RPC endpoint directly (no rotation, no proxies, no limiters)
     const rpcUrl = process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03';
-    const connection = new Connection(rpcUrl, {
-      commitment: 'confirmed',
-      wsEndpoint: rpcUrl.replace('https://', 'wss://').replace('http://', 'ws://')
-    });
+    const connection = new Connection(rpcUrl, 'confirmed');
     smartMoneyTrackerInstance = new SmartMoneyTracker(connection);
   }
   return smartMoneyTrackerInstance;
