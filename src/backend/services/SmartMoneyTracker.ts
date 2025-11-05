@@ -79,10 +79,14 @@ interface TrackedPosition {
   currentPriceUsd?: number; // Current market price in USD per token
   marketCapUsd?: number; // total supply * price USD
   marketCapSol?: number; // total supply * price SOL
-  high: number;
-  low: number;
+  high: number; // Highest SOL price
+  low: number; // Lowest SOL price
   highTime: number;
   lowTime: number;
+  highUsd?: number; // Highest USD price
+  lowUsd?: number; // Lowest USD price
+  highUsdTime?: number;
+  lowUsdTime?: number;
   lastUpdate: number;
   
   // Calculated metrics
@@ -591,27 +595,29 @@ export class SmartMoneyTracker extends EventEmitter {
       position.lowTime = tradeTime;
     }
 
-    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token | BuyCount: ${position.buyCount}`);
-
-    // Extract metadata AFTER recording buy (async, non-blocking)
+    // Extract metadata SYNCHRONOUSLY if missing (we have the tx right here!)
     if (!position.tokenSymbol) {
-      this.extractTokenMetadataFromTransaction(tx, tokenMint).then(metadata => {
+      try {
+        const metadata = await this.extractTokenMetadataFromTransaction(tx, tokenMint);
         if (metadata) {
           position.tokenSymbol = metadata.symbol || undefined;
           position.tokenName = metadata.name || undefined;
           position.tokenLogo = metadata.logo || undefined;
+        } else {
+          // Fallback to Jupiter API
+          try {
+            const jupMeta = await this.fetchTokenMetadata(tokenMint);
+            if (jupMeta) {
+              position.tokenSymbol = jupMeta.symbol;
+              position.tokenName = jupMeta.name;
+              position.tokenLogo = jupMeta.logo;
+            }
+          } catch {}
         }
-      }).catch(() => {
-        // Try Jupiter fallback
-        this.fetchTokenMetadata(tokenMint).then(jupMeta => {
-          if (jupMeta) {
-            position.tokenSymbol = jupMeta.symbol;
-            position.tokenName = jupMeta.name;
-            position.tokenLogo = jupMeta.logo;
-          }
-        }).catch(() => {});
-      });
+      } catch {}
     }
+
+    console.log(`💰 [SmartMoneyTracker] BUY ${position.tokenSymbol || tokenMint.slice(0, 8)} - Wallet: ${walletAddress.slice(0, 8)} | Tokens: ${tokensBought.toLocaleString()} | SOL: ${solSpent.toFixed(4)} | Price: ${buyPrice.toFixed(10)} SOL/token | BuyCount: ${position.buyCount}`);
 
     // Broadcast buy to frontend
     this.emit('newBuy', position);
@@ -776,7 +782,7 @@ export class SmartMoneyTracker extends EventEmitter {
             position.marketCapSol = position.totalSupply * prices.priceInSol;
           }
 
-          // Update high/low
+          // Update high/low (SOL)
           if (prices.priceInSol > position.high) {
             position.high = prices.priceInSol;
             position.highTime = Date.now();
@@ -784,6 +790,18 @@ export class SmartMoneyTracker extends EventEmitter {
           if (prices.priceInSol < position.low) {
             position.low = prices.priceInSol;
             position.lowTime = Date.now();
+          }
+
+          // Update high/low (USD)
+          if (prices.priceInUsd) {
+            if (!position.highUsd || prices.priceInUsd > position.highUsd) {
+              position.highUsd = prices.priceInUsd;
+              position.highUsdTime = Date.now();
+            }
+            if (!position.lowUsd || prices.priceInUsd < position.lowUsd) {
+              position.lowUsd = prices.priceInUsd;
+              position.lowUsdTime = Date.now();
+            }
           }
 
           // Calculate unrealized P&L (on current holdings)
@@ -1235,6 +1253,10 @@ export class SmartMoneyTracker extends EventEmitter {
       currentPriceUsd: position.currentPriceUsd || 0,
       marketCapUsd: position.marketCapUsd || 0,
       marketCapSol: position.marketCapSol || 0,
+      highUsd: position.highUsd || 0,
+      lowUsd: position.lowUsd || 0,
+      highUsdTime: position.highUsdTime || 0,
+      lowUsdTime: position.lowUsdTime || 0,
       // Trade counts
       buyCount: position.buyCount || 0,
       sellCount: position.sellCount || 0,
