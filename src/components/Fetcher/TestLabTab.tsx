@@ -2588,7 +2588,7 @@ export const TestLabTab: React.FC = () => {
                                       <span className="text-gray-500">Price:</span>{' '}
                                       <span className="text-white">{Number((pos.currentPrice ?? 0) * 1e9).toFixed(4)} SOL/B</span>
                                     </div>
-                                    {pos.currentPriceUsd && (
+                                    {Number(pos.currentPriceUsd || 0) > 0 && (
                                       <div>
                                         <span className="text-gray-500">Price (USD):</span>{' '}
                                         <span className="text-yellow-400">${Number(pos.currentPriceUsd).toFixed(8)}</span>
@@ -2777,18 +2777,18 @@ export const TestLabTab: React.FC = () => {
                               {/* Current Price */}
                               <div className="text-xs text-gray-500 mt-1">
                                 Price: {Number((token.currentPrice || 0) * 1e9).toFixed(6)} SOL/B
-                                {token.currentPriceUsd && (
+                                {Number(token.currentPriceUsd || 0) > 0 && (
                                   <span className="ml-1 text-purple-400">
                                     (${Number(token.currentPriceUsd).toFixed(8)})
                                   </span>
                                 )}
                               </div>
                               {/* Market Cap */}
-                              {token.marketCapUsd && (
+                              {Number(token.marketCapUsd || 0) > 0 && (
                                 <div className="text-xs text-gray-500">
                                   MCap: ${Number(token.marketCapUsd / 1e6).toFixed(2)}M
-                                  {token.marketCapSol && (
-                                    <span className="ml-1">({Number(token.marketCapSol).toFixed(0)} SOL)</span>
+                                  {Number(token.marketCapSol || 0) > 0 && (
+                                    <span className="ml-1">({Number(token.marketCapSol).toFixed(2)} SOL)</span>
                                   )}
                                 </div>
                               )}
