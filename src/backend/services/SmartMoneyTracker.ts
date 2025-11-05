@@ -6,6 +6,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import EventEmitter from 'events';
 import fetch from 'cross-fetch';
+import { getWebSocketServer } from './WebSocketService.js';
 
 const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
@@ -95,6 +96,9 @@ export class SmartMoneyTracker extends EventEmitter {
   // Price monitoring
   private priceMonitors: Map<string, NodeJS.Timeout> = new Map(); // tokenMint -> interval
   private lastProcessedSlot: number = 0;
+  
+  // WebSocket
+  private wsService = getWebSocketServer();
 
   constructor(connection: Connection) {
     super();
@@ -327,14 +331,31 @@ export class SmartMoneyTracker extends EventEmitter {
     }
     this.tokenPositions.get(tokenMint)!.add(positionId);
 
+    // Fetch token metadata in background
+    this.fetchTokenMetadata(tokenMint).then(metadata => {
+      if (metadata && position) {
+        position.tokenSymbol = metadata.symbol;
+        position.tokenName = metadata.name;
+        position.tokenLogo = metadata.logo;
+      }
+    }).catch(() => {
+      // Silent fail - metadata is optional
+    });
+
     // Start price monitoring for this token if not already started
     if (!this.priceMonitors.has(tokenMint)) {
       this.startPriceMonitor(tokenMint);
     }
 
-    console.log(`🎯 New position detected: ${walletAddress.slice(0, 8)} bought ${tokensBought.toLocaleString()} ${tokenMint.slice(0, 8)} for ${solSpent.toFixed(4)} SOL`);
+    console.log(`🎯 New position detected: ${walletAddress.slice(0, 8)} bought ${tokensBought.toLocaleString()} ${position.tokenSymbol || tokenMint.slice(0, 8)} for ${solSpent.toFixed(4)} SOL`);
 
     this.emit('positionOpened', position);
+    
+    // Broadcast to WebSocket
+    this.wsService.broadcast('smartMoney:positionOpened', {
+      position,
+      stats: this.getStatus()
+    });
   }
 
   /**
@@ -395,6 +416,12 @@ export class SmartMoneyTracker extends EventEmitter {
       console.log(`💰 Position closed: ${walletAddress.slice(0, 8)} sold ${tokenMint.slice(0, 8)} for ${position.realizedPnlPercent.toFixed(2)}% profit`);
 
       this.emit('positionClosed', position);
+      
+      // Broadcast to WebSocket
+      this.wsService.broadcast('smartMoney:positionClosed', {
+        position,
+        stats: this.getStatus()
+      });
     }
   }
 
@@ -454,6 +481,12 @@ export class SmartMoneyTracker extends EventEmitter {
           // Emit update if price changed significantly (>1%)
           if (Math.abs((currentPrice - previousPrice) / previousPrice) > 0.01) {
             this.emit('priceUpdate', position);
+            
+            // Broadcast to WebSocket (throttled by >1% change)
+            this.wsService.broadcast('smartMoney:priceUpdate', {
+              position,
+              stats: this.getStatus()
+            });
           }
         }
       } catch (error) {
@@ -491,6 +524,36 @@ export class SmartMoneyTracker extends EventEmitter {
       }
       
       return tokenData.price; // Already in SOL
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch token metadata from Jupiter tokens API
+   */
+  private async fetchTokenMetadata(tokenMint: string): Promise<{ name?: string; symbol?: string; logo?: string } | null> {
+    try {
+      const tokensUrl = `https://lite-api.jup.ag/tokens/v2/search?query=${tokenMint}`;
+      const response = await fetch(tokensUrl);
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      // Find exact match for the token mint
+      const token = data.find((t: any) => t.address === tokenMint);
+      if (!token) {
+        return null;
+      }
+      
+      return {
+        name: token.name,
+        symbol: token.symbol,
+        logo: token.logoURI
+      };
     } catch (error) {
       return null;
     }
