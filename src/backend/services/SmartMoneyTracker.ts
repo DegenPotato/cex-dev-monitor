@@ -102,7 +102,6 @@ export class SmartMoneyTracker extends EventEmitter {
   private priceUpdateIntervalMs: number = 1500; // Update prices every 1.5s (matches Manual test: 1-2s)
   
   // Price monitoring
-  private priceMonitors: Map<string, NodeJS.Timeout> = new Map(); // tokenMint -> interval (legacy)
   private batchPriceMonitor: NodeJS.Timeout | null = null; // Single batch monitor for all tokens
   private lastProcessedSlot: number = 0;
   
@@ -219,12 +218,6 @@ export class SmartMoneyTracker extends EventEmitter {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-
-    // Stop all price monitors
-    for (const [, interval] of this.priceMonitors) {
-      clearInterval(interval);
-    }
-    this.priceMonitors.clear();
 
     // Stop batch price monitor
     if (this.batchPriceMonitor) {
@@ -531,78 +524,7 @@ export class SmartMoneyTracker extends EventEmitter {
     }
   }
 
-  /**
-   * Start monitoring price for a token using Jupiter (DEPRECATED - use batch monitoring)
-   * @deprecated Use startBatchPriceMonitoring() instead for better performance
-   */
-  private startPriceMonitor(tokenMint: string): void {
-    const interval = setInterval(async () => {
-      try {
-        // Check if any active positions for this token
-        const tokenPositionIds = this.tokenPositions.get(tokenMint);
-        if (!tokenPositionIds || tokenPositionIds.size === 0) {
-          clearInterval(interval);
-          this.priceMonitors.delete(tokenMint);
-          return;
-        }
-
-        const hasActivePosition = Array.from(tokenPositionIds).some(id => {
-          const pos = this.positions.get(id);
-          return pos && pos.isActive;
-        });
-
-        if (!hasActivePosition) {
-          clearInterval(interval);
-          this.priceMonitors.delete(tokenMint);
-          return;
-        }
-
-        // Fetch current price from Jupiter
-        const currentPrice = await this.fetchTokenPriceFromJupiter(tokenMint);
-        if (!currentPrice) return;
-
-        // Update all active positions for this token
-        for (const positionId of tokenPositionIds) {
-          const position = this.positions.get(positionId);
-          if (!position || !position.isActive) continue;
-
-          const previousPrice = position.currentPrice;
-          position.currentPrice = currentPrice;
-          position.lastUpdate = Date.now();
-
-          // Update high/low
-          if (currentPrice > position.high) {
-            position.high = currentPrice;
-            position.highTime = Date.now();
-          }
-          if (currentPrice < position.low) {
-            position.low = currentPrice;
-            position.lowTime = Date.now();
-          }
-
-          // Calculate unrealized P&L
-          const currentValue = position.tokensBought * currentPrice;
-          position.unrealizedPnl = currentValue - position.solSpent;
-          position.unrealizedPnlPercent = (position.unrealizedPnl / position.solSpent) * 100;
-
-          // Emit update if price changed significantly (>1%)
-          if (Math.abs((currentPrice - previousPrice) / previousPrice) > 0.01) {
-            this.emit('priceUpdate', position);
-            
-            // Broadcast to WebSocket (throttled by >1% change)
-            this.wsService.broadcast('smartMoney:priceUpdate', {
-              position,
-              stats: this.getStatus()
-            });
-          }
-        }
-      } catch (error) {
-        console.error(`Error monitoring price for ${tokenMint}:`, error);
-      }
-    }, this.priceUpdateIntervalMs);
-
-    this.priceMonitors.set(tokenMint, interval);
-  }
+  // Legacy per-token price monitoring removed - now using efficient batch monitoring via startBatchPriceMonitoring()
 
   /**
    * Start batch price monitoring for ALL active tokens (efficient!)
@@ -740,13 +662,7 @@ export class SmartMoneyTracker extends EventEmitter {
     }
   }
 
-  /**
-   * Fetch current price for a single token (fallback method)
-   */
-  private async fetchTokenPriceFromJupiter(tokenMint: string): Promise<number | null> {
-    const batch = await this.batchFetchPricesFromJupiter([tokenMint]);
-    return batch.get(tokenMint)?.priceInSol ?? null;
-  }
+  // Legacy single-token price fetch removed - use batchFetchPricesFromJupiter() directly for better efficiency
 
   /**
    * Extract token metadata directly from blockchain (Metaplex metadata account)
@@ -990,7 +906,17 @@ export class SmartMoneyTracker extends EventEmitter {
   }
 
   /**
-   * Get tracker status
+   * Get combined leaderboards
+   */
+  getLeaderboards() {
+    return {
+      wallets: this.getWalletLeaderboard(),
+      tokens: this.getTokenLeaderboard()
+    };
+  }
+
+  /**
+   * Get tracker statistics
    */
   getStatus() {
     return {
@@ -998,18 +924,8 @@ export class SmartMoneyTracker extends EventEmitter {
       totalPositions: this.positions.size,
       activePositions: Array.from(this.positions.values()).filter(p => p.isActive).length,
       closedPositions: Array.from(this.positions.values()).filter(p => !p.isActive).length,
-      monitoredTokens: this.priceMonitors.size,
+      monitoredTokens: this.tokenPositions.size, // All unique tokens with positions (batch monitored)
       trackedWallets: this.walletPositions.size
-    };
-  }
-
-  /**
-   * Get combined leaderboards
-   */
-  getLeaderboards() {
-    return {
-      wallets: this.getWalletLeaderboard(),
-      tokens: this.getTokenLeaderboard()
     };
   }
 
@@ -1028,10 +944,11 @@ export class SmartMoneyTracker extends EventEmitter {
     this.walletPositions.clear();
     this.tokenPositions.clear();
     
-    for (const [, interval] of this.priceMonitors) {
-      clearInterval(interval);
+    // Stop batch price monitor if running
+    if (this.batchPriceMonitor) {
+      clearInterval(this.batchPriceMonitor);
+      this.batchPriceMonitor = null;
     }
-    this.priceMonitors.clear();
 
     this.emit('cleared');
   }
