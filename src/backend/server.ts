@@ -16,7 +16,6 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { Server as SocketIOServer} from 'socket.io';
 import { initDatabase, getDb, saveDatabase } from './database/connection.js';
 import { queryAll, queryOne, execute } from './database/helpers.js';
 import { PublicKey, Connection } from '@solana/web3.js';
@@ -43,13 +42,13 @@ import { solPriceOracle } from './services/SolPriceOracle.js';
 import { apiProviderTracker } from './services/ApiProviderTracker.js';
 import { ohlcvAggregator } from './services/OHLCVAggregator.js';
 import { telegramEntityCache } from './services/TelegramEntityCache.js';
-import { realtimeOHLCVService } from './services/RealtimeOHLCVService.js';
-import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
 import { TokenPriceOracle } from './services/TokenPriceOracle.js';
 import { geckoNetworksSyncService } from './services/GeckoNetworksSyncService.js';
 import { tokenRegistrySync } from './services/TokenRegistrySync.js';
+import { getTradingWebSocketService } from './services/TradingWebSocketService.js';
 
 const tokenPriceOracle = TokenPriceOracle.getInstance();
+const tradingWS = getTradingWebSocketService();
 import databaseRoutes from './routes/database.js';
 import authRoutes from './routes/auth/index.js';
 import youtubeRoutes from './routes/youtube.js';
@@ -74,7 +73,7 @@ const wss = new WebSocketServer({
   path: '/ws'
 });
 
-// CORS configuration - MUST be defined BEFORE Socket.IO initialization
+// CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : [
@@ -86,28 +85,6 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     ];
 
 console.log('🔒 [CORS] Allowed origins:', allowedOrigins);
-
-// Initialize Socket.IO for Trading WebSocket
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      // Same CORS rules as Express
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true
-  },
-  transports: ['websocket', 'polling']
-});
-
-// Initialize Trading WebSocket Service
-const tradingWebSocketService = getTradingWebSocketService();
-tradingWebSocketService.initialize(io);
-console.log('✅ Trading WebSocket service initialized on /trading namespace');
 
 // Initialize Price Test routes with native WebSocket
 initializePriceTestRoutes(wss);
@@ -138,10 +115,10 @@ geckoNetworksSyncService.start().then(() => {
 // Start Campaign services
 import { getCampaignExecutor } from './services/CampaignExecutor.js';
 import { getSolanaEventDetector } from './services/SolanaEventDetector.js';
-import { setWebSocketServer } from './services/WebSocketService.js';
+import { getWebSocketServer } from './services/WebSocketService.js';
 
-// Set the WebSocket server for campaign events
-setWebSocketServer(io);
+// Set the WebSocket server for campaign events (using native WebSocket)
+const webSocketService = getWebSocketServer();
 
 const campaignExecutor = getCampaignExecutor();
 const solanaEventDetector = getSolanaEventDetector();
@@ -482,30 +459,46 @@ ohlcvCollector.initialize().then(() => {
 // Initialize Telegram entity cache for forwarding reliability
 telegramEntityCache.initialize().then(() => {
   console.log('📋 [Init] Telegram entity cache initialized');
-}).catch(err => {
+}).catch((err: Error) => {
   console.error('Failed to initialize entity cache:', err);
 });
 
 // WebSocket clients
 const clients = new Set<WebSocket>();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   console.log('🔌 New WebSocket client connected');
+  
+  // Check if this is a trading WebSocket connection (via URL param or first message)
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const isTradingWS = url.searchParams.get('type') === 'trading';
+  
+  if (isTradingWS) {
+    // Route to TradingWebSocketService
+    console.log('📈 Routing to Trading WebSocket Service');
+    tradingWS.handleConnection(ws);
+    return;
+  }
+  
+  // Default WebSocket handling for general monitoring
   clients.add(ws);
   
-  // Register with Token Price Oracle for real-time price updates
+  // Register with services for real-time updates
   tokenPriceOracle.registerClient(ws);
+  webSocketService.registerClient(ws);
 
   ws.on('close', () => {
     console.log('🔌 Client disconnected');
     clients.delete(ws);
     tokenPriceOracle.unregisterClient(ws);
+    webSocketService.unregisterClient(ws);
   });
 
-  ws.on('error', (error) => {
+  ws.on('error', (error: Error) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
     tokenPriceOracle.unregisterClient(ws);
+    webSocketService.unregisterClient(ws);
   });
 
   // Send initial data
@@ -3261,16 +3254,11 @@ app.get('/', (_req, res) => {
   });
 });
 
-// Initialize Real-time OHLCV service
-realtimeOHLCVService.initialize(io);
-console.log('🚀 Real-time OHLCV service initialized');
-
 // Start server
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);
-  console.log(`📊 Socket.IO available for trading at http://localhost:${PORT}/trading`);
   
   // Initialize auth maintenance service (cleanup expired sessions/challenges every 30 mins)
   const authMaintenance = new AuthMaintenanceService();

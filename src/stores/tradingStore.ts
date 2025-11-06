@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { config } from '../config';
-import io, { Socket } from 'socket.io-client';
 import { useTradingSettingsStore } from './tradingSettingsStore';
 
 const API_BASE_URL = config.apiUrl;
+const WS_URL = API_BASE_URL.replace(/^http/, 'ws').replace(/\/$/, '');
 
 interface Wallet {
   id: string;
@@ -97,7 +97,7 @@ interface TradingStore {
   tradeHistory: TradeHistory[];
   loading: boolean;
   error: string | null;
-  socket: Socket | null;
+  socket: WebSocket | null;
   connected: boolean;
   
   // Actions
@@ -127,99 +127,86 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
 
   // WebSocket connection management
   connectWebSocket: () => {
-    // For namespaces, Socket.IO needs the base URL and namespace as part of the connection
-    const baseUrl = API_BASE_URL.replace(/\/$/, ''); // Remove trailing slash if any
+    // Connect to native WebSocket with trading type parameter
+    const socket = new WebSocket(`${WS_URL}/ws?type=trading`);
     
-    // Connect directly to the /trading namespace
-    const socket = io(`${baseUrl}/trading`, {
-      path: '/socket.io/',  // Note: trailing slash is important
-      withCredentials: true,
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
-    });
-    
-    // Get user ID from auth context (you'll need to pass this)
+    // Get user ID from auth context
     const userId = (window as any).currentUserId || localStorage.getItem('userId');
     
-    socket.on('connect', () => {
+    socket.onopen = () => {
       console.log('📈 Trading WebSocket connected');
-      set({ connected: true });
+      set({ connected: true, socket });
       
       // Authenticate with user ID
-      socket.emit('auth', { userId });
-    });
+      socket.send(JSON.stringify({ type: 'auth', userId }));
+    };
     
-    socket.on('disconnect', () => {
+    socket.onclose = () => {
       console.log('📉 Trading WebSocket disconnected');
-      set({ connected: false });
-    });
+      set({ connected: false, socket: null });
+    };
     
-    // Handle portfolio updates
-    socket.on('portfolio_update', (data: any) => {
-      set((state) => ({
-        portfolioStats: {
-          totalValueUSD: data.data.totalValueUSD,
-          totalSOL: data.data.totalSOL,
-          totalTokens: data.data.topTokens.length,
-          walletCount: data.data.wallets.length,
-          totalPnL: data.data.profitLoss,
-          totalPnLPercent: data.data.profitLossPercent,
-          dayChange: 0,
-          dayChangePercent: 0,
-          solPrice: data.data.solPrice
-        },
-        wallets: state.wallets.map(w => {
-          const updatedWallet = data.data.wallets.find((uw: any) => uw.id === w.id);
-          return updatedWallet ? { ...w, balance: updatedWallet.balance } : w;
-        })
-      }));
-    });
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      set({ error: 'WebSocket connection failed', connected: false });
+    };
     
-    // Handle wallet updates
-    socket.on('wallet_update', (data: any) => {
-      set((state) => ({
-        wallets: state.wallets.map(w => 
-          w.id === String(data.walletId) 
-            ? { ...w, balance: data.data.balance, tokens: data.data.tokens }
-            : w
-        )
-      }));
-    });
-    
-    // Handle trade updates
-    socket.on('trade_update', (data: any) => {
-      if (data.data.status === 'success') {
-        // Refresh wallets and portfolio after successful trade
-        get().fetchWallets();
-        get().fetchPortfolioStats();
-      }
-    });
-    
-    // Handle price updates
-    socket.on('price_update', (data: any) => {
-      // Update SOL price in portfolio stats
-      set((state) => ({
-        portfolioStats: state.portfolioStats ? {
-          ...state.portfolioStats,
-          solPrice: data.data.sol,
-          // Recalculate total value with new SOL price
-          totalValueUSD: (state.portfolioStats.totalSOL * data.data.sol) + 
-            state.wallets.reduce((sum, w) => 
-              sum + (w.tokens?.reduce((tSum, t) => tSum + (t.valueUSD || 0), 0) || 0), 0
+    // Handle incoming messages
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        
+        if (message.type === 'portfolio_update') {
+          set((state) => ({
+            portfolioStats: {
+              totalValueUSD: message.data.totalValueUSD,
+              totalSOL: message.data.totalSOL,
+              totalTokens: message.data.topTokens.length,
+              walletCount: message.data.wallets.length,
+              totalPnL: message.data.profitLoss,
+              totalPnLPercent: message.data.profitLossPercent,
+              dayChange: 0,
+              dayChangePercent: 0,
+              solPrice: message.data.solPrice
+            },
+            wallets: state.wallets.map(w => {
+              const updatedWallet = message.data.wallets.find((uw: any) => uw.id === w.id);
+              return updatedWallet ? { ...w, balance: updatedWallet.balance } : w;
+            })
+          }));
+        }
+        
+        if (message.type === 'wallet_update') {
+          set((state) => ({
+            wallets: state.wallets.map(w => 
+              w.id === message.walletId 
+                ? { ...w, balance: message.data.balance, tokens: message.data.tokens }
+                : w
             )
-        } : null
-      }));
-    });
-    
-    set({ socket });
+          }));
+        }
+        
+        if (message.type === 'trade_update') {
+          console.log('Trade update:', message.data);
+        }
+        
+        if (message.type === 'price_update') {
+          set((state) => ({
+            portfolioStats: state.portfolioStats 
+              ? { ...state.portfolioStats, solPrice: message.data.sol }
+              : null
+          }));
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
   },
 
   disconnectWebSocket: () => {
     const { socket } = get();
-    if (socket) {
-      socket.disconnect();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close();
       set({ socket: null, connected: false });
     }
   },

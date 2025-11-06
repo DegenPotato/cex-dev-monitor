@@ -1,22 +1,29 @@
-import { Server } from 'socket.io';
+import { WebSocket } from 'ws';
 
 // Simple WebSocket service wrapper for campaign events
 class WebSocketService {
-    private io: Server | null = null;
+    private clients: Set<WebSocket> = new Set();
 
-    setServer(io: Server) {
-        this.io = io;
+    registerClient(ws: WebSocket) {
+        this.clients.add(ws);
+    }
+
+    unregisterClient(ws: WebSocket) {
+        this.clients.delete(ws);
     }
 
     broadcast(event: string, data: any) {
-        if (this.io) {
-            this.io.emit(event, data);
-        }
+        const message = JSON.stringify({ type: event, data, timestamp: Date.now() });
+        this.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        });
     }
 
-    emitTo(socketId: string, event: string, data: any) {
-        if (this.io) {
-            this.io.to(socketId).emit(event, data);
+    emitTo(client: WebSocket, event: string, data: any) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: event, data, timestamp: Date.now() }));
         }
     }
 }
@@ -26,10 +33,6 @@ const webSocketService = new WebSocketService();
 
 export function getWebSocketServer(): WebSocketService {
     return webSocketService;
-}
-
-export function setWebSocketServer(io: Server): void {
-    webSocketService.setServer(io);
 }
 
 export default webSocketService;

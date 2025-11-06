@@ -1,14 +1,21 @@
 /**
  * Trading WebSocket Service
  * Real-time portfolio updates, price feeds, and trade notifications
+ * Uses native WebSocket (ws) instead of Socket.IO
  */
 
-import { Server } from 'socket.io';
+import { WebSocket } from 'ws';
 import { queryAll, queryOne } from '../database/helpers.js';
 import { getWalletManager } from '../core/wallet.js';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { solPriceOracle } from './SolPriceOracle.js';
 import { tokenPriceOracle } from './TokenPriceOracle.js';
+
+interface ExtendedWebSocket extends WebSocket {
+  userId?: number;
+  isAlive?: boolean;
+  subscriptions?: number[];
+}
 
 interface PortfolioUpdate {
   type: 'portfolio_update';
@@ -55,10 +62,11 @@ interface PriceUpdate {
 }
 
 class TradingWebSocketService {
-  private io: Server | null = null;
-  private userConnections: Map<number, Set<string>> = new Map();
+  private clients: Set<ExtendedWebSocket> = new Set();
+  private userConnections: Map<number, Set<ExtendedWebSocket>> = new Map();
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private portfolioUpdateInterval: NodeJS.Timeout | null = null;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
   private connection: Connection;
   private tokenPrices: Map<string, number> = new Map();
 
@@ -68,77 +76,134 @@ class TradingWebSocketService {
     this.connection = new Connection(rpcUrl, 'confirmed');
   }
 
-  initialize(io: Server) {
-    this.io = io;
+  handleConnection(ws: ExtendedWebSocket) {
+    console.log('📈 Trading WebSocket client connected');
     
-    // Set up namespace for trading
-    const tradingNamespace = io.of('/trading');
+    this.clients.add(ws);
+    ws.isAlive = true;
     
-    tradingNamespace.on('connection', (socket) => {
-      console.log('📈 Trading WebSocket client connected:', socket.id);
-      
-      // Handle authentication
-      socket.on('auth', async (data) => {
-        const { userId } = data;
-        if (!userId) {
-          socket.emit('error', { message: 'Authentication required' });
-          return;
-        }
-        
-        // Track user connection
-        if (!this.userConnections.has(userId)) {
-          this.userConnections.set(userId, new Set());
-        }
-        this.userConnections.get(userId)!.add(socket.id);
-        
-        // Join user room for targeted updates
-        socket.join(`user_${userId}`);
-        
-        // Send initial portfolio data
-        await this.sendPortfolioUpdate(userId);
-        
-        // Subscribe to real-time updates for user's wallets
-        await this.subscribeToWalletUpdates(userId, socket);
-      });
-      
-      // Handle wallet balance refresh request
-      socket.on('refresh_wallet', async (data) => {
-        const { userId, walletId } = data;
-        if (userId && walletId) {
-          await this.refreshWalletBalance(userId, walletId);
-        }
-      });
-      
-      // Handle portfolio refresh request
-      socket.on('refresh_portfolio', async (data) => {
-        const { userId } = data;
-        if (userId) {
-          await this.sendPortfolioUpdate(userId);
-        }
-      });
-      
-      // Handle disconnect
-      socket.on('disconnect', () => {
-        console.log('📉 Trading WebSocket client disconnected:', socket.id);
-        
-        // Clean up user connections
-        for (const [userId, connections] of this.userConnections.entries()) {
-          if (connections.has(socket.id)) {
-            connections.delete(socket.id);
-            if (connections.size === 0) {
-              this.userConnections.delete(userId);
-            }
-            break;
-          }
-        }
-      });
+    // Handle pong responses for heartbeat
+    ws.on('pong', () => {
+      ws.isAlive = true;
     });
     
-    // Start price update service
-    this.startPriceUpdates();
+    // Handle incoming messages
+    ws.on('message', async (data: string) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        switch (message.type) {
+          case 'auth':
+            await this.handleAuth(ws, message.userId);
+            break;
+            
+          case 'refresh_wallet':
+            if (ws.userId && message.walletId) {
+              await this.refreshWalletBalance(ws.userId, message.walletId, ws);
+            }
+            break;
+            
+          case 'refresh_portfolio':
+            if (ws.userId) {
+              await this.sendPortfolioUpdate(ws.userId, ws);
+            }
+            break;
+            
+          default:
+            console.warn('Unknown message type:', message.type);
+        }
+      } catch (error) {
+        console.error('Error processing message:', error);
+        this.sendError(ws, 'Invalid message format');
+      }
+    });
     
-    // Start portfolio update service
-    this.startPortfolioUpdates();
+    // Handle disconnect
+    ws.on('close', () => {
+      console.log('📉 Trading WebSocket client disconnected');
+      this.cleanup(ws);
+    });
+    
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      this.cleanup(ws);
+    });
+    
+    // Start services if not already running
+    if (!this.priceUpdateInterval) {
+      this.startPriceUpdates();
+      this.startPortfolioUpdates();
+      this.startHeartbeat();
+    }
+  }
+  
+  private async handleAuth(ws: ExtendedWebSocket, userId: number) {
+    if (!userId) {
+      this.sendError(ws, 'Authentication required');
+      return;
+    }
+    
+    ws.userId = userId;
+    
+    // Track user connection
+    if (!this.userConnections.has(userId)) {
+      this.userConnections.set(userId, new Set());
+    }
+    this.userConnections.get(userId)!.add(ws);
+    
+    console.log(`🔐 User ${userId} authenticated`);
+    
+    // Send initial portfolio data
+    await this.sendPortfolioUpdate(userId, ws);
+    
+    // Subscribe to real-time updates for user's wallets
+    await this.subscribeToWalletUpdates(userId, ws);
+  }
+  
+  private cleanup(ws: ExtendedWebSocket) {
+    // Remove from clients
+    this.clients.delete(ws);
+    
+    // Clean up user connections
+    if (ws.userId) {
+      const userConns = this.userConnections.get(ws.userId);
+      if (userConns) {
+        userConns.delete(ws);
+        if (userConns.size === 0) {
+          this.userConnections.delete(ws.userId);
+        }
+      }
+    }
+    
+    // Remove Solana subscriptions
+    if (ws.subscriptions) {
+      ws.subscriptions.forEach(subId => {
+        try {
+          this.connection.removeAccountChangeListener(subId);
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+    }
+  }
+  
+  private sendError(ws: ExtendedWebSocket, message: string) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'error', message }));
+    }
+  }
+  
+  private startHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      this.clients.forEach(ws => {
+        if (!ws.isAlive) {
+          ws.terminate();
+          return;
+        }
+        ws.isAlive = false;
+        ws.ping();
+      });
+    }, 30000); // 30 seconds
   }
   
   /**
@@ -148,8 +213,6 @@ class TradingWebSocketService {
     // Broadcast price updates to clients every 10 seconds
     const updatePrices = async () => {
       try {
-        // SOL price is managed by solPriceOracle
-        // Broadcast price update to all connected clients
         const update: PriceUpdate = {
           type: 'price_update',
           data: {
@@ -158,7 +221,8 @@ class TradingWebSocketService {
           }
         };
         
-        this.io?.of('/trading').emit('price_update', update);
+        // Broadcast to all connected clients
+        this.broadcast(update);
       } catch (error) {
         console.error('Error broadcasting price update:', error);
       }
@@ -177,16 +241,30 @@ class TradingWebSocketService {
   private startPortfolioUpdates() {
     // Update portfolios every 30 seconds
     this.portfolioUpdateInterval = setInterval(async () => {
-      for (const userId of this.userConnections.keys()) {
-        await this.sendPortfolioUpdate(userId);
+      for (const [userId, connections] of this.userConnections.entries()) {
+        for (const ws of connections) {
+          await this.sendPortfolioUpdate(userId, ws);
+        }
       }
     }, 30000);
   }
   
   /**
+   * Broadcast message to all connected clients
+   */
+  private broadcast(data: any) {
+    const message = JSON.stringify(data);
+    this.clients.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+      }
+    });
+  }
+  
+  /**
    * Send portfolio update to specific user
    */
-  async sendPortfolioUpdate(userId: number) {
+  private async sendPortfolioUpdate(userId: number, ws: ExtendedWebSocket) {
     try {
       const walletManager = getWalletManager();
       const wallets = await walletManager.getUserWallets(userId);
@@ -302,8 +380,10 @@ class TradingWebSocketService {
         }
       };
       
-      // Send to user's room
-      this.io?.of('/trading').to(`user_${userId}`).emit('portfolio_update', update);
+      // Send to specific websocket
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(update));
+      }
       
     } catch (error) {
       console.error('Error sending portfolio update:', error);
@@ -313,10 +393,14 @@ class TradingWebSocketService {
   /**
    * Subscribe to wallet balance updates
    */
-  private async subscribeToWalletUpdates(userId: number, socket: any) {
+  private async subscribeToWalletUpdates(userId: number, ws: ExtendedWebSocket) {
     try {
       const walletManager = getWalletManager();
       const wallets = await walletManager.getUserWallets(userId);
+      
+      if (!ws.subscriptions) {
+        ws.subscriptions = [];
+      }
       
       // Set up account change listeners for each wallet
       for (const wallet of wallets) {
@@ -345,14 +429,14 @@ class TradingWebSocketService {
                 }
               };
               
-              socket.emit('wallet_update', update);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(update));
+              }
             }
           );
           
-          // Store subscription for cleanup
-          socket.on('disconnect', () => {
-            this.connection.removeAccountChangeListener(subscriptionId);
-          });
+          // Store subscription ID for cleanup
+          ws.subscriptions.push(subscriptionId);
           
         } catch (error) {
           console.error(`Error subscribing to wallet ${wallet.walletAddress}:`, error);
@@ -366,7 +450,7 @@ class TradingWebSocketService {
   /**
    * Refresh wallet balance manually
    */
-  private async refreshWalletBalance(userId: number, walletId: number) {
+  private async refreshWalletBalance(userId: number, walletId: number, ws: ExtendedWebSocket) {
     try {
       const walletManager = getWalletManager();
       
@@ -396,7 +480,9 @@ class TradingWebSocketService {
         }
       };
       
-      this.io?.of('/trading').to(`user_${userId}`).emit('wallet_update', update);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(update));
+      }
       
     } catch (error) {
       console.error('Error refreshing wallet balance:', error);
@@ -404,7 +490,7 @@ class TradingWebSocketService {
   }
   
   /**
-   * Send trade notification
+   * Send trade notification to all connections of a user
    */
   async sendTradeUpdate(userId: number, trade: any, status: 'pending' | 'success' | 'failed', message: string) {
     const update: TradeUpdate = {
@@ -425,7 +511,16 @@ class TradingWebSocketService {
       }
     };
     
-    this.io?.of('/trading').to(`user_${userId}`).emit('trade_update', update);
+    // Send to all of user's connections
+    const userConns = this.userConnections.get(userId);
+    if (userConns) {
+      const message = JSON.stringify(update);
+      userConns.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+        }
+      });
+    }
   }
   
   /**
@@ -436,15 +531,22 @@ class TradingWebSocketService {
   }
   
   /**
-   * Clean up resources
+   * Clean up all resources
    */
-  cleanup() {
+  shutdown() {
     if (this.priceUpdateInterval) {
       clearInterval(this.priceUpdateInterval);
     }
     if (this.portfolioUpdateInterval) {
       clearInterval(this.portfolioUpdateInterval);
     }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    // Close all connections
+    this.clients.forEach(ws => ws.close());
+    this.clients.clear();
+    this.userConnections.clear();
   }
 }
 

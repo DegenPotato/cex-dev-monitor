@@ -88,19 +88,19 @@ export class OnchainOHLCVBuilder {
     lookbackHours: number
   ): Promise<SwapData[]> {
     const swaps: SwapData[] = [];
-    const programPubkey = new PublicKey(PUMPFUN_PROGRAM_ID);
     
     const now = Math.floor(Date.now() / 1000);
     const startTime = now - (lookbackHours * 3600);
 
     console.log(`🔍 [OHLCV] Fetching signatures for ${tokenMint.slice(0, 8)}...`);
     
-    // Fetch all signatures for the Pumpfun program involving this token
-    let signatures = await this.connection.getSignaturesForAddress(programPubkey, {
+    // Fetch all signatures for the TOKEN MINT (not program)
+    const tokenPubkey = new PublicKey(tokenMint);
+    let signatures = await this.connection.getSignaturesForAddress(tokenPubkey, {
       limit: 1000 // Max limit
     });
 
-    console.log(`📝 [OHLCV] Found ${signatures.length} total Pumpfun signatures, filtering...`);
+    console.log(`📝 [OHLCV] Found ${signatures.length} total signatures for token`);
 
     // Filter by time
     signatures = signatures.filter(sig => {
@@ -110,9 +110,8 @@ export class OnchainOHLCVBuilder {
 
     console.log(`⏰ [OHLCV] ${signatures.length} signatures in lookback period`);
 
-    // Fetch transactions in batches with rate limiting
-    const batchSize = 10; // Reduced from 100 to avoid rate limits
-    const batchDelayMs = 500; // Delay between batches
+    // Fetch transactions in batches
+    const batchSize = 100;
     
     for (let i = 0; i < signatures.length; i += batchSize) {
       const batch = signatures.slice(i, i + batchSize);
@@ -134,11 +133,6 @@ export class OnchainOHLCVBuilder {
           swaps.push(swapData);
         }
       }
-
-      // Rate limit: delay between batches (except for last batch)
-      if (i + batchSize < signatures.length) {
-        await new Promise(resolve => setTimeout(resolve, batchDelayMs));
-      }
     }
 
     console.log(`✅ [OHLCV] Extracted ${swaps.length} swaps from ${signatures.length} transactions`);
@@ -150,69 +144,94 @@ export class OnchainOHLCVBuilder {
   }
 
   /**
-   * Parse a transaction to extract swap data
+   * Parse a single transaction to extract swap data
+   * Uses proven SmartMoneyTracker logic
    */
-  private parseSwapTransaction(tx: any, tokenMint: string): SwapData | null {
-    if (!tx.meta || !tx.transaction || !tx.blockTime) return null;
+  private parseSwapTransaction(
+    tx: any,
+    tokenMint: string
+  ): SwapData | null {
+    try {
+      if (!tx || !tx.meta || !tx.meta.innerInstructions) return null;
 
-    const message = tx.transaction.message;
-    const instructions = message.instructions || [];
+      const message = tx.transaction.message;
+      let accountKeys = message.staticAccountKeys || [];
 
-    // Find Pumpfun instruction
-    for (const ix of instructions) {
-      const programId = message.accountKeys[ix.programIdIndex];
-      if (programId.toBase58() !== PUMPFUN_PROGRAM_ID) continue;
-
-      // Get instruction data
-      const data = Buffer.from(ix.data, 'base64');
-      if (data.length < 8) continue;
-
-      // Extract discriminator
-      const discriminator = data.subarray(0, 8).toString('hex');
-      
-      const isBuy = BUY_DISCRIMINATORS.includes(discriminator);
-      const isSell = SELL_DISCRIMINATORS.includes(discriminator);
-      
-      if (!isBuy && !isSell) continue;
-
-      // Extract token balance changes
-      const postTokenBalances = tx.meta.postTokenBalances || [];
-      const preTokenBalances = tx.meta.preTokenBalances || [];
-
-      for (const post of postTokenBalances) {
-        if (post.mint !== tokenMint) continue;
-
-        const pre = preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
-        const preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
-        const postAmount = BigInt(post.uiTokenAmount.amount);
-        const change = postAmount - preAmount;
-
-        if (change === 0n) continue;
-
-        const decimals = post.uiTokenAmount.decimals;
-        const tokens = Math.abs(Number(change)) / Math.pow(10, decimals);
-
-        // Calculate SOL amount
-        const preBalances = tx.meta.preBalances || [];
-        const postBalances = tx.meta.postBalances || [];
-        const solChange = Math.abs((preBalances[0] - postBalances[0]) / 1e9);
-
-        if (solChange === 0 || tokens === 0) continue;
-
-        // Calculate price
-        const price = solChange / tokens;
-
-        return {
-          signature: tx.transaction.signatures[0],
-          timestamp: tx.blockTime,
-          price,
-          tokens,
-          sol: solChange,
-          type: isBuy ? 'buy' : 'sell'
-        };
+      // Add loaded addresses for versioned transactions
+      if (message.addressTableLookups && tx.meta.loadedAddresses) {
+        if (tx.meta.loadedAddresses.writable) accountKeys.push(...tx.meta.loadedAddresses.writable);
+        if (tx.meta.loadedAddresses.readonly) accountKeys.push(...tx.meta.loadedAddresses.readonly);
       }
-    }
 
+      // Check inner instructions for buy/sell discriminator
+      let isBuy = false;
+      let isSell = false;
+
+      for (const inner of tx.meta.innerInstructions) {
+        for (const ix of inner.instructions) {
+          const programId = accountKeys[ix.programIdIndex];
+          
+          if (programId && programId.toString() === PUMPFUN_PROGRAM_ID) {
+            const data = Buffer.from(ix.data, 'base64');
+            if (data.length < 8) continue;
+            
+            const discriminator = data.slice(0, 8).toString('hex');
+            
+            isBuy = BUY_DISCRIMINATORS.includes(discriminator);
+            isSell = SELL_DISCRIMINATORS.includes(discriminator);
+            
+            if (isBuy || isSell) break;
+          }
+        }
+        if (isBuy || isSell) break;
+      }
+
+      if (!isBuy && !isSell) return null;
+
+      // Extract token balance change (SmartMoneyTracker method)
+      let tokenAmount = 0;
+      let decimals = 6;
+
+      if (tx.meta.postTokenBalances && tx.meta.preTokenBalances) {
+        for (const post of tx.meta.postTokenBalances) {
+          if (post.mint === tokenMint) {
+            const pre = tx.meta.preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
+            const preAmount = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
+            const postAmount = BigInt(post.uiTokenAmount.amount);
+            const change = postAmount - preAmount;
+
+            if ((isBuy && change > 0n) || (isSell && change < 0n)) {
+              decimals = post.uiTokenAmount.decimals;
+              tokenAmount = Math.abs(Number(change)) / Math.pow(10, decimals);
+              break;
+            }
+          }
+        }
+      }
+
+      // Calculate SOL spent/received (SmartMoneyTracker method)
+      let solAmount = 0;
+      if (tx.meta.preBalances && tx.meta.postBalances) {
+        const change = tx.meta.preBalances[0] - tx.meta.postBalances[0];
+        solAmount = Math.abs(change / 1e9);
+      }
+
+      if (tokenAmount <= 0 || solAmount <= 0) return null;
+
+      // Calculate price
+      const price = solAmount / tokenAmount;
+
+      return {
+        signature: tx.transaction.signatures[0],
+        timestamp: tx.blockTime || 0,
+        price,
+        tokens: tokenAmount,
+        sol: solAmount,
+        type: isBuy ? 'buy' : 'sell'
+      };
+    } catch (err) {
+      // Silently skip invalid transactions
+    }
     return null;
   }
 

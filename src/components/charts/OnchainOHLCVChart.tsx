@@ -59,6 +59,11 @@ export const OnchainOHLCVChart: React.FC<OnchainOHLCVChartProps> = ({ candles, t
       borderDownColor: '#ef4444',
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'price',
+        precision: 8,
+        minMove: 0.00000001,
+      },
     });
 
     candlestickSeriesRef.current = candlestickSeries;

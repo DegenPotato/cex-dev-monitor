@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onchain OHLCV Chart Test</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #f97316;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #334155;
+        }
+        .input-group {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 150px;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        input, select, button {
+            padding: 10px;
+            background: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 14px;
+        }
+        input::placeholder {
+            color: #64748b;
+        }
+        button {
+            background: #f97316;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        button:hover:not(:disabled) {
+            background: #ea580c;
+        }
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 12px;
+            background: #1e293b;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .status.loading {
+            border-color: #f59e0b;
+            display: block;
+        }
+        .status.success {
+            border-color: #10b981;
+            display: block;
+        }
+        .status.error {
+            border-color: #ef4444;
+            display: block;
+        }
+        .chart-container {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            display: none;
+        }
+        .chart-container.visible {
+            display: block;
+        }
+        #chart {
+            width: 100%;
+            height: 600px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .stat {
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #475569;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Onchain OHLCV Chart Tester</h1>
+        
+        <div class="controls">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="tokenInput" 
+                    placeholder="Enter Pumpfun token contract address..."
+                    value="48WduMWSJejhk48PUFXdeXHEWXK7wq8KYb6TupvqHuwe"
+                >
+                <select id="timeframeSelect">
+                    <option value="1">1 minute</option>
+                    <option value="5" selected>5 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="60">1 hour</option>
+                </select>
+                <select id="lookbackSelect">
+                    <option value="1">Last 1 hour</option>
+                    <option value="4">Last 4 hours</option>
+                    <option value="24" selected>Last 24 hours</option>
+                    <option value="168">Last 7 days</option>
+                </select>
+                <button id="buildBtn" onclick="buildChart()">Build Chart</button>
+            </div>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div id="chartContainer" class="chart-container">
+            <div id="chart"></div>
+            <div class="stats" id="stats"></div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        let candlestickSeries = null;
+        let volumeSeries = null;
+
+        function setStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        async function buildChart() {
+            const tokenMint = document.getElementById('tokenInput').value.trim();
+            const timeframeMinutes = parseInt(document.getElementById('timeframeSelect').value);
+            const lookbackHours = parseInt(document.getElementById('lookbackSelect').value);
+            const buildBtn = document.getElementById('buildBtn');
+
+            if (!tokenMint) {
+                setStatus('❌ Please enter a token address', 'error');
+                return;
+            }
+
+            buildBtn.disabled = true;
+            setStatus('⏳ Fetching transactions from blockchain... (may take 1-2 minutes)', 'loading');
+            document.getElementById('chartContainer').classList.remove('visible');
+
+            try {
+                const response = await fetch('https://api.sniff.agency/api/ohlcv/onchain/build', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        tokenMint,
+                        timeframeMinutes,
+                        lookbackHours
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to build OHLCV data');
+                }
+
+                const { candles, metadata } = data;
+
+                if (candles.length === 0) {
+                    setStatus('⚠️ No swap data found for this token in the lookback period', 'error');
+                    return;
+                }
+
+                // Initialize chart if needed
+                if (!chart) {
+                    const chartEl = document.getElementById('chart');
+                    chart = LightweightCharts.createChart(chartEl, {
+                        width: chartEl.clientWidth,
+                        height: 600,
+                        layout: {
+                            background: { color: '#1e293b' },
+                            textColor: '#d1d5db',
+                        },
+                        grid: {
+                            vertLines: { color: '#334155' },
+                            horzLines: { color: '#334155' },
+                        },
+                        crosshair: {
+                            mode: LightweightCharts.CrosshairMode.Normal,
+                        },
+                        rightPriceScale: {
+                            borderColor: '#475569',
+                        },
+                        timeScale: {
+                            borderColor: '#475569',
+                            timeVisible: true,
+                            secondsVisible: false,
+                        },
+                    });
+
+                    candlestickSeries = chart.addCandlestickSeries({
+                        upColor: '#10b981',
+                        downColor: '#ef4444',
+                        borderUpColor: '#10b981',
+                        borderDownColor: '#ef4444',
+                        wickUpColor: '#10b981',
+                        wickDownColor: '#ef4444',
+                    });
+
+                    volumeSeries = chart.addHistogramSeries({
+                        color: '#6366f1',
+                        priceFormat: {
+                            type: 'volume',
+                        },
+                        priceScaleId: '',
+                    });
+
+                    volumeSeries.priceScale().applyOptions({
+                        scaleMargins: {
+                            top: 0.8,
+                            bottom: 0,
+                        },
+                    });
+
+                    // Handle resize
+                    window.addEventListener('resize', () => {
+                        chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+                    });
+                }
+
+                // Set data
+                const candleData = candles.map(c => ({
+                    time: c.time,
+                    open: c.open,
+                    high: c.high,
+                    low: c.low,
+                    close: c.close,
+                }));
+
+                const volumeData = candles.map(c => ({
+                    time: c.time,
+                    value: c.volume,
+                    color: c.close >= c.open ? '#10b98180' : '#ef444480',
+                }));
+
+                candlestickSeries.setData(candleData);
+                volumeSeries.setData(volumeData);
+                chart.timeScale().fitContent();
+
+                // Show stats
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat">
+                        <div class="stat-label">Total Swaps</div>
+                        <div class="stat-value">${metadata.totalSwaps}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Total Volume</div>
+                        <div class="stat-value" style="color: #10b981">${metadata.totalVolume.toFixed(2)} SOL</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Candles</div>
+                        <div class="stat-value" style="color: #f97316">${candles.length}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Timeframe</div>
+                        <div class="stat-value" style="color: #8b5cf6">${timeframeMinutes}m</div>
+                    </div>
+                `;
+
+                document.getElementById('chartContainer').classList.add('visible');
+                setStatus(`✅ Built ${candles.length} candles from ${metadata.totalSwaps} swaps!`, 'success');
+
+            } catch (error) {
+                console.error(error);
+                setStatus(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                buildBtn.disabled = false;
+            }
+        }
+
+        // Allow Enter key to build
+        document.getElementById('tokenInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') buildChart();
+        });
+    </script>
+</body>
+</html>

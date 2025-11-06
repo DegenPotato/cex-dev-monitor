@@ -2987,7 +2987,7 @@ export const TestLabTab: React.FC = () => {
               }
               
               setOhlcvLoading(true);
-              toast.loading('Fetching transactions from blockchain... (may take 1-2 minutes with rate limiting)');
+              toast.loading('Fetching transactions from blockchain...');
               
               try {
                 // Parse lookback period

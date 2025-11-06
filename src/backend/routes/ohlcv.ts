@@ -8,7 +8,7 @@ const router = Router();
 const authService = new SecureAuthService();
 
 // Initialize onchain OHLCV builder (in-memory, no database)
-const onchainBuilder = new OnchainOHLCVBuilder(process.env.RPC_URL || 'https://api.mainnet-beta.solana.com');
+const onchainBuilder = new OnchainOHLCVBuilder(process.env.RPC_URL || 'https://tritono-main-e861.mainnet.rpcpool.com/00d87746-cade-4061-b5cf-5e4fc1deab03');
 
 /**
  * Start OHLCV collector V2

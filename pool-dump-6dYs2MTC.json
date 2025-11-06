@@ -1,0 +1,917 @@
+{
+  "tokenMint": "6dYs2MTCvs3YFFNdZSbMorD4emPfpsoDGdDvEATcpump",
+  "bondingCurve": "EUSUwQLLf1vVZXyvbPS5X6ZWKdCvMdZbLp6D6ACvKAbE",
+  "lookbackHours": 24,
+  "totalSignatures": 3509,
+  "classified": 2682,
+  "buys": 2483,
+  "sells": 199,
+  "unknown": 827,
+  "totalVolume": 805.0729291159998,
+  "swaps": [
+    {
+      "type": "sell",
+      "signature": "3q2ewH88Tn5MBjBJCEy3fx7zbjhSGrftWCckUXaz73yypR7peuF4eUUFgnvtpPcqyw6GmwT2uNgpfDYeH61hPJGA",
+      "timestamp": 1762390994,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 7950763.318114,
+      "solAmount": 0.433444508,
+      "price": 5.451608740666391e-8
+    },
+    {
+      "type": "sell",
+      "signature": "4MdEmWwX8yA5MQBGjZLjAamoF4driKEM4e1Q2yKvVkc4XcstVwW92jvAW7QYj4VDg5bAdP5k7J7wVTLXv1EdKvq9",
+      "timestamp": 1762390983,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 9951928.704661,
+      "solAmount": 0.5637096,
+      "price": 5.664325144692665e-8
+    },
+    {
+      "type": "sell",
+      "signature": "2QnsRAeCv31fiwcM4o51bbdxrDBEQ1MZki3XxuirdvrCEJzQvESEZMq9ryoA1M7ScK2c2tpuHtts8QNLSHh2r8DY",
+      "timestamp": 1762390979,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 8558710.00429,
+      "solAmount": 0.509507273,
+      "price": 5.9530849011663287e-8
+    },
+    {
+      "type": "sell",
+      "signature": "4aSn2MNSzM4zzqNN6C5oUtcmWmmQuckpb2cLgJWMPSVCr9u4TrYw6NZDAXRf6AAZVT8xsw5wNAmVwm415g4fcok",
+      "timestamp": 1762390979,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 31273715.208153,
+      "solAmount": 1.971612721,
+      "price": 6.304376400044739e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2rYpuEhY5P84cnqDRh7rz3JmGSuxjxYBTDPni6pnNktXrHt6a98uRDg4n7eadhUf8i59AbAGsem7g7n36CXC9eNX",
+      "timestamp": 1762390819,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146460.994375,
+      "solAmount": 0.012005,
+      "price": 8.196721626279754e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2vt8Wogr1LhWBQZaLWgbFTnya7tXfL3hahBJkjbNdGTrJ4EeMsghYDe6p5EERmK8GTjGphxNfeDZRBxkn7XKfQv2",
+      "timestamp": 1762390809,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146523.108882,
+      "solAmount": 0.012005,
+      "price": 8.193246847954907e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3Dm8Q7daQnnbVKwoV56WvAwBEoQLnKenr6fned4mDkEVfhdxfaUYhJvRMQsjdF8GzHvQyAJv7jvUp14Z1eU3muCX",
+      "timestamp": 1762390799,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146585.262912,
+      "solAmount": 0.012005,
+      "price": 8.18977280629295e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4MMLb4C4i3cWzx15Md6vz6XbgTW7X63eotUxYBoo2ybjS4zGoszersEcLjHFVVY8xFpFFNAwsYFqLKDS5hezMYJ6",
+      "timestamp": 1762390790,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146647.456498,
+      "solAmount": 0.012005,
+      "price": 8.186299501323929e-8
+    },
+    {
+      "type": "buy",
+      "signature": "38c7HQxKqjqRLiqc97LJ6sVsJbs4XC65G6uXSzMaJ9krhv9WW5TxAdco2e4pu26awJ4Rbzy3iKq8yPxxuMBjVTKH",
+      "timestamp": 1762390779,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146709.689674,
+      "solAmount": 0.012005,
+      "price": 8.182826933024e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3PwsucTkUDoKss2oU75YFapw8vq5g8pC5T7RP39k6LY7YwXAoPpbB4zqdFRCjk5hbk5DieXSK5L7ci6apox7yUpJ",
+      "timestamp": 1762390767,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 146771.962474,
+      "solAmount": 0.012005,
+      "price": 8.179355101371375e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5W9NcNa4T5Fg69BSxzSFijiGzKGefaHB4H77ddTJYZpgADZPjoFzB93pXmrtpPBnu4kLo8iuU8yDRrEeKeAsoqK8",
+      "timestamp": 1762390675,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 17746663.926894,
+      "solAmount": 1.184209708,
+      "price": 6.672858137609748e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3aPpQjNVCenAkrqZ7RkEEzvMb7PrvWSYUQ7rULWSGPtW9SXd5Ln1HgNccxrmqeHBrLirwAfzZhf8DcVcGsPhtuir",
+      "timestamp": 1762390646,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 2027444.642064,
+      "solAmount": 0.133053673,
+      "price": 6.562629146044025e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3c39uezwpi5i3T85toet7JJijddtyWoFVRdGgFnKnd9TBp59VDXse6QBf254ytTT2z6G3TE3gkLJesBVXcm5rwUd",
+      "timestamp": 1762390645,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 7950763.318114,
+      "solAmount": 0.515363684,
+      "price": 6.481939700378974e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2z8PdpC7o7eyPCFs2z5tP3HN4o5fgkaCkTdurXqL1scETmKLBkDUxTaCRcSZchyCzwVEnHST13cw5g1XxVpQrJS8",
+      "timestamp": 1762390635,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 3190227.068271,
+      "solAmount": 0.202005,
+      "price": 6.331994421622163e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3tSYT5JFpiC2mNWuyXtjzeKp3nek9XVhP2CmxziphhV6z48gP2fDe2DRQF22VWx3FDw1q66j6R5Dz9hxXgA69A4f",
+      "timestamp": 1762390484,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 12914072.125916,
+      "solAmount": 0.79492053,
+      "price": 6.155459890956866e-8
+    },
+    {
+      "type": "buy",
+      "signature": "36ZGEUudQapfnjhg3HuLwhVCYikbkSpACH2Ve7aX2o6EkfErs9YS4GeUHAtS67oYSbke8sTMciqasdj3yDkqbLYj",
+      "timestamp": 1762390477,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 9951928.704661,
+      "solAmount": 0.592738487,
+      "price": 5.956016211434373e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2yP2JAC738wcbxtyfp5Y4D6vBGbddsAFf6osDcdFNADwpctMMr8GrQqEAcmXFXqAuKNDTPdB8SoqiCkiNnBzq33v",
+      "timestamp": 1762390476,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 8558710.00429,
+      "solAmount": 0.501835248,
+      "price": 5.8634449321037665e-8
+    },
+    {
+      "type": "buy",
+      "signature": "55guhH2rgwdtg7sL7nX8joPBmBLo9Ly1Z9aGgBe54BLetZEQeYuE8U9M2fDmxfH6Bfs9Wf9C6hBMY6oeyj5C9eJC",
+      "timestamp": 1762390474,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 31273715.208153,
+      "solAmount": 1.739255004,
+      "price": 5.561395543905764e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5cJhHFGLWixQsxArg7qTvvivyDsbcWNnaVYLjxoQWEZ8CfaN2wS5uGWXHSur6VnTBkNcMTyVcf64v8i6MddQkwkD",
+      "timestamp": 1762390283,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 16462780.997501,
+      "solAmount": 0.85485511,
+      "price": 5.1926531132848355e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5JDBBuQEnyxu9yBdyYMMqtZgNLyvGairD3FLuUgNC9M16F2mS5KmziBH5qGP1B53zheWmkxFh34ozyFbkAoFTQs4",
+      "timestamp": 1762390279,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 9134628.664084,
+      "solAmount": 0.496212208,
+      "price": 5.432209958911986e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5uNofuJofiDgCWRhSuZoi5mnNkXhy8ND7AVCKNyXu1vSZseagsEfXjp48M4Mh2GybY3HkGCUGSLWkJctPc2NoULC",
+      "timestamp": 1762390276,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 8598719.82193,
+      "solAmount": 0.468685749,
+      "price": 5.4506456624470234e-8
+    },
+    {
+      "type": "sell",
+      "signature": "26Kpri5rznS8dDEiDFB8xH6hwoMfSXrEaXc2hRGriH2HFeb6MaPb2BJgiDrn2qnqhv1kDGTKiQTMc1yRtq647Txc",
+      "timestamp": 1762390276,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 29503196.291172,
+      "solAmount": 1.720299558,
+      "price": 5.830892154945094e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3jpnpcfMGPVBrhriifRAVVGt9PhsBzACZWrYMcLiN3RHsmNCUuiTKguzYu7ynwc8jv6LbsD2u6sE8yuCPyafL3HZ",
+      "timestamp": 1762390270,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 16462780.997501,
+      "solAmount": 1.027594283,
+      "price": 6.241924029457634e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5i38ncTKgwXCaA7i8DEsWLUJzywckGMbF9898phkvxE733V1rgCUnzJgwE1roDGzwDqXcuqnPWHF3Nt3KNQDaw51",
+      "timestamp": 1762390253,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 9134628.664084,
+      "solAmount": 0.543723237,
+      "price": 5.952329941312654e-8
+    },
+    {
+      "type": "buy",
+      "signature": "PfboXy33EqkhHnzS1E5tEryWSJCrPAV3v1hDQxW7uZxws1Ve9vw8YGfNPaXv4HxGeeJgMUDfYxrWrcNfdGVj4ua",
+      "timestamp": 1762390251,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 1843949.722523,
+      "solAmount": 0.110117974,
+      "price": 5.97185338921986e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3t39HcC6TemVoUmRQ56MsEnnTG5DTnNQMyXg8hXXhXyF1dX5pWAC2Uu1BHugKB2facERFhz7txhMrhEcEYWosgoN",
+      "timestamp": 1762390251,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 8598719.82193,
+      "solAmount": 0.508735248,
+      "price": 5.91640684352259e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2tauoShbXPQ1qL26wLGtXvysRz2ZFD4wnqNuwqfnpgvHsgQQ3q63rk5G1wVsAjrDSxKs4agsZenhsoauaAGQRTTi",
+      "timestamp": 1762390251,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 29503196.291172,
+      "solAmount": 1.637005004,
+      "price": 5.548568324069442e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2Aj7mxfzqL8Ni1ffr1sY2GQiRXtdLWGHh946HcUpTarxNDKzpsARC26EFqhv7nyWJSUXSNdye1YBeMfX3avimVFV",
+      "timestamp": 1762390210,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 16296387.960785,
+      "solAmount": 0.847158847,
+      "price": 5.198445502393355e-8
+    },
+    {
+      "type": "sell",
+      "signature": "2fpDmiPKyon4FfxvBpVnkiQTGqhT5LT89JB3UQx6KrsTjJ7CFA3yPw7sTNjhjTnzpgHoPHwNT8mw6hpDvcihi5jj",
+      "timestamp": 1762390206,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 8667634.503033,
+      "solAmount": 0.476526957,
+      "price": 5.497774010120668e-8
+    },
+    {
+      "type": "sell",
+      "signature": "2ct7h5uRQP5PujbyTfKQC6zpPXyHa823kRSUHUe9vWPzkinhrVgpFX5kJCkRugZDBik5xgk8Ea6Xm3S6BNFz7cGo",
+      "timestamp": 1762390203,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 1336941.100507,
+      "solAmount": 0.074503048,
+      "price": 5.572649982242798e-8
+    },
+    {
+      "type": "sell",
+      "signature": "2ZLiaaWuti2frWnrsqTzE8smQKbQaDwEukUDFvEsvUHtsJeiMgWRA73Ex23zHU6cGr2xvVPyMLdtBy3MLMXW5umG",
+      "timestamp": 1762390203,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 769295.983605,
+      "solAmount": 0.041573077,
+      "price": 5.404041862429112e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3666ECUvvJqwdr9twFBhayskt5yHimYJvjmezhsU6FWrzBLyzqPWiaze51L8zY1h4U7DTYZJdGzhoyevHEyYGGsG",
+      "timestamp": 1762390203,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 7957938.561737,
+      "solAmount": 0.438306946,
+      "price": 5.5077950476703554e-8
+    },
+    {
+      "type": "sell",
+      "signature": "234nuxtUWXiRJ28Uw6sK2uSYD5hQKVCpyT5RrAW6TzeY3JSKjpNY7834mzipk9ZPM32fB8Hiw9F3ycLDXZJoeo2M",
+      "timestamp": 1762390203,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 25937097.643823,
+      "solAmount": 1.521232789,
+      "price": 5.865084867590365e-8
+    },
+    {
+      "type": "buy",
+      "signature": "STpFcJZ4FoQRaJ1fGfjr8RDAvQdUY65a3yPGkiZWjFHRVYQ6BNykYpg7aTTfMoEQU8f3o7i8SSRxQU2M4VJCAMu",
+      "timestamp": 1762390199,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 5000027,
+      "solAmount": 0.314920619,
+      "price": 6.298378368756809e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3ofTNs2DuubMCxeQhApFNJ6X1M9DqbQ2Q4bGG4qYycGB6Sr9Qau81gHNi7DY4auQxtNSLT59DTPBYHwfduMuStUR",
+      "timestamp": 1762390199,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 16296387.960785,
+      "solAmount": 1.00404428,
+      "price": 6.16114615346722e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4TErHv1v223nN5Z3xtenbL9DhnghQxfWeQw3rvvJg8tVmyKJ2ZMkHjHxzHjFYMoo4f5hiyTqQ3p9j5kGRsSJ6oCV",
+      "timestamp": 1762390165,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 3246080.41356,
+      "solAmount": 0.186831188,
+      "price": 5.755593337107164e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5MHxaCBdEogJoT3s4z5kQ2jb6fm5HgveNWxSzE4dtTnLiQGRzZt9fM23wB4JnQqdwk8TrA68Wwie2dxFGEy1ahxF",
+      "timestamp": 1762390155,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 8053089.238389,
+      "solAmount": 0.475074683,
+      "price": 5.899284969242902e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5VfLBWD5yZWgzvTuY5x8GTpuzDwW7Ejs5Hmij4YRHPKTHaxuX921KiXTPaPUQFWr6F4kqSf7QfYgDfypHDAocufa",
+      "timestamp": 1762390153,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 3246080.41356,
+      "solAmount": 0.20234428,
+      "price": 6.233495607648474e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3h3hoVBCstMmpdk8cWVKCsjCSH6nQbZ3Tg38z7mzkPyU1LiSKmU2Kaufv9wfZbQ7XT6E27qt83XHyumUfNkuBHyo",
+      "timestamp": 1762390152,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 7785595.524482,
+      "solAmount": 0.460532703,
+      "price": 5.915189166350132e-8
+    },
+    {
+      "type": "sell",
+      "signature": "2W41igeAXbwYheHC1uU7yb6AS2nEz4aTn68cGa2qCDDJ15FTqg9fcZckfD8fYbkH5FHu6FABMujBvWcPL53ZY6DB",
+      "timestamp": 1762390152,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 6494317.716917,
+      "solAmount": 0.39379803,
+      "price": 6.063732129615378e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3iJkjSs5hyukLox3qUcNt5tAKrMTFx4aP9FbacYL5Mq9ZyaSgMd8JWajchTYTKqWdyGA1qEKHTi2UmjG8udBPmbH",
+      "timestamp": 1762390152,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 25937097.643823,
+      "solAmount": 1.66610133,
+      "price": 6.423622846624812e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5eYWfnjEtG4Sa9n7CzBu8sCTdMY4ueXRsuHN97zgE26pffHnAAMinMEzpLveMyfxiCD8df6AUNXW18mk2bwYMGKG",
+      "timestamp": 1762390144,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 8053089.238389,
+      "solAmount": 0.55115919,
+      "price": 6.844071556696894e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3EQNZmSxmEye4gP3Pfbcp8T9bYWPpGQTEhejJb9bwKVbD8EkekiScAXsiYJ8FwmvbwpW1ws4oQQUxqT9B5Z8WD74",
+      "timestamp": 1762390144,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 8667634.503033,
+      "solAmount": 0.58109817,
+      "price": 6.704230200254299e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4QHg9w8zoWJtUByxvBzQxjzoCkVqBmBc21mw6ouYvnf2BD9diYXgJd1gs7ev6qN3SMUreWabqi5DMHF1xBWBia6Q",
+      "timestamp": 1762390141,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 1336941.100507,
+      "solAmount": 0.090010411,
+      "price": 6.732563683311546e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5waE37dReL3U5Jn9bz4aQbgnTHxgSbmCwRjGgh8A4kcyqDoVDhnYSsDLjXUaV8PoJ5nQjKTSpmNyVhFVUuHRgoo9",
+      "timestamp": 1762390141,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 5557949,
+      "solAmount": 0.363905249,
+      "price": 6.547473699380833e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4ajvSr8TbEjdWN66rmkeczTUqPAnPAHYeVasBc1tGLTsp5oFLynEr5ZXjQXY8tXd5W8uaxhNBDYDX9jbERP85Vfi",
+      "timestamp": 1762390141,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 769295.983605,
+      "solAmount": 0.051142525,
+      "price": 6.647964644289559e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5yLbuKz6RR6ST8FFLH4z5QV1SUgLLCune786H3pXC6agRooWAndohCob9nHczcAChxjmBADsMd2Qo97WHXMe5W5W",
+      "timestamp": 1762390141,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 7785595.524482,
+      "solAmount": 0.508835248,
+      "price": 6.535598290457742e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2KEkKEiS67v46UQTwCik5jXBXkQnQMXSQHNWpd3BMmEqgxojjJBoKtQNh1gc89F2QLEyBjP4xfm6tXZzXmLxjtc8",
+      "timestamp": 1762390141,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 7957938.561737,
+      "solAmount": 0.508735248,
+      "price": 6.392801905333598e-8
+    },
+    {
+      "type": "buy",
+      "signature": "qzdK9QS4fjkTJ4rEGdNiKjEewkTqr4hQ9VJ8FWLqnGYjnwFMc7KrWWTuJNWXsQmm11TkHJZJ3XbkugJkBYqoVxK",
+      "timestamp": 1762390141,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 6494317.716917,
+      "solAmount": 0.418029478,
+      "price": 6.436849815817883e-8
+    },
+    {
+      "type": "buy",
+      "signature": "37UwZFucZvAKRKempxucP8QZ74gMXPXk4k3aFLqPicNUh7YJeTnQbMcDQfqYt4VRWLynTU124SBF3HEbReiqbQoo",
+      "timestamp": 1762390141,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 25937097.643823,
+      "solAmount": 1.532759256,
+      "price": 5.909524947811697e-8
+    },
+    {
+      "type": "buy",
+      "signature": "418UeHf7Y8DJq3wSJhqRadSxbAJsgbgn3h5q3MdHxSLPsTWf7rEgnqQSvTPJkWi9ZhLEHix32cJBxsAMHJnKaGdR",
+      "timestamp": 1762390141,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 25937097.643823,
+      "solAmount": 1.432505004,
+      "price": 5.522996534429732e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5dTZtcM58wmcyneGQRNEghN4jVSUkyWicZzvawboTWB9dhympApRSLqSkvZzcc6nrEbTh3kaFE8117CBUsBLQnRu",
+      "timestamp": 1762389916,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 1276843.726963,
+      "solAmount": 0.062642762,
+      "price": 4.9060633401862854e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3ZhuNcCCe6eqf17nEsz8bUf4oySXHt1Dt4RH8Sw93FD1FkJUERPCwY3JLWsEe3mfWFQq5FNCimyrK9uc4vWiXYRb",
+      "timestamp": 1762389694,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 1179226.579276,
+      "solAmount": 0.064432206,
+      "price": 5.4639377310812415e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2BY73gf7REtoNvaK5XookmN9ixpK4RU5nMZdVoE2u2oqe8RiQAksTL6veZbwnSKGre7vmMDt6xL5U1XkNDNz1YoD",
+      "timestamp": 1762389374,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 1179189.619525,
+      "solAmount": 0.060280367,
+      "price": 5.112016422285169e-8
+    },
+    {
+      "type": "buy",
+      "signature": "3CZ6z8vP1H42P2KunUc8R7TLh9o8vW5EhK3YeUJrNKNhcGuPR2i9LM3hM6b1B4XgQe7ELmARJFabBGPvEMxt7VhF",
+      "timestamp": 1762389327,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 1131999.307499,
+      "solAmount": 0.061995636,
+      "price": 5.476649640093067e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3uDWDaztQgpQagJaPo7buK6y3mnkbgntKupbcGb2Wu6ntr7tdAubgdhqdHv8imLy1czx4HYTqbQXJtnfoa956UqK",
+      "timestamp": 1762388998,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 347298.220762,
+      "solAmount": 0.01696704,
+      "price": 4.885438215828736e-8
+    },
+    {
+      "type": "buy",
+      "signature": "tHZTFu1NJfLfXgUrqNoWmUmKZUfM6mMJ7NCYKpcUXzLuCF5hoe79KxQTKLsKZkmrmNre5TbTGYu9dzipbDEVTao",
+      "timestamp": 1762388761,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 310058.555975,
+      "solAmount": 0.016088415,
+      "price": 5.1888311707473745e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4QRUDaDVWU6cAZgpyBw1jVXGNcUjoDxSNLW3ypvJws6CdHoqvtXCnNH8HyRWL835VcL4Af3xsmdVLvHbpSsmdSUB",
+      "timestamp": 1762388730,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 1855768.752313,
+      "solAmount": 0.09973198,
+      "price": 5.3741598933431595e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5A9SmYFaGVmDbbih4cWvcxw7RzxKgs7CsnFsd9YDjNhfXGcfzAkFu7HFpsAPVcWVPbumKoyyeomLwKCiX949sqmV",
+      "timestamp": 1762388729,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 9365.784849,
+      "solAmount": 0.002125281,
+      "price": 2.2691969058278335e-7
+    },
+    {
+      "type": "buy",
+      "signature": "2nf6WmLEDTNPrexGRUYt22wAD7NvzPgmZ1Sc6eGi24eD4x5fivNTmEtVHtEqmeXgojswrYkYmXbscURtGnd246GX",
+      "timestamp": 1762388660,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 1101857.041171,
+      "solAmount": 0.064176633,
+      "price": 5.824406488503825e-8
+    },
+    {
+      "type": "buy",
+      "signature": "59cH8cT3gZ3NMULKsZaJRFnJuoCsPmJXQ2sscAr7Q4tehYZTTQRN35DosJrffbCsdZ7xAiXQzamSepjtJVS6pEii",
+      "timestamp": 1762388618,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 20385052.97967,
+      "solAmount": 1.137206527,
+      "price": 5.578629244349453e-8
+    },
+    {
+      "type": "buy",
+      "signature": "4Yw3hkPxhfUEsh2k8zhUzsBgSHrQYVQ959b3zrFuBWiiSbJnY4EN24XG6aiM6x1bpmywjkAF3PqN8jT2MuQdmRAY",
+      "timestamp": 1762388516,
+      "discriminator": "48feac982b20e013",
+      "tokenAmount": 2243262.801468,
+      "solAmount": 0.132945004,
+      "price": 5.926412362965243e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3VASU83ttzvQVhDSFGPkSUsdrLDaGoWkG1PV9MZi75QuZ2d82iQAJGxPAfhpsp18SxiY17G1Zv2B8oGoRXoEBP2V",
+      "timestamp": 1762388486,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 2260603.603713,
+      "solAmount": 0.127555294,
+      "price": 5.642532542657756e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5Kj7vRKUP9VboUvF2DQmFubSQB75Av3R6RuvANqUnnsYD2YqtcCPJyDE5B4msjEVMSP2uyZrrxN1nqxsr1UoASXH",
+      "timestamp": 1762388477,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 814722.022975,
+      "solAmount": 0.046794006,
+      "price": 5.7435548175228214e-8
+    },
+    {
+      "type": "sell",
+      "signature": "XV7Woh4fojPw95grqtHSeVCDF11MXVFwTLZjNMPBbaQXx2Re4ffn4R4LzpmiEA9sBcs1mzZSkzCbJYXRkYmuTLL",
+      "timestamp": 1762388181,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 5453269.852998,
+      "solAmount": 0.311541051,
+      "price": 5.712921960550451e-8
+    },
+    {
+      "type": "sell",
+      "signature": "5CbfYSTBtX1eSMrRkfadpHNFhyRRjjgJzMCriS622bidhTDAi7FDJYcNts8obFyqxn9tDS8vtn85VQfP3kX9s4SX",
+      "timestamp": 1762388064,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 15665108.713846,
+      "solAmount": 0.923821067,
+      "price": 5.897316666455417e-8
+    },
+    {
+      "type": "sell",
+      "signature": "3UErjNwGhoXbrbuBnGU5S6LpzrGxKPWYbSPxC4r8iQw6VRSCg7LytoWvUWGUw6xULhFmgemmDNPNt5KNmsDShUBk",
+      "timestamp": 1762388059,
+      "discriminator": "db0d98c38ed07cfd",
+      "tokenAmount": 18271198.699098,
+      "solAmount": 1.128601193,
+      "price": 6.176941160711673e-8
+    },
+    {
+      "type": "buy",
+      "signature": "CEpSTX4AskJqS2raDVuwKHZh6FMBCpwQbanUSnPRG9LJRpNzYTgj6CuMUGcaq8VqsVxgnVEoWfAyuAde3Csyb38",
+      "timestamp": 1762387417,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 467643.653136,
+      "solAmount": 0.033125281,
+      "price": 7.083445007296296e-8
+    },
+    {
+      "type": "buy",
+      "signature": "2oFBV33tq7K1fSYGnoebaJ8C9hbt7X4bbHKrf7Aq96xS9PyuiTrXRcXPscawNMjiVtG9u3gFm4PD83MQY7MwXYEd",
+      "timestamp": 1762387287,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 21704.343825,
+      "solAmount": 0.003374721,
+      "price": 1.5548597217266944e-7
+    },
+    {
+      "type": "buy",
+      "signature": "3tkjm1w6zfgyeWRAxpFZQBHVQ8qGTMsEPDfk1g1ihNWN1xv6MVJY8PnQtoVdTtpNybto6gxYswQubgoKiBKR7v4x",
+      "timestamp": 1762387287,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 21704.343825,
+      "solAmount": 0.003469926,
+      "price": 1.5987242129859688e-7
+    },
+    {
+      "type": "buy",
+      "signature": "33Y77uKAT8bAimCkdZ4GFFGqRDg45GgNr1eJA2RJUSZBrcv3H5ESyLiYw9Vnz23SWuuPshJBbNsu4wGsmbj6m2c3",
+      "timestamp": 1762387262,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 22250.684469,
+      "solAmount": 0.003409722,
+      "price": 1.5324121847804177e-7
+    },
+    {
+      "type": "buy",
+      "signature": "2Gguvaw67vfbBE422X52vtxfcBF8nkfe4nViES3sDxCqZf4eM8jcWjYA4CkSyqfXhkF1BjaPboMHdqnneNtrhdXu",
+      "timestamp": 1762387262,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 22250.684469,
+      "solAmount": 0.003505813,
+      "price": 1.5755978225678195e-7
+    },
+    {
+      "type": "buy",
+      "signature": "39LKnAnZnNZR1MgiTLuj3ueaYHzoRjPV1mMR6k4rxdBcXqcPb6t6NdCXesZqVW8NdbzcjcAoTGGzySCzPpYtHFUb",
+      "timestamp": 1762387258,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 25370.942378,
+      "solAmount": 0.003609622,
+      "price": 1.422738637856048e-7
+    },
+    {
+      "type": "buy",
+      "signature": "D62AGA4hxDW5copSThE3rpUddR93ZCkib2p5ePi6E11LTXyp5EzjnNtyW3d8TSwiSAT7hMz6yxJkTcNRWSvS9bX",
+      "timestamp": 1762387258,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 25370.942378,
+      "solAmount": 0.003710773,
+      "price": 1.4626074761880886e-7
+    },
+    {
+      "type": "buy",
+      "signature": "51QMjr3H2P1Bc8N6Rov1JKwKh5yJTozqG4betsgRDKBEudjaY1e3pXDe6k5SavjN9cMWZVji8uRiT9mrphSiWkpd",
+      "timestamp": 1762387251,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 6069994.029777,
+      "solAmount": 0.389957408,
+      "price": 6.424345824510248e-8
+    },
+    {
+      "type": "buy",
+      "signature": "5xeKY55UWe7HerTSbs2E414YZphebzLT3JU3FVisWCxmCStkTWqPjx4CPLkwYAsDvDe8ro7sDLhSiM2ezgFzcNES",
+      "timestamp": 1762387236,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 20055.442742,
+      "solAmount": 0.003291517,
+      "price": 1.641208844074493e-7
+    },
+    {
+      "type": "buy",
+      "signature": "5GnRHXvMTCjWWhzwnSPdoCUF8gyoEm7raP2UK8VqDhFuYf5vwvDkaoae76xHd635s36Wag2sTz1sf9hHQwzvGmGd",
+      "timestamp": 1762387236,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 20055.442742,
+      "solAmount": 0.003384614,
+      "price": 1.6876286619751157e-7
+    },
+    {
+      "type": "buy",
+      "signature": "33b9rn6RugQqaNrxcNtUG8aNXgVdCzgqC8iB96B3TKHJpSKgyVZG43VGyvQCw12TyYnCz9jtHPJ1XB3tzSRfLkDg",
+      "timestamp": 1762387233,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 23631.432789,
+      "solAmount": 0.003524612,
+      "price": 1.4914931445209037e-7
+    },
+    {
+      "type": "buy",
+      "signature": "3k64caErsZ9FbpTBdWXtpGg13Puz3bf88dSAX4gS3dopM47tJj1huwv7ZL5k1dzVRfk9cURmiHLvpHgZuHubiKLj",
+      "timestamp": 1762387233,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 23631.432789,
+      "solAmount": 0.003623611,
+      "price": 1.533386076229252e-7
+    },
+    {
+      "type": "buy",
+      "signature": "4N5Z8HLV6hf8a77GXUZdQNnodJhHp4cQpG6S8T6rhLWYDVMnA3Wsg4Yc5QZWKWsocpCU42QxrnPrQTQf11fTFyCQ",
+      "timestamp": 1762387233,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 19458.438457,
+      "solAmount": 0.003252602,
+      "price": 1.6715637316877835e-7
+    },
+    {
+      "type": "buy",
+      "signature": "3kziHeZuRzoKoLFF5mZ7MFqpRupCEBAnyRum9xD6GiHEsgrywSKLtNubLGW8EKjiu6mJ42pCDmhKYuGbe4TkX29z",
+      "timestamp": 1762387233,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 19458.438457,
+      "solAmount": 0.003344715,
+      "price": 1.7189020626661685e-7
+    },
+    {
+      "type": "buy",
+      "signature": "4e2CEZCdhaoLqp1t3umJSbBUYs5GpmQfXuZxS3kxszBaNjsYxLFmHkGUU8Jb1V4Lgq33oLoYrUgtJcwY24TXzDPP",
+      "timestamp": 1762387233,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 25426.011274,
+      "solAmount": 0.003641591,
+      "price": 1.432230545623882e-7
+    },
+    {
+      "type": "buy",
+      "signature": "64AmB9VVX5d37trBjaeQEtTP6Cc2Ms7wbZSquqEaaGJFt4iWU1EGmjVJDraJz49MPU5zKMfnmKkgamDDL5ucxyLG",
+      "timestamp": 1762387233,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 25426.011274,
+      "solAmount": 0.00374355,
+      "price": 1.472330818883912e-7
+    },
+    {
+      "type": "buy",
+      "signature": "spQKoG866VEgVumMzd9VNQaPRbQMnizTKbQZQciCJgkp997Coxg7Hyqffo6KkRmHfwbnkqrbRwiQuSqLDwr2UHX",
+      "timestamp": 1762387209,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 17500.416923,
+      "solAmount": 0.003124973,
+      "price": 1.7856563153606875e-7
+    },
+    {
+      "type": "buy",
+      "signature": "23ktyH44XbGFtX7H6Tu7o42TZ7GFUuiVFJE9T6fgguG4bmN44zo3mGNY3BK3WS59BX8FMByww4eZx3qTeoRthW7b",
+      "timestamp": 1762387209,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 17500.416923,
+      "solAmount": 0.003213854,
+      "price": 1.8364442482374108e-7
+    },
+    {
+      "type": "buy",
+      "signature": "4vqEVYszU268kd6CucYe2E1m6LkstuUvU8VjbbU337RqPxTbVYqJAmfKsW24nFMACXehZQqijNqHDZd35gG3GAvm",
+      "timestamp": 1762387206,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 19067.421484,
+      "solAmount": 0.003227115,
+      "price": 1.6924758298902457e-7
+    },
+    {
+      "type": "buy",
+      "signature": "2p3BN15V6UBpMuJ21xMzdrkpDxn8bnpghkCySRmni8nX499dFh32XfcKCKZ8QoU74uySGNuT6vFyJzmNQ96r1ZuQ",
+      "timestamp": 1762387206,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 19067.421484,
+      "solAmount": 0.003318582,
+      "price": 1.7404461336236334e-7
+    },
+    {
+      "type": "buy",
+      "signature": "5bEG8C1a9yH5w3sVVggJHRBdaX5gg2RPLCQSdPceqSx7aqsMb8oJ8ysDVy7d6HHJQ5Hf54evX3WsD4HnRS9nZFXq",
+      "timestamp": 1762387206,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 18261.85361,
+      "solAmount": 0.003174605,
+      "price": 1.7383804885291709e-7
+    },
+    {
+      "type": "buy",
+      "signature": "jdZX9V8CYehr9GJMy7Y8pMDyaZy4YLgq6Qt9BoGM7Teru5V8sY8n7w3KiiTpDroFzSHrrq8SocamriAxxv3HKLy",
+      "timestamp": 1762387206,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 18261.85361,
+      "solAmount": 0.003264744,
+      "price": 1.7877396619871384e-7
+    },
+    {
+      "type": "buy",
+      "signature": "5hmUTgpnfXvvUKpsLjNfeheFiHv1BA4XEk7J8jT7mthNtFujqYmpLzAU2CZgEfsbNhQLiB5pm5YD6sQB5pNSNHES",
+      "timestamp": 1762387206,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 16449.853846,
+      "solAmount": 0.003056495,
+      "price": 1.8580681801882554e-7
+    },
+    {
+      "type": "buy",
+      "signature": "hPfN5svFqVZozCTkedvsQZUR3mRWVapCpTbbieMqmXFtFuKTEFC5FAbUJkWDW1KHk71DNkcftxwSvkDTF7dkwQ8",
+      "timestamp": 1762387206,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 16449.853846,
+      "solAmount": 0.003143642,
+      "price": 1.911045550574553e-7
+    },
+    {
+      "type": "buy",
+      "signature": "5TjzTPJ5XmnS5yjtvJM93pxLqhRiN26p6qxbxgcfYJTGMjSMrhjmWTkvXNx4eES5Fmq2S6sAnEMsVwQGXodYczGu",
+      "timestamp": 1762387205,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 20412.409105,
+      "solAmount": 0.003314785,
+      "price": 1.6239068024499112e-7
+    },
+    {
+      "type": "buy",
+      "signature": "2FvbfmwuiHFuMvhUyStmuyJPpwcZJifEVjqK3xHSafgY59szHdzMbWiLyPZZcASzDsopCEjrsobqytbWvRni2iXY",
+      "timestamp": 1762387205,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 20412.409105,
+      "solAmount": 0.003408472,
+      "price": 1.6698038837390822e-7
+    },
+    {
+      "type": "buy",
+      "signature": "FXJcE6dUHu6NdNZMWKpL18qEuQBdaNwASFxw5Ey3YkgL7iwawrvby5xkrFh1AcF16oWn86JC9L4U6yLBXiX3bqD",
+      "timestamp": 1762387204,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 15562.087177,
+      "solAmount": 0.002998628,
+      "price": 1.926880350877243e-7
+    },
+    {
+      "type": "buy",
+      "signature": "4NgGhHeQAiFfXxsw55iU9XzqqxsD8a7mJHkNG8JX811aFpDdm5W6CsGUSaSQHMjRwqsTx5sf72PzQnnpwNQbvPke",
+      "timestamp": 1762387204,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 15562.087177,
+      "solAmount": 0.003084311,
+      "price": 1.9819391608077226e-7
+    },
+    {
+      "type": "buy",
+      "signature": "3pUxMcxJ64oqTAUAokVFkC7fgZ1wmMKDPpy34vuzoDRFE8enNjDTu8g2QPy2Ct6e9xVQnppaXqCAavDzV6DYj4QZ",
+      "timestamp": 1762387204,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 26637.770589,
+      "solAmount": 0.003720578,
+      "price": 1.3967302509679257e-7
+    },
+    {
+      "type": "buy",
+      "signature": "32jcFReKKr3Lp8ZhYPn365vGpXidoNSN38Do11xw1aW1PFU7FKELW1LhEoSyjsyirYpx2CLAjHGc86xBm8fN5X6y",
+      "timestamp": 1762387204,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 26637.770589,
+      "solAmount": 0.003824537,
+      "price": 1.4357571656463371e-7
+    },
+    {
+      "type": "buy",
+      "signature": "4wqimQc5yiK8i8dB4PkJtVVn23RU2R1PsVRdZ4QjBkVnN3kpH3yPnDeY1ZKx4yTU16tCMk4C6sZigBSZ4DukXeVN",
+      "timestamp": 1762387190,
+      "discriminator": "00b08712a8402815",
+      "tokenAmount": 3002553.268083,
+      "solAmount": 0.204225359,
+      "price": 6.801723092506167e-8
+    },
+    {
+      "type": "buy",
+      "signature": "66S3zdft4CzfwoDFxEyYkbrEWDB9Vafo1eRVnVqfQhPa6MdQJzZUMyNMsGD9vtjzp4Q3ArCHTwaycCAgZoDe3t1w",
+      "timestamp": 1762387183,
+      "discriminator": "e6345c8dd8b14540",
+      "tokenAmount": 17366.564801,
+      "solAmount": 0.003106577,
+      "price": 1.7888264234162864e-7
+    },
+    {
+      "type": "buy",
+      "signature": "3V7KLpHUvtCRoRnd4Udbtt7E5Hxb19kWCKdzKaRbCG7AK4EQPzN8Pi58XwRgnz3BJjh67ziYxFZVRgh522sniq1P",
+      "timestamp": 1762387183,
+      "discriminator": "0094d0da1f435eb0",
+      "tokenAmount": 17366.564801,
+      "solAmount": 0.003194992,
+      "price": 1.8397374705998424e-7
+    }
+  ],
+  "unknownReasons": {
+    "zero_token_amount": 390,
+    "no_buy_sell_discriminator": 437
+  }
+}
